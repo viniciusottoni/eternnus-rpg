@@ -93,6 +93,10 @@ jobs:
           $foreign = @(Get-ChildItem (Join-Path $env:PUBLISH_DIR 'runtimes') -Directory -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -notin @('win', 'win-x64', 'win-x86') })
           if ($foreign.Count -gt 0) { throw 'Publish still contains non-Windows native runtimes' }
+          # The SmarterASP pool is shared with eternnus.com; InProcess there fails with HTTP 500.34.
+          if ((Get-Content (Join-Path $env:PUBLISH_DIR 'web.config') -Raw) -notmatch 'hostingModel="OutOfProcess"') {
+            throw 'web.config must use hostingModel="OutOfProcess" for the shared IIS Application Pool'
+          }
 
       - name: Smoke test the real published package
         shell: pwsh
