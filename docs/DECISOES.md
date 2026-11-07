@@ -238,3 +238,11 @@ Por solicitação do usuário, o shell até 760 px mantém somente logo e subtí
 **Motivo:** o primeiro upload concluído respondeu HTTP 500.34 em `eternnus.com` e `rpg.eternnus.com`: o subdomínio compartilha o Application Pool do site principal, e o pacote InProcess não pode coexistir com outro modelo. Aplicações OutOfProcess coexistem no mesmo pool, cada uma em seu processo.
 
 **Impacto e limites:** há um salto de proxy local entre IIS e Kestrel; WebSocket continua dependendo do recurso WebSocket do IIS. A correção só resolve o conflito se nenhum outro app do pool usar InProcess; caso contrário, é necessário pool próprio no painel do SmarterASP.
+
+## ADR-036 — Deploy preserva as variáveis do painel
+
+**Decisão:** antes da manutenção, o deploy baixa o `web.config` do servidor e mantém seu bloco `environmentVariables` no `web.config` gerado.
+
+**Motivo:** a configuração de produção é feita no painel do SmarterASP, que a grava no `web.config`. O upload do arquivo gerado apagava connection string e SMTP, e o app parava na validação de inicialização (HTTP 502.5).
+
+**Limites:** só o bloco de variáveis é preservado; demais ajustes manuais no `web.config` continuam sendo substituídos. Os valores passam pelo runner efêmero do GitHub e não são exibidos no log.
