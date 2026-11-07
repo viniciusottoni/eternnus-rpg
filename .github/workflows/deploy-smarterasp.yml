@@ -169,6 +169,16 @@ jobs:
           }
           Write-Host "Validated FTPS directory: $env:FTP_SERVER_DIR"
 
+      # The SmarterASP panel keeps production settings in the server web.config; carry them into
+      # the generated one so the deploy never erases them (HTTP 502.5 at startup).
+      - name: Preserve production settings from the server web.config
+        shell: pwsh
+        env:
+          SMARTERASP_FTP_SERVER: ${{ secrets.SMARTERASP_FTP_SERVER }}
+          SMARTERASP_FTP_USERNAME: ${{ secrets.SMARTERASP_FTP_USERNAME }}
+          SMARTERASP_FTP_PASSWORD: ${{ secrets.SMARTERASP_FTP_PASSWORD }}
+        run: ./.github/scripts/preserve-remote-env.ps1 -PackageWebConfig "$env:PUBLISH_DIR/web.config"
+
       - name: Enable canonical loading during IIS restart
         id: offline
         shell: pwsh
