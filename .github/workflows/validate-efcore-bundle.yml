@@ -53,6 +53,7 @@ jobs:
         run: |
           dotnet ef dbcontext list --project apps/Eternnus.Web --startup-project apps/Eternnus.Web --configuration Release --no-build
           if ($LASTEXITCODE -ne 0) { throw "EF Core DbContext discovery failed" }
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
           dotnet ef migrations bundle --context GameDb --project apps/Eternnus.Web --startup-project apps/Eternnus.Web --configuration Release --output artifacts/efbundle-validate.exe --force
           if ($LASTEXITCODE -ne 0) { throw "EF Core migration bundle generation failed" }
           if (-not (Test-Path "artifacts/efbundle-validate.exe")) { throw "No migration bundle was produced" }
