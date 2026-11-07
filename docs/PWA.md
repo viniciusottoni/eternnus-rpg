@@ -43,7 +43,7 @@ Uma publicação deve enviar uma versão coerente de HTML, módulos, CSS, manife
 
 ### Versão atual
 
-`eternnus-public-shell-v14` inclui os módulos públicos de sessões/mesa, perfil, administração, suporte, biblioteca, Guilda, progressão, editor, fórmulas e ficha/PDF preenchido, além de campaign-assets, temporary-images e session-presence. A v14 atualiza a apresentação móvel da marca e da conta; a lista permitida permanece igual. Estado da mesa, mapas enviados, imagens temporárias, PDFs privados, fichas, perfil e histórico continuam fora do cache. A lista efetiva está em js/pwa-policy.js. As bibliotecas locais pdf.js/pdf-lib e suas fontes acompanham a publicação, mas são carregadas pela rede e não pertencem ao precache.
+`eternnus-public-shell-v15` inclui os módulos públicos de sessões/mesa, perfil, administração, suporte, biblioteca, Guilda, progressão, editor, fórmulas e ficha/PDF preenchido, além de campaign-assets, temporary-images e session-presence. A v15 incorpora o módulo público maintenance.js para detectar janelas de deploy sem recarregar uma aba ativa. A v14 atualizou a apresentação móvel da marca e da conta. Estado da mesa, mapas enviados, imagens temporárias, PDFs privados, fichas, perfil e histórico continuam fora do cache. A lista efetiva está em js/pwa-policy.js. As bibliotecas locais pdf.js/pdf-lib e suas fontes acompanham a publicação, mas são carregadas pela rede e não pertencem ao precache.
 
 ## Navegação inferior
 
@@ -67,3 +67,7 @@ A validação desta entrega passou em nove testes específicos de política/comp
 A validação de registro/manifest no desktop é distinta do teste em aparelho. Esta documentação não declara instalação física iOS/Android como executada. Resultados devem ser registrados em `TESTES.md` somente após a verificação correspondente.
 
 Avatares enviados pertencem à API autenticada e nunca são assets públicos/cacheáveis. O módulo estático de perfil integra a lista permitida no cache v11; dados e bytes pessoais continuam exclusivamente na rede.
+
+### Atualização temporária do servidor (IIS/FTPS)
+
+O GitHub Actions produz `app_offline.htm` autossuficiente com o splash oficial. Uma nova visita recebe esse HTML do IIS enquanto a aplicação está parada e tenta `/health` até o retorno. Uma aba já aberta usa `js/maintenance.js`: recebe `503` no health check e mostra a camada `#splash` existente sem recarregar. Quando `/health` volta a responder saudável, libera a interface, mas **não atualiza a página automaticamente**, pois isso poderia descartar edições ainda não enviadas. A interface pede que a pessoa salve suas mudanças antes de recarregar. O health check não entra no cache e somente erros HTTP 503, não uma queda aleatória de rede, acionam o modo de manutenção. Não se promete recuperação de chamadas falhadas, uploads ou WebRTC em trânsito.
