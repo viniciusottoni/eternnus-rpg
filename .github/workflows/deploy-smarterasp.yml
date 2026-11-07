@@ -109,7 +109,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'EF tools restore failed' }
           $bundleDir = 'artifacts/migration-bundle'
           New-Item -ItemType Directory -Path $bundleDir -Force | Out-Null
-          dotnet ef migrations bundle --project apps/Eternnus.Web --startup-project apps/Eternnus.Web --configuration Release --output "$bundleDir/efbundle.exe" --force
+          # Diagnose design-time discovery before compiling a production migration artifact.
+          dotnet ef dbcontext list --project apps/Eternnus.Web --startup-project apps/Eternnus.Web --configuration Release --no-build
+          if ($LASTEXITCODE -ne 0) { throw 'EF Core DbContext discovery failed' }
+          dotnet ef migrations bundle --context GameDb --project apps/Eternnus.Web --startup-project apps/Eternnus.Web --configuration Release --output "$bundleDir/efbundle.exe" --force
           if ($LASTEXITCODE -ne 0) { throw 'EF migrations bundle generation failed' }
           Copy-Item 'apps/Eternnus.Web/appsettings.json' "$bundleDir/appsettings.json" -Force
           if (-not (Test-Path "$bundleDir/efbundle.exe")) { throw 'Migration bundle is missing' }
