@@ -222,3 +222,11 @@ Por solicitação do usuário, o shell até 760 px mantém somente logo e subtí
 **Atualização visual:** o script gera `app_offline.htm` a partir do splash HTML/CSS e das imagens oficiais, todos incorporados para funcionar durante a parada de IIS. Novos acessos aguardam `/health` e recarregam. Abas existentes exibem a camada `#splash` sem navegação ou reload; depois, a camada é removida e o usuário é orientado a concluir edições antes de atualizar. O cache da PWA avança para v15 incluindo `maintenance.js`.
 
 **Limites:** não há garantia de preservar envios em trânsito ou edições em componentes já desmontados, nem de conexões WebRTC/WebSocket durante reinício. Dados gravados, banco, chaves de autenticação e diretórios privados precisam persistir fora da sincronização FTP.
+
+## ADR-034 — Upload FTPS por curl e pacote somente Windows
+
+**Decisão:** o deploy envia o pacote com `curl.exe` (`.github/scripts/ftps-upload.ps1`), em lotes com novas tentativas, no lugar do `FTP-Deploy-Action`. O publish remove de `runtimes/` tudo que não for `win`, `win-x64` ou `win-x86`.
+
+**Motivo:** o primeiro deploy falhou duas vezes com `ECONNRESET (data socket)` no FTP-Deploy-Action antes de enviar arquivos, enquanto o `curl.exe` publicava o `app_offline.htm` no mesmo servidor. O pacote tinha cerca de 300 MB, dos quais ~220 MB eram nativos de plataformas que o IIS nunca carrega; menos volume reduz tempo e exposição a quedas de conexão.
+
+**Limites:** não há exclusão remota de arquivos obsoletos nem publicação atômica. O pacote podado é validado pelo `tests/release.mjs` no runner Windows x64; a bitness real do Application Pool continua coberta por manter x64 e x86. Sucesso contra o servidor SmarterASP só é comprovado pela execução real do workflow.
