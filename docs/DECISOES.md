@@ -230,3 +230,11 @@ Por solicitação do usuário, o shell até 760 px mantém somente logo e subtí
 **Motivo:** o primeiro deploy falhou duas vezes com `ECONNRESET (data socket)` no FTP-Deploy-Action antes de enviar arquivos, enquanto o `curl.exe` publicava o `app_offline.htm` no mesmo servidor. O pacote tinha cerca de 300 MB, dos quais ~220 MB eram nativos de plataformas que o IIS nunca carrega; menos volume reduz tempo e exposição a quedas de conexão.
 
 **Limites:** não há exclusão remota de arquivos obsoletos nem publicação atômica. O pacote podado é validado pelo `tests/release.mjs` no runner Windows x64; a bitness real do Application Pool continua coberta por manter x64 e x86. Sucesso contra o servidor SmarterASP só é comprovado pela execução real do workflow.
+
+## ADR-035 — IIS fora do processo no pool compartilhado
+
+**Decisão:** publicar com `AspNetCoreHostingModel=OutOfProcess`; o deploy valida o `web.config` gerado.
+
+**Motivo:** o primeiro upload concluído respondeu HTTP 500.34 em `eternnus.com` e `rpg.eternnus.com`: o subdomínio compartilha o Application Pool do site principal, e o pacote InProcess não pode coexistir com outro modelo. Aplicações OutOfProcess coexistem no mesmo pool, cada uma em seu processo.
+
+**Impacto e limites:** há um salto de proxy local entre IIS e Kestrel; WebSocket continua dependendo do recurso WebSocket do IIS. A correção só resolve o conflito se nenhum outro app do pool usar InProcess; caso contrário, é necessário pool próprio no painel do SmarterASP.

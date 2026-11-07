@@ -6,6 +6,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>Eternnus-RPG-Local-Development</UserSecretsId>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- SmarterASP shares one IIS Application Pool between eternnus.com and its subdomain folders.
+         A pool accepts a single InProcess app and cannot mix models (HTTP 500.34); OutOfProcess apps
+         coexist, each in its own dotnet process behind ANCM. Kestrel limits then apply as in tests. -->
+    <AspNetCoreHostingModel>OutOfProcess</AspNetCoreHostingModel>
   </PropertyGroup>
 
   <ItemGroup>
