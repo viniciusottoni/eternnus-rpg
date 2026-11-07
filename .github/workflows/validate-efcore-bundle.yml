@@ -1,0 +1,59 @@
+name: Validate EF Core migration bundle
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-migrations:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      DOTNET_NOLOGO: 'true'
+      ASPNETCORE_ENVIRONMENT: Development
+      DOTNET_ENVIRONMENT: Development
+
+    steps:
+      - name: Checkout PR revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Prevent duplicate EF Core design-time factories
+        shell: pwsh
+        run: |
+          node --test tests/ef-factory.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw "EF factory uniqueness test failed" }
+
+      - name: Restore tools and compile migrations
+        shell: pwsh
+        run: |
+          dotnet restore apps/Eternnus.Web/Eternnus.Web.csproj
+          if ($LASTEXITCODE -ne 0) { throw "NuGet restore failed" }
+          dotnet tool restore
+          if ($LASTEXITCODE -ne 0) { throw "EF tools restore failed" }
+          dotnet build apps/Eternnus.Web/Eternnus.Web.csproj -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { throw "Eternnus build failed" }
+
+      - name: Discover DbContext and generate migration bundle without database access
+        shell: pwsh
+        run: |
+          dotnet ef dbcontext list --project apps/Eternnus.Web --startup-project apps/Eternnus.Web --configuration Release --no-build
+          if ($LASTEXITCODE -ne 0) { throw "EF Core DbContext discovery failed" }
+          dotnet ef migrations bundle --context GameDb --project apps/Eternnus.Web --startup-project apps/Eternnus.Web --configuration Release --output artifacts/efbundle-validate.exe --force
+          if ($LASTEXITCODE -ne 0) { throw "EF Core migration bundle generation failed" }
+          if (-not (Test-Path "artifacts/efbundle-validate.exe")) { throw "No migration bundle was produced" }
+          Write-Host "Migration bundle generation succeeded. No production database was contacted."
