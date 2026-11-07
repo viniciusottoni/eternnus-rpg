@@ -20,6 +20,7 @@ export const STATIC_PATHS = Object.freeze([
     "game",
     "layout",
     "loading",
+    "maintenance",
     "policy",
     "profile",
     "state",
