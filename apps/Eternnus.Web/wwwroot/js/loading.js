@@ -1,14 +1,18 @@
 // One visual and one lifetime controller for the opening and all foreground work.
 let opening = true;
+let maintenance = false;
+let normalHeading, normalMessage;
 const pending = new Set();
 let splash, previousFocus;
 const locked = new Map();
 
 function render() {
   if (!splash) return;
-  const visible = opening || pending.size > 0;
-  splash.dataset.mode = opening ? "opening" : "operation";
-  splash.setAttribute("aria-label", opening ? "Abertura do Eternnus RPG" : "Carregando sua mesa");
+  const visible = opening || maintenance || pending.size > 0;
+  splash.dataset.mode = opening || maintenance ? "opening" : "operation";
+  splash.setAttribute("aria-label", maintenance ? "Atualização do Eternnus RPG" : opening ? "Abertura do Eternnus RPG" : "Carregando sua mesa");
+  splash.querySelector(".splash-content h1").textContent = maintenance ? "Atualizando sua mesa…" : normalHeading;
+  splash.querySelector(".splash-content > p").textContent = maintenance ? "Sua jornada continua após a atualização." : normalMessage;
   if (visible) {
     if (!splash.matches(":popover-open")) {
       previousFocus = document.activeElement;
@@ -31,6 +35,8 @@ function render() {
 }
 export function installLoading() {
   splash = document.querySelector("#splash");
+  normalHeading = splash.querySelector(".splash-content h1").textContent;
+  normalMessage = splash.querySelector(".splash-content > p").textContent;
   splash.setAttribute("popover", "manual");
   document.querySelector("#modal")?.addEventListener("cancel", (event) => {
     if (opening || pending.size) event.preventDefault();
@@ -57,4 +63,11 @@ export async function withLoading(task) {
   } finally {
     finish();
   }
+}
+
+// The maintenance overlay does not navigate or reload the current SPA.
+// DOM edits remain in the same tab; only server-committed data survives a browser reload.
+export function setMaintenance(active) {
+  maintenance = Boolean(active);
+  render();
 }
