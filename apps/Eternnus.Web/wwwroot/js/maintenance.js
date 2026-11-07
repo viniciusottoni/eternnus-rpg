@@ -16,7 +16,13 @@ export function installMaintenanceWatcher() {
         credentials: "same-origin",
         cache: "no-store",
       });
-      if (response.status === 503) {
+      // IIS/ANCM may return the standalone app_offline.htm for /health.
+      // Detect its marker even if the hosting proxy uses HTTP 200 instead of 503.
+      const type = response.headers.get("content-type") || "";
+      const isOfflineHtml = response.ok &&
+        type.includes("text/html") &&
+        (await response.text()).includes("ETERNNUS_DEPLOYMENT_OFFLINE");
+      if (response.status === 503 || isOfflineHtml) {
         inMaintenance = true;
         setMaintenance(true);
       } else if (inMaintenance && response.ok) {
