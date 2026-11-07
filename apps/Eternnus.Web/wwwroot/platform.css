@@ -1,0 +1,190 @@
+/* Plataforma: navegação com papéis, painel "Mais" no celular, nível no perfil e componentes compartilhados
+   pelas telas de admin, suporte, biblioteca, fichas-modelo, Guilda e conquistas.
+   Cada funcionalidade tem seu próprio arquivo (admin.css, library.css, sheets.css, guild.css);
+   aqui ficam somente peças reutilizadas. Reutilize os tokens de styles.css. */
+
+.level-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--bright);
+  text-decoration: none;
+  border: 1px solid #c6a46355;
+  border-radius: 999px;
+  background: #c6a46314;
+}
+.level-chip:hover,
+.level-chip:focus-visible {
+  border-color: var(--gold);
+}
+
+/* Desktop: "Mais" não existe; a barra lateral lista tudo e rola se faltar altura. */
+.sidebar nav .nav-more,
+.nav-more-panel {
+  display: none;
+}
+.sidebar nav {
+  overflow-y: auto;
+}
+
+/* Tabela de dados compartilhada (admin, suporte, auditoria, moderação). */
+.data-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.data-table th,
+.data-table td {
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid #49433780;
+}
+.data-table th {
+  font: 600 11px/1.3 var(--serif);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+  background: #c6a4630d;
+}
+.data-table tr:last-child td {
+  border-bottom: 0;
+}
+.data-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Rótulo de status (tickets, papéis, moderação). Cor nunca é o único indicador: sempre há texto. */
+.status-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--text);
+  white-space: nowrap;
+}
+.status-chip.good { border-color: #8fb98f88; color: #cfe6c9; }
+.status-chip.warn { border-color: #d9b46a99; color: var(--bright); }
+.status-chip.bad { border-color: #e2a18c99; color: var(--danger); }
+.status-chip.quiet { color: var(--muted); }
+
+/* Métricas do painel. */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.stat-tile {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(#22211ecc, #181817cc);
+}
+.stat-tile strong {
+  display: block;
+  font: 600 26px/1.1 var(--serif);
+  color: var(--bright);
+  font-variant-numeric: tabular-nums;
+}
+.stat-tile span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  /* Barra inferior: 4 principais + "Mais". Secundários vão para o painel. */
+  .app-shell .sidebar nav .nav-secondary {
+    display: none;
+  }
+  .app-shell .sidebar nav .nav-more {
+    display: flex;
+    color: inherit;
+    font: inherit;
+    background: none;
+    border: 1px solid transparent;
+    cursor: pointer;
+  }
+  .app-shell .sidebar nav {
+    overflow: visible;
+  }
+  .nav-more-panel:not([hidden]) {
+    position: fixed;
+    z-index: 41;
+    right: 8px;
+    left: 8px;
+    bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px) + 8px);
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    max-height: 60svh;
+    overflow-y: auto;
+    padding: 12px;
+    border: 1px solid #b995568c;
+    border-radius: var(--radius);
+    background: linear-gradient(#18211ffb, #101916fd);
+    box-shadow: var(--shadow);
+  }
+  .nav-more-panel .nav-caption {
+    display: block;
+    grid-column: 1 / -1;
+  }
+  .app-shell .nav-more-panel .profile-block {
+    grid-column: 1 / -1;
+    margin: 0 0 6px;
+    padding: 0 0 12px;
+    border-bottom: 1px solid var(--line);
+    gap: 12px;
+  }
+  .app-shell .nav-more-panel .profile-block strong {
+    max-width: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 12px;
+  }
+  .app-shell .nav-more-panel .profile-block small {
+    max-width: none;
+    font-size: 10px;
+  }
+  .nav-more-panel .level-chip {
+    min-height: 44px;
+  }
+  .app-shell .nav-more-panel .logout {
+    grid-column: 1 / -1;
+    justify-content: center;
+    min-height: 44px;
+    margin-top: 6px;
+    padding: 10px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+  }
+  .nav-more-panel .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 8px 10px;
+    color: var(--text);
+    text-decoration: none;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+  }
+  .nav-more-panel .nav-item.active {
+    border-color: var(--gold);
+    color: var(--bright);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-more-panel {
+    transition: none;
+  }
+}

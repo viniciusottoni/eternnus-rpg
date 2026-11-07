@@ -1,0 +1,80 @@
+// Integração PostgreSQL: escopos, publicação, upload real, byte authorization e corrida selecionar/excluir.
+import { readFile } from "node:fs/promises";
+import { startEnvironment } from "./support/harness.mjs";
+const env = await startEnvironment({ port: 5214 });
+const { check, ok } = env;
+const systemId = "00000000-0000-4000-8000-000000000001";
+try {
+  const master = await env.verifiedClient("master.assets@example.test", "Mestre");
+  const player = await env.verifiedClient("player.assets@example.test", "Jogador");
+  const outsider = await env.verifiedClient("outsider.assets@example.test", "Visitante");
+  const campaign = await master("/api/campaigns", "POST", { name: "Bibliotecas e mapas", description: "Teste", rpgSystemId: systemId });
+  const path = `/api/campaigns/${campaign.id}`;
+  await player("/api/campaigns/join", "POST", { code: (await master(path)).inviteCode });
+  const base = path + "/assets";
+  const text = await master(base + "/library", "POST", { title: "NPC", text: "Segredo", published: false });
+  check((await player(base + "/library")).total, 0);
+  await player(base + "/library", "POST", { title: "Proibido", text: "Não", published: true }, 403);
+  await outsider(base + "/library", "GET", undefined, 404);
+  await master(`${base}/library/${text.id}`, "PUT", { title: "NPC", text: "Revelado", published: true, revision: text.revision });
+  check((await player(base + "/library")).items[0].text, "Revelado");
+  await master(`${base}/library/${text.id}`, "PUT", { title: "NPC", text: "Obsoleto", published: true, revision: text.revision }, 409);
+  check((await player(`/api/library?systemId=${systemId}`)).total, 0);
+  check((await player("/api/library?systemId=none")).total, 0);
+  const folder = await master(base + "/folders", "POST", { name: "Mundo", parentId: null });
+  const child = await master(base + "/folders", "POST", { name: "Cidade", parentId: folder.id });
+  const bytes = await readFile(new URL("./fixtures/avatar.png", import.meta.url));
+  async function upload(name, destination = base, destinationFolder = child.id) {
+    const form = new FormData();
+    for (const [key, value] of Object.entries({ name, folderId: destinationFolder, gridPixels: "32", scaleMeters: "2" })) form.append(key, value);
+    form.append("file", new Blob([bytes], { type: "image/png" }), "mapa.png");
+    return master(destination + "/maps", "POST", form);
+  }
+  const map = await upload("Cidade");
+  check([map.gridPixels, map.scaleMeters, map.kind], [32, 2, "tileset"]);
+  await player(map.imageUrl, "GET", undefined, 404);
+  await master(`${base}/folders/${child.id}`, "DELETE", undefined, 409);
+  const session = await master(path + "/sessions", "POST", { title: "Sessão", objective: "", mapKind: map.kind, mapKey: map.key });
+  const image = await player(map.imageUrl, "GET", undefined, 200, { raw: true });
+  check(image.headers.get("content-type"), "image/jpeg");
+  ok(image.headers.get("cache-control").includes("no-store"));
+  const live = await player(`/api/sessions/${session.id}/live`);
+  check([live.map.key, live.map.gridPixels, live.map.scaleMeters], [map.key, 32, 2]);
+  check(live.map.rows, ["SSSS", "....", "....", "...."]);
+  const character = await player("/api/characters", "POST", { name: "Aventureiro", archetype: "Explorador", level: 1, hp: 10, maxHp: 10, strength: 10, agility: 10, intellect: 10, notes: "", movement: 3 });
+  await player(`/api/sessions/${session.id}/join`, "POST", { characterId: character.id }, 204);
+  await master(`/api/sessions/${session.id}/turn`, "POST", { characterId: character.id }, 204);
+  const joined = await player(`/api/sessions/${session.id}/live`);
+  const ownToken = joined.tokens.find(t => t.characterId === character.id);
+  check([ownToken.x, ownToken.y], [0, 0]);
+  await player(`/api/sessions/${session.id}/tokens/${ownToken.id}/move`, "POST", { x: 2, y: 0 }, 400);
+  await player(`/api/sessions/${session.id}/tokens/${ownToken.id}/move`, "POST", { x: 1, y: 0 }, 204);
+  await player(`/api/sessions/${session.id}/tokens/${ownToken.id}/move`, "POST", { x: 2, y: 0 }, 409);
+  await master(`/api/sessions/${session.id}/tokens`, "POST", { label: "Criatura", side: "enemy", x: 3, y: 3 });
+  await master(`/api/sessions/${session.id}/tokens/${ownToken.id}/move`, "POST", { x: 3, y: 3 }, 409);
+  await master(`/api/sessions/${session.id}/tokens/${ownToken.id}/move`, "POST", { x: 4, y: 4 }, 400);
+  await master(`${base}/maps/${map.id}`, "DELETE", undefined, 409);
+  await master(`/api/sessions/${session.id}/map`, "POST", { mapKind: "cartographic", mapKey: "valley" }, 204);
+  await player(map.imageUrl, "GET", undefined, 404);
+  const raced = await upload("Corrida");
+  const [selection, deletion] = await Promise.all([
+    master(`/api/sessions/${session.id}/map`, "POST", { mapKind: raced.kind, mapKey: raced.key }, null, { raw: true }),
+    master(`${base}/maps/${raced.id}`, "DELETE", undefined, null, { raw: true }),
+  ]);
+  ok((selection.status === 204 && deletion.status === 409) || (selection.status === 200 && deletion.status === 409) || (selection.status === 400 && deletion.status === 204), `Corrida serializada: ${selection.status}/${deletion.status}`);
+  await master(`/api/sessions/${session.id}/end`, "POST", undefined, 204);
+  await player(map.imageUrl, "GET", undefined, 404);
+  await player(path + "/leave", "POST", undefined, 204);
+  await master(path, "DELETE", undefined, 204);
+  const one = await master("/api/campaigns", "POST", { name: "Livre", description: "Teste de descarte", rpgSystemId: systemId, isOneShot: true });
+  const onePath = `/api/campaigns/${one.id}`, oneBase = onePath + "/assets";
+  const oneRoot = await master(oneBase + "/folders", "POST", { name: "Raiz", parentId: null });
+  const oneChild = await master(oneBase + "/folders", "POST", { name: "Filha", parentId: oneRoot.id });
+  const oneMap = await upload("Temporário da mesa livre", oneBase, oneChild.id);
+  const oneSession = await master(onePath + "/sessions", "POST", { title: "Livre", objective: "", mapKind: oneMap.kind, mapKey: oneMap.key });
+  await master(`/api/sessions/${oneSession.id}/leave`, "POST", undefined, 204);
+  await master(onePath, "GET", undefined, 404);
+  check(env.sql(`SELECT count(*) FROM "CampaignMap" WHERE "CampaignId"='${one.id}'`), "0");
+  check(env.sql(`SELECT count(*) FROM "CampaignMapFolder" WHERE "CampaignId"='${one.id}'`), "0");
+  console.log(`Campaign assets: ${env.count()} verificações passaram.`);
+} finally { await env.stop(); }

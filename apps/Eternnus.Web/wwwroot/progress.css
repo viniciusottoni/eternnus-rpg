@@ -1,0 +1,425 @@
+/* progress: nível, XP, conquistas e ranking (#progress). Reutiliza tokens de styles.css e peças de platform.css
+   (data-table, status-chip, stat-grid, stat-tile). Larguras dinâmicas via CSSOM, nunca estilo inline. */
+
+.progress-page {
+  display: grid;
+  gap: 22px;
+}
+.progress-page .section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+}
+
+/* ---------- Cabeçalho com brasão de nível ---------- */
+.progress-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(220px, 300px);
+  align-items: center;
+  gap: 26px;
+  padding: 26px 28px;
+  background:
+    radial-gradient(ellipse at 12% 40%, #c6a46322, transparent 55%),
+    linear-gradient(145deg, #1b1c1bf2, #111413f5);
+}
+.level-crest {
+  position: relative;
+  width: 112px;
+  height: 132px;
+  padding: 3px;
+  clip-path: polygon(50% 0, 100% 12%, 100% 58%, 50% 100%, 0 58%, 0 12%);
+  background: linear-gradient(160deg, #f1d79c, #9d7b43 45%, #5e4421 70%, #c6a463);
+  filter: drop-shadow(0 8px 18px #0008);
+}
+.level-crest-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 100%;
+  clip-path: polygon(50% 0, 100% 12%, 100% 58%, 50% 100%, 0 58%, 0 12%);
+  background:
+    radial-gradient(circle at 50% 35%, #461f1c, transparent 70%),
+    linear-gradient(#22211e, #111110);
+  padding-bottom: 18px;
+}
+.level-crest small {
+  color: var(--gold);
+  font-size: 9px;
+  letter-spacing: 2.5px;
+}
+.level-crest strong {
+  font: 600 44px/1 var(--serif);
+  color: var(--bright);
+  text-shadow: 0 0 14px #c6a46366;
+  font-variant-numeric: tabular-nums;
+}
+.level-crest i {
+  font-style: normal;
+  color: var(--gold);
+  font-size: 12px;
+  animation: crest-glow 3.2s ease-in-out infinite;
+}
+@keyframes crest-glow {
+  50% {
+    color: var(--bright);
+    text-shadow: 0 0 10px #f1d79c;
+  }
+}
+.progress-hero-copy h2 {
+  margin: 4px 0 6px;
+  font: normal 28px/1.2 var(--serif);
+  color: #f1e6cc;
+}
+.progress-total {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.progress-total b {
+  color: var(--bright);
+  font-weight: 600;
+}
+.xp-bar {
+  position: relative;
+  height: 14px;
+  overflow: hidden;
+  border: 1px solid #9d7b43;
+  border-radius: 999px;
+  background: #0b0c0c;
+  box-shadow: inset 0 1px 4px #000c;
+}
+.xp-bar-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #8a6a32, #edc876 70%, #f1d79c);
+  box-shadow: 0 0 12px #edc87666;
+  transition: width var(--motion-slow) ease-out;
+}
+.xp-bar-text {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text);
+}
+.progress-stats {
+  margin: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.progress-stats .stat-tile {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 4px;
+  padding: 12px;
+  text-align: center;
+}
+.progress-stats dt,
+.progress-stats dd {
+  margin: 0;
+}
+.progress-stats .stat-tile strong {
+  font-size: 22px;
+}
+
+/* ---------- Painéis ---------- */
+.progress-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.progress-panel {
+  padding: 22px 22px 18px;
+}
+.xp-rules th[scope="row"] {
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+  background: none;
+}
+.xp-rules small,
+.unlock small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.rule-label {
+  font-weight: 600;
+}
+.xp-rules td b {
+  color: var(--bright);
+  white-space: nowrap;
+}
+.xp-rules small.rule-full {
+  color: var(--danger);
+}
+
+.unlock-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.unlock {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #c6a4630a;
+}
+.unlock strong {
+  color: #eddeb9;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.unlock-level {
+  min-width: 52px;
+  padding: 6px 8px;
+  text-align: center;
+  font: 600 13px var(--serif);
+  color: #20160b;
+  border-radius: 5px;
+  background: linear-gradient(115deg, #b9893d, #edc876 48%, #ba8a41);
+}
+.unlock.is-unlocked .unlock-level {
+  color: var(--bright);
+  background: #c6a46322;
+}
+.unlocked-details {
+  margin-top: 14px;
+}
+.unlocked-details summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--gold);
+  font-size: 13px;
+}
+.unlocked-details summary:focus-visible {
+  outline: 2px solid var(--bright);
+  outline-offset: 2px;
+}
+.unlock-note {
+  margin: 14px 0 0;
+}
+
+/* ---------- Conquistas ---------- */
+.achievement-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.achievement {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 14px;
+  border: 1px solid #9d7b4366;
+  border-radius: var(--radius);
+  background:
+    radial-gradient(ellipse at 0 0, #c6a46318, transparent 60%),
+    linear-gradient(145deg, #1b1c1bed, #111413f2);
+}
+.achievement-icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  font: 26px/1 var(--serif);
+  color: var(--bright);
+  border: 1px solid #c6a46399;
+  border-radius: 50%;
+  background: radial-gradient(circle, #461f1c, #181817 72%);
+  box-shadow: 0 0 16px #c6a46333, inset 0 0 0 3px #0b0c0c;
+}
+.achievement strong {
+  display: block;
+  color: #f1e6cc;
+  font: 600 15px/1.3 var(--serif);
+}
+.achievement p {
+  margin: 4px 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.achievement-date {
+  font-size: 11px;
+  color: var(--gold);
+}
+/* Silhueta: ícone apagado e borda tracejada; o texto "Bloqueada" e a descrição continuam legíveis. */
+.achievement.is-locked {
+  border-style: dashed;
+  border-color: var(--line);
+  background: #141514e6;
+}
+.achievement.is-locked .achievement-icon {
+  color: #0b0c0c;
+  text-shadow: 0 0 1px #87887f, 0 0 2px #494337;
+  border-color: var(--line);
+  background: #22211e;
+  box-shadow: inset 0 0 0 3px #0b0c0c;
+}
+.achievement.is-locked strong {
+  color: var(--muted);
+}
+.achievement.is-locked .achievement-date {
+  color: var(--quiet);
+}
+
+/* ---------- Histórico ---------- */
+.xp-history {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.xp-history li {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 4px;
+  border-bottom: 1px solid #49433780;
+  font-size: 13px;
+}
+.xp-history li:last-child {
+  border-bottom: 0;
+}
+.xp-amount {
+  font: 600 14px var(--serif);
+  color: #cfe6c9;
+  font-variant-numeric: tabular-nums;
+}
+.xp-amount.negative {
+  color: var(--danger);
+}
+.xp-history time {
+  color: var(--quiet);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* ---------- Ranking ---------- */
+.ranking-periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ranking-periods .button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.data-table-wrap.ranking {
+  padding: 6px;
+}
+.ranking-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ranking-user .avatar {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid #9d7b43;
+}
+.rank {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  font: 600 14px var(--serif);
+  color: var(--muted);
+  border-radius: 50%;
+}
+.rank-1,
+.rank-2,
+.rank-3 {
+  color: #20160b;
+  background: linear-gradient(135deg, #f1d79c, #b9893d);
+}
+.rank-2 {
+  background: linear-gradient(135deg, #e6ebe8, #8f9894);
+}
+.rank-3 {
+  background: linear-gradient(135deg, #e3b48a, #8c5a33);
+}
+.ranking tr.is-me td {
+  background: #c6a46314;
+}
+
+/* ---------- Responsivo e movimento ---------- */
+@media (max-width: 1100px) {
+  .progress-hero {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .progress-stats {
+    grid-column: 1 / -1;
+  }
+  .progress-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 560px) {
+  .progress-hero {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    text-align: center;
+    padding: 22px 16px;
+  }
+  .progress-hero-copy {
+    width: 100%;
+  }
+  .progress-panel {
+    padding: 18px 14px 14px;
+  }
+  .unlock {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .unlock .status-chip {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .xp-history li {
+    grid-template-columns: 70px minmax(0, 1fr);
+  }
+  .xp-history time {
+    grid-column: 2;
+  }
+  .xp-rules th,
+  .xp-rules td {
+    padding: 8px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .level-crest i {
+    animation: none;
+  }
+  .xp-bar-fill {
+    transition: none;
+  }
+}

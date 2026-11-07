@@ -1,0 +1,45 @@
+using System.Security.Claims;
+using System.Globalization;
+using Microsoft.AspNetCore.Http.Features;
+namespace Eternnus.Web;
+
+public static class CampaignAssetsEndpoints
+{
+    public static void MapCampaignAssetsEndpoints(this WebApplication app)
+    {
+        var api = app.MapGroup("/api/campaigns/{campaignId:guid}/assets").RequireAuthorization("Verified");
+        static string Id(ClaimsPrincipal user) => PlatformAccess.UserId(user);
+        api.MapGet("/library", (Guid campaignId, int? page, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.LibraryAsync(campaignId, Id(u), page ?? 1, ct));
+        api.MapPost("/library", (Guid campaignId, CampaignTextInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveTextAsync(campaignId, null, Id(u), x, ct));
+        api.MapPut("/library/{id:guid}", (Guid campaignId, Guid id, CampaignTextInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveTextAsync(campaignId, id, Id(u), x, ct));
+        api.MapDelete("/library/{id:guid}", async (Guid campaignId, Guid id, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeleteTextAsync(campaignId, id, Id(u), ct); return Results.NoContent(); });
+        api.MapGet("/maps", (Guid campaignId, Guid? folderId, int? page, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.MapTreeAsync(campaignId, Id(u), folderId, page ?? 1, ct));
+        api.MapPost("/folders", (Guid campaignId, CampaignFolderInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.CreateFolderAsync(campaignId, Id(u), x, ct));
+        api.MapDelete("/folders/{id:guid}", async (Guid campaignId, Guid id, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeleteFolderAsync(campaignId, id, Id(u), ct); return Results.NoContent(); });
+        api.MapPost("/maps", async (Guid campaignId, HttpRequest request, DocumentFiles files, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            await s.EnsureMasterAsync(campaignId, Id(u), ct);
+            if (!request.HasFormContentType) throw new RuleException(400, "Envie a imagem pelo formulário.");
+            IFormCollection form;
+            try { form = await request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = CampaignAssetsService.MaxImageBytes, ValueLengthLimit = 512, ValueCountLimit = 5, KeyLengthLimit = 32, MultipartHeadersLengthLimit = 4096, MultipartHeadersCountLimit = 8 }, ct); }
+            catch (InvalidDataException) { throw new RuleException(413, "Formulário inválido ou imagem acima de 10 MB."); }
+            string[] fields = ["name", "folderId", "gridPixels", "scaleMeters"];
+            if (form.Files.Count != 1 || form.Files[0].Name != "file" || form.Keys.Any(k => !fields.Contains(k))) throw new RuleException(400, "Envie uma imagem e os campos do mapa.");
+            if (form.Files[0].Length > CampaignAssetsService.MaxImageBytes) throw new RuleException(413, "Envie imagem de até 10 MB.");
+            Guid? folder = null;
+            if (form["folderId"].ToString() is { Length: > 0 } folderText) folder = Guid.TryParse(folderText, out var f) ? f : throw new RuleException(400, "Pasta inválida.");
+            if (!int.TryParse(form["gridPixels"], out var grid) || !decimal.TryParse(form["scaleMeters"], NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var scale)) throw new RuleException(400, "Grade ou escala inválida.");
+            var document = await files.ReadAsync(form.Files[0], new[] { DocumentKinds.Png, DocumentKinds.Jpeg }, ct);
+            return Results.Ok(await s.SaveMapAsync(campaignId, null, Id(u), new(form["name"].ToString(), folder, grid, scale), document, ct));
+        }).RequireRateLimiting("upload");
+        api.MapPut("/maps/{id:guid}", (Guid campaignId, Guid id, CampaignMapInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveMapAsync(campaignId, id, Id(u), x, null, ct));
+        api.MapDelete("/maps/{id:guid}", async (Guid campaignId, Guid id, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeleteMapAsync(campaignId, id, Id(u), ct); return Results.NoContent(); });
+        api.MapGet("/maps/{id:guid}/image", async (Guid campaignId, Guid id, HttpContext http, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            var bytes = await s.ImageAsync(campaignId, id, Id(u), ct);
+            http.Response.Headers.CacheControl = "private, no-store";
+            http.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            return Results.File(bytes, DocumentKinds.Jpeg, enableRangeProcessing: false);
+        });
+    }
+}

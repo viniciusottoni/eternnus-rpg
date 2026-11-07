@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#111110" />
+    <meta
+      name="description"
+      content="Eternnus RPG. Reúna sua guilda, crie seus personagens e viva histórias que atravessam eras."
+    />
+    <title>Eternnus RPG — Forje a sua lenda</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="Eternnus" />
+    <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
+    <link rel="icon" href="/assets/avatar.svg" type="image/svg+xml" />
+    <link rel="preload" href="/assets/valley.webp" as="image" />
+    <link rel="stylesheet" href="/game.css" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/sessions.css" />
+    <link rel="stylesheet" href="/platform.css" />
+    <link rel="stylesheet" href="/admin.css" />
+    <link rel="stylesheet" href="/library.css" />
+    <link rel="stylesheet" href="/sheets.css" />
+    <link rel="stylesheet" href="/guild.css" />
+    <link rel="stylesheet" href="/progress.css" />
+    <script type="module" src="/js/app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#app">Ir para o conteúdo</a>
+    <div class="atmosphere" aria-hidden="true">
+      <div class="mist mist-one"></div>
+      <div class="mist mist-two"></div>
+      <span class="ember ember-one"></span><span class="ember ember-two"></span
+      ><span class="ember ember-three"></span>
+    </div>
+    <section
+      id="splash"
+      class="splash"
+      aria-label="Abertura do Eternnus RPG"
+      role="status"
+      aria-live="polite"
+    >
+      <div class="splash-topline">
+        <span>✦</span>
+        <p>ETERNNUS RPG</p>
+        <span>✦</span>
+      </div>
+      <div class="splash-content">
+        <img
+          class="splash-logo"
+          src="/assets/eternnus-logo.webp"
+          alt="Eternnus RPG"
+        />
+        <div class="ornament" aria-hidden="true">
+          <span></span><b>◆</b><span></span>
+        </div>
+        <div class="rune-loader" aria-hidden="true">
+          <span class="rune-track"></span
+          ><span class="rune-marks">ᚠ · ᚱ · ᚨ · ᚾ · ᛟ · ᛞ · ᚹ · ᛉ</span
+          ><span class="rune-core">✧</span>
+        </div>
+        <h1>Carregando sua mesa…</h1>
+        <p>O próximo capítulo está prestes a começar.</p>
+        <div class="opening-progress" aria-hidden="true"><span></span></div>
+      </div>
+      <p class="splash-caption">SUAS ESCOLHAS. SEU DESTINO.</p>
+    </section>
+    <div
+      id="connection-banner"
+      class="offline-banner"
+      role="status"
+      hidden
+    ></div>
+    <div id="app" tabindex="-1"></div>
+    <dialog id="modal" aria-labelledby="modal-title">
+      <div class="modal-head">
+        <h2 id="modal-title"></h2>
+        <button
+          type="button"
+          id="close-modal"
+          class="icon-button"
+          aria-label="Fechar"
+        >
+          ×
+        </button>
+      </div>
+      <div id="modal-body"></div>
+    </dialog>
+    <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+    <noscript
+      ><div class="noscript metal">
+        <h1>Seu universo precisa de JavaScript.</h1>
+        <p>Ative o JavaScript no navegador para entrar no Eternnus RPG.</p>
+      </div></noscript
+    >
+  </body>
+</html>
