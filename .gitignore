@@ -1,0 +1,98 @@
+# Eternnus RPG — ASP.NET Core 10, PostgreSQL e frontend estático.
+# Manter código, migrações, assets oficiais, wwwroot e fixtures de teste.
+
+# Compilação, restauração e publicação .NET.
+[Bb]in/
+[Oo]bj/
+/artifacts/
+*.nupkg
+*.snupkg
+
+# Arquivos pessoais de IDE e perfis locais de publicação.
+.vs/
+.idea/
+*.user
+*.suo
+*.rsuser
+*.sln.docstates
+*.pubxml
+*.pubxml.user
+*.code-workspace
+.vscode/*
+!.vscode/extensions.json
+
+# Estado local de assistentes e automação (Claude Code, Serena, Playwright MCP).
+.claude/settings.local.json
+.claude/worktrees/
+.serena/
+.playwright-mcp/
+
+# Configuração privada; exemplos sem segredos podem ser versionados.
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+**/appsettings.[Ll]ocal.json
+**/appsettings.*.[Ll]ocal.json
+**/secrets.json
+*.pfx
+*.p12
+*.pem
+*.key
+.pgpass
+pgpass.conf
+
+# Estado de execução: e-mails locais, chaves Data Protection e dados privados.
+App_Data/
+*.eml
+key-*.xml
+
+# Bancos SQLite de teste e arquivos auxiliares; backups locais de banco.
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
+*.dump
+*.backup
+*.sql.gz
+
+# Relatórios de teste, cobertura, logs e arquivos temporários.
+TestResults/
+test-results/
+playwright-report/
+coverage/
+.nyc_output/
+*.trx
+*.coverage
+*.coveragexml
+coverage.cobertura.xml
+logs/
+*.log
+*.tmp
+*.temp
+*.bak
+
+# Dependências/cache de ferramentas auxiliares; preservar manifests e lockfiles.
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Material local de QA e transferência; não é o código ativo da aplicação.
+/Claude outputs/
+/continuacao-plataforma/
+
+# Metadados do sistema operacional.
+.DS_Store
+Thumbs.db
+Desktop.ini

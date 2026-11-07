@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: eternnus-postgres-dev
+    ports:
+      - "127.0.0.1:54329:5432"
+    environment:
+      POSTGRES_USER: eternnus
+      POSTGRES_PASSWORD: local-development-only
+      POSTGRES_DB: eternnus
+    volumes:
+      - eternnus-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eternnus -d eternnus"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  eternnus-pgdata:
+    name: eternnus-pgdata

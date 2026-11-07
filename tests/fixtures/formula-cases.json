@@ -1,0 +1,5488 @@
+{
+ "_doc": "Casos compartilhados da linguagem de fórmulas (WP3). Executados por tests/Eternnus.Tests/FormulaTests.cs e tests/formula.test.mjs. 'build' = lista de [trecho, repetições] concatenados; 'generate' = N campos number válidos f1..fN; 'dice' = sequência fixa devolvida pelo gerador; posições de erro em base 0.",
+ "evaluate": [
+  {
+   "expr": "1 + 2 * 3",
+   "result": 7
+  },
+  {
+   "expr": "(1 + 2) * 3",
+   "result": 9
+  },
+  {
+   "expr": "10 / 4",
+   "result": 2.5
+  },
+  {
+   "expr": "-3 + 5",
+   "result": 2
+  },
+  {
+   "expr": "- -3",
+   "result": 3
+  },
+  {
+   "expr": "+4",
+   "result": 4
+  },
+  {
+   "expr": "2 * -3",
+   "result": -6
+  },
+  {
+   "expr": "7 - 2 - 1",
+   "result": 4
+  },
+  {
+   "expr": "8 / 2 / 2",
+   "result": 2
+  },
+  {
+   "expr": "1 - -1",
+   "result": 2
+  },
+  {
+   "expr": "007 + 1",
+   "result": 8
+  },
+  {
+   "expr": "2.50 * 2",
+   "result": 5
+  },
+  {
+   "expr": "  1   +\t2\n",
+   "result": 3
+  },
+  {
+   "expr": "0.1 + 0.2",
+   "result": 0.30000000000000004
+  },
+  {
+   "expr": "@a / 3",
+   "result": 3.3333333333333335,
+   "scope": {
+    "a": 10
+   }
+  },
+  {
+   "expr": "floor(7 / 2)",
+   "result": 3
+  },
+  {
+   "expr": "floor(-7 / 2)",
+   "result": -4
+  },
+  {
+   "expr": "ceil(7 / 2)",
+   "result": 4
+  },
+  {
+   "expr": "ceil(-3.5)",
+   "result": -3
+  },
+  {
+   "expr": "round(2.5)",
+   "result": 3
+  },
+  {
+   "expr": "round(-2.5)",
+   "result": -3
+  },
+  {
+   "expr": "round(2.4999)",
+   "result": 2
+  },
+  {
+   "expr": "round(0.5)",
+   "result": 1
+  },
+  {
+   "expr": "round(-0.5)",
+   "result": -1
+  },
+  {
+   "expr": "round(1.5)",
+   "result": 2
+  },
+  {
+   "expr": "round(-1.4)",
+   "result": -1
+  },
+  {
+   "expr": "abs(-4.5)",
+   "result": 4.5
+  },
+  {
+   "expr": "abs(min(-3, 2))",
+   "result": 3
+  },
+  {
+   "expr": "min(3, 1, 2)",
+   "result": 1
+  },
+  {
+   "expr": "max(3, 1, 2)",
+   "result": 3
+  },
+  {
+   "expr": "max(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)",
+   "result": 10
+  },
+  {
+   "expr": "clamp(15, 0, 10)",
+   "result": 10
+  },
+  {
+   "expr": "clamp(-5, 0, 10)",
+   "result": 0
+  },
+  {
+   "expr": "clamp(5, 0, 10)",
+   "result": 5
+  },
+  {
+   "expr": "mod(10)",
+   "result": 0
+  },
+  {
+   "expr": "mod(15)",
+   "result": 2
+  },
+  {
+   "expr": "mod(8)",
+   "result": -1
+  },
+  {
+   "expr": "mod(9)",
+   "result": -1
+  },
+  {
+   "expr": "mod(1)",
+   "result": -5
+  },
+  {
+   "expr": "mod(20)",
+   "result": 5
+  },
+  {
+   "expr": "mod(@forca)",
+   "result": 3,
+   "scope": {
+    "forca": 16
+   }
+  },
+  {
+   "expr": "@forca + @destreza",
+   "result": 26,
+   "scope": {
+    "forca": 12,
+    "destreza": 14
+   }
+  },
+  {
+   "expr": "@ausente + 1",
+   "result": 1
+  },
+  {
+   "expr": "@constructor + @prototype + @tostring",
+   "result": 0
+  },
+  {
+   "expr": "@constructor * 2",
+   "result": 10,
+   "scope": {
+    "constructor": 5
+   }
+  },
+  {
+   "expr": "floor(@nivel / 2) + mod(@forca)",
+   "result": 4,
+   "scope": {
+    "nivel": 7,
+    "forca": 13
+   }
+  },
+  {
+   "expr": "2 < 3",
+   "result": 1
+  },
+  {
+   "expr": "3 <= 3",
+   "result": 1
+  },
+  {
+   "expr": "4 > 5",
+   "result": 0
+  },
+  {
+   "expr": "5 >= 6",
+   "result": 0
+  },
+  {
+   "expr": "2 == 2",
+   "result": 1
+  },
+  {
+   "expr": "2 != 2",
+   "result": 0
+  },
+  {
+   "expr": "0.1 + 0.2 == 0.3",
+   "result": 0
+  },
+  {
+   "expr": "1 and 0",
+   "result": 0
+  },
+  {
+   "expr": "1 and 2",
+   "result": 1
+  },
+  {
+   "expr": "0 or 0",
+   "result": 0
+  },
+  {
+   "expr": "0 or 3",
+   "result": 1
+  },
+  {
+   "expr": "not 0",
+   "result": 1
+  },
+  {
+   "expr": "not 5",
+   "result": 0
+  },
+  {
+   "expr": "not not 5",
+   "result": 1
+  },
+  {
+   "expr": "not 1 == 2",
+   "result": 1
+  },
+  {
+   "expr": "1 + 1 == 2 and 3 > 2",
+   "result": 1
+  },
+  {
+   "expr": "1 or 1 / 0",
+   "result": 1
+  },
+  {
+   "expr": "0 and 1 / 0",
+   "result": 0
+  },
+  {
+   "expr": "if @nivel >= 5 then 3 else 2",
+   "result": 3,
+   "scope": {
+    "nivel": 5
+   }
+  },
+  {
+   "expr": "if @nivel >= 5 then 3 else 2",
+   "result": 2,
+   "scope": {
+    "nivel": 4
+   }
+  },
+  {
+   "expr": "if 0 then 1 else if 0 then 2 else 3",
+   "result": 3
+  },
+  {
+   "expr": "IF 1 THEN 2 ELSE 3",
+   "result": 2
+  },
+  {
+   "expr": "FLOOR(2.7) + Max(1, 2)",
+   "result": 4
+  },
+  {
+   "expr": "2 + if 1 then 3 else 4 * 10",
+   "result": 5
+  },
+  {
+   "expr": "2 + if 0 then 3 else 4 * 10",
+   "result": 42
+  },
+  {
+   "expr": "if 1 then 1 else 1 / 0",
+   "result": 1
+  },
+  {
+   "expr": "1000000000 * 1000",
+   "result": 1000000000000.0
+  },
+  {
+   "expr": "1000000000",
+   "result": 1000000000.0
+  },
+  {
+   "expr": "@escudo * 5",
+   "result": 5,
+   "scope": {
+    "escudo": 1
+   }
+  },
+  {
+   "build": [
+    [
+     "1+",
+     99
+    ],
+    [
+     "1",
+     1
+    ]
+   ],
+   "result": 100
+  },
+  {
+   "build": [
+    [
+     "(",
+     32
+    ],
+    [
+     "1",
+     1
+    ],
+    [
+     ")",
+     32
+    ]
+   ],
+   "result": 1
+  },
+  {
+   "build": [
+    [
+     "-",
+     32
+    ],
+    [
+     "1",
+     1
+    ]
+   ],
+   "result": 1
+  },
+  {
+   "expr": "(@pv_max - @pv) / @pv_max * 100",
+   "result": 25,
+   "scope": {
+    "pv_max": 20,
+    "pv": 15
+   }
+  },
+  {
+   "expr": "6 × 7",
+   "result": 42
+  },
+  {
+   "expr": "9 ÷ 2",
+   "result": 4.5
+  },
+  {
+   "expr": "10 − 3 − 2",
+   "result": 5
+  },
+  {
+   "expr": "−@a × (2 ÷ 4)",
+   "result": -3,
+   "scope": {
+    "a": 6
+   }
+  },
+  {
+   "expr": "2 * 3 × 4 / 6 ÷ 2",
+   "result": 2
+  }
+ ],
+ "evaluateErrors": [
+  {
+   "expr": "1 / 0",
+   "error": "Divisão por zero."
+  },
+  {
+   "expr": "1 / (2 - 2)",
+   "error": "Divisão por zero."
+  },
+  {
+   "expr": "if 0 then 1 else 1 / 0",
+   "error": "Divisão por zero."
+  },
+  {
+   "expr": "1000000000 * 1001",
+   "error": "Resultado fora do limite."
+  },
+  {
+   "expr": "1000000000 * 1000000000",
+   "error": "Resultado fora do limite."
+  },
+  {
+   "expr": "@grande + 1",
+   "scope": {
+    "grande": 10000000000000.0
+   },
+   "error": "Resultado fora do limite."
+  },
+  {
+   "expr": "1d6",
+   "error": "Campos calculados não podem rolar dados.",
+   "position": 0
+  },
+  {
+   "expr": "",
+   "error": "Informe uma fórmula."
+  },
+  {
+   "expr": "1 +",
+   "error": "Fórmula incompleta.",
+   "position": 3
+  },
+  {
+   "expr": "foo",
+   "error": "Nome desconhecido: foo. Campos usam @nome.",
+   "position": 0
+  },
+  {
+   "expr": "1 ÷ 0",
+   "error": "Divisão por zero."
+  }
+ ],
+ "validate": [
+  {
+   "mode": "deterministic",
+   "expr": "@forca + @destreza + @forca",
+   "ok": true,
+   "references": [
+    "forca",
+    "destreza"
+   ]
+  },
+  {
+   "mode": "deterministic",
+   "expr": "@a and @b or not @c",
+   "ok": true,
+   "references": [
+    "a",
+    "b",
+    "c"
+   ]
+  },
+  {
+   "mode": "roll",
+   "expr": "1d20 + @forca_mod",
+   "ok": true,
+   "references": [
+    "forca_mod"
+   ]
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1d20 + @forca_mod",
+   "ok": false,
+   "error": "Campos calculados não podem rolar dados.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "@forca + d%",
+   "ok": false,
+   "error": "Campos calculados não podem rolar dados.",
+   "position": 9
+  },
+  {
+   "mode": "roll",
+   "expr": "2d20kh1 + @a",
+   "known": [
+    "a"
+   ],
+   "ok": true,
+   "references": [
+    "a"
+   ]
+  },
+  {
+   "mode": "deterministic",
+   "expr": "@a + @b",
+   "known": [
+    "a"
+   ],
+   "ok": false,
+   "error": "Campo desconhecido: @b",
+   "position": 5
+  },
+  {
+   "mode": "deterministic",
+   "expr": "@a + @b",
+   "ok": true,
+   "references": [
+    "a",
+    "b"
+   ]
+  },
+  {
+   "mode": "deterministic",
+   "expr": "@a",
+   "known": [],
+   "ok": false,
+   "error": "Campo desconhecido: @a",
+   "position": 0
+  },
+  {
+   "mode": "roll",
+   "expr": "3 + 4",
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "roll",
+   "expr": "d%",
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "roll",
+   "expr": "D20",
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "roll",
+   "expr": "4D6KH3",
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "roll",
+   "expr": "2d20kl1",
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "roll",
+   "expr": "4d6dl1",
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "roll",
+   "expr": "4d6dh1",
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "roll",
+   "expr": "2d20kh",
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "roll",
+   "expr": "100d6",
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "roll",
+   "expr": "1d100",
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "roll",
+   "expr": "1d4 + 1d6 + 1d8 + 1d10 + 1d12 + 1d20 + 1d100",
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "roll",
+   "expr": "100d6 + 100d6",
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "roll",
+   "expr": "101d6",
+   "ok": false,
+   "error": "Quantidade de dados deve ser de 1 a 100 (posição 1).",
+   "position": 0
+  },
+  {
+   "mode": "roll",
+   "expr": "0d6",
+   "ok": false,
+   "error": "Quantidade de dados deve ser de 1 a 100 (posição 1).",
+   "position": 0
+  },
+  {
+   "mode": "roll",
+   "expr": "99999999d6",
+   "ok": false,
+   "error": "Quantidade de dados deve ser de 1 a 100 (posição 1).",
+   "position": 0
+  },
+  {
+   "mode": "roll",
+   "expr": "1 + 1d7",
+   "ok": false,
+   "error": "Dado deve ter 4, 6, 8, 10, 12, 20 ou 100 faces (posição 5).",
+   "position": 4
+  },
+  {
+   "mode": "roll",
+   "expr": "1d2",
+   "ok": false,
+   "error": "Dado deve ter 4, 6, 8, 10, 12, 20 ou 100 faces (posição 1).",
+   "position": 0
+  },
+  {
+   "mode": "roll",
+   "expr": "1d1000",
+   "ok": false,
+   "error": "Dado deve ter 4, 6, 8, 10, 12, 20 ou 100 faces (posição 1).",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1d7",
+   "ok": false,
+   "error": "Dado deve ter 4, 6, 8, 10, 12, 20 ou 100 faces (posição 1).",
+   "position": 0
+  },
+  {
+   "mode": "roll",
+   "expr": "4d6kh5",
+   "ok": false,
+   "error": "Manter ou descartar deve ser de 1 a 4 dados (posição 1).",
+   "position": 0
+  },
+  {
+   "mode": "roll",
+   "expr": "4d6dl0",
+   "ok": false,
+   "error": "Manter ou descartar deve ser de 1 a 4 dados (posição 1).",
+   "position": 0
+  },
+  {
+   "mode": "roll",
+   "expr": "4d6k3",
+   "ok": false,
+   "error": "Dado inválido na posição 1. Use NdS, como 1d20 ou 4d6kh3.",
+   "position": 0
+  },
+  {
+   "mode": "roll",
+   "expr": "2d6x",
+   "ok": false,
+   "error": "Dado inválido na posição 1. Use NdS, como 1d20 ou 4d6kh3.",
+   "position": 0
+  },
+  {
+   "mode": "roll",
+   "expr": "1d6.5",
+   "ok": false,
+   "error": "Dado inválido na posição 1. Use NdS, como 1d20 ou 4d6kh3.",
+   "position": 0
+  },
+  {
+   "mode": "roll",
+   "expr": "(2)d6",
+   "ok": false,
+   "error": "Operador esperado na posição 4.",
+   "position": 3
+  },
+  {
+   "mode": "roll",
+   "expr": "2 d6",
+   "ok": false,
+   "error": "Operador esperado na posição 3.",
+   "position": 2
+  },
+  {
+   "mode": "deterministic",
+   "expr": "2(3)",
+   "ok": false,
+   "error": "Operador esperado na posição 2.",
+   "position": 1
+  },
+  {
+   "mode": "deterministic",
+   "expr": "2 3",
+   "ok": false,
+   "error": "Operador esperado na posição 3.",
+   "position": 2
+  },
+  {
+   "mode": "roll",
+   "expr": "100d6 + 100d6 + 1d6",
+   "ok": false,
+   "error": "Dados demais (máx. 200 por fórmula).",
+   "position": 16
+  },
+  {
+   "mode": "roll",
+   "build": [
+    [
+     "1d6+",
+     200
+    ],
+    [
+     "1d6",
+     1
+    ]
+   ],
+   "ok": false,
+   "error": "Fórmula longa demais (máx. 300 caracteres).",
+   "position": null
+  },
+  {
+   "mode": "deterministic",
+   "build": [
+    [
+     "(",
+     10000
+    ],
+    [
+     "1",
+     1
+    ],
+    [
+     ")",
+     10000
+    ]
+   ],
+   "ok": false,
+   "error": "Fórmula longa demais (máx. 300 caracteres).",
+   "position": null
+  },
+  {
+   "mode": "deterministic",
+   "build": [
+    [
+     "1",
+     301
+    ]
+   ],
+   "ok": false,
+   "error": "Fórmula longa demais (máx. 300 caracteres).",
+   "position": null
+  },
+  {
+   "mode": "deterministic",
+   "build": [
+    [
+     "1 + ",
+     74
+    ],
+    [
+     "1000",
+     1
+    ]
+   ],
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "deterministic",
+   "build": [
+    [
+     "1",
+     300
+    ]
+   ],
+   "ok": false,
+   "error": "Número grande demais na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "build": [
+    [
+     "1+",
+     100
+    ],
+    [
+     "1",
+     1
+    ]
+   ],
+   "ok": false,
+   "error": "Fórmula longa demais (máx. 200 elementos).",
+   "position": 200
+  },
+  {
+   "mode": "deterministic",
+   "build": [
+    [
+     "1+",
+     99
+    ],
+    [
+     "1",
+     1
+    ]
+   ],
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "deterministic",
+   "build": [
+    [
+     "(",
+     33
+    ],
+    [
+     "1",
+     1
+    ],
+    [
+     ")",
+     33
+    ]
+   ],
+   "ok": false,
+   "error": "Aninhamento profundo demais (máx. 32 níveis).",
+   "position": 33
+  },
+  {
+   "mode": "deterministic",
+   "build": [
+    [
+     "-",
+     33
+    ],
+    [
+     "1",
+     1
+    ]
+   ],
+   "ok": false,
+   "error": "Aninhamento profundo demais (máx. 32 níveis).",
+   "position": 33
+  },
+  {
+   "mode": "deterministic",
+   "build": [
+    [
+     "not ",
+     33
+    ],
+    [
+     "1",
+     1
+    ]
+   ],
+   "ok": false,
+   "error": "Aninhamento profundo demais (máx. 32 níveis).",
+   "position": 132
+  },
+  {
+   "mode": "deterministic",
+   "build": [
+    [
+     "abs(",
+     33
+    ],
+    [
+     "1",
+     1
+    ],
+    [
+     ")",
+     33
+    ]
+   ],
+   "ok": false,
+   "error": "Aninhamento profundo demais (máx. 32 níveis).",
+   "position": 132
+  },
+  {
+   "mode": "deterministic",
+   "expr": "",
+   "ok": false,
+   "error": "Informe uma fórmula.",
+   "position": null
+  },
+  {
+   "mode": "deterministic",
+   "expr": "   \t\n",
+   "ok": false,
+   "error": "Informe uma fórmula.",
+   "position": null
+  },
+  {
+   "mode": "deterministic",
+   "build": [],
+   "ok": false,
+   "error": "Informe uma fórmula.",
+   "position": null
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 +",
+   "ok": false,
+   "error": "Fórmula incompleta.",
+   "position": 3
+  },
+  {
+   "mode": "deterministic",
+   "expr": "(1 + 2",
+   "ok": false,
+   "error": "Falta fechar parêntese (posição 7).",
+   "position": 6
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 + 2)",
+   "ok": false,
+   "error": "Parêntese sem abertura na posição 6.",
+   "position": 5
+  },
+  {
+   "mode": "deterministic",
+   "expr": ")",
+   "ok": false,
+   "error": "Valor esperado na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "()",
+   "ok": false,
+   "error": "Valor esperado na posição 2.",
+   "position": 1
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 ** 2",
+   "ok": false,
+   "error": "Valor esperado na posição 4.",
+   "position": 3
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 , 2",
+   "ok": false,
+   "error": "Operador esperado na posição 3.",
+   "position": 2
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 % 2",
+   "ok": false,
+   "error": "Expressão inválida na posição 3.",
+   "position": 2
+  },
+  {
+   "mode": "deterministic",
+   "expr": "10 mod 3",
+   "ok": false,
+   "error": "Operador esperado na posição 4.",
+   "position": 3
+  },
+  {
+   "mode": "deterministic",
+   "expr": "2x",
+   "ok": false,
+   "error": "Número inválido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "2.5.3",
+   "ok": false,
+   "error": "Número inválido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": ".5",
+   "ok": false,
+   "error": "Número inválido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "5.",
+   "ok": false,
+   "error": "Número inválido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1e5",
+   "ok": false,
+   "error": "Número inválido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "0x10",
+   "ok": false,
+   "error": "Número inválido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1000000000",
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1000000001",
+   "ok": false,
+   "error": "Número grande demais na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "99999999999999999999999",
+   "ok": false,
+   "error": "Número grande demais na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "foo + 1",
+   "ok": false,
+   "error": "Nome desconhecido: foo. Campos usam @nome.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "Infinity",
+   "ok": false,
+   "error": "Nome desconhecido: infinity. Campos usam @nome.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "NaN",
+   "ok": false,
+   "error": "Nome desconhecido: nan. Campos usam @nome.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "drop",
+   "ok": false,
+   "error": "Nome desconhecido: drop. Campos usam @nome.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "foo(1)",
+   "ok": false,
+   "error": "Função desconhecida: foo.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 + constructor(1)",
+   "ok": false,
+   "error": "Função desconhecida: constructor.",
+   "position": 4
+  },
+  {
+   "mode": "deterministic",
+   "expr": "constructor",
+   "ok": false,
+   "error": "Nome desconhecido: constructor. Campos usam @nome.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "__proto__",
+   "ok": false,
+   "error": "Nome desconhecido: __proto__. Campos usam @nome.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "toString(1)",
+   "ok": false,
+   "error": "Função desconhecida: tostring.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "eval(1)",
+   "ok": false,
+   "error": "Função desconhecida: eval.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "Function(1)",
+   "ok": false,
+   "error": "Função desconhecida: function.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "abcdefghijklmnopqrstuvwxyz(1)",
+   "ok": false,
+   "error": "Função desconhecida: abcdefghijklmnopqrst….",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "@constructor",
+   "ok": true,
+   "references": [
+    "constructor"
+   ]
+  },
+  {
+   "mode": "deterministic",
+   "expr": "@__proto__",
+   "ok": false,
+   "error": "Nome de campo inválido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "@Forca",
+   "ok": false,
+   "error": "Nome de campo inválido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "@",
+   "ok": false,
+   "error": "Nome de campo inválido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 + @1abc",
+   "ok": false,
+   "error": "Nome de campo inválido na posição 5.",
+   "position": 4
+  },
+  {
+   "mode": "deterministic",
+   "build": [
+    [
+     "@",
+     1
+    ],
+    [
+     "a",
+     41
+    ]
+   ],
+   "ok": false,
+   "error": "Nome de campo inválido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "build": [
+    [
+     "@",
+     1
+    ],
+    [
+     "a",
+     40
+    ]
+   ],
+   "ok": true,
+   "references": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   ]
+  },
+  {
+   "mode": "deterministic",
+   "expr": "@a;DROP TABLE x",
+   "ok": false,
+   "error": "Caractere não permitido na posição 3.",
+   "position": 2
+  },
+  {
+   "mode": "deterministic",
+   "expr": "$(rm -rf /)",
+   "ok": false,
+   "error": "Caractere não permitido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "<script>alert(1)</script>",
+   "ok": false,
+   "error": "Valor esperado na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 + '2'",
+   "ok": false,
+   "error": "Caractere não permitido na posição 5.",
+   "position": 4
+  },
+  {
+   "mode": "deterministic",
+   "expr": "\"abc\"",
+   "ok": false,
+   "error": "Caractere não permitido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "`1`",
+   "ok": false,
+   "error": "Caractere não permitido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 + ｆloor(1)",
+   "ok": false,
+   "error": "Caractere não permitido na posição 5.",
+   "position": 4
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1​+1",
+   "ok": false,
+   "error": "Caractere não permitido na posição 2.",
+   "position": 1
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 + 1",
+   "ok": false,
+   "error": "Caractere não permitido na posição 2.",
+   "position": 1
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 + 😀",
+   "ok": false,
+   "error": "Caractere não permitido na posição 5.",
+   "position": 4
+  },
+  {
+   "mode": "deterministic",
+   "expr": "ﬂoor(1)",
+   "ok": false,
+   "error": "Caractere não permitido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "@força",
+   "ok": false,
+   "error": "Caractere não permitido na posição 5.",
+   "position": 4
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1;2",
+   "ok": false,
+   "error": "Caractere não permitido na posição 2.",
+   "position": 1
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 # 2",
+   "ok": false,
+   "error": "Caractere não permitido na posição 3.",
+   "position": 2
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1\\2",
+   "ok": false,
+   "error": "Caractere não permitido na posição 2.",
+   "position": 1
+  },
+  {
+   "mode": "deterministic",
+   "expr": "{}",
+   "ok": false,
+   "error": "Caractere não permitido na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "x[0]",
+   "ok": false,
+   "error": "Caractere não permitido na posição 2.",
+   "position": 1
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1\u0000",
+   "ok": false,
+   "error": "Caractere não permitido na posição 2.",
+   "position": 1
+  },
+  {
+   "mode": "deterministic",
+   "expr": "a.b",
+   "ok": false,
+   "error": "Expressão inválida na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "process.exit()",
+   "ok": false,
+   "error": "Expressão inválida na posição 1.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 + @a.",
+   "ok": false,
+   "error": "Número inválido na posição 7.",
+   "position": 6
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 = 1",
+   "ok": false,
+   "error": "Use == para comparar (posição 3).",
+   "position": 2
+  },
+  {
+   "mode": "deterministic",
+   "expr": "!1",
+   "ok": false,
+   "error": "Use != ou not (posição 1).",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 < 2 < 3",
+   "ok": false,
+   "error": "Comparações encadeadas não são permitidas (posição 7).",
+   "position": 6
+  },
+  {
+   "mode": "deterministic",
+   "expr": "min(1)",
+   "ok": false,
+   "error": "min espera de 2 a 10 argumentos.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "max(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)",
+   "ok": false,
+   "error": "max espera de 2 a 10 argumentos.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "floor()",
+   "ok": false,
+   "error": "floor espera 1 argumento.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "floor(1, 2)",
+   "ok": false,
+   "error": "floor espera 1 argumento.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "clamp(1, 2)",
+   "ok": false,
+   "error": "clamp espera 3 argumentos.",
+   "position": 0
+  },
+  {
+   "mode": "deterministic",
+   "expr": "floor 2",
+   "ok": false,
+   "error": "Esperado ( após floor (posição 7).",
+   "position": 6
+  },
+  {
+   "mode": "deterministic",
+   "expr": "floor(1",
+   "ok": false,
+   "error": "Falta fechar parêntese (posição 8).",
+   "position": 7
+  },
+  {
+   "mode": "deterministic",
+   "expr": "if 1 then 2",
+   "ok": false,
+   "error": "Esperado else na posição 12.",
+   "position": 11
+  },
+  {
+   "mode": "deterministic",
+   "expr": "if 1 2 else 3",
+   "ok": false,
+   "error": "Esperado then na posição 6.",
+   "position": 5
+  },
+  {
+   "mode": "deterministic",
+   "expr": "if then 1 else 2",
+   "ok": false,
+   "error": "Valor esperado na posição 4.",
+   "position": 3
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 + and",
+   "ok": false,
+   "error": "Valor esperado na posição 5.",
+   "position": 4
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 + not 0",
+   "ok": false,
+   "error": "Valor esperado na posição 5.",
+   "position": 4
+  },
+  {
+   "mode": "deterministic",
+   "expr": "if 1 then 2 else 3 else 4",
+   "ok": false,
+   "error": "Operador esperado na posição 20.",
+   "position": 19
+  },
+  {
+   "mode": "roll",
+   "expr": "2d6 × 2 − 1",
+   "ok": true,
+   "references": []
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 ×× 2",
+   "ok": false,
+   "error": "Valor esperado na posição 4.",
+   "position": 3
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 ⋅ 2",
+   "ok": false,
+   "error": "Caractere não permitido na posição 3.",
+   "position": 2
+  },
+  {
+   "mode": "deterministic",
+   "expr": "1 – 2",
+   "ok": false,
+   "error": "Caractere não permitido na posição 3.",
+   "position": 2
+  }
+ ],
+ "rolls": [
+  {
+   "expr": "4d6kh3 + 2",
+   "dice": [
+    6,
+    5,
+    3,
+    1
+   ],
+   "total": 16,
+   "breakdown": "4d6kh3[6, 5, 3, ~1~] + 2 = 16",
+   "groups": [
+    {
+     "notation": "4d6kh3",
+     "count": 4,
+     "sides": 6,
+     "values": [
+      6,
+      5,
+      3,
+      1
+     ],
+     "kept": [
+      0,
+      1,
+      2
+     ],
+     "subtotal": 14
+    }
+   ]
+  },
+  {
+   "expr": "4d6kh3",
+   "dice": [
+    1,
+    6,
+    5,
+    3
+   ],
+   "total": 14,
+   "breakdown": "4d6kh3[~1~, 6, 5, 3] = 14",
+   "groups": [
+    {
+     "notation": "4d6kh3",
+     "count": 4,
+     "sides": 6,
+     "values": [
+      1,
+      6,
+      5,
+      3
+     ],
+     "kept": [
+      1,
+      2,
+      3
+     ],
+     "subtotal": 14
+    }
+   ]
+  },
+  {
+   "expr": "2d20kh1",
+   "dice": [
+    7,
+    15
+   ],
+   "total": 15,
+   "breakdown": "2d20kh1[~7~, 15] = 15"
+  },
+  {
+   "expr": "2d20kl1",
+   "dice": [
+    7,
+    15
+   ],
+   "total": 7,
+   "breakdown": "2d20kl1[7, ~15~] = 7"
+  },
+  {
+   "expr": "2d20kh",
+   "dice": [
+    12,
+    12
+   ],
+   "total": 12,
+   "breakdown": "2d20kh1[12, ~12~] = 12",
+   "groups": [
+    {
+     "notation": "2d20kh1",
+     "count": 2,
+     "sides": 20,
+     "values": [
+      12,
+      12
+     ],
+     "kept": [
+      0
+     ],
+     "subtotal": 12
+    }
+   ]
+  },
+  {
+   "expr": "2d20KL",
+   "dice": [
+    12,
+    12
+   ],
+   "total": 12,
+   "breakdown": "2d20kl1[12, ~12~] = 12"
+  },
+  {
+   "expr": "4d6dl1",
+   "dice": [
+    3,
+    1,
+    4,
+    1
+   ],
+   "total": 8,
+   "breakdown": "4d6dl1[3, 1, 4, ~1~] = 8",
+   "groups": [
+    {
+     "notation": "4d6dl1",
+     "count": 4,
+     "sides": 6,
+     "values": [
+      3,
+      1,
+      4,
+      1
+     ],
+     "kept": [
+      0,
+      1,
+      2
+     ],
+     "subtotal": 8
+    }
+   ]
+  },
+  {
+   "expr": "4d6dh1",
+   "dice": [
+    3,
+    1,
+    4,
+    1
+   ],
+   "total": 5,
+   "breakdown": "4d6dh1[3, 1, ~4~, 1] = 5",
+   "groups": [
+    {
+     "notation": "4d6dh1",
+     "count": 4,
+     "sides": 6,
+     "values": [
+      3,
+      1,
+      4,
+      1
+     ],
+     "kept": [
+      0,
+      1,
+      3
+     ],
+     "subtotal": 5
+    }
+   ]
+  },
+  {
+   "expr": "4d6dh4",
+   "dice": [
+    3,
+    1,
+    4,
+    1
+   ],
+   "total": 0,
+   "breakdown": "4d6dh4[~3~, ~1~, ~4~, ~1~] = 0"
+  },
+  {
+   "expr": "1d20 + @forca_mod",
+   "dice": [
+    15
+   ],
+   "total": 18,
+   "breakdown": "1d20[15] + @forca_mod[3] = 18",
+   "scope": {
+    "forca_mod": 3
+   }
+  },
+  {
+   "expr": "d%",
+   "dice": [
+    42
+   ],
+   "total": 42,
+   "breakdown": "1d100[42] = 42",
+   "groups": [
+    {
+     "notation": "1d100",
+     "count": 1,
+     "sides": 100,
+     "values": [
+      42
+     ],
+     "kept": [
+      0
+     ],
+     "subtotal": 42
+    }
+   ]
+  },
+  {
+   "expr": "D20 + 1",
+   "dice": [
+    20
+   ],
+   "total": 21,
+   "breakdown": "1d20[20] + 1 = 21"
+  },
+  {
+   "expr": "2 * 1d6",
+   "dice": [
+    4
+   ],
+   "total": 8,
+   "breakdown": "2 * 1d6[4] = 8"
+  },
+  {
+   "expr": "(1d8 + @forca) * 2",
+   "dice": [
+    5
+   ],
+   "total": 14,
+   "breakdown": "(1d8[5] + @forca[2]) * 2 = 14",
+   "scope": {
+    "forca": 2
+   }
+  },
+  {
+   "expr": "if @nivel >= 5 then 2d6 else 1d6",
+   "dice": [
+    3,
+    4
+   ],
+   "total": 7,
+   "breakdown": "if @nivel[5] >= 5 then 2d6[3, 4] else 1d6 = 7",
+   "scope": {
+    "nivel": 5
+   }
+  },
+  {
+   "expr": "if @nivel >= 5 then 2d6 else 1d6",
+   "dice": [
+    2
+   ],
+   "total": 2,
+   "breakdown": "if @nivel[1] >= 5 then 2d6 else 1d6[2] = 2",
+   "scope": {
+    "nivel": 1
+   }
+  },
+  {
+   "expr": "if 1d20 == 20 then 2d6 else 0",
+   "dice": [
+    20,
+    3,
+    4
+   ],
+   "total": 7,
+   "breakdown": "if 1d20[20] == 20 then 2d6[3, 4] else 0 = 7"
+  },
+  {
+   "expr": "if 1d20 == 20 then 2d6 else 0",
+   "dice": [
+    5
+   ],
+   "total": 0,
+   "breakdown": "if 1d20[5] == 20 then 2d6 else 0 = 0"
+  },
+  {
+   "expr": "1d6 / 4",
+   "dice": [
+    3
+   ],
+   "total": 0.75,
+   "breakdown": "1d6[3] / 4 = 0.75"
+  },
+  {
+   "expr": "1d6 / 3",
+   "dice": [
+    1
+   ],
+   "total": 0.3333333333333333,
+   "breakdown": "1d6[1] / 3 = 0.33"
+  },
+  {
+   "expr": "max(1d6, 1d6)",
+   "dice": [
+    2,
+    5
+   ],
+   "total": 5,
+   "breakdown": "max(1d6[2], 1d6[5]) = 5"
+  },
+  {
+   "expr": "floor(1d10 / 2) + mod(@forca)",
+   "dice": [
+    7
+   ],
+   "total": 5,
+   "breakdown": "floor(1d10[7] / 2) + mod(@forca[14]) = 5",
+   "scope": {
+    "forca": 14
+   }
+  },
+  {
+   "expr": "0 and 1d6",
+   "dice": [],
+   "total": 0,
+   "breakdown": "0 and 1d6 = 0",
+   "groups": []
+  },
+  {
+   "expr": "1 or 1d6",
+   "dice": [],
+   "total": 1,
+   "breakdown": "1 or 1d6 = 1"
+  },
+  {
+   "expr": "-1d4",
+   "dice": [
+    3
+   ],
+   "total": -3,
+   "breakdown": "-1d4[3] = -3"
+  },
+  {
+   "expr": "3",
+   "dice": [],
+   "total": 3,
+   "breakdown": "3 = 3",
+   "groups": []
+  },
+  {
+   "expr": "1d20 >= 15",
+   "dice": [
+    15
+   ],
+   "total": 1,
+   "breakdown": "1d20[15] >= 15 = 1"
+  },
+  {
+   "expr": "not 1d6 == 6",
+   "dice": [
+    6
+   ],
+   "total": 0,
+   "breakdown": "not 1d6[6] == 6 = 0"
+  },
+  {
+   "expr": "4d6kh3 + 4d6kh3",
+   "dice": [
+    6,
+    6,
+    6,
+    6,
+    1,
+    1,
+    1,
+    1
+   ],
+   "total": 21,
+   "breakdown": "4d6kh3[6, 6, 6, ~6~] + 4d6kh3[1, 1, 1, ~1~] = 21"
+  },
+  {
+   "expr": "@a + 1d4",
+   "dice": [
+    1
+   ],
+   "total": 3.5,
+   "breakdown": "@a[2.5] + 1d4[1] = 3.5",
+   "scope": {
+    "a": 2.5
+   }
+  },
+  {
+   "expr": "@ausente + 1d4",
+   "dice": [
+    4
+   ],
+   "total": 4,
+   "breakdown": "@ausente[0] + 1d4[4] = 4"
+  },
+  {
+   "expr": "1d12 * 1.5",
+   "dice": [
+    5
+   ],
+   "total": 7.5,
+   "breakdown": "1d12[5] * 1.5 = 7.5"
+  },
+  {
+   "expr": "2d4 - 1d4",
+   "dice": [
+    1,
+    2,
+    4
+   ],
+   "total": -1,
+   "breakdown": "2d4[1, 2] - 1d4[4] = -1"
+  },
+  {
+   "expr": "round(1d6 / 4)",
+   "dice": [
+    2
+   ],
+   "total": 1,
+   "breakdown": "round(1d6[2] / 4) = 1"
+  },
+  {
+   "expr": "clamp(1d20 + @bonus, 1, 20)",
+   "dice": [
+    19
+   ],
+   "total": 20,
+   "breakdown": "clamp(1d20[19] + @bonus[5], 1, 20) = 20",
+   "scope": {
+    "bonus": 5
+   }
+  },
+  {
+   "expr": "  1d6+1  ",
+   "dice": [
+    6
+   ],
+   "total": 7,
+   "breakdown": "1d6[6] + 1 = 7"
+  },
+  {
+   "expr": "1d4+1d6+1d8+1d10+1d12+1d20+1d100",
+   "dice": [
+    4,
+    6,
+    8,
+    10,
+    12,
+    20,
+    100
+   ],
+   "total": 160,
+   "breakdown": "1d4[4] + 1d6[6] + 1d8[8] + 1d10[10] + 1d12[12] + 1d20[20] + 1d100[100] = 160"
+  },
+  {
+   "expr": "2d6 + if 1 then 1 else 1d8",
+   "dice": [
+    1,
+    1
+   ],
+   "total": 3,
+   "breakdown": "2d6[1, 1] + if 1 then 1 else 1d8 = 3"
+  },
+  {
+   "expr": "1d8 × 2 − @a ÷ 2",
+   "dice": [
+    5
+   ],
+   "total": 8,
+   "breakdown": "1d8[5] * 2 - @a[4] / 2 = 8",
+   "scope": {
+    "a": 4
+   }
+  }
+ ],
+ "rollErrors": [
+  {
+   "expr": "1d6 / 0",
+   "dice": [
+    3
+   ],
+   "error": "Divisão por zero."
+  },
+  {
+   "expr": "1d6",
+   "dice": [
+    7
+   ],
+   "error": "Gerador de dados inválido."
+  },
+  {
+   "expr": "1d6",
+   "dice": [
+    0
+   ],
+   "error": "Gerador de dados inválido."
+  },
+  {
+   "expr": "1d7",
+   "dice": [],
+   "error": "Dado deve ter 4, 6, 8, 10, 12, 20 ou 100 faces (posição 1)."
+  },
+  {
+   "expr": "@a * 1d20",
+   "scope": {
+    "a": 100000000000.0
+   },
+   "dice": [
+    20
+   ],
+   "error": "Resultado fora do limite."
+  }
+ ],
+ "format": [
+  [
+   0,
+   "0"
+  ],
+  [
+   -0.0,
+   "0"
+  ],
+  [
+   1,
+   "1"
+  ],
+  [
+   1.5,
+   "1.5"
+  ],
+  [
+   1.25,
+   "1.25"
+  ],
+  [
+   -2.5,
+   "-2.5"
+  ],
+  [
+   0.125,
+   "0.13"
+  ],
+  [
+   -0.125,
+   "-0.13"
+  ],
+  [
+   1.005,
+   "1"
+  ],
+  [
+   1.255,
+   "1.25"
+  ],
+  [
+   2.675,
+   "2.67"
+  ],
+  [
+   3.333333,
+   "3.33"
+  ],
+  [
+   2.999,
+   "3"
+  ],
+  [
+   0.001,
+   "0"
+  ],
+  [
+   -0.001,
+   "0"
+  ],
+  [
+   -0.005,
+   "-0.01"
+  ],
+  [
+   0.05,
+   "0.05"
+  ],
+  [
+   0.30000000000000004,
+   "0.3"
+  ],
+  [
+   10.1,
+   "10.1"
+  ],
+  [
+   1000000000000.0,
+   "1000000000000"
+  ],
+  [
+   -1000000000000.0,
+   "-1000000000000"
+  ],
+  [
+   1000000000001.0,
+   ""
+  ],
+  [
+   123456789.987,
+   "123456789.99"
+  ],
+  [
+   7.0,
+   "7"
+  ],
+  [
+   100.1,
+   "100.1"
+  ],
+  [
+   0.07,
+   "0.07"
+  ],
+  [
+   0.625,
+   "0.63"
+  ],
+  [
+   -0.625,
+   "-0.63"
+  ],
+  [
+   0.375,
+   "0.38"
+  ],
+  [
+   1.115,
+   "1.11"
+  ],
+  [
+   1.125,
+   "1.13"
+  ],
+  [
+   8.345,
+   "8.35"
+  ],
+  [
+   999999999999.995,
+   "999999999999.99"
+  ],
+  [
+   5e-324,
+   "0"
+  ],
+  [
+   0.004999999999999999,
+   "0"
+  ]
+ ],
+ "validateFields": [
+  {
+   "name": "ficha completa válida",
+   "fields": [
+    {
+     "name": "nome",
+     "label": "Nome",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "name"
+    },
+    {
+     "name": "nivel",
+     "label": "Nivel",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "level",
+     "min": 1,
+     "max": 20,
+     "default": "1"
+    },
+    {
+     "name": "forca",
+     "label": "Forca",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "10"
+    },
+    {
+     "name": "forca_mod",
+     "label": "Forca_mod",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "mod(@forca)"
+    },
+    {
+     "name": "pv_max",
+     "label": "Pv_max",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "10 + @nivel * 2",
+     "role": "maxHp"
+    },
+    {
+     "name": "pv",
+     "label": "Pv",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "hp"
+    },
+    {
+     "name": "escudo",
+     "label": "Escudo",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "bonus_escudo",
+     "label": "Bonus_escudo",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "if @escudo then 2 else 0"
+    },
+    {
+     "name": "ca",
+     "label": "Ca",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "10 + @bonus_escudo + @forca_mod",
+     "role": "armor"
+    },
+    {
+     "name": "classe",
+     "label": "Classe",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "options": [
+      "Guerreiro",
+      "Mago"
+     ]
+    },
+    {
+     "name": "notas",
+     "label": "Notas",
+     "type": "textarea",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "maxLength": 5000
+    },
+    {
+     "name": "deslocamento",
+     "label": "Deslocamento",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "movement",
+     "default": "9"
+    },
+    {
+     "name": "peso",
+     "label": "Peso",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "min": 0
+    }
+   ],
+   "errors": []
+  },
+  {
+   "name": "lista vazia é válida",
+   "fields": [],
+   "errors": []
+  },
+  {
+   "name": "nomes inválidos",
+   "fields": [
+    {
+     "name": "Forca",
+     "label": "Forca",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "1abc",
+     "label": "1abc",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "",
+     "label": "",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "label": "Aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "_x",
+     "label": "_x",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "força",
+     "label": "Força",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    }
+   ],
+   "errors": [
+    "Campo 1: nome inválido (letras minúsculas, números e _, começando por letra, até 40).",
+    "Campo 2: nome inválido (letras minúsculas, números e _, começando por letra, até 40).",
+    "Campo 3: nome inválido (letras minúsculas, números e _, começando por letra, até 40).",
+    "Campo 3: rótulo deve ter de 1 a 80 caracteres.",
+    "Campo 4: nome inválido (letras minúsculas, números e _, começando por letra, até 40).",
+    "Campo 5: nome inválido (letras minúsculas, números e _, começando por letra, até 40).",
+    "Campo 6: nome inválido (letras minúsculas, números e _, começando por letra, até 40)."
+   ]
+  },
+  {
+   "name": "nome com 40 caracteres é válido",
+   "fields": [
+    {
+     "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "label": "Aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    }
+   ],
+   "errors": []
+  },
+  {
+   "name": "nome repetido",
+   "fields": [
+    {
+     "name": "forca",
+     "label": "Forca",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "forca",
+     "label": "Forca",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    }
+   ],
+   "errors": [
+    "forca: nome repetido."
+   ]
+  },
+  {
+   "name": "rótulos",
+   "fields": [
+    {
+     "name": "a",
+     "label": "",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "b",
+     "label": "   ",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "c",
+     "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "d",
+     "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    }
+   ],
+   "errors": [
+    "a: rótulo deve ter de 1 a 80 caracteres.",
+    "b: rótulo deve ter de 1 a 80 caracteres.",
+    "c: rótulo deve ter de 1 a 80 caracteres."
+   ]
+  },
+  {
+   "name": "tipo inválido",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "formula",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    }
+   ],
+   "errors": [
+    "a: tipo inválido."
+   ]
+  },
+  {
+   "name": "papéis",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "mana"
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "hp"
+    },
+    {
+     "name": "c",
+     "label": "C",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "hp"
+    },
+    {
+     "name": "d",
+     "label": "D",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "level"
+    },
+    {
+     "name": "e",
+     "label": "E",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "name"
+    },
+    {
+     "name": "f",
+     "label": "F",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "1",
+     "role": "maxHp"
+    },
+    {
+     "name": "g",
+     "label": "G",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "armor"
+    },
+    {
+     "name": "h",
+     "label": "H",
+     "type": "textarea",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "movement"
+    }
+   ],
+   "errors": [
+    "a: papel inválido.",
+    "c: o papel hp já é usado por b.",
+    "d: o papel level exige campo de número ou calculado.",
+    "e: o papel name exige campo de texto.",
+    "g: o papel armor exige campo de número ou calculado.",
+    "h: o papel movement exige campo de número ou calculado."
+   ]
+  },
+  {
+   "name": "papel diferencia maiúsculas",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "maxhp"
+    }
+   ],
+   "errors": [
+    "a: papel inválido."
+   ]
+  },
+  {
+   "name": "geometria",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "number",
+     "page": 0,
+     "x": -0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.004,
+     "h": 0.02
+    },
+    {
+     "name": "c",
+     "label": "C",
+     "type": "number",
+     "page": 0,
+     "x": 0.9,
+     "y": 0.02,
+     "w": 0.2,
+     "h": 0.02
+    },
+    {
+     "name": "d",
+     "label": "D",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.99,
+     "w": 0.3,
+     "h": 0.0100005
+    },
+    {
+     "name": "e",
+     "label": "E",
+     "type": "number",
+     "page": 0,
+     "x": 0.8,
+     "y": 0.02,
+     "w": 0.2,
+     "h": 0.02
+    },
+    {
+     "name": "f",
+     "label": "F",
+     "type": "number",
+     "page": -1,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "g",
+     "label": "G",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0
+    },
+    {
+     "name": "h",
+     "label": "H",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 1.2,
+     "w": 0.3,
+     "h": 0.02
+    }
+   ],
+   "errors": [
+    "a: posição ou tamanho fora da página.",
+    "b: posição ou tamanho fora da página.",
+    "c: posição ou tamanho fora da página.",
+    "f: página inválida.",
+    "g: posição ou tamanho fora da página.",
+    "h: posição ou tamanho fora da página."
+   ]
+  },
+  {
+   "name": "fórmulas de calculados",
+   "fields": [
+    {
+     "name": "nome",
+     "label": "Nome",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "forca",
+     "label": "Forca",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "chk",
+     "label": "Chk",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "a",
+     "label": "A",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "1d6 + @forca"
+    },
+    {
+     "name": "c",
+     "label": "C",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@nada + 1"
+    },
+    {
+     "name": "d",
+     "label": "D",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@nome + 1"
+    },
+    {
+     "name": "e",
+     "label": "E",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "1 +"
+    },
+    {
+     "name": "f",
+     "label": "F",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@chk * @forca + mod(@forca)"
+    },
+    {
+     "name": "g",
+     "label": "G",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "   "
+    }
+   ],
+   "errors": [
+    "a: informe a fórmula.",
+    "b: Campos calculados não podem rolar dados.",
+    "c: Campo desconhecido: @nada",
+    "d: @nome não é numérico (use número, calculado ou caixa de seleção).",
+    "e: Fórmula incompleta.",
+    "g: informe a fórmula."
+   ]
+  },
+  {
+   "name": "ciclos",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@b + 1"
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@a + 1"
+    },
+    {
+     "name": "c",
+     "label": "C",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c * 2"
+    },
+    {
+     "name": "x",
+     "label": "X",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@y"
+    },
+    {
+     "name": "y",
+     "label": "Y",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@z"
+    },
+    {
+     "name": "z",
+     "label": "Z",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@x + @a"
+    },
+    {
+     "name": "d",
+     "label": "D",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@a + 5"
+    }
+   ],
+   "errors": [
+    "Ciclo entre campos calculados: a → b → a.",
+    "Ciclo entre campos calculados: c → c.",
+    "Ciclo entre campos calculados: x → y → z → x."
+   ]
+  },
+  {
+   "name": "cadeia longa sem ciclo",
+   "fields": [
+    {
+     "name": "c0",
+     "label": "C0",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c1 + 1"
+    },
+    {
+     "name": "c1",
+     "label": "C1",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c2 + 1"
+    },
+    {
+     "name": "c2",
+     "label": "C2",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c3 + 1"
+    },
+    {
+     "name": "c3",
+     "label": "C3",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c4 + 1"
+    },
+    {
+     "name": "c4",
+     "label": "C4",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c5 + 1"
+    },
+    {
+     "name": "c5",
+     "label": "C5",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c6 + 1"
+    },
+    {
+     "name": "c6",
+     "label": "C6",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c7 + 1"
+    },
+    {
+     "name": "c7",
+     "label": "C7",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c8 + 1"
+    },
+    {
+     "name": "c8",
+     "label": "C8",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c9 + 1"
+    },
+    {
+     "name": "c9",
+     "label": "C9",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c10 + 1"
+    },
+    {
+     "name": "c10",
+     "label": "C10",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c11 + 1"
+    },
+    {
+     "name": "c11",
+     "label": "C11",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c12 + 1"
+    },
+    {
+     "name": "c12",
+     "label": "C12",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c13 + 1"
+    },
+    {
+     "name": "c13",
+     "label": "C13",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c14 + 1"
+    },
+    {
+     "name": "c14",
+     "label": "C14",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c15 + 1"
+    },
+    {
+     "name": "c15",
+     "label": "C15",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c16 + 1"
+    },
+    {
+     "name": "c16",
+     "label": "C16",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c17 + 1"
+    },
+    {
+     "name": "c17",
+     "label": "C17",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c18 + 1"
+    },
+    {
+     "name": "c18",
+     "label": "C18",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c19 + 1"
+    },
+    {
+     "name": "c19",
+     "label": "C19",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c20 + 1"
+    },
+    {
+     "name": "c20",
+     "label": "C20",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c21 + 1"
+    },
+    {
+     "name": "c21",
+     "label": "C21",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c22 + 1"
+    },
+    {
+     "name": "c22",
+     "label": "C22",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c23 + 1"
+    },
+    {
+     "name": "c23",
+     "label": "C23",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c24 + 1"
+    },
+    {
+     "name": "c24",
+     "label": "C24",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c25 + 1"
+    },
+    {
+     "name": "c25",
+     "label": "C25",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c26 + 1"
+    },
+    {
+     "name": "c26",
+     "label": "C26",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c27 + 1"
+    },
+    {
+     "name": "c27",
+     "label": "C27",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c28 + 1"
+    },
+    {
+     "name": "c28",
+     "label": "C28",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c29 + 1"
+    },
+    {
+     "name": "c29",
+     "label": "C29",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c30 + 1"
+    },
+    {
+     "name": "c30",
+     "label": "C30",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c31 + 1"
+    },
+    {
+     "name": "c31",
+     "label": "C31",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c32 + 1"
+    },
+    {
+     "name": "c32",
+     "label": "C32",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c33 + 1"
+    },
+    {
+     "name": "c33",
+     "label": "C33",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c34 + 1"
+    },
+    {
+     "name": "c34",
+     "label": "C34",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c35 + 1"
+    },
+    {
+     "name": "c35",
+     "label": "C35",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c36 + 1"
+    },
+    {
+     "name": "c36",
+     "label": "C36",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c37 + 1"
+    },
+    {
+     "name": "c37",
+     "label": "C37",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c38 + 1"
+    },
+    {
+     "name": "c38",
+     "label": "C38",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c39 + 1"
+    },
+    {
+     "name": "c39",
+     "label": "C39",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c40 + 1"
+    },
+    {
+     "name": "c40",
+     "label": "C40",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c41 + 1"
+    },
+    {
+     "name": "c41",
+     "label": "C41",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c42 + 1"
+    },
+    {
+     "name": "c42",
+     "label": "C42",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c43 + 1"
+    },
+    {
+     "name": "c43",
+     "label": "C43",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c44 + 1"
+    },
+    {
+     "name": "c44",
+     "label": "C44",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c45 + 1"
+    },
+    {
+     "name": "c45",
+     "label": "C45",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c46 + 1"
+    },
+    {
+     "name": "c46",
+     "label": "C46",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c47 + 1"
+    },
+    {
+     "name": "c47",
+     "label": "C47",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c48 + 1"
+    },
+    {
+     "name": "c48",
+     "label": "C48",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c49 + 1"
+    },
+    {
+     "name": "c49",
+     "label": "C49",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c50 + 1"
+    },
+    {
+     "name": "c50",
+     "label": "C50",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c51 + 1"
+    },
+    {
+     "name": "c51",
+     "label": "C51",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c52 + 1"
+    },
+    {
+     "name": "c52",
+     "label": "C52",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c53 + 1"
+    },
+    {
+     "name": "c53",
+     "label": "C53",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c54 + 1"
+    },
+    {
+     "name": "c54",
+     "label": "C54",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c55 + 1"
+    },
+    {
+     "name": "c55",
+     "label": "C55",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c56 + 1"
+    },
+    {
+     "name": "c56",
+     "label": "C56",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c57 + 1"
+    },
+    {
+     "name": "c57",
+     "label": "C57",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c58 + 1"
+    },
+    {
+     "name": "c58",
+     "label": "C58",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@c59 + 1"
+    },
+    {
+     "name": "c59",
+     "label": "C59",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "1"
+    }
+   ],
+   "errors": []
+  },
+  {
+   "name": "listas de opções",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "options": [
+      "o0",
+      "o1",
+      "o2",
+      "o3",
+      "o4",
+      "o5",
+      "o6",
+      "o7",
+      "o8",
+      "o9",
+      "o10",
+      "o11",
+      "o12",
+      "o13",
+      "o14",
+      "o15",
+      "o16",
+      "o17",
+      "o18",
+      "o19",
+      "o20",
+      "o21",
+      "o22",
+      "o23",
+      "o24",
+      "o25",
+      "o26",
+      "o27",
+      "o28",
+      "o29",
+      "o30",
+      "o31",
+      "o32",
+      "o33",
+      "o34",
+      "o35",
+      "o36",
+      "o37",
+      "o38",
+      "o39",
+      "o40",
+      "o41",
+      "o42",
+      "o43",
+      "o44",
+      "o45",
+      "o46",
+      "o47",
+      "o48",
+      "o49",
+      "o50"
+     ]
+    },
+    {
+     "name": "c",
+     "label": "C",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "options": [
+      "ok",
+      ""
+     ]
+    },
+    {
+     "name": "d",
+     "label": "D",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "options": [
+      "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+     ]
+    },
+    {
+     "name": "e",
+     "label": "E",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "options": [
+      "A",
+      " A"
+     ]
+    },
+    {
+     "name": "f",
+     "label": "F",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "options": [
+      "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "y"
+     ]
+    }
+   ],
+   "errors": [
+    "a: a lista precisa ter de 1 a 50 opções.",
+    "b: a lista precisa ter de 1 a 50 opções.",
+    "c: cada opção deve ter de 1 a 60 caracteres.",
+    "d: cada opção deve ter de 1 a 60 caracteres.",
+    "e: opções repetidas."
+   ]
+  },
+  {
+   "name": "limites de caracteres",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "maxLength": 0
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "maxLength": 2001
+    },
+    {
+     "name": "c",
+     "label": "C",
+     "type": "textarea",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "maxLength": 10000
+    },
+    {
+     "name": "d",
+     "label": "D",
+     "type": "textarea",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "maxLength": 10001
+    },
+    {
+     "name": "e",
+     "label": "E",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "maxLength": 2000
+    }
+   ],
+   "errors": [
+    "a: limite de caracteres deve ser de 1 a 2000.",
+    "b: limite de caracteres deve ser de 1 a 2000.",
+    "d: limite de caracteres deve ser de 1 a 10000."
+   ]
+  },
+  {
+   "name": "mínimo e máximo",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "min": 5,
+     "max": 1
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "min": 1,
+     "max": 1
+    },
+    {
+     "name": "c",
+     "label": "C",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "min": -10
+    }
+   ],
+   "errors": [
+    "a: mínimo maior que o máximo."
+   ]
+  },
+  {
+   "name": "fonte e alinhamento",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "fontSize": 5
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "fontSize": 33
+    },
+    {
+     "name": "c",
+     "label": "C",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "fontSize": 6
+    },
+    {
+     "name": "d",
+     "label": "D",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "fontSize": 32,
+     "align": "center"
+    },
+    {
+     "name": "e",
+     "label": "E",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "align": "justify"
+    },
+    {
+     "name": "f",
+     "label": "F",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "align": "right"
+    }
+   ],
+   "errors": [
+    "a: tamanho da fonte deve ser de 6 a 32.",
+    "b: tamanho da fonte deve ser de 6 a 32.",
+    "e: alinhamento inválido."
+   ]
+  },
+  {
+   "name": "valores padrão",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "abc"
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "2,5"
+    },
+    {
+     "name": "c",
+     "label": "C",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "sim"
+    },
+    {
+     "name": "d",
+     "label": "D",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "true"
+    },
+    {
+     "name": "e",
+     "label": "E",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "options": [
+      "Mago"
+     ],
+     "default": "Bardo"
+    },
+    {
+     "name": "f",
+     "label": "F",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "options": [
+      "Mago"
+     ],
+     "default": "Mago"
+    },
+    {
+     "name": "g",
+     "label": "G",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "maxLength": 10,
+     "default": "12345678901"
+    },
+    {
+     "name": "h",
+     "label": "H",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "1",
+     "default": "3"
+    },
+    {
+     "name": "i",
+     "label": "I",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+     "name": "j",
+     "label": "J",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": ""
+    }
+   ],
+   "errors": [
+    "a: valor padrão incompatível com o tipo.",
+    "c: valor padrão incompatível com o tipo.",
+    "e: valor padrão incompatível com o tipo.",
+    "g: valor padrão incompatível com o tipo.",
+    "h: campo calculado não tem valor padrão."
+   ]
+  },
+  {
+   "name": "vários erros no mesmo campo",
+   "fields": [
+    {
+     "name": "Mau",
+     "label": "",
+     "type": "number",
+     "page": -2,
+     "x": 2,
+     "y": 0,
+     "w": 0.1,
+     "h": 0.1,
+     "fontSize": 99,
+     "align": "x"
+    }
+   ],
+   "errors": [
+    "Campo 1: nome inválido (letras minúsculas, números e _, começando por letra, até 40).",
+    "Campo 1: rótulo deve ter de 1 a 80 caracteres.",
+    "Campo 1: página inválida.",
+    "Campo 1: posição ou tamanho fora da página.",
+    "Campo 1: tamanho da fonte deve ser de 6 a 32.",
+    "Campo 1: alinhamento inválido."
+   ]
+  },
+  {
+   "name": "300 campos é o máximo",
+   "generate": {
+    "count": 300
+   },
+   "errors": []
+  },
+  {
+   "name": "301 campos é demais",
+   "generate": {
+    "count": 301
+   },
+   "errors": [
+    "No máximo 300 campos por modelo."
+   ]
+  }
+ ],
+ "compute": [
+  {
+   "name": "ficha completa com padrões",
+   "fields": [
+    {
+     "name": "nome",
+     "label": "Nome",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "name"
+    },
+    {
+     "name": "nivel",
+     "label": "Nivel",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "level",
+     "min": 1,
+     "max": 20,
+     "default": "1"
+    },
+    {
+     "name": "forca",
+     "label": "Forca",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "10"
+    },
+    {
+     "name": "forca_mod",
+     "label": "Forca_mod",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "mod(@forca)"
+    },
+    {
+     "name": "pv_max",
+     "label": "Pv_max",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "10 + @nivel * 2",
+     "role": "maxHp"
+    },
+    {
+     "name": "pv",
+     "label": "Pv",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "hp"
+    },
+    {
+     "name": "escudo",
+     "label": "Escudo",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "bonus_escudo",
+     "label": "Bonus_escudo",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "if @escudo then 2 else 0"
+    },
+    {
+     "name": "ca",
+     "label": "Ca",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "10 + @bonus_escudo + @forca_mod",
+     "role": "armor"
+    },
+    {
+     "name": "classe",
+     "label": "Classe",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "options": [
+      "Guerreiro",
+      "Mago"
+     ]
+    },
+    {
+     "name": "notas",
+     "label": "Notas",
+     "type": "textarea",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "maxLength": 5000
+    },
+    {
+     "name": "deslocamento",
+     "label": "Deslocamento",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "movement",
+     "default": "9"
+    },
+    {
+     "name": "peso",
+     "label": "Peso",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "min": 0
+    }
+   ],
+   "values": {},
+   "expected": {
+    "nome": "",
+    "nivel": "1",
+    "forca": "10",
+    "forca_mod": "0",
+    "pv_max": "12",
+    "pv": "",
+    "escudo": "false",
+    "bonus_escudo": "0",
+    "ca": "10",
+    "classe": "",
+    "notas": "",
+    "deslocamento": "9",
+    "peso": ""
+   },
+   "scope": {
+    "nivel": 1,
+    "forca": 10,
+    "forca_mod": 0,
+    "pv_max": 12,
+    "pv": 0,
+    "escudo": 0,
+    "bonus_escudo": 0,
+    "ca": 10,
+    "deslocamento": 9,
+    "peso": 0
+   }
+  },
+  {
+   "name": "ficha completa preenchida",
+   "fields": [
+    {
+     "name": "nome",
+     "label": "Nome",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "name"
+    },
+    {
+     "name": "nivel",
+     "label": "Nivel",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "level",
+     "min": 1,
+     "max": 20,
+     "default": "1"
+    },
+    {
+     "name": "forca",
+     "label": "Forca",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "10"
+    },
+    {
+     "name": "forca_mod",
+     "label": "Forca_mod",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "mod(@forca)"
+    },
+    {
+     "name": "pv_max",
+     "label": "Pv_max",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "10 + @nivel * 2",
+     "role": "maxHp"
+    },
+    {
+     "name": "pv",
+     "label": "Pv",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "hp"
+    },
+    {
+     "name": "escudo",
+     "label": "Escudo",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "bonus_escudo",
+     "label": "Bonus_escudo",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "if @escudo then 2 else 0"
+    },
+    {
+     "name": "ca",
+     "label": "Ca",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "10 + @bonus_escudo + @forca_mod",
+     "role": "armor"
+    },
+    {
+     "name": "classe",
+     "label": "Classe",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "options": [
+      "Guerreiro",
+      "Mago"
+     ]
+    },
+    {
+     "name": "notas",
+     "label": "Notas",
+     "type": "textarea",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "maxLength": 5000
+    },
+    {
+     "name": "deslocamento",
+     "label": "Deslocamento",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "role": "movement",
+     "default": "9"
+    },
+    {
+     "name": "peso",
+     "label": "Peso",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "min": 0
+    }
+   ],
+   "values": {
+    "nome": "Aria",
+    "nivel": "5",
+    "forca": "16",
+    "pv": "18",
+    "escudo": "sim",
+    "classe": " Mago ",
+    "notas": "Linha 1\nLinha 2",
+    "deslocamento": "7,5",
+    "peso": "-3",
+    "forca_mod": "99",
+    "invasor": "1",
+    "__proto__": "x",
+    "constructor": "y"
+   },
+   "expected": {
+    "nome": "Aria",
+    "nivel": "5",
+    "forca": "16",
+    "forca_mod": "3",
+    "pv_max": "20",
+    "pv": "18",
+    "escudo": "true",
+    "bonus_escudo": "2",
+    "ca": "15",
+    "classe": "Mago",
+    "notas": "Linha 1\nLinha 2",
+    "deslocamento": "7.5",
+    "peso": "0"
+   },
+   "scope": {
+    "nivel": 5,
+    "forca": 16,
+    "forca_mod": 3,
+    "pv_max": 20,
+    "pv": 18,
+    "escudo": 1,
+    "bonus_escudo": 2,
+    "ca": 15,
+    "deslocamento": 7.5,
+    "peso": 0
+   }
+  },
+  {
+   "name": "números: vírgula decimal pt-BR e entradas inválidas",
+   "fields": [
+    {
+     "name": "n1",
+     "label": "N1",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "n2",
+     "label": "N2",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "n3",
+     "label": "N3",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "n4",
+     "label": "N4",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "n5",
+     "label": "N5",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "n6",
+     "label": "N6",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "n7",
+     "label": "N7",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "n8",
+     "label": "N8",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "n9",
+     "label": "N9",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "n10",
+     "label": "N10",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "n11",
+     "label": "N11",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "n12",
+     "label": "N12",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "n13",
+     "label": "N13",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "n14",
+     "label": "N14",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "n15",
+     "label": "N15",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    }
+   ],
+   "values": {
+    "n1": "2,5",
+    "n2": "1.234,5",
+    "n3": "abc",
+    "n4": " 7 ",
+    "n5": "+3",
+    "n6": "-0",
+    "n7": "1e3",
+    "n8": "0x10",
+    "n9": "Infinity",
+    "n10": "1,005",
+    "n11": "10000000000000",
+    "n12": "",
+    "n13": "3,14159",
+    "n14": "1 000",
+    "n15": " 12 "
+   },
+   "expected": {
+    "n1": "2.5",
+    "n2": "",
+    "n3": "",
+    "n4": "7",
+    "n5": "3",
+    "n6": "0",
+    "n7": "",
+    "n8": "",
+    "n9": "",
+    "n10": "1",
+    "n11": "",
+    "n12": "",
+    "n13": "3.14",
+    "n14": "",
+    "n15": "12"
+   }
+  },
+  {
+   "name": "números limitados a mínimo e máximo",
+   "fields": [
+    {
+     "name": "nivel",
+     "label": "Nivel",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "min": 1,
+     "max": 20
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "min": 1,
+     "max": 20
+    },
+    {
+     "name": "c",
+     "label": "C",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "max": 0
+    },
+    {
+     "name": "d",
+     "label": "D",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "min": 0.5
+    }
+   ],
+   "values": {
+    "nivel": "25",
+    "b": "-3",
+    "c": "4",
+    "d": "0,1"
+   },
+   "expected": {
+    "nivel": "20",
+    "b": "1",
+    "c": "0",
+    "d": "0.5"
+   }
+  },
+  {
+   "name": "caixas de seleção",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "c",
+     "label": "C",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "d",
+     "label": "D",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "e",
+     "label": "E",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "true"
+    },
+    {
+     "name": "f",
+     "label": "F",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "g",
+     "label": "G",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "soma",
+     "label": "Soma",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@a + @b + @c + @d + @e + @f + @g"
+    }
+   ],
+   "values": {
+    "a": "sim",
+    "b": "TRUE",
+    "c": "x",
+    "f": "1",
+    "g": "on"
+   },
+   "expected": {
+    "a": "true",
+    "b": "true",
+    "c": "false",
+    "d": "false",
+    "e": "true",
+    "f": "true",
+    "g": "true",
+    "soma": "5"
+   }
+  },
+  {
+   "name": "listas",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "options": [
+      "Guerreiro",
+      "Mago"
+     ]
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "options": [
+      "Guerreiro",
+      "Mago"
+     ]
+    },
+    {
+     "name": "c",
+     "label": "C",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "options": [
+      "Mago"
+     ],
+     "default": "Mago"
+    },
+    {
+     "name": "d",
+     "label": "D",
+     "type": "select",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "options": [
+      "Mago"
+     ]
+    }
+   ],
+   "values": {
+    "a": "Mago",
+    "b": "Bardo",
+    "d": "mago"
+   },
+   "expected": {
+    "a": "Mago",
+    "b": "",
+    "c": "Mago",
+    "d": ""
+   }
+  },
+  {
+   "name": "textos cortados no limite",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "maxLength": 5
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "c",
+     "label": "C",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "maxLength": 3
+    },
+    {
+     "name": "d",
+     "label": "D",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "e",
+     "label": "E",
+     "type": "textarea",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "maxLength": 4
+    },
+    {
+     "name": "f",
+     "label": "F",
+     "type": "textarea",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    }
+   ],
+   "values": {
+    "a": "abcdefgh",
+    "b": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "c": "ab😀c",
+    "d": "a\u0000b",
+    "e": "ção!!",
+    "f": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+   },
+   "expected": {
+    "a": "abcde",
+    "b": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "c": "ab",
+    "d": "ab",
+    "e": "ção!",
+    "f": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+   }
+  },
+  {
+   "name": "valor nulo usa o padrão",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "4"
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "oi"
+    }
+   ],
+   "values": {
+    "a": null,
+    "b": null
+   },
+   "expected": {
+    "a": "4",
+    "b": "oi"
+   }
+  },
+  {
+   "name": "valor vazio informado prevalece sobre o padrão",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "4"
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "oi"
+    }
+   ],
+   "values": {
+    "a": "",
+    "b": ""
+   },
+   "expected": {
+    "a": "",
+    "b": ""
+   }
+  },
+  {
+   "name": "ciclos e dependentes ficam vazios",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@b + 1"
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@a + 1"
+    },
+    {
+     "name": "c",
+     "label": "C",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@a + 1"
+    },
+    {
+     "name": "d",
+     "label": "D",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "5"
+    },
+    {
+     "name": "s",
+     "label": "S",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@s"
+    }
+   ],
+   "values": {},
+   "expected": {
+    "a": "",
+    "b": "",
+    "c": "",
+    "d": "5",
+    "s": ""
+   }
+  },
+  {
+   "name": "fórmula inválida fica vazia e vale 0 para dependentes",
+   "fields": [
+    {
+     "name": "e",
+     "label": "E",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "1 +"
+    },
+    {
+     "name": "f",
+     "label": "F",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@e + 1"
+    },
+    {
+     "name": "zero",
+     "label": "Zero",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "g",
+     "label": "G",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@zero / @zero"
+    },
+    {
+     "name": "h",
+     "label": "H",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@g + 2"
+    },
+    {
+     "name": "i",
+     "label": "I",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "1d6"
+    },
+    {
+     "name": "j",
+     "label": "J",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    }
+   ],
+   "values": {
+    "zero": "0"
+   },
+   "expected": {
+    "e": "",
+    "f": "1",
+    "zero": "0",
+    "g": "",
+    "h": "2",
+    "i": "",
+    "j": ""
+   }
+  },
+  {
+   "name": "calculados formatados com 2 casas e reutilizados",
+   "fields": [
+    {
+     "name": "terco",
+     "label": "Terco",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "10 / 3"
+    },
+    {
+     "name": "triplo",
+     "label": "Triplo",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@terco * 3"
+    },
+    {
+     "name": "x",
+     "label": "X",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "metade",
+     "label": "Metade",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@x / 2"
+    }
+   ],
+   "values": {
+    "x": "1,25"
+   },
+   "expected": {
+    "terco": "3.33",
+    "triplo": "9.99",
+    "x": "1.25",
+    "metade": "0.63"
+   },
+   "scope": {
+    "terco": 3.33,
+    "triplo": 9.99,
+    "x": 1.25,
+    "metade": 0.63
+   }
+  },
+  {
+   "name": "ordem topológica independe da ordem dos campos",
+   "fields": [
+    {
+     "name": "c",
+     "label": "C",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@b * 2"
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@a + 1"
+    },
+    {
+     "name": "a",
+     "label": "A",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    }
+   ],
+   "values": {
+    "a": "4"
+   },
+   "expected": {
+    "c": "10",
+    "b": "5",
+    "a": "4"
+   }
+  },
+  {
+   "name": "texto referenciado vale 0",
+   "fields": [
+    {
+     "name": "nome",
+     "label": "Nome",
+     "type": "text",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "t",
+     "label": "T",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@nome + 1"
+    }
+   ],
+   "values": {
+    "nome": "42"
+   },
+   "expected": {
+    "nome": "42",
+    "t": "1"
+   },
+   "scope": {
+    "t": 1
+   }
+  },
+  {
+   "name": "nomes do protótipo são campos comuns",
+   "fields": [
+    {
+     "name": "constructor",
+     "label": "Constructor",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "tostring",
+     "label": "Tostring",
+     "type": "checkbox",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "dobro",
+     "label": "Dobro",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@constructor * 2 + @tostring + @hasownproperty"
+    }
+   ],
+   "values": {
+    "constructor": "5",
+    "tostring": "true",
+    "hasOwnProperty": "7"
+   },
+   "expected": {
+    "constructor": "5",
+    "tostring": "true",
+    "dobro": "11"
+   },
+   "scope": {
+    "constructor": 5,
+    "tostring": 1,
+    "dobro": 11
+   }
+  },
+  {
+   "name": "campos repetidos ou com nome inválido são ignorados",
+   "fields": [
+    {
+     "name": "a",
+     "label": "A",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "1"
+    },
+    {
+     "name": "a",
+     "label": "A",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "default": "2"
+    },
+    {
+     "name": "Bad",
+     "label": "Bad",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "b",
+     "label": "B",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@a + 1"
+    }
+   ],
+   "values": {},
+   "expected": {
+    "a": "1",
+    "b": "2"
+   }
+  },
+  {
+   "name": "resultado fora do limite fica vazio",
+   "fields": [
+    {
+     "name": "big",
+     "label": "Big",
+     "type": "number",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02
+    },
+    {
+     "name": "r",
+     "label": "R",
+     "type": "computed",
+     "page": 0,
+     "x": 0.1,
+     "y": 0.02,
+     "w": 0.3,
+     "h": 0.02,
+     "formula": "@big * 1000"
+    }
+   ],
+   "values": {
+    "big": "999999999999"
+   },
+   "expected": {
+    "big": "999999999999",
+    "r": ""
+   }
+  }
+ ]
+}
