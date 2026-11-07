@@ -52,3 +52,17 @@ test('failures dismiss loading and restore the form; a later operation can start
   assert.equal(await f.withLoading(async () => 42), 42);
   assert.equal(f.splash.visible, false);
 });
+
+test('maintenance keeps the canonical opening overlay without reloading or discarding DOM state', async () => {
+  const f = await fixture();
+  f.endOpening();
+  assert.equal(f.splash.visible, false);
+  f.setMaintenance(true);
+  assert.equal(f.splash.dataset.mode, 'opening');
+  assert.equal(f.splash.visible, true);
+  assert.equal(f.app.inert, true);
+  f.setMaintenance(false);
+  assert.equal(f.splash.visible, false);
+  assert.equal(f.app.inert, false);
+  assert.equal(f.protectedNode.inert, true);
+});
