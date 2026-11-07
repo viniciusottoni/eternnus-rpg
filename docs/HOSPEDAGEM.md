@@ -139,3 +139,28 @@ O pacote framework-dependent exige runtime/Hosting Bundle ASP.NET Core 10 compat
 Os artefatos finais e resultados locais estão em IMPLEMENTACAO_ONDAS.md. Instalação em IIS real, OAuth/SMTP, scanners externos, aparelho físico e carga permanecem validações do destino.
 
 Mapas da campanha exigem a exceção de upload de 10 MiB + 64 KiB no proxy/IIS e ClamAV disponível. Imagens temporárias usam WebSocket de sinalização e WebRTC; habilitar upgrade WSS no proxy e configurar WebRtc:IceServers para redes que precisem de STUN/TURN. Não há serviço TURN pré-configurado. O relay atual pressupõe um processo; expansão exige estratégia de transporte compartilhado/afinidade documentada. Ver IMAGENS_TEMPORARIAS.md.
+
+## Publicação automática no GitHub Actions — merge de PR na main
+
+Workflow: `.github/workflows/deploy-smarterasp.yml` (criado em `feature/setup`; só começa a funcionar depois de entrar na `main`).
+
+**Gatilho:** evento `pull_request.closed` com `merged == true` e base `main`. Criar, atualizar ou apenas fechar um PR não faz deploy; merge em `feature/setup` também não faz deploy. Publicações diretas sem PR na main não acionam esse workflow.
+
+**Preparação obrigatória em GitHub → Settings → Environments → production** (ou secrets/variables do repositório, respeitando permissões):
+
+| Tipo | Nome | Valor |
+| --- | --- | --- |
+| Secret | `SMARTERASP_FTP_SERVER` | Nome DNS do host FTP SmarterASP.NET, sem `ftp://`, porta ou caminho. |
+| Secret | `SMARTERASP_FTP_USERNAME` | Usuário FTP da aplicação Eternnus. |
+| Secret | `SMARTERASP_FTP_PASSWORD` | Senha FTP privada. |
+| Variable | `SMARTERASP_FTP_SERVER_DIR` | **Diretório remoto correto do IIS do Eternnus**; p.ex. `./` se a conta FTP já abrir na raiz exclusiva do site, ou `./rpg/` se essa for a pasta física mapeada. Confirmar no painel/FTP antes do primeiro deploy. |
+
+Não reutilizar por suposição o caminho remoto de `replaystudio`. Uma pasta incorreta pode substituir arquivos de outro website. O workflow rejeita diretório ausente; ainda cabe ao operador conferir se o caminho corresponde ao aplicativo do domínio `rpg.eternnus.com`. Preferir credencial FTP restrita à própria aplicação.
+
+**Sequência:** checkout da revisão mesclada na main → .NET 10 restore/build/test → testes Node 22 → publish framework-dependent para IIS → validação contra `App_Data` e configurações privadas → teste real `tests/release.mjs` em banco temporário → geração da tela autossuficiente `app_offline.htm` a partir do splash, CSS, logo e fundo oficiais → validação de Secrets e pasta → `app_offline.htm` via FTPS → sincronização FTPS com tentativa de recuperação → remoção do marcador mesmo se upload falhar → verificação de `https://rpg.eternnus.com/health` (o banco precisa estar acessível).
+
+O HTML offline é produzido por `.github/scripts/build-app-offline.ps1` a cada publicação. A geração incorpora logos, cenário e estilos em `data:`/CSS inline, pois ANCM/IIS pode servir a mesma resposta offline até para requisições de assets. Uma nova visita vê a abertura medieval atual com texto de atualização e consulta `/health` até poder recarregar. Abas **já abertas** consultam `/health` e exibem o mesmo splash sem navegar nem recarregar, conservando os campos ainda presentes no DOM; após retorno saudável, escondem o overlay e pedem para salvar qualquer edição pendente antes de atualizar. Não confundir isso com salvamento automático nem garantir preservação de requisições em trânsito durante reinício, drafts de componentes descartados ou uploads iniciados.
+
+**Segurança de dados:** o FTP não envia `App_Data`, arquivos `.eml`, senhas, dados do PostgreSQL ou chaves de Data Protection; manter esses recursos persistidos fora da pasta de sincronização e com backup. Não executar `dotnet ef database update` automaticamente no deploy: gerar/revisar/aplicar migração idempotente em procedimento separado com backup, conforme seção 3. O deploy não cria banco PostgreSQL, SSL, domínio, configurações SMTP/OAuth ou Application Pool, e não prova compatibilidade de runtime IIS até a primeira publicação real. Reter capacidade de rollback com artefato de release anterior e backup adequado.
+
+**Limite do FTPS:** não há publicação atômica nem troca instantânea de versões: conexões WebSocket/WebRTC/long-poll e ações não concluídas são interrompidas na parada do processo. Histórico e progresso já confirmados no PostgreSQL permanecem; alterações que nunca chegaram ao servidor exigem salvar/repetir depois da atualização. Monitorar logs do GitHub Actions, IIS e `/health`.
