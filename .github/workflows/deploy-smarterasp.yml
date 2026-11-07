@@ -17,7 +17,7 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: windows-latest
     environment: production
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       DOTNET_NOLOGO: 'true'
       PUBLISH_DIR: artifacts/ftp-publish
@@ -95,6 +95,40 @@ jobs:
           ./.github/scripts/build-app-offline.ps1 -Output "$env:PUBLISH_DIR/app_offline.htm"
           if (-not (Test-Path "$env:PUBLISH_DIR/app_offline.htm")) { throw "No app_offline.htm generated" }
 
+      - name: Build EF Core production migration bundle
+        shell: pwsh
+        env:
+          ASPNETCORE_ENVIRONMENT: Production
+          DOTNET_ENVIRONMENT: Production
+          ConnectionStrings__Eternnus: ${{ secrets.ETERNNUS_DB_MIGRATION_CONNECTION }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ConnectionStrings__Eternnus)) {
+            throw 'Missing required production secret: ETERNNUS_DB_MIGRATION_CONNECTION'
+          }
+          dotnet tool restore
+          if ($LASTEXITCODE -ne 0) { throw 'EF tools restore failed' }
+          $bundleDir = 'artifacts/migration-bundle'
+          New-Item -ItemType Directory -Path $bundleDir -Force | Out-Null
+          dotnet ef migrations bundle --project apps/Eternnus.Web --startup-project apps/Eternnus.Web --configuration Release --output "$bundleDir/efbundle.exe" --force
+          if ($LASTEXITCODE -ne 0) { throw 'EF migrations bundle generation failed' }
+          Copy-Item 'apps/Eternnus.Web/appsettings.json' "$bundleDir/appsettings.json" -Force
+          if (-not (Test-Path "$bundleDir/efbundle.exe")) { throw 'Migration bundle is missing' }
+
+      - name: Validate database migration secret before downtime
+        shell: pwsh
+        env:
+          ETERNNUS_DB_MIGRATION_CONNECTION: ${{ secrets.ETERNNUS_DB_MIGRATION_CONNECTION }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ETERNNUS_DB_MIGRATION_CONNECTION)) {
+            throw 'Configure ETERNNUS_DB_MIGRATION_CONNECTION in the GitHub production environment'
+          }
+          # Host/Database/Username are required; never print the password or the connection string.
+          foreach ($part in @('Host', 'Database', 'Username')) {
+            if ($env:ETERNNUS_DB_MIGRATION_CONNECTION -notmatch "(?i)(^|;)\s*$part\s*=") {
+              throw "The production migration connection is missing $part"
+            }
+          }
+          Write-Host 'Production migration connection secret configured (value hidden).'
       - name: Validate isolated FTPS target and secrets
         shell: pwsh
         env:
@@ -128,6 +162,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Maintenance marker upload failed" }
           Start-Sleep -Seconds 15
 
+      - name: Apply pending EF Core migrations to production PostgreSQL
+        id: migrate
+        shell: pwsh
+        timeout-minutes: 15
+        env:
+          ASPNETCORE_ENVIRONMENT: Production
+          DOTNET_ENVIRONMENT: Production
+          ConnectionStrings__Eternnus: ${{ secrets.ETERNNUS_DB_MIGRATION_CONNECTION }}
+          Database__Migrate: 'false'
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ConnectionStrings__Eternnus)) {
+            throw 'Missing production migration connection'
+          }
+          $bundle = (Resolve-Path 'artifacts/migration-bundle/efbundle.exe').Path
+          Push-Location 'artifacts/migration-bundle'
+          try {
+            & $bundle
+            if ($LASTEXITCODE -ne 0) { throw 'Production PostgreSQL migration failed. IIS remains offline; manual recovery required.' }
+          } finally { Pop-Location }
+          Write-Host 'All pending production database migrations applied successfully.'
       - name: Publish to SmarterASP via FTPS (first attempt)
         id: upload1
         continue-on-error: true
@@ -172,8 +226,8 @@ jobs:
             throw "FTPS publish failed after retry"
           }
 
-      - name: Restore availability even when upload fails
-        if: always() && steps.offline.outcome == 'success'
+      - name: Bring the validated release online
+        if: always() && steps.offline.outcome == 'success' && steps.migrate.outcome == 'success' && steps.upload_result.outcome == 'success'
         shell: pwsh
         env:
           SMARTERASP_FTP_SERVER: ${{ secrets.SMARTERASP_FTP_SERVER }}
