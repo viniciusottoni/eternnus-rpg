@@ -214,3 +214,11 @@ WebRTC transmite bytes sem upload ao servidor. SessionService mantém apenas met
 ## ADR-032 — Conta no menu Mais e marca central no celular
 
 Por solicitação do usuário, o shell até 760 px mantém somente logo e subtítulo centralizados na faixa da marca, com altura de 78 px mais a área segura e menor espaçamento vertical. Perfil e saída passam para o painel “Mais” existente. Os mesmos nós de conta são reposicionados ao mudar o breakpoint, preservando atualização do perfil e o fluxo compartilhado de logout. No desktop, continuam na barra lateral. O cache público avança para v14; a lista permitida foi revisada e permanece igual, sem dados autenticados e sem atualização forçada de abas ativas.
+
+## ADR-033 — Deploy de PR mesclado na main com splash sem reload forçado
+
+**Decisão:** o workflow de publicação do Eternnus RPG foi criado na branch `feature/setup`, mas só publica no FTPS da SmarterASP.NET quando um PR for **mesclado em main**. A pasta remota deve ser informada explicitamente em uma variável de produção; Secrets FTP são fornecidos no GitHub, nunca no código. O build executa testes .NET/JS e verifica o pacote antes de interromper o IIS. Migrações PostgreSQL permanecem separadas e controladas.
+
+**Atualização visual:** o script gera `app_offline.htm` a partir do splash HTML/CSS e das imagens oficiais, todos incorporados para funcionar durante a parada de IIS. Novos acessos aguardam `/health` e recarregam. Abas existentes exibem a camada `#splash` sem navegação ou reload; depois, a camada é removida e o usuário é orientado a concluir edições antes de atualizar. O cache da PWA avança para v15 incluindo `maintenance.js`.
+
+**Limites:** não há garantia de preservar envios em trânsito ou edições em componentes já desmontados, nem de conexões WebRTC/WebSocket durante reinício. Dados gravados, banco, chaves de autenticação e diretórios privados precisam persistir fora da sincronização FTP.
