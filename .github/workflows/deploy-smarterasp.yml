@@ -64,6 +64,16 @@ jobs:
           if (Test-Path $env:PUBLISH_DIR) { Remove-Item $env:PUBLISH_DIR -Recurse -Force }
           dotnet publish apps/Eternnus.Web/Eternnus.Web.csproj -c Release --no-restore --self-contained false -o $env:PUBLISH_DIR
           if ($LASTEXITCODE -ne 0) { throw "Publish failed" }
+          # SmarterASP runs IIS on Windows. Native assets for Linux/macOS/ARM (~220 MB) are never
+          # loaded there; keep win (managed), win-x64 and win-x86 because the app pool bitness may vary.
+          $runtimes = Join-Path $env:PUBLISH_DIR 'runtimes'
+          if (Test-Path $runtimes) {
+            Get-ChildItem $runtimes -Directory |
+              Where-Object { $_.Name -notin @('win', 'win-x64', 'win-x86') } |
+              Remove-Item -Recurse -Force
+          }
+          $size = (Get-ChildItem $env:PUBLISH_DIR -File -Recurse | Measure-Object Length -Sum).Sum
+          Write-Host ("Publish package: {0:N1} MB" -f ($size / 1MB))
 
       - name: Validate publish contents
         shell: pwsh
@@ -80,6 +90,9 @@ jobs:
             $_.FullName -match '[\\/]App_Data[\\/]'
           })
           if ($private.Count -gt 0) { throw 'Publish contains development or private files' }
+          $foreign = @(Get-ChildItem (Join-Path $env:PUBLISH_DIR 'runtimes') -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notin @('win', 'win-x64', 'win-x86') })
+          if ($foreign.Count -gt 0) { throw 'Publish still contains non-Windows native runtimes' }
 
       - name: Smoke test the real published package
         shell: pwsh
@@ -185,52 +198,22 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Production PostgreSQL migration failed. IIS remains offline; manual recovery required.' }
           } finally { Pop-Location }
           Write-Host 'All pending production database migrations applied successfully.'
-      - name: Publish to SmarterASP via FTPS (first attempt)
-        id: upload1
-        continue-on-error: true
-        timeout-minutes: 10
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.SMARTERASP_FTP_SERVER }}
-          username: ${{ secrets.SMARTERASP_FTP_USERNAME }}
-          password: ${{ secrets.SMARTERASP_FTP_PASSWORD }}
-          local-dir: artifacts/ftp-publish/
-          server-dir: ${{ env.FTP_SERVER_DIR }}
-          protocol: ftps
-          state-name: .eternnus-rpg-ftps-state.json
-          log-level: standard
 
-      - name: Pause before FTPS retry
-        if: steps.upload1.outcome == 'failure'
+      # FTP-Deploy-Action (basic-ftp) lost the TLS data socket on this server (ECONNRESET) before
+      # uploading anything. curl.exe already uploads app_offline.htm here successfully, so the
+      # package uses the same client, in retried batches. Remote files are never deleted.
+      - name: Publish to SmarterASP via FTPS
+        id: upload
+        timeout-minutes: 25
         shell: pwsh
-        run: Start-Sleep -Seconds 30
-
-      - name: Publish to SmarterASP via FTPS (retry)
-        id: upload2
-        if: steps.upload1.outcome == 'failure'
-        continue-on-error: true
-        timeout-minutes: 10
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.SMARTERASP_FTP_SERVER }}
-          username: ${{ secrets.SMARTERASP_FTP_USERNAME }}
-          password: ${{ secrets.SMARTERASP_FTP_PASSWORD }}
-          local-dir: artifacts/ftp-publish/
-          server-dir: ${{ env.FTP_SERVER_DIR }}
-          protocol: ftps
-          state-name: .eternnus-rpg-ftps-state.json
-          log-level: standard
-
-      - name: Require successful FTPS upload
-        id: upload_result
-        shell: pwsh
-        run: |
-          if ('${{ steps.upload1.outcome }}' -ne 'success' -and '${{ steps.upload2.outcome }}' -ne 'success') {
-            throw "FTPS publish failed after retry"
-          }
+        env:
+          SMARTERASP_FTP_SERVER: ${{ secrets.SMARTERASP_FTP_SERVER }}
+          SMARTERASP_FTP_USERNAME: ${{ secrets.SMARTERASP_FTP_USERNAME }}
+          SMARTERASP_FTP_PASSWORD: ${{ secrets.SMARTERASP_FTP_PASSWORD }}
+        run: ./.github/scripts/ftps-upload.ps1 -LocalDir $env:PUBLISH_DIR -RemoteDir $env:FTP_SERVER_DIR
 
       - name: Bring the validated release online
-        if: always() && steps.offline.outcome == 'success' && steps.migrate.outcome == 'success' && steps.upload_result.outcome == 'success'
+        if: always() && steps.offline.outcome == 'success' && steps.migrate.outcome == 'success' && steps.upload.outcome == 'success'
         shell: pwsh
         env:
           SMARTERASP_FTP_SERVER: ${{ secrets.SMARTERASP_FTP_SERVER }}
