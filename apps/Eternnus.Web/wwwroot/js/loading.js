@@ -11,8 +11,10 @@ function render() {
   const visible = opening || maintenance || pending.size > 0;
   splash.dataset.mode = opening || maintenance ? "opening" : "operation";
   splash.setAttribute("aria-label", maintenance ? "Atualização do Eternnus RPG" : opening ? "Abertura do Eternnus RPG" : "Carregando sua mesa");
-  splash.querySelector(".splash-content h1").textContent = maintenance ? "Atualizando sua mesa…" : normalHeading;
-  splash.querySelector(".splash-content > p").textContent = maintenance ? "Sua jornada continua após a atualização." : normalMessage;
+  const heading = splash.querySelector?.(".splash-content h1");
+  const message = splash.querySelector?.(".splash-content > p");
+  if (heading) heading.textContent = maintenance ? "Atualizando sua mesa…" : normalHeading;
+  if (message) message.textContent = maintenance ? "Sua jornada continua após a atualização." : normalMessage;
   if (visible) {
     if (!splash.matches(":popover-open")) {
       previousFocus = document.activeElement;
@@ -35,8 +37,8 @@ function render() {
 }
 export function installLoading() {
   splash = document.querySelector("#splash");
-  normalHeading = splash.querySelector(".splash-content h1").textContent;
-  normalMessage = splash.querySelector(".splash-content > p").textContent;
+  normalHeading = splash.querySelector?.(".splash-content h1")?.textContent ?? "Carregando sua mesa…";
+  normalMessage = splash.querySelector?.(".splash-content > p")?.textContent ?? "O próximo capítulo está prestes a começar.";
   splash.setAttribute("popover", "manual");
   document.querySelector("#modal")?.addEventListener("cancel", (event) => {
     if (opening || pending.size) event.preventDefault();
