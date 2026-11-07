@@ -1,4 +1,5 @@
 import { installLoading, endOpening, withLoading } from "./loading.js";
+import { installMaintenanceWatcher } from "./maintenance.js";
 import { installMusic } from "./music.js";
 import { state } from "./state.js";
 import { installPwa } from "./pwa.js";
@@ -16,6 +17,7 @@ let opening = true,
   routeVersion = 0,
   dispose = null;
 installLoading();
+installMaintenanceWatcher();
 // A trilha tenta começar já durante a abertura; o navegador pode exigir o primeiro gesto.
 installMusic();
 installUi();
