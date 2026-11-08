@@ -241,12 +241,30 @@ jobs:
       - name: Verify production health over HTTPS
         if: success()
         shell: pwsh
+        env:
+          SMARTERASP_FTP_SERVER: ${{ secrets.SMARTERASP_FTP_SERVER }}
+          SMARTERASP_FTP_USERNAME: ${{ secrets.SMARTERASP_FTP_USERNAME }}
+          SMARTERASP_FTP_PASSWORD: ${{ secrets.SMARTERASP_FTP_PASSWORD }}
         run: |
+          $last = ''
           for ($attempt = 1; $attempt -le 12; $attempt++) {
             try {
               $response = Invoke-RestMethod -Uri "https://rpg.eternnus.com/health" -TimeoutSec 12 -Headers @{ 'Cache-Control' = 'no-cache' }
               if ($response.status -eq 'ok') { Write-Host "Production healthy"; exit 0 }
-            } catch { Write-Host "Health check pending ($attempt/12)" }
+            } catch {
+              $last = "$([int]$_.Exception.Response.StatusCode)"
+              Write-Host "Health check pending ($attempt/12) HTTP $last"
+            }
             Start-Sleep -Seconds 5
           }
-          throw "FTPS upload finished, but production health is not OK. Check IIS, PostgreSQL and HTTPS."
+          # HTTP 502.5 hides the cause. The app writes a sanitized record (types/codes, no secrets).
+          $remote = $env:FTP_SERVER_DIR.Substring(2) + 'App_Data/logs/startup-failure.txt'
+          $local = Join-Path $env:RUNNER_TEMP 'startup-failure.txt'
+          curl.exe --ssl-reqd --silent --show-error --user "$($env:SMARTERASP_FTP_USERNAME):$($env:SMARTERASP_FTP_PASSWORD)" --output $local "ftp://$($env:SMARTERASP_FTP_SERVER)/$remote"
+          if ($LASTEXITCODE -eq 0 -and (Test-Path $local)) {
+            Write-Host '--- App_Data/logs/startup-failure.txt ---'
+            Get-Content $local | ForEach-Object { Write-Host $_ }
+          } else {
+            Write-Host "No startup failure record on the server (curl exit $LASTEXITCODE). If HTTP is 502.5, the process may fail before .NET starts: check the .NET 10 runtime/ANCM in the SmarterASP panel."
+          }
+          throw "FTPS upload finished, but production health is not OK (last HTTP $last). Check IIS, PostgreSQL and HTTPS."

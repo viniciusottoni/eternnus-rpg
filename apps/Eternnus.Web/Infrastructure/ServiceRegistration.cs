@@ -92,7 +92,11 @@ public static class ServiceRegistration
         var keyDirectory = builder.Configuration["DataProtection:Directory"] ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "keys");
         Directory.CreateDirectory(keyDirectory);
         var dataProtection = builder.Services.AddDataProtection().SetApplicationName("EternnusRPG").PersistKeysToFileSystem(new DirectoryInfo(keyDirectory));
-        if (OperatingSystem.IsWindows()) dataProtection.ProtectKeysWithDpapi();
+        // Escopo de máquina: o DPAPI de usuário exige perfil carregado, o que pools compartilhados do IIS
+        // (SmarterASP) não oferecem; sem ele, antiforgery, login e OAuth falham com HTTP 500. É o mesmo
+        // escopo que o ASP.NET Core adota por padrão no IIS sem perfil. As chaves seguem fora de wwwroot,
+        // restritas pela ACL da identidade do site.
+        if (OperatingSystem.IsWindows()) dataProtection.ProtectKeysWithDpapi(protectToLocalMachine: true);
         builder.Services.AddScoped<AccountMail>(); builder.Services.AddScoped<ExternalAccounts>(); builder.Services.AddScoped<CampaignService>();
         builder.Services.AddScoped<ProfileService>();
         builder.Services.AddScoped<IAvatarSafety, AvatarSafety>();

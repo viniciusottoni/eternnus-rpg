@@ -246,3 +246,19 @@ Por solicitação do usuário, o shell até 760 px mantém somente logo e subtí
 **Motivo:** a configuração de produção é feita no painel do SmarterASP, que a grava no `web.config`. O upload do arquivo gerado apagava connection string e SMTP, e o app parava na validação de inicialização (HTTP 502.5).
 
 **Limites:** só o bloco de variáveis é preservado; demais ajustes manuais no `web.config` continuam sendo substituídos. Os valores passam pelo runner efêmero do GitHub e não são exibidos no log.
+
+## ADR-037 — Registro sanitizado de falha de inicialização
+
+**Decisão:** uma falha fatal na inicialização é gravada em `App_Data/logs/startup-failure.txt` (tipos, códigos e local; sem mensagens com dados) e o deploy a exibe quando `/health` não responde.
+
+**Motivo:** no IIS do SmarterASP a falha aparece apenas como HTTP 502.5, sem acesso ao Event Log; o stdout completo do ANCM incluiria logs de requisições e SQL, contrariando a regra de não registrar consultas ou mensagens de exceção.
+
+**Limites:** não cobre falhas anteriores ao .NET (runtime/ANCM ausente) nem diagnostica sozinho a causa: aponta tipo e código para a correção.
+
+## ADR-038 — Chaves de Data Protection com DPAPI de máquina
+
+**Decisão:** no Windows, o key ring em `DataProtection:Directory` é protegido com `ProtectKeysWithDpapi(protectToLocalMachine: true)`. A inicialização valida a proteção com um teste de proteger/ler antes de aceitar requisições.
+
+**Motivo:** em produção, `/api/auth/csrf` e `/api/auth/external/*` respondiam HTTP 500, e com isso o boot do cliente deixava login e botões sociais indisponíveis. O DPAPI de usuário exige perfil carregado, o que o pool compartilhado do SmarterASP não oferece. O escopo de máquina é o mesmo que o ASP.NET Core adota por padrão no IIS sem perfil.
+
+**Limites:** com DPAPI de máquina, qualquer processo do servidor que consiga ler os arquivos das chaves pode decifrá-las. O isolamento passa a depender da ACL da pasta, que fica fora de `wwwroot` e restrita à identidade do site. As chaves gravadas antes desta mudança deixam de ser lidas: cookies e tokens emitidos com elas expiram, e é preciso entrar de novo. A causa exata do 500 não foi lida no servidor; se o teste de inicialização falhar, o registro sanitizado mostra o tipo e o código.
