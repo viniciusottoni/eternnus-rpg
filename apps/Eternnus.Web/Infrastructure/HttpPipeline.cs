@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
@@ -9,6 +10,10 @@ public static class HttpPipeline
     {
         if (!Uri.TryCreate(app.Configuration["PublicUrl"], UriKind.Absolute, out var publicUrl) || (publicUrl.Scheme != "https" && !app.Environment.IsDevelopment())) throw new InvalidOperationException("Configure PublicUrl as a trusted HTTPS origin.");
         if (!app.Environment.IsDevelopment() && (app.Configuration["Mail:Mode"] == "Pickup" || string.IsNullOrWhiteSpace(app.Configuration["Smtp:Host"]))) throw new InvalidOperationException("Configure production SMTP.");
+        // Antiforgery, cookies de login e OAuth dependem da proteção de dados. Testar na inicialização
+        // deixa a causa no registro sanitizado de StartupFailure, em vez de HTTP 500 em toda escrita.
+        var probe = app.Services.GetRequiredService<IDataProtectionProvider>().CreateProtector("Eternnus.Startup.Probe.v1");
+        if (probe.Unprotect(probe.Protect("ok")) != "ok") throw new InvalidOperationException("Configure Data Protection key storage.");
     }
     public static void UseEternnusPipeline(this WebApplication app)
     {
