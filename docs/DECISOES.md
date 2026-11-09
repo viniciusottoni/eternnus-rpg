@@ -405,7 +405,7 @@ Consequências: foco, Esc, hover persistente, viewport e descarte precisam de te
 
 **Decisão:**
 - **Catálogo global gerenciado pelo Admin.** O mestre não envia arquivos: só busca por nome e reproduz. Envio, renomeação e exclusão ficam no Painel admin, com auditoria. A busca do mestre recebe só título, formato e duração.
-- **Limites e validação:** MP3, M4A (AAC) e OGG; 20 MiB por arquivo, 200 faixas e 2 GiB no catálogo; arquivo repetido (SHA-256) recusado. Validação estrutural própria (`AudioProbe`) e ClamAV pelo `IDocumentScanner` existente; áudio não passa pelos decodificadores de imagem. Quota serializada por `pg_advisory_xact_lock`.
+- **Limites e validação:** MP3, M4A (AAC) e OGG; 20 MiB por arquivo, 200 faixas e 2 GiB no catálogo; arquivo repetido (SHA-256) recusado. Validação estrutural própria (`AudioProbe`); antivírus removido pelo ADR-051; áudio não passa pelos decodificadores de imagem. Quota serializada por `pg_advisory_xact_lock`.
 - **Bytes em disco privado** (`Music:Directory`, padrão `App_Data/music`), metadados no PostgreSQL. Diferente dos mapas (bytea): o Range servido do disco não carrega o arquivo inteiro na memória a cada trecho e não infla a quota do banco compartilhado. Nomes opacos, gravação atômica, exclusão após commit e varredura de órfãos.
 - **Estado autoritativo em `GameSession`** (faixa, tocando, posição e instante de referência, repetição, versão). Escrita só pelo `SessionService`, com o fluxo comum da mesa.
 - **Bloqueios sem ciclo:** seleção bloqueia sessão → faixa (`FOR SHARE`); exclusão bloqueia só a faixa (`FOR UPDATE`) e recusa com `409` se alguma sessão ativa a usa.
@@ -437,3 +437,21 @@ Consequências: foco, Esc, hover persistente, viewport e descarte precisam de te
 - `tests/modals-ui.mjs` abre os modais alcançáveis em desktop e celular e acusa rolagem dupla, transbordo, `fieldset` padrão, ⓘ grande, tooltip no X e “Fechar” duplicado.
 - Cache público v29.
 
+**Complemento (mesmo dia):**
+- Formulários com altura única de 44 px e dicas automáticas só quando orientam.
+- Foco de campos por dentro e de botões colado; contorno interno em áreas com rolagem.
+- Fade de 160 ms em modais e popups, só com CSS e sem atrasar ações.
+- Classes de layout do modal saem ao abrir o próximo.
+- Novas verificações automáticas de alinhamento e foco cortado.
+- Cache v30.
+
+## ADR-051 — Áudio do catálogo sem antivírus
+
+**Contexto:** a produção roda em hospedagem compartilhada (SmarterASP.NET). O suporte confirmou que a aplicação não pode chamar o antivírus do servidor nem manter um `clamd` próprio; só VPS/Cloud permite. Migrar para VPS não é opção. Com o ClamAV obrigatório, todo envio de música respondia `503`.
+
+**Decisão:** o envio de áudio ao catálogo deixa de passar pelo `IDocumentScanner`. Continuam valendo: envio só pelo Admin (política Admin com MFA), limite de 20 MiB, validação estrutural completa pelo `AudioProbe`, SHA-256 contra duplicidade, disco privado fora de `wwwroot` e entrega com `nosniff`, CSP sandbox e `Cross-Origin-Resource-Policy: same-origin`. Documentos da biblioteca, PDFs de modelos e avatar continuam exigindo antivírus e seguem indisponíveis enquanto não houver scanner.
+
+**Consequências:**
+- Um arquivo de áudio infectado enviado por um Admin não seria detectado. O navegador só o reproduz; a plataforma não executa os bytes.
+- A segurança do envio depende da conta Admin (MFA) e da validação estrutural; decodificadores de áudio do navegador continuam sendo superfície externa.
+- Os erros `422`/`503` de scanner deixam de existir na rota de música.

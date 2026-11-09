@@ -965,6 +965,10 @@ button.party-button:hover {
   display: block;
   cursor: crosshair;
 }
+.board-canvas:focus {
+  /* Qualquer anel (inclusive o padrão do navegador) fica por dentro: o palco corta o que passa da borda. */
+  outline-offset: -4px;
+}
 .board-canvas:focus-visible {
   outline: 2px solid var(--bright);
   outline-offset: -4px;
@@ -2541,7 +2545,8 @@ dialog.fog-editor-modal {
 .interface-option span { display: inline-flex; align-items: center; min-height: 34px; padding: 0 12px; border-radius: 999px; color: var(--text); font-size: 13px; }
 .interface-option input:checked + span { color: #20160b; background: linear-gradient(115deg, #b9893d, #edc876 48%, #ba8a41); font-weight: 600; }
 .interface-option input:checked + span::before { content: "✓"; margin-right: 5px; }
-.interface-option input:focus-visible + span { outline: 2px solid var(--bright); outline-offset: 2px; }
+.interface-option input:focus-visible + span { outline: 2px solid var(--bright); outline-offset: 1px; }
+.interface-option input:checked:focus-visible + span { outline-color: var(--text); }
 /* Descrições continuam associadas (aria-describedby) e explicadas no ⓘ, sem ocupar a barra do topo. */
 .interface-toggle .form-help { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .top-separator { width: 1px; align-self: stretch; margin: 4px 6px; background: var(--line); }
@@ -2571,9 +2576,10 @@ dialog.scene-editor-modal #modal-body { flex: 1; min-height: 0; height: auto; ov
 .se-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .se-actions button { min-height: 44px; padding-inline: 16px; white-space: nowrap; }
 .se-actions #se-apply-slot:empty { display: none; }
-.scene-editor .interface-toggle { min-height: 44px; }
+.scene-editor .interface-toggle { min-height: 44px; padding: 4px; }
 .scene-editor .interface-toggle legend { display: inline-flex; align-items: center; padding: 0 8px 0 10px; line-height: 38px; }
-.scene-editor .interface-option span { min-height: 38px; padding: 0 14px; }
+.scene-editor .interface-option span { min-height: 34px; padding: 0 14px; }
+.scene-editor .interface-toggle legend { line-height: 34px; }
 .se-body { display: grid; grid-template-columns: 200px minmax(0, 1fr) 340px; gap: 12px; flex: 1; min-height: 0; }
 .se-tools { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
 .se-tool-group { display: grid; gap: 6px; }

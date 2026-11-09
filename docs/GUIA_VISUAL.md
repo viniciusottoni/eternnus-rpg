@@ -72,7 +72,7 @@ Texto funcional usa fontes do sistema. O produto não depende de serviço extern
 | Botão ⓘ `.help-button` | `help.helpButton` | 18 px visíveis, colado ao texto (dentro do título/legenda ou ao lado do label em `.field-label`); nome Ajuda: tema, expanded/controls/haspopup; área de toque por pseudo-elemento. |
 | Popup de ajuda `.help-popup` | `help.js` | Popover único não modal, sempre centralizado, fundo levemente escurecido, foco e retorno, fecha pelo X. Ver [AJUDA_CONTEXTUAL.md](AJUDA_CONTEXTUAL.md). |
 | Formulário | `ui.submitForm` | Impede submissão repetida, sinaliza `aria-busy`, preserva erro legível e restaura o botão. |
-| Modal | `ui.modal`, `#modal` | Cabeçalho fixo com título e X (sem tooltip e sem botão de texto “Fechar” duplicado); só o corpo rola, dentro da borda; formulários mantêm Cancelar. `fieldset` usa a moldura dourada discreta comum. Não abrir diálogos aninhados. |
+| Modal | `ui.modal`, `#modal` | Fade de 160 ms na entrada e na saída (só CSS: `@starting-style` + transição discreta; o fechamento é imediato para a lógica). Classes de layout (`wide`, editor de cena) saem ao abrir o próximo modal, não no `close`. Cabeçalho fixo com título e X (sem tooltip e sem botão de texto “Fechar” duplicado); só o corpo rola, dentro da borda; formulários mantêm Cancelar. `fieldset` usa a moldura dourada discreta comum. Não abrir diálogos aninhados. |
 | Banner de confirmação | `layout.renderHome` | Explica o bloqueio, mostra e-mail e oferece reenviar/já confirmei. Não promete entrega antes de resposta do servidor. |
 | Card de destino `.feature-card` | `layout.renderHome` | Acesso verificado usa link; pendente usa superfície não clicável com indicação de bloqueio. |
 | Linha `.campaign-row` | `campaigns.js` | Capa atmosférica, título, papel, metadados de atualização e ações. Ações vêm das capacidades retornadas e das regras compartilhadas. |
@@ -219,3 +219,14 @@ Cartões de cena (campanha e mesa) usam miniaturas reais de `mapThumbnail` e o e
 Estados obrigatórios: sem trilha, carregando, tocando, pausada, terminou, bloqueado pelo navegador, faixa indisponível, catálogo vazio (a mesa explica que as faixas vêm da administração), busca sem resultado, erro com nova tentativa, faixa em uso e comandos indisponíveis com motivo (`#st-why`). Não prometer sincronização perfeita nem reprodução automática.
 
 Celular (≤ 900 px): o selo ocupa linha própria no topo; alvos de 44 px no selo, nos controles e na lista; as abas do painel não quebram rótulo e rolam na horizontal. Movimento: pulso da nota e transição da barra removidos com `prefers-reduced-motion` e pausados em aba oculta.
+
+## Formulários: alinhamento e foco (revisão de 9 nov. 2026)
+
+- **Altura única:** controles de uma linha (texto, data/hora, select) têm 44 px. Botões em linha com campos usam a mesma altura.
+- **Barras de filtro:** levam `role="search"`, alinham pela base e não recebem dicas automáticas. Os botões descem juntos quando não cabem.
+- **Dicas automáticas:** só em campos obrigatórios, com mínimo, faixa numérica ou texto longo. Campo curto opcional não mostra “Até N caracteres”.
+- **Foco em campos de texto:** fica por dentro (borda clara + anel interno de 1 px). Nunca vaza nem é cortado.
+- **Foco em botões, links, caixas e opções:** contorno de 2 px colado (deslocamento de 2 px).
+- **Foco em áreas com rolagem** (corpo do modal, colunas do editor, abas, tabelas): contorno interno com faixa escura, para manter contraste no dourado. O tabuleiro usa contorno interno.
+- **Verificação automática:** `tests/forms-ui.mjs` (páginas) e `tests/modals-ui.mjs` (modais) aplicam `tests/support/form-alignment.mjs`. Controles na mesma linha precisam ter topo e base iguais (±1,5 px), e nenhum anel de foco pode ser cortado na borda do conteúdo rolável.
+

@@ -117,6 +117,6 @@ test("new public modules are in the explicit shell list and no audio or API path
     assert.ok(STATIC_PATHS.includes(`/js/${name}.js`), name);
   assert.ok(STATIC_PATHS.every((path) => !path.startsWith("/api/") && !/\.(mp3|m4a|ogg|opus)$/.test(path)));
   const worker = await readFile(new URL("../apps/Eternnus.Web/wwwroot/service-worker.js", import.meta.url), "utf8");
-  assert.match(worker, /eternnus-public-shell-v29/);
+  assert.match(worker, /eternnus-public-shell-v30/);
   assert.doesNotMatch(worker, /skipWaiting/);
 });

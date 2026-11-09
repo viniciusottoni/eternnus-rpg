@@ -2,6 +2,7 @@
 // Abre cada modal em desktop (1440×900) e celular (390×844), mede problemas de layout e gera capturas + folha de contato.
 import { chromium } from '../artifacts/qa-runtime/node_modules/playwright/index.mjs';
 import { startEnvironment } from './support/harness.mjs';
+import { formAlignmentIssues, focusClipIssues } from './support/form-alignment.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
@@ -50,6 +51,7 @@ try {
     ['m', `campaign/${C}/journal`, '[data-action=jr-schedule]', ['[data-action=jr-schedule]'], 'diario-data'],
     ['m', `campaign/${C}/journal`, '[data-action=jr-new]', ['[data-action=jr-new]'], 'diario-pista'],
     ['m', `campaign/${C}/prep`, '[data-action=pp-npc]', ['[data-action=pp-npc]'], 'npc-novo'],
+    ['m', `campaign/${C}/prep`, '[data-action=pp-scene]', ['[data-action=pp-scene]'], 'editor-cena'],
     ['m', `campaign/${C}/players`, '.page-tabs', ['[data-action=cp-remove]'], 'jogador-remover'],
     ['m', `campaign/${C}/resources`, '[data-action=ca-text]', ['[data-action=ca-text]'], 'acervo-texto'],
     ['m', `campaign/${C}/maps`, '[data-action=ca-folder]', ['[data-action=ca-folder]'], 'pasta-nova'],
@@ -95,7 +97,8 @@ try {
         const metrics = await page.evaluate(() => {
           const d = document.querySelector('#modal'), body = document.querySelector('#modal-body'), dr = d.getBoundingClientRect();
           const visible = (e) => e.checkVisibility() && e.getBoundingClientRect().width > 0;
-          const outside = [...body.querySelectorAll('*')].filter(visible).filter((e) => { const r = e.getBoundingClientRect(); return r.right > dr.right - 2 || r.left < dr.left + 2; }).slice(0, 4).map((e) => `${e.tagName}.${e.className}`.slice(0, 60));
+          const scrolled = (e) => { for (let x = e.parentElement; x && x !== body; x = x.parentElement) if (getComputedStyle(x).overflowX !== 'visible') return true; return false; };
+          const outside = [...body.querySelectorAll('*')].filter(visible).filter((e) => !scrolled(e)).filter((e) => { const r = e.getBoundingClientRect(); return r.right > dr.right - 2 || r.left < dr.left + 2; }).slice(0, 4).map((e) => `${e.tagName}.${e.className}`.slice(0, 60));
           const defaultFieldsets = [...body.querySelectorAll('fieldset')].filter(visible).filter((f) => getComputedStyle(f).borderTopStyle === 'groove').length;
           const helpSizes = [...body.querySelectorAll('.help-button')].filter(visible).map((b) => Math.round(b.getBoundingClientRect().width));
           return {
@@ -107,7 +110,9 @@ try {
             fechar: [...body.querySelectorAll('button')].filter((b) => visible(b) && b.textContent.trim() === 'Fechar').length,
           };
         });
-        const problems = Object.entries({ 'rolagem no diálogo': metrics.dialogScroll, 'transbordo horizontal': metrics.bodyHorizontal, 'fora da tela': !metrics.fitsViewport, 'fieldset padrão do navegador': metrics.defaultFieldsets > 0, 'ⓘ grande': metrics.bigHelp > 0, 'tooltip no X': metrics.closeTip, 'botão Fechar duplicado': metrics.fechar > 0, [`elemento fora da borda (${metrics.outside.join(', ')})`]: metrics.outside.length > 0 }).filter(([, v]) => v).map(([k]) => k);
+        await page.keyboard.press('Shift');
+        const alignment = [...await page.evaluate(formAlignmentIssues, '#modal-body'), ...await page.evaluate(focusClipIssues, '#modal')];
+        const problems = [...alignment, ...Object.entries({ 'rolagem no diálogo': metrics.dialogScroll, 'transbordo horizontal': metrics.bodyHorizontal, 'fora da tela': !metrics.fitsViewport, 'fieldset padrão do navegador': metrics.defaultFieldsets > 0, 'ⓘ grande': metrics.bigHelp > 0, 'tooltip no X': metrics.closeTip, 'botão Fechar duplicado': metrics.fechar > 0, [`elemento fora da borda (${metrics.outside.join(', ')})`]: metrics.outside.length > 0 }).filter(([, v]) => v).map(([k]) => k)];
         await page.locator('#modal').screenshot({ path: `${dir}/${name}-${vp}.png` });
         results.push({ name, vp, problems });
         console.log(`${problems.length ? '✗' : '✓'} ${name}-${vp}${problems.length ? ' · ' + problems.join('; ') : ''}`);

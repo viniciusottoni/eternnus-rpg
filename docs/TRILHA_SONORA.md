@@ -9,7 +9,7 @@ As músicas vêm de um catálogo global do servidor, gerenciado pela administra�
 - **Direitos:** a interface pede que a administração envie apenas músicas com autorização de uso (composição própria, licença adquirida ou domínio público). Não há download de músicas de terceiros nem faixas externas incluídas. Catálogo vazio: a mesa informa que as faixas são disponibilizadas pela administração.
 - **Formatos:** MP3 (MPEG Layer III), M4A (MP4 com faixa de som AAC `mp4a` e nenhuma de vídeo) e OGG (um único fluxo Vorbis ou Opus). MP3 é o recomendado: OGG pode não tocar em alguns aparelhos Apple.
 - **Limites:** 20 MiB por arquivo; requisição multipart até 20 MiB + 64 KiB (exceção enumerada em `UploadLimits` para POST `/api/admin/music`); 200 faixas e 2 GiB no catálogo (`MusicLimits.MaxCatalogBytes`). Limitador `catalog`: 30 envios a cada 5 minutos por usuário. Listas paginadas em 20, ordenadas por título, página limitada a 1–100.000; busca por título até 100 caracteres.
-- **Validação:** `Domain/AudioProbe.cs` percorre o arquivo inteiro. Quadros, páginas ou caixas precisam cobrir os bytes, o que recusa imagens, executáveis, extensão trocada e conteúdo arbitrário acrescentado (`415`). Em seguida o `IDocumentScanner` (ClamAV) dos documentos verifica o original: falha do scanner responde `503` e nada é gravado; ameaça responde `422`. O áudio não passa pelos decodificadores de imagem nem é recodificado. Arquivo idêntico (mesmo SHA-256) já presente responde `409`. A duração vem da estrutura (soma de quadros MP3, última página OGG, `mvhd` do M4A) e fica nula quando o arquivo não a informa.
+- **Validação:** `Domain/AudioProbe.cs` percorre o arquivo inteiro. Quadros, páginas ou caixas precisam cobrir os bytes, o que recusa imagens, executáveis, extensão trocada e conteúdo arbitrário acrescentado (`415`). Não há antivírus no áudio (ADR-051): só Admin com MFA envia e a hospedagem compartilhada não oferece clamd. O áudio não passa pelos decodificadores de imagem nem é recodificado. Arquivo idêntico (mesmo SHA-256) já presente responde `409`. A duração vem da estrutura (soma de quadros MP3, última página OGG, `mvhd` do M4A) e fica nula quando o arquivo não a informa.
 - **Quota sob concorrência:** no PostgreSQL, os envios são serializados por `pg_advisory_xact_lock`; contagem, espaço e duplicidade são reconferidos dentro da transação.
 - **Título:** opcional no envio; sem ele, usa o nome do arquivo sem extensão e com `_` trocado por espaço. Caracteres de controle e de formatação são removidos, espaços colapsados, até 120 caracteres. O nome original nunca forma caminho.
 
@@ -75,7 +75,7 @@ Fora dessas condições, `404` sem revelar se a faixa existe. Respostas com HTTP
 - Bytes já entregues ao navegador não podem ser revogados; parar ou excluir só impede novas leituras.
 - Não há reprodução automática garantida nem sincronização perfeita: rede, economia de energia, decodificação e o próprio navegador causam pequenas diferenças entre dispositivos.
 - `SessionSignals` é memória do processo; com vários hosts a propagação cai para até ~5 s, como no resto da mesa. Vários hosts também exigiriam armazenamento de áudio compartilhado.
-- Assinaturas do ClamAV e saúde do scanner de produção são externas. Carga e consumo de disco reais não foram medidos.
+- Áudio não passa por antivírus; um arquivo infectado enviado por Admin não seria detectado (ver ADR-051). Carga e consumo de disco reais não foram medidos.
 
 ## Validação
 

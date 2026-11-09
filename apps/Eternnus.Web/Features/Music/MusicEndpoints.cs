@@ -18,14 +18,14 @@ public static class MusicEndpoints
 
         var admin = app.MapGroup("/api/admin/music").RequireAuthorization("Verified").RequireAuthorization(PlatformAccess.AdminPolicy);
         admin.MapGet("", (string? search, int? page, MusicCatalogService s, CancellationToken ct) => s.AdminListAsync(search, page ?? 1, ct));
-        admin.MapPost("", async (HttpRequest request, IDocumentScanner scanner, MusicCatalogService s, ClaimsPrincipal u, CancellationToken ct) =>
+        admin.MapPost("", async (HttpRequest request, MusicCatalogService s, ClaimsPrincipal u, CancellationToken ct) =>
         {
             if (!request.HasFormContentType) throw new RuleException(400, "Envie o áudio pelo formulário.");
             IFormCollection form;
             try { form = await request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = MusicLimits.MaxFileBytes, ValueLengthLimit = 512, ValueCountLimit = 4, KeyLengthLimit = 16, MultipartHeadersLengthLimit = 4096, MultipartHeadersCountLimit = 8 }, ct); }
             catch (InvalidDataException) { throw new RuleException(413, "Formulário inválido ou arquivo acima de 20 MB."); }
             if (form.Files.Count != 1 || form.Files[0].Name != "file" || form.Keys.Any(k => !UploadFields.Contains(k))) throw new RuleException(400, "Envie um arquivo de áudio e, se quiser, o título.");
-            var upload = await AudioUploads.ReadAsync(form.Files[0], scanner, ct);
+            var upload = await AudioUploads.ReadAsync(form.Files[0], ct);
             return Results.Ok(await s.AddAsync(Id(u), form["title"].ToString(), upload, ct));
         }).RequireRateLimiting("catalog");
         admin.MapPut("/{trackId:guid}", (Guid trackId, MusicTrackInput x, MusicCatalogService s, ClaimsPrincipal u, CancellationToken ct) => s.RenameAsync(Id(u), trackId, x, ct));
