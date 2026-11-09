@@ -9,7 +9,7 @@ const publish=resolve(root,process.env.ETERNNUS_PUBLISH_DIR || 'artifacts/postgr
 await access(join(publish,'Eternnus.Web.dll'));
 const temp=await mkdtemp(join(tmpdir(),'eternnus-release-'));
 const origin='http://127.0.0.1:5192';
-const server=spawn('dotnet',[join(publish,'Eternnus.Web.dll'),'--urls',origin],{cwd:publish,windowsHide:true,env:{...process.env,DOTNET_ENVIRONMENT:'Development',ASPNETCORE_ENVIRONMENT:'Development',AllowedHosts:'localhost;127.0.0.1',PublicUrl:origin,Database__Provider:'SqliteTest',Database__SqlitePath:join(temp,'release.db'),Database__Migrate:'true',Mail__Mode:'Pickup',Mail__PickupDirectory:join(temp,'mail'),DataProtection__Directory:join(temp,'keys')},stdio:['ignore','pipe','pipe']});
+const server=spawn('dotnet',[join(publish,'Eternnus.Web.dll'),'--urls',origin],{cwd:publish,windowsHide:true,env:{...process.env,DOTNET_ENVIRONMENT:'Development',ASPNETCORE_ENVIRONMENT:'Development',AllowedHosts:'localhost;127.0.0.1',PublicUrl:origin,Database__Provider:'SqliteTest',Database__SqlitePath:join(temp,'release.db'),Database__Migrate:'true',Mail__Mode:'Pickup',Mail__PickupDirectory:join(temp,'mail'),DataProtection__Directory:join(temp,'keys'),Music__Directory:join(temp,'music')},stdio:['ignore','pipe','pipe']});
 let logs='';server.stdout.on('data',x=>logs+=x);server.stderr.on('data',x=>logs+=x);
 try {
  let ready=false;for(let n=0;n<100;n++){try{ready=(await fetch(origin+'/health')).ok;}catch{}if(ready||server.exitCode!==null)break;await new Promise(r=>setTimeout(r,100));}
