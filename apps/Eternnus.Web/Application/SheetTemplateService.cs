@@ -61,7 +61,8 @@ public class SheetTemplateService(GameDb db, AuditService audit)
     /// <summary>Modelos utilizáveis (com versão publicada e não arquivados), opcionalmente de um sistema.</summary>
     public async Task<object> ListPublishedAsync(Guid? systemId, CancellationToken ct)
     {
-        var query = db.SheetTemplates.AsNoTracking().Where(t => t.ArchivedAt == null && t.CurrentVersionId != null);
+        // Modelos privados de campanha nunca entram no catálogo.
+        var query = db.SheetTemplates.AsNoTracking().Where(t => t.ArchivedAt == null && t.CurrentVersionId != null && t.CampaignId == null);
         if (systemId is { } sid) query = query.Where(t => t.RpgSystemId == sid);
         return await query
             .OrderByDescending(t => t.RpgSystemId == RpgSystem.FreeSystemId).ThenByDescending(t => t.IsDefault).ThenBy(t => t.Name).ThenBy(t => t.Id)
@@ -83,7 +84,7 @@ public class SheetTemplateService(GameDb db, AuditService audit)
     {
         var staff = await IsStaffAsync(user, ct);
         var t = await db.SheetTemplates.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct);
-        if (t is null || (!staff && t.CurrentVersionId is null)) throw NotFound();
+        if (t is null || (!staff && t.CurrentVersionId is null) || !await PrivateReadableAsync(t, user, ct)) throw NotFound();
         var system = await db.RpgSystems.AsNoTracking().Where(s => s.Id == t.RpgSystemId).Select(s => s.Name).SingleAsync(ct);
         var current = t.CurrentVersionId is null ? null : await db.SheetTemplateVersions.AsNoTracking().Where(v => v.Id == t.CurrentVersionId)
             .Select(v => new { v.Id, v.Number, v.PublishedAt }).SingleOrDefaultAsync(ct);
@@ -127,6 +128,7 @@ public class SheetTemplateService(GameDb db, AuditService audit)
     {
         var v = await db.SheetTemplateVersions.AsNoTracking().SingleOrDefaultAsync(x => x.Id == versionId && x.TemplateId == id, ct) ?? throw NotFound();
         if (v.PublishedAt is null && !await IsStaffAsync(user, ct)) throw NotFound();
+        if (!await PrivateReadableAsync(await db.SheetTemplates.AsNoTracking().SingleAsync(t => t.Id == id, ct), user, ct)) throw NotFound();
         return VersionView(v);
     }
 
@@ -135,6 +137,7 @@ public class SheetTemplateService(GameDb db, AuditService audit)
         var v = await db.SheetTemplateVersions.AsNoTracking().Where(x => x.Id == versionId && x.TemplateId == id)
             .Select(x => new { x.PdfFileId, x.PublishedAt }).SingleOrDefaultAsync(ct) ?? throw NotFound();
         if (v.PublishedAt is null && !await IsStaffAsync(user, ct)) throw NotFound();
+        if (!await PrivateReadableAsync(await db.SheetTemplates.AsNoTracking().SingleAsync(t => t.Id == id, ct), user, ct)) throw NotFound();
         if (v.PdfFileId is null) throw new RuleException(404, "Esta versão não tem PDF de fundo.");
         return await db.Files.AsNoTracking().SingleOrDefaultAsync(f => f.Id == v.PdfFileId, ct) ?? throw NotFound();
     }
@@ -161,7 +164,7 @@ public class SheetTemplateService(GameDb db, AuditService audit)
     public async Task<object> ManageAsync(Guid? systemId, bool archived, int page, CancellationToken ct)
     {
         page = Math.Clamp(page, 1, 100000);
-        var query = db.SheetTemplates.AsNoTracking().Where(t => archived ? t.ArchivedAt != null : t.ArchivedAt == null);
+        var query = db.SheetTemplates.AsNoTracking().Where(t => (archived ? t.ArchivedAt != null : t.ArchivedAt == null) && t.CampaignId == null);
         if (systemId is { } sid) query = query.Where(t => t.RpgSystemId == sid);
         var total = await query.CountAsync(ct);
         var items = await query
@@ -223,7 +226,7 @@ public class SheetTemplateService(GameDb db, AuditService audit)
         if (!await db.RpgSystems.AnyAsync(s => s.Id == x.SystemId && s.Active, ct)) throw new RuleException(400, "Escolha um sistema de RPG ativo.");
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await LockSystemAsync(x.SystemId, ct);
-        if (await db.SheetTemplates.AnyAsync(t => t.RpgSystemId == x.SystemId && t.Name == name, ct)) throw DuplicateName();
+        if (await db.SheetTemplates.AnyAsync(t => t.RpgSystemId == x.SystemId && t.Name == name && t.CampaignId == null, ct)) throw DuplicateName();
         var t = new SheetTemplate { RpgSystemId = x.SystemId, Name = name, Description = description, CreatedById = user };
         var v = new SheetTemplateVersion { TemplateId = t.Id, Number = 1, Pages = [new SheetPage { Index = 0, Width = SheetTemplateLimits.A4Width, Height = SheetTemplateLimits.A4Height }] };
         db.SheetTemplates.Add(t);
@@ -599,6 +602,10 @@ public class SheetTemplateService(GameDb db, AuditService audit)
             if (!double.IsFinite(f.FontSize) || f.FontSize < SheetTemplateLimits.MinFontSize || f.FontSize > SheetTemplateLimits.MaxFontSize)
                 Add($"tamanho de fonte entre {SheetTemplateLimits.MinFontSize} e {SheetTemplateLimits.MaxFontSize}.");
             if (!SheetTemplateLimits.Aligns.Contains(f.Align)) Add("alinhamento inválido.");
+            if (f.Track is not null && !SheetSummary.Tracks.Contains(f.Track)) Add("destaque da ficha resumida inválido.");
+            if (f.Track == SheetSummary.Resource && f.Type is not SheetFieldTypes.Number) Add("recursos ajustáveis na mesa precisam ser numéricos.");
+            if (f.MaxField is not null && !fields.Any(o => o.Name == f.MaxField && o.Type is SheetFieldTypes.Number or SheetFieldTypes.Computed)) Add("o teto do recurso deve apontar para um campo numérico.");
+            if ((f.Section ?? "").Length > 60) Add("seção com mais de 60 caracteres.");
         }
         var keys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var a in actions.Take(SheetTemplateLimits.MaxActions + 1))
@@ -612,6 +619,7 @@ public class SheetTemplateService(GameDb db, AuditService audit)
             if (!ActionKinds.All.Contains(a.Kind)) Add("tipo deve ser ataque, habilidade, magia ou item.");
             if ((a.Formula ?? "").Length > 300) Add("fórmula com mais de 300 caracteres.");
             if ((a.Description ?? "").Length > 300) Add("descrição com mais de 300 caracteres.");
+            if ((a.Group ?? "").Length > 30) Add("agrupamento com mais de 30 caracteres.");
         }
         return issues;
     }
@@ -626,7 +634,8 @@ public class SheetTemplateService(GameDb db, AuditService audit)
             void Add(string message) => issues.Add(new(f.Name, null, $"Campo {f.Name}: {message}"));
             if (f.Page >= pages.Count) Add($"está na página {f.Page + 1}, mas a ficha tem {pages.Count}.");
             if (f.Role == SheetFieldRoles.Name && f.Type != SheetFieldTypes.Text) Add("o papel Nome exige um campo de texto.");
-            if (f.Role is not null and not SheetFieldRoles.Name && f.Type is not (SheetFieldTypes.Number or SheetFieldTypes.Computed)) Add("este papel exige um campo numérico ou calculado.");
+            if (f.Role == SheetFieldRoles.Senses && f.Type is not (SheetFieldTypes.Text or SheetFieldTypes.TextArea)) Add("o papel Sentidos exige um campo de texto.");
+            if (f.Role is not null && !SheetFieldRoles.IsText(f.Role) && f.Type is not (SheetFieldTypes.Number or SheetFieldTypes.Computed)) Add("este papel exige um campo numérico ou calculado.");
             if (f.Type == SheetFieldTypes.Computed && string.IsNullOrWhiteSpace(f.Formula)) Add("campo calculado precisa de fórmula.");
             if (f.Type == SheetFieldTypes.Select && f.Options.Count == 0) Add("lista de opções vazia.");
             if (!string.IsNullOrEmpty(f.Default))
@@ -756,8 +765,16 @@ public class SheetTemplateService(GameDb db, AuditService audit)
         var query = db.Database.IsNpgsql()
             ? db.SheetTemplates.FromSqlInterpolated($"SELECT * FROM \"SheetTemplates\" WHERE \"Id\" = {id} FOR UPDATE")
             : db.SheetTemplates.Where(x => x.Id == id);
-        return await query.SingleOrDefaultAsync(ct) ?? throw NotFound();
+        var t = await query.SingleOrDefaultAsync(ct) ?? throw NotFound();
+        // O editor da equipe não altera modelos privados de campanha: eles pertencem ao mestre e não concedem privilégio de equipe.
+        return t.CampaignId != null ? throw NotFound() : t;
     }
+
+    /// <summary>Modelo privado: legível pelo mestre e membros da campanha, e por quem tem ficha presa a ele.</summary>
+    async Task<bool> PrivateReadableAsync(SheetTemplate t, string user, CancellationToken ct) =>
+        t.CampaignId is not { } cid ||
+        await db.Campaigns.AnyAsync(c => c.Id == cid && (c.OwnerId == user || db.Members.Any(m => m.CampaignId == cid && m.UserId == user)), ct) ||
+        await db.Characters.AnyAsync(c => c.OwnerId == user && db.SheetTemplateVersions.Any(v => v.Id == c.TemplateVersionId && v.TemplateId == t.Id), ct);
 
     async Task LockSystemAsync(Guid systemId, CancellationToken ct)
     {

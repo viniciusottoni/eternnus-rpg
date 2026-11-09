@@ -1,5 +1,6 @@
 import { withLoading } from "./loading.js";
 let csrf;
+export function clearCsrf() { csrf = undefined; }
 export class ApiError extends Error {
   constructor(message, status, errors = []) {
     super(message);
@@ -40,7 +41,14 @@ async function request(path, method, body, signal, responseType) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    if (response.status === 401 && !["/auth/me", "/auth/login"].includes(path))
+    if (data.code === "csrf_expired") {
+      clearCsrf();
+      // A perda do cookie também invalida o CSRF. Só consultar a identidade;
+      // uma escrita interrompida nunca deve ser repetida automaticamente.
+      try { await request("/auth/me", "GET", undefined, signal, "json"); }
+      catch (error) { if (error.status === 401) throw error; }
+    }
+    if (response.status === 401 && path !== "/auth/login" && !path.startsWith("/auth/two-factor/"))
       window.dispatchEvent(new Event("session-expired"));
     throw new ApiError(
       data.message ||

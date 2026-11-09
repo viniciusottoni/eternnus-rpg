@@ -3,12 +3,13 @@ import { installMaintenanceWatcher } from "./maintenance.js";
 import { installMusic } from "./music.js";
 import { state } from "./state.js";
 import { installPwa } from "./pwa.js";
-import { api, renewCsrf } from "./api.js";
+import { installHelp } from "./help.js";
+import { api, renewCsrf, clearCsrf } from "./api.js";
 import { $, esc, button, toast, installUi } from "./ui.js";
-import { renderAuth, refreshUser, installAuth } from "./auth.js";
+import { renderAuth, refreshUser, installAuth, takeReturnRoute } from "./auth.js";
 import { renderHome, shell, installNavMore } from "./layout.js";
 import { renderCampaigns, installCampaigns } from "./campaigns.js";
-import { canAccess, openingDeadline, PLATFORM_ROUTES, isSafeSegment, canOpenPlatform } from "./policy.js";
+import { canAccess, openingDeadline, PLATFORM_ROUTES, isSafeSegment, canOpenPlatform, safeReturnRoute, isInviteCode } from "./policy.js";
 import { parseRoute, isGuid } from "./session-policy.js";
 const started = performance.now();
 let opening = true,
@@ -21,6 +22,7 @@ installMaintenanceWatcher();
 // A trilha tenta começar já durante a abertura; o navegador pode exigir o primeiro gesto.
 installMusic();
 installUi();
+installHelp();
 installAuth();
 installCampaigns();
 installPwa();
@@ -43,12 +45,23 @@ async function renderRoute() {
     return;
   }
   if (!state.user) {
+    if (!state.returnRoute) state.returnRoute = safeReturnRoute(requestedRoute());
     renderAuth(requestedRoute() === "register" ? "register" : "login");
     return;
   }
   // Activity is a CSRF-protected write; profile GET remains read-only.
   api("/auth/activity", "POST", undefined, { background: true }).catch(() => {});
   const view = requestedRoute();
+  // Convite: conta pendente guarda o código no servidor e vê o aviso de verificação; conta verificada vê a prévia.
+  const [root, inviteCode] = view.split("/");
+  if (root === "invite") {
+    if (!isInviteCode(inviteCode)) { renderHome(); return; }
+    const module = await import("./invite.js");
+    if (current !== routeVersion) return;
+    if (!state.user.verified) { await module.keepPendingInvite(inviteCode); state.pendingInvite = true; renderHome(); return; }
+    await module.renderInvite(inviteCode);
+    return;
+  }
   if (
     !canAccess(state.user, view) ||
     ["overview", "login", "register"].includes(view)
@@ -110,7 +123,12 @@ async function renderRoute() {
     await renderProfile();
     return;
   }
-  const allowed = ["characters", "dice", "history"];
+  // "Mesa rápida" virou a página One-shot; links antigos para #dice seguem para ela.
+  if (view === "dice") {
+    location.hash = "one-shot";
+    return;
+  }
+  const allowed = ["characters", "history"];
   if (allowed.includes(view)) {
     shell(view);
     state.characters = await api("/characters");
@@ -131,8 +149,18 @@ function failure(error) {
 }
 window.addEventListener("hashchange", () => route().catch(failure));
 window.addEventListener("session-expired", () => {
+  if (!state.user) return;
+  state.returnRoute = safeReturnRoute(requestedRoute());
+  state.sessionExpired = true;
+  ++routeVersion;
+  dispose?.();
+  dispose = null;
+  $("#modal").close();
   state.user = null;
   state.campaign = null;
+  state.liveTable = null;
+  state.campaigns = []; state.characters = [];
+  clearCsrf();
   if (!opening) renderAuth();
 });
 
@@ -141,6 +169,10 @@ async function boot() {
     await renewCsrf();
     state.providers = await api("/auth/providers");
     await refreshUser();
+    if (state.user) {
+      const destination = takeReturnRoute();
+      if (destination) history.replaceState(null, "", "/#" + destination);
+    }
   } catch (error) {
     bootError = error;
   }

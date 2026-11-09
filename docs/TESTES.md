@@ -1,6 +1,154 @@
 # Validação
 
+## Catálogo de músicas do servidor e trilha sonora da sessão (ADR-049) — 9 de novembro de 2026
+
+Validação local com bancos PostgreSQL exclusivos de teste e diretório de áudio temporário (`Music__Directory` do harness). Nenhuma partida real, ClamAV real ou aparelho físico foi usado. Revalidado depois da mudança de direção: catálogo global enviado pelo Admin; mestre só busca e reproduz.
+
+| Verificação | Resultado |
+| --- | --- |
+| `dotnet build Eternnus.sln` | 0 erros, 0 avisos |
+| `dotnet test tests/Eternnus.Tests` | 691 passaram, 0 falhas. Novos: `AudioProbeTests` (MP3/OGG/M4A sintéticos, trilha oficial, PNG/executável/arquivo truncado/poliglota recusados), `SoundtrackStateTests` (posição, pausa, fim, repetição, duração desconhecida, relógio anterior), `MusicCatalogTests` (busca paginada só com campos de apresentação, página extrema, quotas de faixas e bytes, arquivo repetido 409, auditoria de envio/renomeação/exclusão, revisão, exclusão do arquivo, varredura de órfãos, comandos com versão 409, faixa inexistente 404, entrada tardia, bytes só para participante presente e faixa selecionada, exclusão em uso 409, encerramento limpa a trilha) |
+| `node --test tests/*.test.mjs` | 137 passaram; `soundtrack-policy.test.mjs` (9): posição esperada, estimativa de relógio, correção de desvio com histerese/intervalo, ordem dos estados, textos de estado, validação local, preferência pessoal, lista PWA e cache v28 sem `skipWaiting` |
+| `node tests/soundtrack.mjs` | 154 verificações PostgreSQL: gestão só para Admin com MFA (mestre/jogador/visitante 403), 415 para PNG renomeado e executável, upload acima do limite recusado (413 ou conexão encerrada pelo Kestrel), campo extra 400, arquivo repetido 409, duração calculada, nomes opacos no disco, auditoria, busca do mestre só com `id/title/format/durationMs`, página extrema sem erro, revisão, prévia do Admin com Range, Range 206/sufixo/416 com bytes idênticos para o jogador, `no-store`/`nosniff`, consulta ao vivo acordada pelo comando (< 5 s), eventos `music` fora do payload do jogador, comandos concorrentes 200/409, pausa/busca/retomada, entrada tardia, seleção na mesa × exclusão no catálogo serializadas, parada, encerramento sem bytes, quota de 200 faixas, catálogo preservado ao excluir campanha |
+| Integrações existentes | `sessions`, `campaign-assets`, `table-play`, `scene-editor`, `admin` e `migrations` (banco legado preservado) aprovados |
+| `node tests/soundtrack-ui.mjs` | 48 verificações em dois Chrome headless independentes (mestre e jogador, cookies separados; catálogo aberto por um Admin), 1.440 × 900 e 390 × 844; sem erro de página/CSP; capturas em `artifacts/qa/trilha-sonora/` |
+
+Medidas da última execução (posição do `<audio>` − posição esperada pelo estado do servidor): mestre × jogador tocando 76 ms; após selecionar −259/−225 ms; pausados −69/0 ms; após buscar 1:00 0 ms; após retomar −215 ms; após desvio artificial de +6 s −174 ms; após reconectar (contexto offline enquanto o mestre avançava 20 s) −386 ms; após recarregar e ativar −654 ms (dentro da tolerância de 700 ms; reduzido aos poucos pela velocidade). Os dois navegadores rodaram na mesma máquina e no mesmo relógio: não medem latência de rede real nem diferença de relógio entre aparelhos.
+
+O UI verificou: Painel admin → Músicas (lista, quota, busca e busca vazia, envio pela interface com título sugerido, exclusão bloqueada da faixa tocando com motivo visível), painel da mesa (busca no catálogo e seleção), trilha global oculta durante a sessão e restaurada ao parar, “Ativar áudio da sessão” e alinhamento após o clique, jogador sem comandos do mestre, silenciar/volume pessoais sem afetar o mestre, pausa, busca na faixa, repetição, correção de desvio, reconexão, recarga, alvos de 44 px e controles acima da barra inferior no celular, descarte do áudio ao sair da mesa.
+
+Limitações: o Chrome sob automação concede ativação nas avaliações do Playwright, então o bloqueio de reprodução automática do jogador foi **emulado** por script de teste (`play()` rejeita com `NotAllowedError` até um clique confiável). A política real de Safari/Chrome em aparelho, iOS (volume fixo), suspensão física do aparelho e aba oculta real não foram verificados. ClamAV usou a exceção de desenvolvimento (`Uploads:AllowUnscanned`). Carga não medida.
+
+## Editor de cenas e interface Básica/Completa (ADR-048) — 8 de novembro de 2026
+
+Validação local, com bancos PostgreSQL exclusivos de teste (nenhuma partida real foi usada):
+
+| Verificação | Resultado |
+| --- | --- |
+| Compilação .NET | Sem erros nem avisos de compilação |
+| `SceneEditorTests` (SQLite, novo) | 12 passaram: arranjo privado sem apresentar e validado; salvar não muda a mesa; aplicar por partes com revisão obsoleta 409; camada na mesa fica pendente, aplicar preserva exploração e portas; duas cenas no mesmo mapa independentes; retomar × reiniciar; imagem sem grade; grade com deslocamento; improviso e "Salvar como cena"; sessão anterior sem snapshot; regras puras de `ScenePrep` |
+| Classes .NET impactadas | 116 passaram (`SceneEditor`, `SessionService`, `TableFog`, `TablePlay*`, `CampaignAssets`, `TableRules`, `UploadLimits`, `Profile`, `TemporaryImage`) |
+| JavaScript | `scene-policy.test.mjs` (9, novo), `pwa`, `service-worker`, `frontend`, `fog-policy`, `play-policy`: 42 passaram |
+| `node tests/scene-editor.mjs` (novo) | 83 verificações PostgreSQL: preferência de interface; preparação privada fora do payload do jogador; snapshot do texto; corrida edição × aplicar sem 500 e sem texto não aplicado; duas gravações concorrentes da preparação (200/409); imagem sem grade só durante a apresentação; retomar; improviso |
+| Integrações existentes | `migrations` (banco legado preservado), `table-fog` 73, `table-play` 88, `campaign-assets` 79 |
+| QA de navegador (`artifacts/qa-scenes.mjs`) | 21 capturas em 1.440 × 1.000 e viewport móvel 390 × 844, sem overflow horizontal nem erro de página |
+
+O QA verificou:
+- editor iniciando em "Selecionar e mover", com Básica por padrão;
+- escolha por miniatura e marcador adicionado pelo teclado (setas + Enter);
+- troca Básica → Completa preservando nome digitado, seleção e "Alterações não salvas";
+- simulação rotulada e salvar sem alterar a mesa;
+- aviso "Alterações não aplicadas à mesa" e aba Cenas com prévia privada;
+- paleta ao vivo agrupada e aplicação explícita do texto;
+- jogador sem controle de interface nem notas privadas.
+
+Capturas em `artifacts/qa/scenes-*.png` e relatório em `scenes-report.json`.
+
+A inspeção visual das capturas levou a três correções:
+- posição estável de "Revelar/Cobrir área" nas duas interfaces;
+- tochas e braseiros oficiais deixaram de contar como "ajuste avançado";
+- botões do celular esticados pelo motivo de indisponibilidade da ajuda contextual.
+
+`artifacts/qa-play.mjs` foi atualizado para os novos seletores e reexecutado: 23 capturas, sem overflow horizontal nem erro de página.
+
+**Complemento (mesmo dia):**
+- simulação do editor com a visão da ficha do personagem escolhido (`simulateView`);
+- "Aplicar" com a parte opcional `tokens` e atalho para "Reiniciar cena" quando o cenário mudou;
+- mesa no celular com o mapa logo após o topo e aviso de pendência numa linha;
+- controle de Interface compacto;
+- reabrir a aba Cenas recarrega a lista;
+- cache v26.
+
+| Verificação | Resultado |
+| --- | --- |
+| Compilação .NET | Sem erros nem avisos |
+| `SceneEditorTests` | 13 passaram (novo: recolocar marcadores preserva exploração, incrementa a revisão; 400 sem parte; 409 em cena de texto) |
+| Classes .NET impactadas (`SceneEditor`, `SessionService`, `TableFog`, `TablePlay*`, `Preparation*`, `CampaignAssets*`) | 63 passaram |
+| JavaScript (todos os `tests/*.test.mjs`) | 128 passaram; `scene-policy.test.mjs` cobre `simulateView` (parede bloqueia a visão, luz de foco, revelação manual, filtro de marcadores) |
+| `node tests/scene-editor.mjs` | 92 verificações PostgreSQL, em duas execuções. Novo: corrida "recolocar × mover" sem 500 e sem marcador duplicado. A corrida de gravação da preparação passou a usar duas edições reais diferentes; antes, uma das gravações não mudava nada e o resultado dependia da ordem. |
+| `artifacts/qa-scenes.mjs` | 23 capturas (novas `editor-simulation-character-desktop`, `editor-simulation-group-desktop`), asserções de mapa visível sem rolar no celular, grupo do mestre fora da vista Mapa, descrição da interface fora do topo e "Recolocar" desmarcado |
+| `artifacts/qa-play.mjs` | 23 capturas, sem overflow horizontal nem erro de página |
+
+Não houve teste em aparelho físico, medição de carga nem publicação.
+
+## Ajuda contextual (ADR-047) — 8 de novembro de 2026
+
+Modelo e inventário em [AJUDA_CONTEXTUAL.md](AJUDA_CONTEXTUAL.md). Integração inclui o editor e o uso de mapas/cenas Básica/Completa do trabalho paralelo (ADR-048). Não houve alteração de backend, contrato HTTP ou migração por esta entrega.
+
+| Comando executado | Resultado real | Evidência |
+| --- | --- | --- |
+| `dotnet build Eternnus.sln --nologo -v minimal` | Aprovado; 0 avisos, 0 erros | `artifacts/help-build.log` |
+| `dotnet test Eternnus.sln --logger 'trx;LogFileName=help-contextual.trx' --results-directory artifacts/test-results --nologo -v minimal` | 675 passaram; 0 falhas, 0 ignorados | `artifacts/help-dotnet.log`, `artifacts/test-results/help-contextual.trx` |
+| `node --test tests/*.test.mjs` | 128 passaram; 0 falhas | `artifacts/help-frontend.log` |
+| `node tests/help-ui.mjs` | 271 verificações; 34 capturas; nenhum erro de página/CSP | `artifacts/qa/ajuda-contextual/report.json`, `accessibility.json` |
+| `node tests/help-interactions.mjs` | 18 verificações; nenhuma falha; mais 3 capturas | `artifacts/qa/ajuda-contextual/interactions.json` |
+
+Os 13 testes unitários novos estão em `help-policy.test.mjs`, `help-catalog.test.mjs` e `help-fields.test.mjs`: chaves/limites, audiência por papel/contexto, rotas internas, referências do catálogo, congelamento/texto puro, ausência de title nativo, limite de tooltip, arquivos públicos explicitamente enumerados, escape e compatibilidade de campos/senhas e paginação indisponível. O teste de integridade exige ponto de acesso para os 65 conceitos.
+
+Playwright usa Chrome/Chromium local, viewports de **1440 × 900** e **390 × 844**, PostgreSQL exclusivo criado pelo harness e contas sintéticas. `help-ui.mjs` usa movimento normal no desktop e `reducedMotion: reduce` no celular. Verificou teclado em uma tela de cada uma das onze áreas; nomes por snapshots de acessibilidade; tooltip por hover e foco, permanência no próprio tooltip e Esc sem mover foco; toque sem tooltip; ⓘ focado/expanded, Esc e retorno; popup dentro do modal e na mesa imersiva; folha móvel acima da barra fixa; editor Básica/Completa; ausência de overflow horizontal e de erros de CSP.
+
+As interações adicionais verificaram carregando antes da chegada do catálogo, falha e nova tentativa sem toast, troca de conceito no único popup, clique fora e retorno de foco, chave desconhecida omitida, substituição real do gatilho pela consulta ao vivo, foco no gatilho novo, primeiro Esc fechando ajuda e segundo Esc cancelando o modo do mapa, bloqueio de aria-disabled antes do handler, remoção do gatilho sem foco no body e histórico aberto diretamente reconhecendo o Mestre. As 37 capturas finais ficam em `artifacts/qa/ajuda-contextual/`; capturas de tentativas intermediárias foram removidas.
+
+Pré-requisitos para repetir o QA: ambiente Docker/PostgreSQL do harness, assembly Debug e Playwright em `artifacts/qa-runtime` (mesmo runtime das revisões anteriores; somente ferramenta de teste, sem dependência nova no produto). As portas isoladas são 5258 e 5259. Os contextos bloqueiam service workers para testar importação/falha sem mistura de caches; a lista e as exclusões da PWA são verificadas pela suíte frontend. O ciclo real de instalação/atualização da PWA não foi repetido nesta revisão.
+
+Limitações: sem leitor de tela real, aparelho físico, teclado virtual, Safari/iOS, credenciais SMTP/SSO reais, publicação ou medição de carga. A revisão local e os snapshots não substituem esses testes. Abertura compartilhada permanece em 3.000 ms.
+
 Esta página define como validar a entrega e manter o comportamento nas próximas alterações. Resultados de execução devem ser registrados pelo trabalho que executou os comandos; a presença de um teste no repositório não significa que ele passou no ambiente de produção.
+
+## Condução independente do sistema (ADR-046) — 8 de novembro de 2026
+
+Validação local, com bancos PostgreSQL exclusivos de teste:
+
+| Verificação | Resultado |
+| --- | --- |
+| Compilação .NET | Sem avisos nem erros |
+| Testes .NET | 663 passaram, incluindo `TablePlayRulesTests` (regras puras) e `TablePlayServiceTests` (SQLite) |
+| JavaScript | 106 passaram, incluindo `play-policy.test.mjs` e a paridade de `TableSettings.PlayMode` |
+| `node tests/table-play.mjs` | 88 verificações PostgreSQL: convite → verificação → personagem → mesa; modo livre e tático; rolagens às cegas e privadas sem vazamento; resposta concorrente a pedido de teste (200/409); arquivar × iniciar concorrentes; espera recuperável da one-shot; reconexão; conversão com quotas; limpeza após o prazo |
+| Integrações existentes | `sessions` 185, `campaign-assets` 79, `account-limits` 79, `progress` 133, `table-fog` 73, `character-sheets` 200, `sheet-templates` 156 |
+| `smoke.mjs` | **Falha pré-existente**: espera excluir uma campanha com sessão ativa (204), mas `CampaignService.DeleteAsync` já recusava com 409 no `HEAD`. Não alterado neste trabalho. |
+| QA de navegador (`artifacts/qa-play.mjs`) | 23 capturas em 1.440 × 1.000 e 390 × 844, sem overflow horizontal nem erro de página |
+
+O QA verificou:
+- início com "Retomar mesa";
+- primeiros passos;
+- diário e cenas;
+- mesa do mestre: rolagens, pedidos e "Mais ferramentas";
+- mesa do jogador no modo livre, sem "Encerrar a vez";
+- ficha resumida sem vida e nível artificiais;
+- construtor de rolagens;
+- troca Mapa/Ficha/Conversa preservando o texto digitado;
+- convite por link no celular.
+
+Capturas em `artifacts/qa/play-*.png` e relatório em `play-report.json`.
+
+Mudança de expectativa: `campaign-assets.mjs` e `SessionServiceTests` agora esperam que a saída do mestre de uma one-shot **não** apague a mesa; `/end` apaga.
+
+Não houve publicação, teste de carga, validação em aparelho físico nem medição de ganho de usabilidade.
+
+## Jornada, atlas e acabamento visual — 8 de novembro de 2026
+
+Validação desta alteração, em ambiente local com bancos PostgreSQL exclusivos de teste:
+
+| Verificação | Resultado |
+| --- | --- |
+| Compilação .NET | Sem avisos ou erros |
+| Testes .NET | 610 passaram; TRX em `artifacts/test-results/evolution.trx` |
+| JavaScript | 86 passaram, incluindo marcos sugeridos e paridade da legenda tática |
+| Integração progressão | 133 verificações PostgreSQL |
+| Integração sessões | 184 verificações PostgreSQL |
+| Integração Guilda | 218 verificações PostgreSQL |
+| QA de navegador | 54 verificações de página/viewport em duas passagens; sem overflow horizontal ou erros de página |
+| Mapas | Oito cenários exibidos no catálogo; sete tilesets conferidos na mesa, com movimento normal e reduzido |
+| Revisão de diff | Sem erros de espaço em branco |
+
+As 535 verificações HTTP cobrem XP, idempotência, tetos diários, histórico reconhecido sem mutação em GET, cartão público, auditoria administrativa, fechamento explícito de one-shot preservando XP após cascade, sessão única, permissões, presença, turnos e Guilda. Os testes de mapas verificam retangularidade, símbolos válidos, ao menos seis entradas e conectividade de todas as casas caminháveis. Limitações de concorrência do resumo de XP permanecem documentadas em `PROGRESSAO_CENARIOS.md`.
+
+QA com Chrome/Playwright em 1.440 × 1.000 e 390 × 844: início, login/cadastro, campanhas, one-shots, personagens/ficha, conta, biblioteca, suporte, Guilda, progressão/ranking, administração/fichas-modelo, campanha/atlas/recursos/configurações, sessões, resumo/linha do tempo e mesa. Conferidos busca sem acentos no seletor, troca real de mapa e preferência de movimento. Revisão visual dos screenshots incluiu progressão, atlas, mapas, login móvel, ficha móvel e histórico. Não equivale a validar todos os estados de todas as páginas ou aparelhos físicos.
+
+Evidências: `artifacts/qa/evolution-*.png`, `evolution-report.json` e `evolution-extra-report.json`; roteiro local `artifacts/qa-evolution.mjs` e sua opção `--extra`. Reprodução dos testes: `dotnet test Eternnus.sln`, `node --test tests/*.test.mjs`, `node tests/progress.mjs`, `node tests/sessions.mjs`, `node tests/guild.mjs`.
+
+Não houve publicação em produção, alteração do esquema, teste de carga, validação SMTP/SSO real ou instalação em dispositivo físico. Dados existentes e alterações anteriores do checkout foram preservados.
 
 ## Preparação
 
@@ -26,8 +174,9 @@ Executar o build Debug antes da integração, que inicia diretamente seu assembl
 
 ```powershell
 dotnet test tests/Eternnus.Tests/Eternnus.Tests.csproj --nologo
-node --test tests/frontend.test.mjs tests/loading.test.mjs tests/pwa.test.mjs tests/service-worker.test.mjs tests/session-policy.test.mjs
+node --test tests/auth.test.mjs tests/frontend.test.mjs tests/loading.test.mjs tests/pwa.test.mjs tests/service-worker.test.mjs tests/session-policy.test.mjs
 node tests/smoke.mjs
+node tests/login-session.mjs
 node tests/sessions.mjs
 ```
 
@@ -39,6 +188,7 @@ node tests/sessions.mjs
 | `service-worker.test.mjs` | Código real do worker em ambiente isolado: bypass de API/OAuth, fallback de link sensível, cache público e instalação sem cookies. | Plataforma de service worker simulada; requer revisão no navegador. |
 | `session-policy.test.mjs` | Regras puras da mesa no cliente: rotas, comandos habilitados, alcance, barras de vida, feeds e recuo da consulta ao vivo. | Não substitui revisão no navegador. |
 | `smoke.mjs` | Fluxos HTTP com PostgreSQL real, links de e-mail, isolamento, CRUD, permissões, concorrência e regressões de jogo. | Não mede carga nem entrega SMTP externa. |
+| `login-session.mjs` | Persistência explícita, cookie sem persistência no login comum, novo cliente HTTP, saída global com CSRF, revogação entre dispositivos, isolamento de outra conta e MFA do administrador com PostgreSQL real. | Usa banco exclusivo; OAuth real exige credenciais. |
 | `sessions.mjs` | Mesa com PostgreSQL real e três contas: abertura concorrente (uma vence, outra `409`), campanha online, entrada com ficha, long-poll acordado por escrita, turnos, ações e rolagens, movimento, mapa/marcadores, vida e ficha com antes/depois, notas privadas, presença, histórico/busca, encerramento e perda de acesso. | Não mede carga nem múltiplos processos. |
 
 Com a prévia local executando em `http://localhost:5180`, conferir os arquivos efetivamente servidos:
@@ -222,3 +372,21 @@ QA automatizada com Chrome/Playwright em 1.440 × 900 e 390 × 844, movimento re
 Reprodução dos novos testes após build: node tests/account-limits.mjs, node tests/campaign-assets.mjs, node tests/temporary-images.mjs; demais comandos seguem as seções anteriores. A migração de legado usa os scripts gerados por dotnet ef migrations script e tests/migrations.mjs, em banco temporário próprio. Nenhum banco normal ou volume foi apagado.
 
 Não foram executados SMTP/SSO/antivírus/moderação reais, IIS/HTTPS de produção, instalação física Android/iOS, carga ou conectividade WebRTC entre redes/NAT externos. Arquivos são recusados em produção sem scanner configurado. Redes restritivas podem exigir STUN/TURN; esta execução demonstrou conexão entre navegadores locais. A migração foi validada em bancos de teste e não representa publicação/migração automática da produção.
+
+
+## Névoa, iluminação e visão — 8 de novembro de 2026
+
+- `dotnet test`: 638 testes, incluindo `FogRulesTests` (alcance circular, parede, canto diagonal, simetria, legenda oficial, sentidos, caminho, detecção e máscara de imagem) e `TableFogSessionTests` (criatura no escuro fora do payload/eventos, movimento por casas conhecidas com mensagem genérica, luz da ficha × sobrescrita, detecção por percepção e sentido, escopo sessão/campanha, "ver como", continuidade e recomeço da exploração, alcance do turno pelos papéis `movement`/`reach` e movimento sem limite quando o modelo não define Deslocamento).
+- `node --test tests/*.test.mjs`: 99 testes, incluindo `fog-policy.test.mjs` (bitset igual ao servidor, legenda, linha de visão, prévia de luz, alcance com névoa, pintura local, campos de configuração e papéis de ficha iguais aos do servidor e área do alcance de ataque).
+- `node tests/table-fog.mjs`: 73 verificações em PostgreSQL (migração, filtragem por jogador, movimento, corrida pintura × ajuste × leitura sem 500, escopos, preparação com revisão/409, imagem mascarada e "ver como", continuidade entre sessões e reset). `sessions.mjs` e `campaign-assets.mjs` passam a desligar a névoa na campanha para manter a cobertura das regras clássicas; ambos aprovados, assim como `migrations.mjs`, `character-sheets.mjs` e `sheet-templates.mjs`.
+- Revisão no navegador (Playwright, 1366×860 e 390×844): visão do jogador, visão do mestre com paleta, pintura por arraste, "ver como", modal de configuração com escolha de escopo e editor de preparação; sem rolagem horizontal no celular e alvos da paleta com 44 px. Turno do jogador com casas de movimento, área de ataque e arraste do boneco (movimento gravado no servidor). Capturas em `artifacts/qa/fog-*.png` e `artifacts/qa/turn-*.png`. `tests/support/fog-demo.mjs` sobe um ambiente manual para revisão.
+- Não validado: carga/latência da geração de imagens mascaradas e do cálculo de luz com muitos jogadores.
+
+## Login persistente — 8 de novembro de 2026
+
+- `dotnet build Eternnus.sln --nologo`: aprovado, sem avisos ou erros. `dotnet test tests/Eternnus.Tests/Eternnus.Tests.csproj --no-build --nologo`: 637 testes aprovados. Os 14 casos de `LoginSessionTests` usam HTTP/Kestrel, pipeline, cookies, CSRF e Identity reais, SQLite isolado e relógio controlado: janela de oito horas, teto de 24 horas, prazo fixo de 14 dias, renovação, confirmação de e-mail, cookie legado, MFA/expiração do desafio, administrador, alteração de senha, logout local/global e state/callback de Google/Discord com escolha verdadeira/falsa e query adulterada.
+- `node --test tests/auth.test.mjs tests/frontend.test.mjs tests/loading.test.mjs tests/pwa.test.mjs tests/service-worker.test.mjs tests/session-policy.test.mjs`: 34 testes aprovados. Novos casos conferem rota interna, falha MFA sem descartar o desafio, consulta de identidade após CSRF expirado e ausência de repetição automática de escrita.
+- `node tests/login-session.mjs`: 42 verificações aprovadas com PostgreSQL real em banco exclusivo; cookies persistente/não persistente, CSRF obrigatório, revogação entre dispositivos sem afetar outra conta e administrador com MFA sem persistência longa.
+- Playwright/Chromium com arquivos reais e APIs simuladas, em 1.440 × 1.000 e 390 × 844: opção inicialmente desmarcada, teclado, alvo de 44 px, envio booleano, retorno à conta após senha/OAuth, modal de saída global, erro/nova tentativa, aviso de expiração e descarte do polling real de `table.js` após resposta `401`. Sem erros JavaScript ou overflow horizontal. Capturas `artifacts/qa/login-session-1440.png`, `login-session-390.png`, `logout-all-1440.png` e `logout-all-390.png` inspecionadas visualmente. Cache v20, lista pública revisada sem novos caminhos.
+- O smoke geral foi executado, mas parou em `tests/smoke.mjs:501`: esperava `204` ao excluir uma campanha com sessão em andamento e recebeu o `409` da regra de `CampaignService`. Não foi declarado aprovado nem ajustado neste trabalho de autenticação.
+- Limites: não houve login externo real com credenciais Google/Discord, entrega SMTP real, teste de carga, publicação ou conferência em aparelho físico. As chaves privadas e bancos normais foram preservados; não há nova migração nesta funcionalidade.

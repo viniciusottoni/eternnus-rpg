@@ -23,6 +23,8 @@ try {
   check([me.xp, me.level, me.levelXp, me.nextLevelXp, me.percent], [0, 1, 0, 100, 0], "initial progress");
   ok(me.achievements.length >= 12 && me.achievements.every((a) => !a.unlocked && a.title && a.icon && a.description), "achievement catalog, all locked");
   check(me.history, [], "no history yet");
+  ok(me.achievements.every(a => a.current === 0 || a.counter === "level"), "achievement counters start empty");
+  ok(me.achievements.every(a => a.threshold > 0 && a.counter), "achievement progress contract");
   const characterRule = me.rules.find((r) => r.reason === "character_created");
   check([characterRule.amount, characterRule.dailyLimit, characterRule.today], [10, 3, 0], "character rule");
   check(me.rules.find((r) => r.reason === "staff_bonus").amount, null, "staff bonus is variable");
@@ -60,17 +62,20 @@ try {
   await chief(`/api/sessions/${long.id}/join`, "POST", {}, 204);
   await ana(`/api/sessions/${long.id}/join`, "POST", { characterId: first.id }, 204);
   sql(`UPDATE "Sessions" SET "StartedAt" = now() - interval '45 minutes' WHERE "Id"='${long.id}'`);
+  sql(`UPDATE "SessionParticipants" SET "JoinedAt" = now() - interval '40 minutes' WHERE "SessionId"='${long.id}'`);
   await chief(`/api/sessions/${long.id}/end`, "POST", undefined, 204);
-  check(sql(`SELECT "Amount" FROM "XpEntries" WHERE "SourceKey"='session_played:${long.id}:${q(anaId)}'`), "30", "player xp");
-  check(sql(`SELECT "Amount" FROM "XpEntries" WHERE "SourceKey"='session_mastered:${long.id}'`), "50", "master xp");
+  check(sql(`SELECT "Amount" FROM "XpEntries" WHERE "SourceKey"='session_played:${long.id}:${q(anaId)}'`), "50", "player xp");
+  check(sql(`SELECT "Amount" FROM "XpEntries" WHERE "SourceKey"='session_mastered:${long.id}'`), "60", "master xp");
   me = await ana("/api/progress/me");
-  check([me.xp, me.history[0].label], [75, "Sessão jogada"], "session xp in history");
+  check([me.xp, me.history[0].label], [95, "Sessão jogada"], "session xp in history");
   ok(me.achievements.find((a) => a.key === "first_session").unlocked, "first session achievement");
+  check(me.achievements.find(a => a.key === "sessions_3").current, 1, "intermediate session progress");
+  ok(me.achievements.find(a => a.key === "paths_3").unlocked, "diverse activities recognized");
 
   // ---------- Perfil público: sem e-mail, sem contas não verificadas ----------
   const card = await bruno("/api/progress/users/" + encodeURIComponent(anaId));
   check(Object.keys(card).sort(), ["achievements", "avatarUrl", "id", "level", "name", "role", "xp"], "public contract");
-  check([card.name, card.xp, card.level, card.role], ["Ana", 75, 1, "common"], "public card values");
+  check([card.name, card.xp, card.level, card.role], ["Ana", 95, 1, "common"], "public card values");
   check(Object.keys(card.achievements[0]).sort(), ["icon", "key", "title"], "public achievement fields");
   ok(!JSON.stringify(card).includes("@"), "no e-mail in public profile");
   await bruno("/api/progress/users/nao-existe", "GET", undefined, 404);
@@ -88,11 +93,11 @@ try {
   const all = await ana("/api/progress/leaderboard");
   check(all.period, "all", "default period");
   check(all.items.map((r) => r.name), ["Bruno", "Ana", "Chefe"], "all-time order, unverified excluded");
-  check(all.items.map((r) => r.xp), [510, 75, 70], "all-time xp");
+  check(all.items.map((r) => r.xp), [510, 95, 80], "all-time xp");
   check([all.items[1].rank, all.items[1].isMe, all.items[0].isMe], [2, true, false], "rank and me flag");
   ok(!JSON.stringify(all).includes("@"), "no e-mail in leaderboard");
   const week = await ana("/api/progress/leaderboard?period=week");
-  check(week.items.map((r) => [r.name, r.xp]), [["Ana", 75], ["Chefe", 70], ["Bruno", 10]], "weekly sums the last 7 days");
+  check(week.items.map((r) => [r.name, r.xp]), [["Ana", 95], ["Chefe", 80], ["Bruno", 10]], "weekly sums the last 7 days");
   check((await ana("/api/progress/leaderboard?period=<x>")).period, "all", "unknown period falls back");
 
   // ---------- Admin: bônus e recálculo ----------
@@ -107,12 +112,12 @@ try {
   await chief("/api/progress/admin/nao-existe/bonus", "POST", { amount: 50, reason: "Usuário inexistente" }, 404);
   await chief(bonus, "POST", { amount: 50, reason: "Sem CSRF" }, 400, { csrf: false });
   const granted = await chief(bonus, "POST", { amount: 250, reason: "Organizou o evento de inverno" });
-  check([granted.applied, granted.xp, granted.level], [250, 325, 3], "bonus applied");
+  check([granted.applied, granted.xp, granted.level], [250, 345, 3], "bonus applied");
   me = await ana("/api/progress/me");
   check([me.history[0].label, me.history[0].amount], ["Bônus da equipe", 250], "bonus in history");
   ok(me.unlocks.find((u) => u.key === "guild_category:regras-e-sistemas").unlocked, "unlocks follow the level");
   const removed = await chief(bonus, "POST", { amount: -500, reason: "Correção de lançamento duplicado" });
-  check([removed.applied, removed.xp, removed.level], [-325, 0, 1], "xp never below zero");
+  check([removed.applied, removed.xp, removed.level], [-345, 0, 1], "xp never below zero");
   await chief(bonus, "POST", { amount: -10, reason: "Nada para remover" }, 409);
   check(sql(`SELECT count(*) FROM "Audit" WHERE "Action"='progress.bonus' AND "TargetId"='${q(anaId)}'`), "2", "bonus audited");
   check(sql(`SELECT sum("Amount") FROM "XpEntries" WHERE "UserId"='${q(anaId)}'`), "0", "entries sum matches");
@@ -130,7 +135,29 @@ try {
   sql(`UPDATE "GuildCategories" SET "MinLevelToPost"=4 WHERE "Slug"='regras-e-sistemas'`);
   check((await ana("/api/progress/me")).unlocks.find((u) => u.key === "guild_category:regras-e-sistemas").level, 4, "category level from database");
 
-  console.log(`PASS: ${env.count()} progression assertions with real PostgreSQL. Character/session XP, daily limit, achievements, public profile, leaderboard and audited admin adjustments verified.`);
+  // Marcos novos são projetados a partir do histórico, sem mutação em GET ou data inventada.
+  const persistedBefore = sql(`SELECT count(*) FROM "Achievements" WHERE "UserId"='${q(brunoId)}'`);
+  for (let i = 0; i < 3; i++) sql(`INSERT INTO "XpEntries" ("UserId","Reason","Amount","SourceKey","CreatedAt") VALUES ('${q(brunoId)}','session_played',30,'session_played:legacy-${i}',now() - interval '10 days')`);
+  sql(`UPDATE "AspNetUsers" SET "Xp"="Xp"+90 WHERE "Id"='${q(brunoId)}'`);
+  const legacy = (await bruno("/api/progress/me")).achievements.find(a => a.key === "sessions_3");
+  check([legacy.current, legacy.threshold, legacy.unlocked, legacy.unlockedAt], [3, 3, true, null], "historical milestone without fabricated timestamp");
+  ok((await ana(`/api/progress/users/${brunoId}`)).achievements.some(a => a.key === "sessions_3"), "public profile recognizes the same historical milestone");
+  check(sql(`SELECT count(*) FROM "Achievements" WHERE "UserId"='${q(brunoId)}'`), persistedBefore, "progress GETs do not persist achievements");
+
+  // One-shot: recompensa explícita sobrevive à limpeza, inclusive para quem saiu antes.
+  const one = await chief("/api/one-shots", "POST", { name: "Uma noite na estalagem", description: "", system: "Sistema livre" });
+  const oneDetail = await chief(`/api/campaigns/${one.campaignId}`);
+  await ana("/api/campaigns/join", "POST", { code: oneDetail.inviteCode });
+  await ana(`/api/sessions/${one.sessionId}/join`, "POST", { characterId: first.id }, 204);
+  sql(`UPDATE "Sessions" SET "StartedAt"=now()-interval '15 minutes' WHERE "Id"='${one.sessionId}'`);
+  sql(`UPDATE "SessionParticipants" SET "JoinedAt"=now()-interval '15 minutes' WHERE "SessionId"='${one.sessionId}'`);
+  await ana(`/api/sessions/${one.sessionId}/leave`, "POST", undefined, 204);
+  await chief(`/api/sessions/${one.sessionId}/end`, "POST", undefined, 204);
+  check(sql(`SELECT count(*) FROM "Campaigns" WHERE "Id"='${one.campaignId}'`), "0", "one-shot content removed");
+  check(sql(`SELECT "Amount" FROM "XpEntries" WHERE "SourceKey"='session_played:${one.sessionId}:${q(anaId)}'`), "50", "player keeps one-shot XP after leaving and cleanup");
+  check(sql(`SELECT "Amount" FROM "XpEntries" WHERE "SourceKey"='session_mastered:${one.sessionId}'`), "60", "master keeps one-shot XP after cleanup");
+
+  console.log(`PASS: ${env.count()} progression assertions with real PostgreSQL. Character/session/one-shot XP, daily limit, historical milestones, read-only GETs, public profile, leaderboard and audited admin adjustments verified.`);
 } catch (error) {
   console.error(env.logs().slice(-6000));
   throw error;

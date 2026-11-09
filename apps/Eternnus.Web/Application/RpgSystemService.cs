@@ -6,6 +6,7 @@ namespace Eternnus.Web;
 
 public record RpgSystemInput(string Name, string? Slug, string? Description);
 public record RpgSystemUpdate(string Name, string Slug, string? Description, bool Active, int Revision);
+public record RpgSystemTableSettingsInput(TableSettings? Settings, int Revision);
 
 /// <summary>Sistemas de RPG: listagem pública (somente ativos) e CRUD administrativo auditado.
 /// O "Sistema livre" (<see cref="RpgSystem.FreeSystemId"/>) nunca é excluído nem desativado.</summary>
@@ -50,7 +51,9 @@ public partial class RpgSystemService(GameDb db, AuditService audit)
     public async Task<object> ListActiveAsync(CancellationToken ct) =>
         await db.RpgSystems.AsNoTracking().Where(s => s.Active)
             .OrderBy(s => s.Id == RpgSystem.FreeSystemId ? 0 : 1).ThenBy(s => s.Name).ThenBy(s => s.Id)
-            .Select(s => new { s.Id, s.Name, s.Slug, s.Description }).ToListAsync(ct);
+            .Select(s => new { s.Id, s.Name, s.Slug, s.Description, s.TableSettings }).ToListAsync(ct) is var rows
+            // Forma de jogar sugerida pelo sistema (pré-seleção na criação de campanha).
+            ? rows.Select(s => new { s.Id, s.Name, s.Slug, s.Description, playMode = TableSettings.Parse(s.TableSettings).PlayMode }).ToList() : null!;
 
     /// <summary>Admin: todos os sistemas com contagem de uso.</summary>
     public async Task<object> ListAllAsync(CancellationToken ct) =>
@@ -70,7 +73,26 @@ public partial class RpgSystemService(GameDb db, AuditService audit)
                 campaigns = db.Campaigns.Count(c => c.RpgSystemId == s.Id),
                 templates = db.SheetTemplates.Count(t => t.RpgSystemId == s.Id),
                 library = db.Library.Count(l => l.RpgSystemId == s.Id && l.DeletedAt == null),
-            }).ToListAsync(ct);
+                tableSettings = s.TableSettings,
+            }).ToListAsync(ct) is var rows
+            ? rows.Select(r => new
+            {
+                r.Id, r.Name, r.Slug, r.Description, r.Active, r.Revision, r.CreatedAt, r.UpdatedAt, r.@protected, r.campaigns, r.templates, r.library,
+                tableSettings = TableSettings.Parse(r.tableSettings), tableSettingsCustom = r.tableSettings != null,
+            }).ToList() : null!;
+
+    /// <summary>Admin: configuração padrão da mesa do sistema, herdada pelas campanhas que não a ajustaram. Nula volta ao padrão da plataforma.</summary>
+    public async Task<object> UpdateTableSettingsAsync(Guid id, RpgSystemTableSettingsInput x, string actor, CancellationToken ct)
+    {
+        var json = x.Settings?.Validate().Serialize();
+        var system = await db.RpgSystems.SingleOrDefaultAsync(s => s.Id == id, ct) ?? throw new RuleException(404, "Sistema não encontrado.");
+        if (system.Revision != x.Revision) throw new RuleException(409, "O sistema mudou em outra sessão. Atualize a lista antes de editar.");
+        var before = system.TableSettings;
+        system.TableSettings = json; system.Revision++; system.UpdatedAt = DateTime.UtcNow;
+        audit.Record(actor, "system.table", "system", id.ToString(), $"Alterou a configuração da mesa do sistema {system.Name}", new { before, after = json });
+        await SaveAsync(ct);
+        return new { system.Id, system.Revision, tableSettings = TableSettings.Parse(json), tableSettingsCustom = json != null };
+    }
 
     async Task EnsureUniqueAsync(string name, string slug, Guid? except, CancellationToken ct)
     {

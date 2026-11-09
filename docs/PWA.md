@@ -1,5 +1,17 @@
 # PWA e navegação no celular
 
+## Ajuda contextual e integração de mapas/cenas — 8 de novembro de 2026
+
+Versão integrada vigente: `eternnus-public-shell-v26` (v26: simulação por personagem no editor de cenas, opção de recolocar marcadores em “Aplicar”, mesa do celular com o mapa primeiro e controle de Interface compacto; nenhum arquivo novo na lista). A v25 acrescenta `js/help.js`, `js/help-policy.js` e os onze catálogos públicos `js/help/{conta,campanhas,sessoes,mesa,fichas,modelos,biblioteca,guilda,progresso,suporte,admin}.js` à lista explícita STATIC_PATHS. O precache transfere texto público estático; os catálogos só são importados e avaliados na primeira abertura de ⓘ de sua área. Não há conteúdo de conta ou jogo nesses arquivos.
+
+A v25 incorpora o shell da implementação paralela Básica/Completa (scene-policy, scene-editor, interface-mode, grid-adjust e table-scenes), cuja versão intermediária foi v24. Revisão da lista mantém API, callbacks OAuth, query com token, perfis, mapas enviados, exploração, imagens mascaradas e PDFs fora do Cache Storage. Não usa skipWaiting forçado e não recarrega mesa ativa. Modelo em [AJUDA_CONTEXTUAL.md](AJUDA_CONTEXTUAL.md).
+
+Cache público v21: inclui `fog-policy.js`, `fog-editor.js` e `table-settings.js` (névoa e configuração da mesa) e as mudanças em `table.js`, `table-map.js`, `campaign-assets.js`, `campaign-page.js`, `admin.js`, editor de fichas e `sessions.css`. Estado de névoa, imagens mascaradas e configurações são dados autenticados de `/api` e nunca entram no cache. Sem `skipWaiting` nem recarga de sessão ativa.
+
+Login persistente (cache público v20): versão incrementada pelos ajustes em autenticação, roteamento, conta, cliente HTTP e CSS. A lista `STATIC_PATHS` foi revisada e permanece igual: nenhum dado de login, API, cookie ou destino de retorno entra no Cache Storage. O prazo do login continua sendo validado no servidor também no modo instalado. Não usa `skipWaiting` nem recarrega sessão ativa. Uma rota interna validada pode ficar temporariamente no `sessionStorage` durante OAuth, sem query ou credenciais.
+
+Trilha sonora da sessão (cache público v28): acrescenta `soundtrack-policy.js`, `soundtrack-api.js`, `session-audio.js`, `table-soundtrack.js` e `admin-music.js` à lista explícita. Mudaram `music.js`, `table.js`, `admin.js`, `campaign-page.js`, `help-policy.js`, `pwa-policy.js`, os catálogos `help/mesa.js`, `help/admin.js` e `help/campanhas.js` e `sessions.css`. O catálogo, os bytes de áudio e o estado da trilha são `/api` e nunca entram no Cache Storage (o worker não intercepta `/api`). Sem `skipWaiting` nem recarga de sessão ativa. Ver [TRILHA_SONORA.md](TRILHA_SONORA.md).
+
 ## Contrato desta etapa
 
 Eternnus pode ser adicionado à tela inicial como aplicação web, sem passagem por loja. O manifest identifica a aplicação por `/eternnus-rpg`, cobre o escopo `/`, inicia em `/#overview` e solicita apresentação `standalone`. Define cores de fundo/tema e ícones PNG de 192 e 512 px, incluindo composição apropriada para recorte maskable.
@@ -43,7 +55,9 @@ Uma publicação deve enviar uma versão coerente de HTML, módulos, CSS, manife
 
 ### Versão atual
 
-`eternnus-public-shell-v16` inclui os módulos públicos de sessões/mesa, perfil, administração, suporte, biblioteca, Guilda, progressão, editor, fórmulas e ficha/PDF preenchido, além de campaign-assets, temporary-images e session-presence. A v16 ajusta o detector de manutenção para reconhecer também o HTML app_offline servido pelo IIS com status HTTP 200. A v15 incorporou o módulo público maintenance.js para detectar janelas de deploy sem recarregar uma aba ativa. A v14 atualizou a apresentação móvel da marca e da conta. Estado da mesa, mapas enviados, imagens temporárias, PDFs privados, fichas, perfil e histórico continuam fora do cache. A lista efetiva está em js/pwa-policy.js. As bibliotecas locais pdf.js/pdf-lib e suas fontes acompanham a publicação, mas são carregadas pela rede e não pertencem ao precache.
+Versão histórica: `eternnus-public-shell-v19`. Incluiu o novo módulo público `map-picker.js`, acabamento compartilhado, jornada com progresso de conquistas e renderização evoluída dos cenários. Lista permitida revisada: nenhuma resposta do atlas, perfil, XP, sessão ou arquivo privado é armazenada. O worker continua aguardando o fechamento das versões anteriores, sem `skipWaiting` ou recarga automática. O parágrafo seguinte registra a evolução anterior.
+
+`eternnus-public-shell-v18` inclui os módulos públicos de sessões/mesa, perfil, administração, suporte, biblioteca, Guilda, progressão, editor, fórmulas e ficha/PDF preenchido, além de campaign-assets, temporary-images e session-presence. A v18 também traz o explorador de pastas da aba Mapas e cenários (campaign-assets.js, policy.js e sessions.css) e corrige o histórico de sessão (session-history.js importava `guardAvatars` de forma ausente e a rota falhava). A v17 traz a página One-shot e leva Fichas-modelo para o Painel admin (Suporte e Fichas-modelo saem do menu do admin); a lista permitida foi revisada e permanece sem dados autenticados. A v16 ajusta o detector de manutenção para reconhecer também o HTML app_offline servido pelo IIS com status HTTP 200. A v15 incorporou o módulo público maintenance.js para detectar janelas de deploy sem recarregar uma aba ativa. A v14 atualizou a apresentação móvel da marca e da conta. Estado da mesa, mapas enviados, imagens temporárias, PDFs privados, fichas, perfil e histórico continuam fora do cache. A lista efetiva está em js/pwa-policy.js. As bibliotecas locais pdf.js/pdf-lib e suas fontes acompanham a publicação, mas são carregadas pela rede e não pertencem ao precache.
 
 ## Navegação inferior
 
@@ -71,3 +85,6 @@ Avatares enviados pertencem à API autenticada e nunca são assets públicos/cac
 ### Atualização temporária do servidor (IIS/FTPS)
 
 O GitHub Actions produz `app_offline.htm` autossuficiente com o splash oficial. Uma nova visita recebe esse HTML do IIS enquanto a aplicação está parada e tenta `/health` até o retorno. Uma aba já aberta usa `js/maintenance.js`: recebe `503` no health check e mostra a camada `#splash` existente sem recarregar. Quando `/health` volta a responder saudável, libera a interface, mas **não atualiza a página automaticamente**, pois isso poderia descartar edições ainda não enviadas. A interface pede que a pessoa salve suas mudanças antes de recarregar. O health check não entra no cache e somente HTTP 503 ou a página HTML de manutenção com marcador explícito acionam o modo de manutenção; uma queda aleatória de rede não aciona o modo. Não se promete recuperação de chamadas falhadas, uploads ou WebRTC em trânsito.
+
+
+Cache público v22 (ADR-046): acrescenta `play-policy.js`, `table-tools.js`, `campaign-prep.js` e `invite.js` à lista permitida. `table.js`, `campaign-page.js`, `campaigns.js`, `layout.js`, `app.js`, `policy.js`, `one-shots.js`, `fog-policy.js`, `table-settings.js`, `styles.css` e `sessions.css` mudaram. Início (`/api/home`), convite, diário, cenas e pedidos de teste são dados autenticados de `/api` e nunca entram no cache. Sem `skipWaiting` nem recarga de sessão ativa.

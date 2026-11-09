@@ -3,7 +3,7 @@ namespace Eternnus.Web;
 
 public class RuleException(int status, string message) : Exception(message) { public int Status { get; } = status; }
 /// <summary><see cref="RpgSystemId"/> é a escolha preferida; <see cref="System"/> (texto) é aceito por compatibilidade e casado pelo nome.</summary>
-public record CampaignInput(string Name, string Description, string? System = null, int Revision = 0, Guid? RpgSystemId = null, bool IsOneShot = false);
+public record CampaignInput(string Name, string Description, string? System = null, int Revision = 0, Guid? RpgSystemId = null, bool IsOneShot = false, string? PlayMode = null);
 public record JoinInput(string Code);
 
 public class CampaignService(GameDb db, ProgressionService progression, AuditService audit)
@@ -21,11 +21,13 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
         return await query.SingleOrDefaultAsync(ct) ?? throw new RuleException(404, "Campanha não encontrada.");
     }
     static void Owner(Campaign c, string user) { if (c.OwnerId != user) throw new RuleException(404, "Campanha não encontrada."); }
-    public async Task<object> ListAsync(string user, string? search, string? sort, int page, CancellationToken ct)
+    /// <param name="oneShot">Filtro opcional: falso lista campanhas persistentes, verdadeiro lista one-shots, nulo lista ambas.</param>
+    public async Task<object> ListAsync(string user, string? search, string? sort, int page, CancellationToken ct, bool? oneShot = null)
     {
         if (search?.Length > 100) throw new RuleException(400, "Busca muito longa.");
         page = Math.Max(1, Math.Min(100000, page));
         var query = db.Campaigns.AsNoTracking().Where(c => c.OwnerId == user || db.Members.Any(m => m.CampaignId == c.Id && m.UserId == user));
+        if (oneShot is { } kind) query = query.Where(c => c.IsOneShot == kind);
         if (!string.IsNullOrWhiteSpace(search)) { var term = search.Trim().ToLowerInvariant(); query = query.Where(x => x.Name.ToLower().Contains(term)); }
         var total = await query.CountAsync(ct);
         var ordered = sort == "name" ? query.OrderBy(x => x.Name).ThenBy(x => x.Id) : query.OrderByDescending(x => x.LastActivityAt).ThenBy(x => x.Id);
@@ -40,6 +42,8 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
             c.LastActivityAt,
             c.IsOneShot,
             c.ExpiresAt,
+            c.ArchivedAt,
+            c.NextSessionAt,
             isMaster = c.OwnerId == user,
             playerCount = db.Members.Count(m => m.CampaignId == c.Id),
             canDelete = c.OwnerId == user && !db.Members.Any(m => m.CampaignId == c.Id),
@@ -51,11 +55,16 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
     public async Task<Guid> CreateAsync(CampaignInput x, string user, CancellationToken ct)
     {
         Validate(x);
+        // One-shots nascem pela página One-shot (POST /api/one-shots), já com a sessão única aberta.
+        if (x.IsOneShot) throw new RuleException(400, "One-shots são criadas pela página One-shot, já com a mesa aberta.");
         var system = await RpgSystemService.ResolveForCampaignAsync(db, x.RpgSystemId, x.System, null, ct);
+        if (x.PlayMode != null && !PlayModes.IsValid(x.PlayMode)) throw new RuleException(400, "Escolha a forma de jogar: livre, por turnos ou tática.");
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var account = await AccountLimits.LockUserAsync(db, user, ct);
-        var c = new Campaign { OwnerId = user, Name = x.Name.Trim(), Description = x.Description.Trim(), RpgSystemId = system.Id, System = system.Name,
-            IsOneShot = x.IsOneShot, ExpiresAt = x.IsOneShot ? DateTime.UtcNow.AddHours(72) : null };
+        var c = new Campaign { OwnerId = user, Name = x.Name.Trim(), Description = x.Description.Trim(), RpgSystemId = system.Id, System = system.Name };
+        // A forma escolhida que difere da sugestão do sistema vira ajuste da campanha; igual à sugestão, a campanha continua herdando.
+        var suggested = TableSettings.Parse(await db.RpgSystems.Where(s => s.Id == system.Id).Select(s => s.TableSettings).SingleOrDefaultAsync(ct));
+        if (x.PlayMode != null && x.PlayMode != suggested.PlayMode) c.TableSettings = (suggested with { PlayMode = x.PlayMode }).Serialize();
         await AccountLimits.ReserveAsync(db, account, c, ct);
         db.Campaigns.Add(c);
         await progression.AwardAsync(user, XpReasons.CampaignCreated, $"campaign_created:{c.Id}", ct);
@@ -64,6 +73,7 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
     public async Task UpdateAsync(Guid id, CampaignInput x, string user, CancellationToken ct)
     {
         Validate(x); await using var tx = await db.Database.BeginTransactionAsync(ct); var c = await LockAsync(id, ct); Owner(c, user);
+        if (c.ArchivedAt != null) throw new RuleException(409, "Restaure a campanha antes de editá-la.");
         if (c.Revision != x.Revision) throw new RuleException(409, "A campanha mudou em outra sessão. Atualize a lista antes de editar.");
         // Um sistema que ficou inativo pode ser mantido pela campanha que já o usa.
         var system = await RpgSystemService.ResolveForCampaignAsync(db, x.RpgSystemId, x.System, c.RpgSystemId, ct);
@@ -77,7 +87,9 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
         var campaign = await LockAsync(id, ct);
         Owner(campaign, user);
         if (campaign.Revision != input.Revision) throw new RuleException(409, "A campanha mudou. Recarregue antes de escolher o modelo.");
+        if (campaign.ArchivedAt != null) throw new RuleException(409, "Restaure a campanha antes de escolher o modelo.");
         if (input.TemplateId is { } templateId && !await db.SheetTemplates.AnyAsync(t => t.Id == templateId && t.RpgSystemId == campaign.RpgSystemId && t.ArchivedAt == null && t.CurrentVersionId != null
+            && (t.CampaignId == null || t.CampaignId == id)
             && db.SheetTemplateVersions.Any(v => v.Id == t.CurrentVersionId && v.PublishedAt != null), ct))
             throw new RuleException(400, "Escolha um modelo publicado e ativo do sistema da campanha.");
         campaign.SheetTemplateId = input.TemplateId;
@@ -117,6 +129,7 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
         var id = await db.Campaigns.Where(x => x.InviteCode == code).Select(x => (Guid?)x.Id).SingleOrDefaultAsync(ct) ?? throw new RuleException(404, "Convite não encontrado.");
         var c = await LockAsync(id, ct);
         OneShotLifecycleService.EnsureOpen(c, DateTime.UtcNow);
+        if (c.ArchivedAt != null) throw new RuleException(409, "Esta campanha está arquivada e não recebe novos jogadores.");
         if (c.OwnerId != user && !await db.Members.AnyAsync(x => x.CampaignId == id && x.UserId == user, ct))
         {
             var account = await AccountLimits.LockUserAsync(db, user, ct);
@@ -125,6 +138,8 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
             await progression.AwardAsync(user, XpReasons.CampaignJoined, $"campaign_joined:{id}:{user}", ct);
             await db.SaveChangesAsync(ct);
         }
+        // O convite guardado durante a verificação deixa de ser necessário.
+        await db.Users.Where(u => u.Id == user && u.PendingInvite == code).ExecuteUpdateAsync(u => u.SetProperty(x => x.PendingInvite, (string?)null), ct);
         await tx.CommitAsync(ct); return id;
     }
     public async Task LeaveAsync(Guid id, string user, CancellationToken ct)
@@ -138,6 +153,27 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct); var c = await LockAsync(id, ct); Owner(c, user);
         await RemoveMembershipAsync(id, member, ct); c.Revision++; c.LastActivityAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
+    }
+    /// <summary>
+    /// Arquiva: preserva conteúdo e histórico, bloqueia novas operações de jogo. Exige que não haja sessão ativa
+    /// (o bloqueio da campanha impede abertura concorrente). Arquivadas continuam contando na quota.
+    /// </summary>
+    public async Task ArchiveAsync(Guid id, string user, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct); var c = await LockAsync(id, ct); Owner(c, user);
+        if (c.IsOneShot) throw new RuleException(409, "One-shots não são arquivadas: converta em campanha ou encerre a mesa.");
+        if (c.ArchivedAt != null) { await tx.RollbackAsync(ct); return; }
+        if (await db.Sessions.AnyAsync(s => s.CampaignId == id && s.EndedAt == null, ct)) throw new RuleException(409, "Encerre a sessão em andamento antes de arquivar a campanha.");
+        c.ArchivedAt = DateTime.UtcNow; c.Revision++; c.LastActivityAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
+    }
+    /// <summary>Restaura uma campanha arquivada. Como a arquivada já ocupa a vaga, restaurar não ultrapassa o limite.</summary>
+    public async Task RestoreAsync(Guid id, string user, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct); var c = await LockAsync(id, ct); Owner(c, user);
+        if (c.ArchivedAt == null) { await tx.RollbackAsync(ct); return; }
+        c.ArchivedAt = null; c.Revision++; c.LastActivityAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
     async Task RemoveMembershipAsync(Guid id, string user, CancellationToken ct)

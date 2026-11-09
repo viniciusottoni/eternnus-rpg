@@ -49,7 +49,7 @@ public class ProgressionService(GameDb db, AuditService audit, TimeProvider? clo
     public virtual async Task AwardAsync(string userId, string reason, string sourceKey, CancellationToken ct = default)
     {
         var rule = Progression.Rule(reason);
-        if (rule?.Amount is not { } amount || string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(sourceKey)) return;
+        if (rule?.Amount is not { } amount || amount <= 0 || string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(sourceKey)) return;
         if (sourceKey.Length > 160) throw new ArgumentException("SourceKey excede 160 caracteres.", nameof(sourceKey));
         if (await AlreadyAwardedAsync(sourceKey, ct)) return;
         if (!Progression.WithinDailyLimit(reason, await AwardedTodayAsync(userId, reason, ct))) return;
@@ -89,10 +89,9 @@ public class ProgressionService(GameDb db, AuditService audit, TimeProvider? clo
         user.Xp = Math.Max(0, counts.Sum(c => c.Sum));
         user.Level = Progression.LevelForXp(user.Xp);
         var unlocked = await UnlockedKeysAsync(userId, ct);
-        foreach (var group in counts.GroupBy(c => Progression.CounterFor(c.Reason)).Where(g => g.Key != null))
-            foreach (var achievement in Progression.Reached(group.Key!, group.Sum(c => c.Count)))
-                Unlock(user.Id, achievement, unlocked);
-        foreach (var achievement in Progression.Reached(AchievementCounters.Level, user.Level)) Unlock(user.Id, achievement, unlocked);
+        var counters = Progression.Counters(counts.GroupBy(c => c.Reason).ToDictionary(g => g.Key, g => g.Sum(c => c.Count)), user.Level);
+        foreach (var achievement in Progression.Achievements.Where(a => counters.GetValueOrDefault(a.Counter) >= a.Threshold))
+            Unlock(user.Id, achievement, unlocked);
         return new(before, user.Xp, user.Level);
     }
 
@@ -140,15 +139,15 @@ public class ProgressionService(GameDb db, AuditService audit, TimeProvider? clo
         return entry;
     }
 
-    /// <summary>Avalia somente as conquistas ligadas ao motivo e ao nível, com COUNT barato e só quando o limiar mínimo pode ter sido alcançado.</summary>
+    /// <summary>Avalia o catálogo com uma agregação por motivo, incluindo lançamentos pendentes e marcos compostos.</summary>
     async Task UnlockAsync(AppUser user, string reason, CancellationToken ct)
     {
-        var candidates = Progression.Reached(AchievementCounters.Level, user.Level).ToList();
-        if (Progression.CounterFor(reason) is { } counter)
-        {
-            var count = await db.XpEntries.CountAsync(e => e.UserId == user.Id && e.Reason == reason, ct) + PendingCount(user.Id, reason);
-            candidates.AddRange(Progression.Reached(counter, count));
-        }
+        var counts = await db.XpEntries.Where(e => e.UserId == user.Id).GroupBy(e => e.Reason)
+            .Select(g => new { Reason = g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Reason, g => g.Count, ct);
+        foreach (var pending in db.XpEntries.Local.Where(e => e.UserId == user.Id && db.Entry(e).State == EntityState.Added))
+            counts[pending.Reason] = counts.GetValueOrDefault(pending.Reason) + 1;
+        var counters = Progression.Counters(counts, user.Level);
+        var candidates = Progression.Achievements.Where(a => counters.GetValueOrDefault(a.Counter) >= a.Threshold).ToList();
         if (candidates.Count == 0) return;
         var keys = candidates.Select(c => c.Key).ToList();
         var unlocked = (await db.Achievements.Where(a => a.UserId == user.Id && keys.Contains(a.Key)).Select(a => a.Key).ToListAsync(ct)).ToHashSet();

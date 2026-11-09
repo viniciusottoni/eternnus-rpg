@@ -12,7 +12,7 @@ export function keepMasterPresence(campaign) {
     pending = true;
     try { await api(`/sessions/${campaign.activeSession.id}/heartbeat`, "POST", undefined, { background: true, signal: controller.signal }); }
     catch (error) {
-      if (!disposed && [404, 410].includes(error.status)) { cleanup(); toast("A one-shot foi encerrada."); navigate("campaigns"); }
+      if (!disposed && [404, 410].includes(error.status)) { cleanup(); toast("A one-shot foi encerrada."); navigate("one-shot"); }
     } finally { pending = false; }
   };
   const timer = setInterval(beat, 20000);

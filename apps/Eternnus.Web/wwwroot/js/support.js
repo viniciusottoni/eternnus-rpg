@@ -1,3 +1,4 @@
+import { helpButton } from "./help.js";
 // Suporte: chamados do usuário (#support, #support/{id}) e fila da equipe (renderAdminTickets, usada em #admin/tickets).
 // Regras puras e rótulos ficam em support-policy.js; o servidor reaplica todas as permissões.
 import { api } from "./api.js";
@@ -14,9 +15,9 @@ let userGeneration = 0,
 // ---------- Peças compartilhadas ----------
 
 const chip = (status, staff = false) =>
-  `<span class="status-chip ${P.statusTone(status)}">${esc(P.statusLabel(status, staff))}</span>`;
+  `<span class="status-chip ${P.statusTone(status)}" data-tip="${esc(P.statusLabel(status, staff))}">${esc(P.statusLabel(status, staff))}</span>`;
 const priorityChip = (priority) =>
-  `<span class="status-chip ${P.priorityTone(priority)}"><span class="sr-only">Prioridade </span>${esc(P.priorityLabel(priority))}</span>`;
+  `<span class="status-chip ${P.priorityTone(priority)}" data-tip="Prioridade definida pela equipe administrativa"><span class="sr-only">Prioridade </span>${esc(P.priorityLabel(priority))}</span>`;
 const loadingBlock = (text) => `<p class="support-loading" role="status">${esc(text)}</p>`;
 const failure = (message, action, title = "Não foi possível carregar.") =>
   `<div class="empty support-error" role="alert"><span class="empty-sigil" aria-hidden="true">⚠</span><h3>${esc(title)}</h3><p>${esc(message)}</p>${action ? button("Tentar novamente", action, "", "subtle") : ""}</div>`;
@@ -82,7 +83,7 @@ async function onUserClick(event) {
 
 async function showList() {
   const main = $("#main");
-  main.innerHTML = `<div class="page-heading"><div><span class="eyebrow">CENTRAL DE SUPORTE</span><h1>Meus chamados <span class="heading-gem">✦</span></h1><p>Fale com a equipe Eternnus sobre conta, erros, campanhas, fichas ou sugestões.</p></div><div class="support-new">${button("+ Abrir chamado", "sup-new", "", "primary", 'id="sup-new"')}<small id="sup-limit" class="muted small"></small></div></div><div class="support-toolbar"><div class="sort-field"><label for="sup-status">Mostrar</label><select id="sup-status">${options(P.STATUSES, (s) => P.statusLabel(s), mine.status, `<option value=""${mine.status === "" ? " selected" : ""}>Todos</option><option value="active"${mine.status === "active" ? " selected" : ""}>Em aberto</option>`)}</select></div><span id="sup-count" class="muted small" aria-live="polite"></span></div><ul id="sup-list" class="support-list" aria-busy="true"><li>${loadingBlock("Carregando seus chamados…")}</li></ul><div id="sup-pages" class="pagination"></div>`;
+  main.innerHTML = `<div class="page-heading"><div><span class="eyebrow">CENTRAL DE SUPORTE</span><h1>Meus chamados ${helpButton("suporte.chamados.categorias", "Categorias e acompanhamento")}<span class="heading-gem">✦</span></h1><p>Fale com a equipe Eternnus sobre conta, erros, campanhas, fichas ou sugestões.</p></div><div class="support-new">${button("+ Abrir chamado", "sup-new", "", "primary", 'id="sup-new" aria-describedby="sup-limit"')}<small id="sup-limit" class="muted small"></small>${helpButton("suporte.chamados.limite", "Limite de chamados")}</div></div><div class="support-toolbar"><div class="sort-field"><label for="sup-status">Mostrar</label><select id="sup-status">${options(P.STATUSES, (s) => P.statusLabel(s), mine.status, `<option value=""${mine.status === "" ? " selected" : ""}>Todos</option><option value="active"${mine.status === "active" ? " selected" : ""}>Em aberto</option>`)}</select></div><span id="sup-count" class="muted small" aria-live="polite"></span></div><ul id="sup-list" class="support-list" aria-busy="true"><li>${loadingBlock("Carregando seus chamados…")}</li></ul><div id="sup-pages" class="pagination"></div>`;
   $("#sup-status").onchange = (e) => {
     mine.status = e.target.value;
     mine.page = 1;

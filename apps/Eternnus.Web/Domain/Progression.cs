@@ -8,7 +8,8 @@ public static class AchievementCounters
 {
     public const string Characters = "characters", SessionsPlayed = "sessions_played", SessionsMastered = "sessions_mastered",
         CampaignsCreated = "campaigns_created", CampaignsJoined = "campaigns_joined", GuildTopics = "guild_topics",
-        GuildPosts = "guild_posts", UsefulReceived = "useful_received", Level = "level";
+        GuildPosts = "guild_posts", UsefulReceived = "useful_received", Level = "level",
+        Sessions = "sessions", Roles = "roles", Paths = "paths";
 }
 
 /// <summary>Conquista: desbloqueada quando o contador alcança o limiar. Ícone é um símbolo tipográfico do guia visual.</summary>
@@ -65,15 +66,15 @@ public static class Progression
     /// <summary>Tabela de XP por motivo, na ordem exibida em "Como ganhar XP".</summary>
     public static readonly IReadOnlyList<XpRule> Rules =
     [
-        new(XpReasons.SessionMastered, 50, 4, "Sessão conduzida como mestre", "Encerre uma sessão de pelo menos 10 minutos."),
-        new(XpReasons.SessionPlayed, 30, 4, "Sessão jogada", "Entre na mesa com sua ficha e jogue até o mestre encerrar (mínimo de 10 minutos)."),
+        new(XpReasons.SessionMastered, 60, 4, "Sessão conduzida como mestre", "Encerre uma sessão de pelo menos 10 minutos com ao menos um jogador elegível."),
+        new(XpReasons.SessionPlayed, 50, 4, "Sessão jogada", "Entre com sua ficha ao menos 10 minutos antes do encerramento. Sair antes não retira a recompensa."),
         new(XpReasons.CampaignCreated, 20, 2, "Campanha criada", "Funde um novo mundo como mestre."),
         new(XpReasons.CampaignJoined, 15, 3, "Entrada em campanha", "Aceite um convite e junte-se a uma mesa."),
         new(XpReasons.CharacterCreated, 10, 3, "Personagem criado", "Crie uma nova ficha de aventureiro."),
         new(XpReasons.GuildTopic, 8, 3, "Tópico na Guilda", "Abra uma conversa em uma categoria da Guilda."),
-        new(XpReasons.GuildUsefulReceived, 6, 20, "Resposta marcada como útil", "Outro aventureiro marcou sua mensagem como útil."),
-        new(XpReasons.GuildPost, 4, 10, "Resposta na Guilda", "Participe das conversas da Guilda."),
-        new(XpReasons.TicketResolved, 10, 2, "Chamado de suporte resolvido", "Ajude a equipe relatando problemas e sugestões."),
+        new(XpReasons.GuildUsefulReceived, 6, 5, "Resposta marcada como útil", "Outro aventureiro reconheceu sua contribuição. Desmarcar e remarcar não repete o XP."),
+        new(XpReasons.GuildPost, 4, 5, "Resposta na Guilda", "Converse quando tiver algo a compartilhar. Você pode continuar respondendo após o limite de XP."),
+        new(XpReasons.TicketResolved, 0, 0, "Suporte sem pontuação", "Pedir ajuda é livre de metas e não concede XP. Relate problemas sempre que precisar."),
         new(XpReasons.StaffBonus, null, null, "Bônus da equipe", "Reconhecimento manual da equipe Eternnus."),
     ];
 
@@ -104,6 +105,14 @@ public static class Progression
 
     public static readonly IReadOnlyList<AchievementDefinition> Achievements =
     [
+        new("sessions_3", "Histórias compartilhadas", "Participe de 3 sessões, como jogador ou mestre.", "⚑", AchievementCounters.Sessions, 3),
+        new("sessions_5", "Companhia de aventuras", "Participe de 5 sessões, como jogador ou mestre.", "⚔", AchievementCounters.Sessions, 5),
+        new("sessions_25", "Guardião das memórias", "Participe de 25 sessões, no seu ritmo.", "✥", AchievementCounters.Sessions, 25),
+        new("sessions_50", "Uma vida de histórias", "Participe de 50 sessões, como jogador ou mestre.", "❂", AchievementCounters.Sessions, 50),
+        new("both_roles", "Dos dois lados da mesa", "Jogue uma sessão e conduza outra como mestre.", "♜", AchievementCounters.Roles, 2),
+        new("paths_3", "Novos horizontes", "Experimente 3 tipos de atividade que concedem XP.", "✧", AchievementCounters.Paths, 3),
+        new("first_useful", "Uma mão amiga", "Receba sua primeira marcação de útil na Guilda.", "✶", AchievementCounters.UsefulReceived, 1),
+        new("useful_5", "Boas referências", "Receba 5 marcações de útil na Guilda.", "❖", AchievementCounters.UsefulReceived, 5),
         new("first_character", "Forja do herói", "Crie sua primeira ficha de personagem.", "✦", AchievementCounters.Characters, 1),
         new("first_session", "Primeira jornada", "Jogue sua primeira sessão com uma ficha.", "⚔", AchievementCounters.SessionsPlayed, 1),
         new("sessions_10", "Veterano de mesa", "Jogue 10 sessões como aventureiro.", "♞", AchievementCounters.SessionsPlayed, 10),
@@ -121,6 +130,20 @@ public static class Progression
 
     static readonly Dictionary<string, AchievementDefinition> AchievementsByKey = Achievements.ToDictionary(a => a.Key);
     public static AchievementDefinition? Achievement(string key) => AchievementsByKey.GetValueOrDefault(key);
+
+    /// <summary>Progresso calculado dos lançamentos históricos, inclusive para novos marcos; bônus não contam como diversidade.</summary>
+    public static Dictionary<string, int> Counters(IReadOnlyDictionary<string, int> reasons, int level)
+    {
+        var counters = new Dictionary<string, int> { [AchievementCounters.Level] = level };
+        foreach (var (reason, count) in reasons)
+            if (CounterFor(reason) is { } counter) counters[counter] = counters.GetValueOrDefault(counter) + count;
+        var played = counters.GetValueOrDefault(AchievementCounters.SessionsPlayed);
+        var mastered = counters.GetValueOrDefault(AchievementCounters.SessionsMastered);
+        counters[AchievementCounters.Sessions] = played + mastered;
+        counters[AchievementCounters.Roles] = (played > 0 ? 1 : 0) + (mastered > 0 ? 1 : 0);
+        counters[AchievementCounters.Paths] = reasons.Count(r => r.Value > 0 && CounterFor(r.Key) != null);
+        return counters;
+    }
 
     /// <summary>Contador de conquistas alimentado por um motivo de XP (nulo quando o motivo não conta para conquistas).</summary>
     public static string? CounterFor(string reason) => reason switch

@@ -231,7 +231,11 @@ export function renderSheet(container, options = {}) {
     } else if (kind === "output") {
       control = document.createElement("output");
       control.setAttribute("aria-readonly", "true");
-      control.title = f.formula ? "Calculado: " + f.formula : "Calculado";
+      control.dataset.tip = "Campo calculado pelo servidor";
+      if (f.formula) {
+        const hint = document.createElement('small'); hint.id = id + '-formula'; hint.className = 'sr-only'; hint.textContent = 'Calculado: ' + f.formula;
+        control.setAttribute('aria-describedby', hint.id); el.append(hint);
+      }
     } else {
       control = document.createElement("input");
       control.type = "text";
@@ -256,7 +260,11 @@ export function renderSheet(container, options = {}) {
     if (kind === "number") {
       const problem = numberProblem(f, control.value);
       control.setAttribute("aria-invalid", String(!!problem));
-      control.title = problem;
+      const hintId = control.id + '-problem';
+      let hint = document.getElementById(hintId) || control.parentElement.querySelector('.ps-problem');
+      if (!hint) { hint = document.createElement('small'); hint.id = hintId; hint.className = 'ps-problem'; control.after(hint); }
+      hint.textContent = problem || ''; hint.hidden = !problem;
+      control.setAttribute('aria-describedby', hintId);
     }
   }
   function viewElement(f) {

@@ -96,3 +96,19 @@ test("datas do servidor (UTC) formatadas em pt-BR", () => {
   assert.equal(p.formatDay("não é data"), "");
   assert.equal(p.formatDay(null), "");
 });
+
+test("marcos sugerem caminhos distintos, próximos e com destinos conhecidos", () => {
+  const items = [
+    { key: "done", counter: "sessions", current: 3, threshold: 3, unlocked: true },
+    { key: "near", counter: "sessions", current: 3, threshold: 5, unlocked: false },
+    { key: "far", counter: "sessions", current: 3, threshold: 25, unlocked: false },
+    { key: "help", counter: "useful_received", current: 4, threshold: 5, unlocked: false },
+    { key: "unsafe", counter: "https://foreign.test", current: 1, threshold: 2, unlocked: false },
+  ];
+  const result = p.nextMilestones(items);
+  assert.deepEqual(result.map(a => a.key), ["help", "near"]);
+  assert.deepEqual(result.map(a => a.href), ["#guild", "#campaigns"]);
+  assert.equal(p.amountLabel(0), "Sem XP");
+  assert.equal(p.dailyLimitLabel(0), "Sem pontuação");
+  assert.equal(p.todayLabel(0, 0), "");
+});

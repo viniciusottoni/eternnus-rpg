@@ -14,8 +14,10 @@ try
     app.MapGameApi();
     app.MapCharacterSheetEndpoints();
     app.MapSessionEndpoints();
+    app.MapPlayEndpoints();
     app.MapTemporaryImageEndpoints();
     app.MapCampaignAssetsEndpoints();
+    app.MapMusicEndpoints();
     app.MapAdminEndpoints();
     app.MapSupportEndpoints();
     app.MapLibraryEndpoints();

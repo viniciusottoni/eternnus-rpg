@@ -1,3 +1,4 @@
+import { helpButton } from "./help.js";
 import { api } from "./api.js";
 import { state } from "./state.js";
 import { shell } from "./layout.js";
@@ -12,8 +13,10 @@ import {
   toast,
   empty,
   formatDate,
+  navigate,
 } from "./ui.js";
 import { campaignActions } from "./policy.js";
+import { PLAY_MODES } from "./play-policy.js";
 import { campaignRoute, isGuid } from "./session-policy.js";
 let search = "",
   sort = "activity",
@@ -29,12 +32,12 @@ function row(c) {
     online && c.isMaster
       ? `<a class="button primary enter-table" href="#table/${esc(c.id)}">▶ Mesa ao vivo</a>`
       : "";
-  return `<article class="campaign-row metal ${online ? "is-online" : ""}"><div class="campaign-cover" aria-hidden="true"><span>${c.isMaster ? "⚑" : "⚔"}</span></div><div class="campaign-info"><div class="campaign-name"><h2>${esc(c.name)}</h2><span class="badge ${c.isMaster ? "" : "participant"}">${c.isMaster ? "♛ Mestre" : "♟ Participante"}</span>${c.isOneShot ? '<span class="badge">One-shot</span>' : ""}${online ? '<span class="online-badge"><i aria-hidden="true"></i>ONLINE</span>' : '<span class="offline-badge">Offline</span>'}</div><div class="campaign-meta"><span>▤ ${esc(c.system)}</span><span>♧ ${c.playerCount} ${c.playerCount === 1 ? "jogador" : "jogadores"}</span><span>◷ Atualizada em ${formatDate(c.lastActivityAt)}</span></div><p>${esc(c.description || "Uma nova história aguarda seu primeiro capítulo.")}</p>${c.isOneShot ? `<p class="form-help">Dados temporários até ${formatDate(c.expiresAt)}. Ao encerrar ou sair o mestre, tudo da mesa é removido.</p>` : ""}</div><div class="campaign-row-actions">${live}${open}${actions.edit ? button("Editar", "campaign-edit", c.id, "subtle") : ""}${actions.edit ? button("Excluir", "campaign-delete", c.id, "danger", actions.delete ? "" : 'disabled title="Não disponível com jogadores vinculados"') : button("Sair", "campaign-leave", c.id, "subtle")}<small>${actions.edit && !actions.delete ? "Exclusão bloqueada: há jogadores vinculados." : online && !c.isMaster ? "Sessão em andamento: entre direto na mesa." : ""}</small></div></article>`;
+  return `<article class="campaign-row metal ${online ? "is-online" : ""}"><div class="campaign-cover" aria-hidden="true"><span>${c.isMaster ? "⚑" : "⚔"}</span></div><div class="campaign-info"><div class="campaign-name"><h2>${esc(c.name)}</h2><span class="badge ${c.isMaster ? "" : "participant"}" data-tip="${c.isMaster ? "Você conduz e administra esta campanha." : "Você participa como Jogador nesta campanha."}">${c.isMaster ? "♛ Mestre" : "♟ Participante"}</span>${c.isOneShot ? '<span class="badge" data-tip="Mesa temporária com uma única sessão.">One-shot</span>' : ""}${c.archivedAt ? '<span class="badge archived" data-tip="Conteúdo preservado; novas partidas estão bloqueadas.">Arquivada</span>' : ""}${online ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>ONLINE</span>' : '<span class="offline-badge" data-tip="Nenhuma sessão está aberta nesta campanha.">Offline</span>'}</div><div class="campaign-meta"><span>▤ ${esc(c.system)}</span><span>♧ ${c.playerCount} ${c.playerCount === 1 ? "jogador" : "jogadores"}</span><span>◷ Atualizada em ${formatDate(c.lastActivityAt)}</span></div><p>${esc(c.description || "Uma nova história aguarda seu primeiro capítulo.")}</p>${c.isOneShot ? `<p class="form-help">Dados temporários até ${formatDate(c.expiresAt)}. Se o mestre se desconectar, a mesa espera alguns minutos; ao encerrar, tudo da mesa é removido.</p>` : ""}</div><div class="campaign-row-actions">${live}${open}${actions.edit ? button("Editar", "campaign-edit", c.id, "subtle") : ""}${actions.edit ? button("Excluir", "campaign-delete", c.id, "danger", actions.delete ? "" : 'aria-disabled="true" data-tip="Não disponível com jogadores vinculados"') : button("Sair", "campaign-leave", c.id, "subtle")}<small>${actions.edit && !actions.delete ? "Exclusão bloqueada: há jogadores vinculados." : online && !c.isMaster ? "Sessão em andamento: entre direto na mesa." : ""}</small></div></article>`;
 }
 export async function renderCampaigns() {
   shell("campaigns");
   $("#main").innerHTML =
-    `<div class="page-heading"><div><span class="eyebrow">HISTÓRIAS QUE VOCÊ COMPARTILHA</span><h1>Minhas campanhas <span class="heading-gem">✦</span></h1><p>Seus mundos, sua guilda e os próximos capítulos.</p></div>${button("+ Nova campanha", "campaign-create", "", "primary")}</div><div class="campaign-toolbar"><form id="campaign-search" role="search"><label class="sr-only" for="search">Buscar campanhas</label><input id="search" name="search" maxlength="100" value="${esc(search)}" placeholder="Buscar uma campanha…"><button type="submit" class="subtle">Buscar</button></form><div class="sort-field"><label for="sort">Ordenar por</label><select id="sort"><option value="activity" ${sort === "activity" ? "selected" : ""}>Última atualização</option><option value="name" ${sort === "name" ? "selected" : ""}>Nome da campanha</option></select></div></div><div class="list-summary"><span id="campaign-count"></span>${button("Entrar por convite ↗", "campaign-join", "", "text-button")}</div><div id="campaign-list" aria-live="polite"></div><div id="pagination" class="pagination"></div>`;
+    `<div class="page-heading"><div><span class="eyebrow">HISTÓRIAS QUE VOCÊ COMPARTILHA</span><h1>Minhas campanhas ${helpButton("campanhas.lista.papeis", "Mestre e Jogador")}<span class="heading-gem">✦</span></h1><p>Seus mundos, sua guilda e os próximos capítulos.</p></div>${button("+ Nova campanha", "campaign-create", "", "primary")}</div><div class="campaign-toolbar"><form id="campaign-search" role="search"><label class="sr-only" for="search">Buscar campanhas</label><input id="search" name="search" maxlength="100" value="${esc(search)}" placeholder="Buscar uma campanha…"><button type="submit" class="subtle">Buscar</button></form><div class="sort-field"><label for="sort">Ordenar por</label><select id="sort"><option value="activity" ${sort === "activity" ? "selected" : ""}>Última atualização</option><option value="name" ${sort === "name" ? "selected" : ""}>Nome da campanha</option></select></div></div><div class="list-summary"><span id="campaign-count"></span>${button("Entrar por convite ↗", "campaign-join", "", "text-button")}</div><div id="campaign-list" aria-live="polite"></div><div id="pagination" class="pagination"></div>`;
   $("#campaign-search").onsubmit = (e) => {
     e.preventDefault();
     search = new FormData(e.currentTarget).get("search").trim();
@@ -56,7 +59,8 @@ export function limitText(limits) {
 async function load() {
   const request = ++generation;
   const result = await api(
-    "/campaigns?" + new URLSearchParams({ search, sort, page: state.page }),
+    // One-shots têm página própria (#one-shot); aqui ficam só as campanhas persistentes.
+    "/campaigns?" + new URLSearchParams({ search, sort, page: state.page, oneShot: false }),
   );
   if (request !== generation || !$("#campaign-list")) return;
   state.campaigns = result.items;
@@ -113,7 +117,7 @@ function systemOptions(systems, campaign) {
       .join("")
   );
 }
-async function loadSystems(c) {
+export async function loadSystems(c) {
   const select = $("#f-system");
   const help = $("#system-help");
   if (!select) return;
@@ -126,6 +130,8 @@ async function loadSystems(c) {
     select.innerHTML = systemOptions(systems, c);
     const describe = () => {
       const chosen = systems.find((s) => s.id === select.value);
+      const suggested = chosen?.playMode && document.querySelector(`#campaign-form input[name=playMode][value="${chosen.playMode}"]`);
+      if (suggested && !c) { suggested.checked = true; const h = $("#mode-help"); if (h) h.textContent = `Sugestão do sistema: ${suggested.closest("label").querySelector("strong").textContent}. Você pode mudar depois.`; }
       help.textContent = chosen
         ? chosen.description
         : select.value === "keep" && c
@@ -146,38 +152,34 @@ async function loadSystems(c) {
 export function campaignForm(c, onDone = load) {
   modal(
     c ? "Editar campanha" : "Uma nova história",
-    `<p class="muted small">Defina o essencial. O resto da lenda vocês escrevem juntos.</p><form id="campaign-form">${field("name", "Nome da campanha", c?.name || "", "text", 'required maxlength="100"')}<div class="field"><label for="f-system">Sistema de RPG</label><select id="f-system" name="rpgSystemId" aria-describedby="system-help"></select><small id="system-help" class="muted small" aria-live="polite"></small></div><div class="field"><label for="description">Premissa e narrativa</label><textarea id="description" name="description" maxlength="5000" rows="4">${esc(c?.description || "")}</textarea></div>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">${c ? "Salvar alterações" : "Criar campanha"}</button></div></form>`,
+    `<p class="muted small">Defina o essencial. O resto da lenda vocês escrevem juntos.</p><form id="campaign-form">${field("name", "Nome da campanha", c?.name || "", "text", 'required maxlength="100"')}<div class="field"><label for="f-system">Sistema de RPG</label><select id="f-system" name="rpgSystemId" aria-describedby="system-help"></select><small id="system-help" class="muted small" aria-live="polite"></small></div>${c ? "" : `<fieldset class="play-mode-choice"><legend>Como vocês vão jogar?${helpButton("campanhas.config.forma-de-jogar", "Forma de jogar")}</legend>${PLAY_MODES.map(([v, l, help]) => `<label class="check mode-option"><input type="radio" name="playMode" aria-describedby="mode-help" value="${v}" ${v === "tactical" ? "checked" : ""}><span><strong>${l}</strong><small>${help}</small></span></label>`).join("")}<small class="form-help" id="mode-help">O sistema sugere uma forma; você pode mudar depois, para a campanha ou só para uma sessão.</small></fieldset>`}${c ? "" : "<details><summary>Premissa (opcional)</summary>"}<div class="field"><label for="description">Premissa e narrativa</label><textarea id="description" name="description" maxlength="5000" rows="4">${esc(c?.description || "")}</textarea></div>${c ? "" : "</details>"}${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">${c ? "Salvar alterações" : "Criar campanha"}</button></div></form>`,
   );
   loadSystems(c);
   $("#f-system").required = true;
-  if (!c) {
-    const choice = document.createElement("div");
-    choice.className = "field";
-    choice.innerHTML = '<label for="f-kind">Tipo de mesa</label><select id="f-kind" name="isOneShot" aria-describedby="one-shot-help"><option value="false">Campanha persistente</option><option value="true">One-shot</option></select><p id="one-shot-help" class="form-help">One-shots duram até 72 horas desde a criação. Ao encerrar a sessão, sair o mestre ou ficar sem presença dele por 45 segundos, todo conteúdo da mesa é apagado. Fichas pessoais são preservadas. A criação ou primeira entrada consome uma das 10 participações da conta comum, sem devolução.</p>';
-    $("#campaign-form .form-actions").before(choice);
-  }
   $("#campaign-form").onsubmit = (e) => {
     e.preventDefault();
     submitForm(e.currentTarget, async (data) => {
       const select = $("#f-system");
       const chosen = isGuid(data.rpgSystemId) ? data.rpgSystemId : null;
       if (!chosen && !c) throw new Error("Escolha um sistema de RPG antes de criar a campanha.");
-      await api("/campaigns" + (c ? "/" + c.id : ""), c ? "PUT" : "POST", {
+      const saved = await api("/campaigns" + (c ? "/" + c.id : ""), c ? "PUT" : "POST", {
         name: data.name,
-        description: data.description,
+        description: data.description || "",
+        playMode: c ? undefined : data.playMode,
         // rpgSystemId é a escolha; o nome segue junto por compatibilidade (e mantém um sistema inativo na edição).
         rpgSystemId: chosen,
         system: chosen ? select.selectedOptions[0]?.textContent || "" : c?.system || "Sistema livre",
         revision: c?.revision || 0,
-        isOneShot: c?.isOneShot || data.isOneShot === "true",
       });
       $("#modal").close();
       toast(
         c
           ? "Campanha atualizada."
-          : "Seu mundo está pronto para a primeira história.",
+          : "Seu mundo está pronto. Agora convide o grupo e comece quando quiser.",
       );
-      await onDone();
+      // Depois de criar: primeiros passos (convite, modelo sugerido e cenário opcional) na visão geral.
+      if (!c && saved?.id) navigate(`campaign/${saved.id}/overview`);
+      else await onDone();
     });
   };
 }

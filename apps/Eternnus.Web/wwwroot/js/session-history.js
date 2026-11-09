@@ -1,7 +1,10 @@
+import { helpButton } from "./help.js";
 // Histórico e rastreio de uma sessão (Tela 09). Exclusivo do mestre; a API reaplica a permissão.
 import { api } from "./api.js";
+import { state } from "./state.js";
 import { shell } from "./layout.js";
 import { $, esc, button, formError, submitForm, toast, empty } from "./ui.js";
+import { guardAvatars } from "./sheet.js";
 import {
   eventData,
   eventMeta,
@@ -44,6 +47,8 @@ export async function renderHistory(sessionId, tab = "timeline") {
   });
   const h = await api(`/sessions/${sessionId}/history?${query}`);
   if (request !== generation) return;
+  // A leitura autorizada do histórico é exclusiva do Mestre, inclusive ao abrir a rota diretamente.
+  state.campaign = { ...h.campaign, isMaster: true };
   const s = h.session;
   const count = (k) =>
     h.counts
@@ -61,7 +66,7 @@ export async function renderHistory(sessionId, tab = "timeline") {
   <nav class="page-tabs" aria-label="Registros da sessão">${TABS.map(([k, label]) => `<a href="#session/${esc(sessionId)}/${k}" ${k === tab ? 'aria-current="page" class="active"' : ""}>${label}</a>`).join("")}</nav>
   <div class="history-grid"><section class="history-main" aria-live="polite">${tab === "summary" ? summary(h, count) : timeline(h, tab)}</section>
   <aside class="history-aside"><article class="metal aside-card"><h2>✎ Notas do mestre</h2>${latestNote ? `<p class="note-text">${esc(latestNote.content)}</p><small class="muted">Registrado às ${time(latestNote.createdAt)} · ${latestNote.masterOnly ? "Visível apenas ao mestre" : "Compartilhado com o grupo"}</small>` : '<p class="muted small">Nenhuma anotação nesta sessão.</p>'}<form id="history-note" class="note-form"><label for="hn-text">Nova anotação${s.active ? "" : " (após o encerramento)"}</label><textarea id="hn-text" name="content" rows="3" maxlength="2000" required></textarea>${formError()}<button type="submit" class="subtle">✎ Registrar nota</button></form></article>
-  <article class="metal aside-card"><h2>▤ Alterações da sessão</h2><ul class="change-summary"><li><b>${count("sheet")}</b> mudanças em fichas</li><li><b>${count(["roll", "action"])}</b> rolagens e ações</li><li><b>${count("map")}</b> alterações no mapa</li><li><b>${count("note")}</b> notas do mestre</li><li><b>${count("message")}</b> mensagens</li></ul></article>
+  <article class="metal aside-card"><h2>▤ Alterações da sessão</h2>${helpButton("sessoes.historico.alteracoes", "Antes e depois")}<ul class="change-summary"><li><b>${count("sheet")}</b> mudanças em fichas</li><li><b>${count(["roll", "action"])}</b> rolagens e ações</li><li><b>${count("map")}</b> alterações no mapa</li><li><b>${count("note")}</b> notas do mestre</li><li><b>${count("message")}</b> mensagens</li></ul></article>
   <a class="button subtle" href="#campaign/${esc(h.campaign.id)}/sessions">↩ Voltar às sessões</a></aside></div>`;
   guardAvatars($("#main"));
   const form = $("#history-search");
@@ -164,7 +169,7 @@ function timeline(h, tab) {
   return `${head}${party}<ol class="timeline">${h.events
     .map((e) => {
       const [icon, label] = eventMeta(e.kind);
-      return `<li class="timeline-item metal ${e.kind}"><time>${time(e.createdAt)}</time><div><h3>${esc(e.content)}</h3><p>${detail(e)}</p></div><span class="timeline-kind" title="${label}" aria-label="${label}">${icon}</span></li>`;
+      return `<li class="timeline-item metal ${e.kind}"><time>${time(e.createdAt)}</time><div><h3>${esc(e.content)}</h3><p>${detail(e)}</p></div><span class="timeline-kind" data-tip="${label}" aria-label="${label}">${icon}</span></li>`;
     })
     .join(
       "",

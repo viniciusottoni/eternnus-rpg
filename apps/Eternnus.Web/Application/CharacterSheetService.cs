@@ -38,8 +38,10 @@ public static class CharacterSheets
 {
     public static async Task RequireCampaignSystemAsync(GameDb db, Character character, Campaign campaign, CancellationToken ct)
     {
-        var systemId = character.TemplateVersionId == null ? RpgSystem.FreeSystemId : await db.SheetTemplateVersions
-            .Where(v => v.Id == character.TemplateVersionId).Join(db.SheetTemplates, v => v.TemplateId, t => t.Id, (v, t) => t.RpgSystemId).SingleAsync(ct);
+        var origin = character.TemplateVersionId == null ? null : await db.SheetTemplateVersions
+            .Where(v => v.Id == character.TemplateVersionId).Join(db.SheetTemplates, v => v.TemplateId, t => t.Id, (v, t) => new { t.RpgSystemId, t.CampaignId }).SingleAsync(ct);
+        if (origin?.CampaignId is { } privateOf && privateOf != campaign.Id) throw new RuleException(400, "Esta ficha usa o modelo privado de outra campanha. Crie uma ficha com o modelo desta campanha.");
+        var systemId = origin?.RpgSystemId ?? RpgSystem.FreeSystemId;
         if (systemId == campaign.RpgSystemId) return;
         if (systemId == RpgSystem.FreeSystemId && campaign.SheetTemplateId == null &&
             !await db.SheetTemplates.AnyAsync(t => t.RpgSystemId == campaign.RpgSystemId && t.IsDefault && t.ArchivedAt == null && t.CurrentVersionId != null, ct)) return;
@@ -81,6 +83,10 @@ public static class CharacterSheets
         [SheetFieldRoles.MaxHp] = (1, 100000),
         [SheetFieldRoles.Movement] = (0, 300),
         [SheetFieldRoles.Armor] = (0, 1000),
+        [SheetFieldRoles.Light] = (0, 300),
+        [SheetFieldRoles.Vision] = (0, 300),
+        [SheetFieldRoles.Perception] = (-100, 1000),
+        [SheetFieldRoles.Reach] = (0, 300),
     };
 
     /// <summary>Contrato coluna clássica ↔ campo do modelo do Sistema livre (<see cref="SheetTemplateService.FreeTemplateFields"/>).</summary>
@@ -307,8 +313,20 @@ public static class CharacterSheets
                 case SheetFieldRoles.Hp: c.Hp = Int(v, 0, 100000, c.Hp); break;
                 case SheetFieldRoles.Movement: c.Movement = Int(v, 0, 300, c.Movement); break;
                 case SheetFieldRoles.Armor: c.Armor = Int(v, 0, 1000, c.Armor); break;
+                case SheetFieldRoles.Light: c.LightMeters = Int(v, 0, 300, c.LightMeters ?? 0); break;
+                case SheetFieldRoles.Vision: c.VisionMeters = Int(v, 0, 300, c.VisionMeters ?? 0); break;
+                case SheetFieldRoles.Perception: c.Perception = Int(v, -100, 1000, c.Perception ?? 0); break;
+                case SheetFieldRoles.Senses: c.Senses = Clip(v.Trim(), 400); break;
+                case SheetFieldRoles.Reach: c.ReachMeters = Int(v, 0, 300, c.ReachMeters ?? 0); break;
             }
         }
+        // Sem o papel no modelo, a mesa usa a configuração (luz/visão) ou nenhum valor.
+        var roles = ctx.Version.Fields.Select(f => f.Role).ToHashSet();
+        if (!roles.Contains(SheetFieldRoles.Light)) c.LightMeters = null;
+        if (!roles.Contains(SheetFieldRoles.Vision)) c.VisionMeters = null;
+        if (!roles.Contains(SheetFieldRoles.Perception)) c.Perception = null;
+        if (!roles.Contains(SheetFieldRoles.Senses)) c.Senses = null;
+        if (!roles.Contains(SheetFieldRoles.Reach)) c.ReachMeters = null;
         c.Hp = Math.Clamp(c.Hp, 0, c.MaxHp);
     }
 
@@ -337,6 +355,11 @@ public static class CharacterSheets
         SheetFieldRoles.MaxHp => Num(c.MaxHp),
         SheetFieldRoles.Movement => Num(c.Movement),
         SheetFieldRoles.Armor => Num(c.Armor),
+        SheetFieldRoles.Light => c.LightMeters is { } l ? Num(l) : null,
+        SheetFieldRoles.Vision => c.VisionMeters is { } v ? Num(v) : null,
+        SheetFieldRoles.Perception => c.Perception is { } p ? Num(p) : null,
+        SheetFieldRoles.Senses => c.Senses,
+        SheetFieldRoles.Reach => c.ReachMeters is { } r ? Num(r) : null,
         _ => null,
     };
 
@@ -381,8 +404,8 @@ public static class CharacterSheets
 
     /// <summary>Ações da versão do modelo (identificador "t:chave") seguidas das ações do jogador.</summary>
     public static List<object> CombinedActions(SheetTemplateVersion v, IEnumerable<CharacterAction>? own) =>
-        v.Actions.Select(a => (object)new { id = TableRules.TemplateActionPrefix + a.Key, a.Name, a.Kind, a.Formula, a.Description, source = "template" })
-            .Concat((own ?? []).Select(a => (object)new { a.Id, a.Name, a.Kind, a.Formula, a.Description, source = "player" })).ToList();
+        v.Actions.Select(a => (object)new { id = TableRules.TemplateActionPrefix + a.Key, a.Name, a.Kind, a.Formula, a.Description, a.Group, source = "template" })
+            .Concat((own ?? []).Select(a => (object)new { a.Id, a.Name, a.Kind, a.Formula, a.Description, a.Group, source = "player" })).ToList();
 
     /// <summary>Rola a fórmula de uma ação: formato antigo pelo <see cref="Dice"/>; demais pela linguagem de fórmulas com o escopo da ficha.</summary>
     public static object Roll(string formula, IReadOnlyDictionary<string, double> scope)
@@ -469,10 +492,10 @@ public class CharacterSheetService(GameDb db, SessionService sessions, Progressi
     {
         if (campaign.SheetTemplateId is { } chosen)
         {
-            var t = await db.SheetTemplates.AsNoTracking().SingleOrDefaultAsync(x => x.Id == chosen && x.RpgSystemId == campaign.RpgSystemId && x.ArchivedAt == null && x.CurrentVersionId != null, ct);
+            var t = await db.SheetTemplates.AsNoTracking().SingleOrDefaultAsync(x => x.Id == chosen && x.RpgSystemId == campaign.RpgSystemId && x.ArchivedAt == null && x.CurrentVersionId != null && (x.CampaignId == null || x.CampaignId == campaign.Id), ct);
             if (t != null) return (t, await VersionAsync(t.CurrentVersionId!.Value, ct), "campaign");
         }
-        var d = await db.SheetTemplates.AsNoTracking().Where(x => x.RpgSystemId == campaign.RpgSystemId && x.IsDefault && x.ArchivedAt == null && x.CurrentVersionId != null)
+        var d = await db.SheetTemplates.AsNoTracking().Where(x => x.RpgSystemId == campaign.RpgSystemId && x.IsDefault && x.ArchivedAt == null && x.CurrentVersionId != null && x.CampaignId == null)
             .OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(ct);
         if (d != null) return (d, await VersionAsync(d.CurrentVersionId!.Value, ct), "default");
         var (ft, fv) = await FreeAsync(ct);
@@ -530,7 +553,7 @@ public class CharacterSheetService(GameDb db, SessionService sessions, Progressi
             (template, version, _) = await CampaignTemplateAsync(camp, ct);
             if (x.TemplateId is { } wanted && wanted != template.Id)
             {
-                var other = await db.SheetTemplates.AsNoTracking().SingleOrDefaultAsync(t => t.Id == wanted && t.ArchivedAt == null && t.CurrentVersionId != null, ct)
+                var other = await db.SheetTemplates.AsNoTracking().SingleOrDefaultAsync(t => t.Id == wanted && t.ArchivedAt == null && t.CurrentVersionId != null && (t.CampaignId == null || t.CampaignId == cid), ct)
                     ?? throw new RuleException(404, "Ficha-modelo não encontrada.");
                 if (other.RpgSystemId != camp.RpgSystemId) throw new RuleException(400, "Escolha uma ficha-modelo do sistema da campanha.");
                 template = other; version = await VersionAsync(other.CurrentVersionId!.Value, ct);
@@ -538,7 +561,7 @@ public class CharacterSheetService(GameDb db, SessionService sessions, Progressi
         }
         else if (x.TemplateId is { } tid)
         {
-            template = await db.SheetTemplates.AsNoTracking().SingleOrDefaultAsync(t => t.Id == tid && t.ArchivedAt == null && t.CurrentVersionId != null, ct)
+            template = await db.SheetTemplates.AsNoTracking().SingleOrDefaultAsync(t => t.Id == tid && t.ArchivedAt == null && t.CurrentVersionId != null && t.CampaignId == null, ct)
                 ?? throw new RuleException(404, "Ficha-modelo não encontrada.");
             version = await VersionAsync(template.CurrentVersionId!.Value, ct);
         }

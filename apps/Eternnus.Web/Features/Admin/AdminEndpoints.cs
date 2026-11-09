@@ -33,6 +33,7 @@ public static class AdminEndpoints
         admin.MapGet("/rpg-systems", (RpgSystemService systems, CancellationToken ct) => systems.ListAllAsync(ct));
         admin.MapPost("/rpg-systems", (RpgSystemInput x, RpgSystemService systems, ClaimsPrincipal u, CancellationToken ct) => systems.CreateAsync(x, Me(u), ct));
         admin.MapPut("/rpg-systems/{id:guid}", (Guid id, RpgSystemUpdate x, RpgSystemService systems, ClaimsPrincipal u, CancellationToken ct) => systems.UpdateAsync(id, x, Me(u), ct));
+        admin.MapPut("/rpg-systems/{id:guid}/table-settings", (Guid id, RpgSystemTableSettingsInput x, RpgSystemService systems, ClaimsPrincipal u, CancellationToken ct) => systems.UpdateTableSettingsAsync(id, x, Me(u), ct));
         admin.MapDelete("/rpg-systems/{id:guid}", async (Guid id, RpgSystemService systems, ClaimsPrincipal u, CancellationToken ct) => { await systems.DeleteAsync(id, Me(u), ct); return Results.NoContent(); });
     }
 }

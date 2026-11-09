@@ -21,13 +21,11 @@
   border-color: var(--gold);
 }
 
-/* Desktop: "Mais" não existe; a barra lateral lista tudo e rola se faltar altura. */
+/* Desktop: "Mais" não existe; a barra lateral lista tudo. Se faltar altura, ela cresce e
+   acompanha a rolagem da página (ver styles.css), sem barra de rolagem própria no menu. */
 .sidebar nav .nav-more,
 .nav-more-panel {
   display: none;
-}
-.sidebar nav {
-  overflow-y: auto;
 }
 
 /* Tabela de dados compartilhada (admin, suporte, auditoria, moderação). */

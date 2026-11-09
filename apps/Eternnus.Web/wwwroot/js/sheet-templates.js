@@ -1,3 +1,4 @@
+import { helpButton } from "./help.js";
 // Fichas-modelo (#templates, #templates/{id}, #templates/{id}/versions/{versionId}): lista por sistema, página do modelo com versões,
 // editor visual do rascunho (PDF de fundo + campos arrastáveis, propriedades, ações, teste com valores de exemplo, publicação com diff)
 // e visualização de versões publicadas. Somente equipe (admin/embaixador); o servidor reaplica papel e auditoria em todas as rotas.
@@ -105,18 +106,30 @@ export function precheckPdf(file) {
 }
 const date = (value) => (value ? formatDate(String(value)) : "—");
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-const routeOf = (...parts) => "templates/" + parts.join("/");
+// Rota base e contêiner: #templates/#main para embaixadores; #admin/templates dentro do Painel admin para administradores.
+let base = "templates";
+let host = null;
+const routeOf = (...parts) => [base, ...parts].join("/");
+const root = () => host || $("#main");
 
 // ---------- Entrada ----------
 
-export async function renderTemplates(segments = []) {
+/** `embed` ({ base, root }) monta o módulo dentro de outra tela (Painel admin) sem redesenhar o shell. */
+export async function renderTemplates(segments = [], embed = null) {
   cleanup?.();
   cleanup = null;
   const gen = ++generation;
-  shell("templates");
+  if (!embed && isAdmin(state.user)) {
+    // Admin edita fichas-modelo pelo painel; replace evita prender o botão Voltar no redirecionamento.
+    location.replace("#" + ["admin", "templates", ...segments].join("/"));
+    return;
+  }
+  base = embed?.base || "templates";
+  host = embed?.root || null;
+  if (!embed) shell("templates");
   const [id, sub, versionId] = segments;
   if (segments.length && (!isGuid(id) || (segments.length > 1 && (sub !== "versions" || !isGuid(versionId))))) {
-    $("#main").innerHTML = notFound();
+    root().innerHTML = notFound();
     return;
   }
   if (!id) await renderList(gen);
@@ -129,8 +142,9 @@ export async function renderTemplates(segments = []) {
   };
 }
 
+const backToList = () => `<a class="tpl-back" href="#${routeOf()}">← Fichas-modelo</a>`;
 const notFound = () =>
-  `<a class="tpl-back" href="#templates">← Fichas-modelo</a>${empty("Ficha-modelo não encontrada.", "O endereço está incorreto ou o modelo foi removido.")}`;
+  `${backToList()}${empty("Ficha-modelo não encontrada.", "O endereço está incorreto ou o modelo foi removido.")}`;
 function failure(error, retry) {
   if (error instanceof ApiError && error.status === 404) return notFound();
   if (error instanceof ApiError && error.status === 403)
@@ -142,8 +156,15 @@ function failure(error, retry) {
 
 const listState = { systemId: "", archived: false, page: 1 };
 async function renderList(gen) {
-  const main = $("#main");
-  main.innerHTML = `<div class="page-heading"><div><span class="eyebrow">OFICINA DA EQUIPE</span><h1>Fichas-modelo <span class="heading-gem">✦</span></h1><p>PDFs de ficha com campos marcados: a ficha de cada jogador nasce de uma versão publicada.</p></div>${button("+ Nova ficha-modelo", "tpl-new", "", "primary")}</div>
+  const main = root();
+  const intro = "PDFs de ficha com campos marcados: a ficha de cada jogador nasce de uma versão publicada.";
+  const newButton = button("+ Nova ficha-modelo", "tpl-new", "", "primary");
+  // Dentro do painel o título da página já existe: a lista abre com um cabeçalho de seção.
+  main.innerHTML = `${
+    host
+      ? `<div class="section-title tpl-embed-head"><div><h2>Fichas-modelo</h2><p class="muted small">${intro}</p></div>${newButton}</div>`
+      : `<div class="page-heading"><div><span class="eyebrow">OFICINA DA EQUIPE</span><h1>Fichas-modelo <span class="heading-gem">✦</span></h1><p>${intro}</p></div>${newButton}</div>`
+  }
 <form class="tpl-filters" id="tpl-filters" role="search" aria-label="Filtrar fichas-modelo">
   <div class="tpl-filter"><label for="tpl-system">Sistema</label><select id="tpl-system" name="systemId"><option value="">Todos os sistemas</option></select></div>
   <label class="tpl-toggle"><input type="checkbox" id="tpl-archived" ${listState.archived ? "checked" : ""}> Mostrar arquivados</label>
@@ -272,14 +293,14 @@ function openCreate(systems) {
 // ---------- Página do modelo ----------
 
 async function renderTemplatePage(gen, id) {
-  const main = $("#main");
-  main.innerHTML = `<a class="tpl-back" href="#templates">← Fichas-modelo</a><p class="tpl-loading" aria-live="polite">Carregando ficha-modelo…</p>`;
+  const main = root();
+  main.innerHTML = `${backToList()}<p class="tpl-loading" aria-live="polite">Carregando ficha-modelo…</p>`;
   let t;
   try {
     t = await api("/sheet-templates/" + id);
   } catch (error) {
     if (gen !== generation) return;
-    main.innerHTML = `<a class="tpl-back" href="#templates">← Fichas-modelo</a>` + failure(error, "tpl-reload");
+    main.innerHTML = backToList() + failure(error, "tpl-reload");
     main.onclick = (e) => e.target.closest('[data-action="tpl-reload"]') && renderTemplatePage(gen, id);
     return;
   }
@@ -287,7 +308,7 @@ async function renderTemplatePage(gen, id) {
   const versions = (t.versions || []).filter((v) => isGuid(v.id));
   const draft = versions.find((v) => v.isDraft);
   const admin = isAdmin(state.user);
-  main.innerHTML = `<a class="tpl-back" href="#templates">← Fichas-modelo</a>
+  main.innerHTML = `${backToList()}
 <div class="page-heading"><div><span class="eyebrow">${esc(String(t.system || "").toUpperCase())}</span><h1>${esc(t.name)}</h1>
   <div class="tpl-chips">${t.isDefault ? '<span class="status-chip good">Padrão do sistema</span>' : ""}${t.isFree ? '<span class="status-chip">Modelo embutido</span>' : ""}${t.archived ? '<span class="status-chip quiet">Arquivado</span>' : ""}${t.currentVersion ? `<span class="status-chip">Publicada v${Number(t.currentVersion.number)}</span>` : '<span class="status-chip warn">Sem versão publicada</span>'}</div>
   ${t.description ? `<p class="tpl-description">${esc(t.description)}</p>` : ""}</div>
@@ -296,7 +317,7 @@ async function renderTemplatePage(gen, id) {
       ? `<a class="button primary" href="#${routeOf(t.id, "versions", draft.id)}">Editar rascunho v${Number(draft.number)}</a>`
       : button(t.currentVersion ? "+ Nova versão" : "+ Criar rascunho", "tpl-version-new", "", "primary")
   }</div></div>
-<section class="tpl-section"><div class="section-title"><h2>Versões</h2><span>PUBLICADAS SÃO IMUTÁVEIS</span></div>
+<section class="tpl-section"><div class="section-title"><h2>Versões</h2>${helpButton("modelos.versao.publicacao", "Rascunho e publicação")}<span>PUBLICADAS SÃO IMUTÁVEIS</span></div>
 ${
   versions.length
     ? `<div class="data-table-wrap"><table class="data-table tpl-versions"><thead><tr><th scope="col">Versão</th><th scope="col">Situação</th><th scope="col">Criada</th><th scope="col">Publicada</th><th scope="col">PDF</th><th scope="col" class="num">Fichas</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead><tbody>${versions
@@ -408,10 +429,10 @@ function openMeta(gen, t) {
 
 const backupKey = (versionId) => "eternnus.template-draft." + versionId;
 const snapshot = (doc) => JSON.stringify({ pages: doc.pages, fields: doc.fields, actions: doc.actions, notes: doc.notes });
-const PROP_LABELS = { name: "Nome do personagem", level: "Nível", hp: "Vida", maxHp: "Vida máx.", movement: "Deslocamento", armor: "Armadura" };
+const PROP_LABELS = { name: "Nome do personagem", level: "Nível", hp: "Vida", maxHp: "Vida máx.", movement: "Deslocamento", armor: "Armadura", light: "Luz", vision: "Visão própria", perception: "Percepção", senses: "Sentidos", reach: "Alcance de ataque" };
 
 async function renderVersionPage(gen, id, versionId) {
-  const main = $("#main");
+  const main = root();
   main.innerHTML = `<a class="tpl-back" href="#${routeOf(id)}">← Ficha-modelo</a><p class="tpl-loading" aria-live="polite">Abrindo a versão…</p>`;
   let t, v, published = null;
   try {
@@ -482,7 +503,7 @@ class Editor {
     const status = this.isDraft ? `<span class="status-chip warn">Rascunho v${Number(v.number)}</span>` : `<span class="status-chip ${t.currentVersion?.id === v.id ? "good" : "quiet"}">v${Number(v.number)} · ${t.currentVersion?.id === v.id ? "publicada, atual" : "arquivada"}</span>`;
     const draftId = t.draftId && isGuid(t.draftId) ? t.draftId : null;
     const actions = this.isDraft
-      ? `${button("↶", "ed-undo", "", "subtle tpl-icon", 'aria-label="Desfazer (Ctrl+Z)" title="Desfazer (Ctrl+Z)" disabled')}${button("↷", "ed-redo", "", "subtle tpl-icon", 'aria-label="Refazer (Ctrl+Shift+Z)" title="Refazer (Ctrl+Shift+Z)" disabled')}${button("Salvar", "ed-save", "", "subtle", 'title="Ctrl+S"')}${button("Publicar…", "ed-publish", "", "primary")}`
+      ? `${button("↶", "ed-undo", "", "subtle tpl-icon", 'aria-label="Desfazer (Ctrl+Z)" data-tip="Desfazer (Ctrl+Z)" aria-describedby="ed-history-help" disabled')}${button("↷", "ed-redo", "", "subtle tpl-icon", 'aria-label="Refazer (Ctrl+Shift+Z)" data-tip="Refazer (Ctrl+Shift+Z)" aria-describedby="ed-history-help" disabled')}${button("Salvar", "ed-save", "", "subtle", 'data-tip="Ctrl+S"')}${button("Publicar…", "ed-publish", "", "primary")}`
       : draftId
         ? `<a class="button primary" href="#${routeOf(t.id, "versions", draftId)}">Abrir rascunho</a>`
         : button("+ Novo rascunho desta versão", "ed-new-draft", "", "primary");
@@ -490,7 +511,7 @@ class Editor {
 <div class="page-heading tpl-editor-heading"><div><span class="eyebrow">${esc(String(t.system || "").toUpperCase())} · ${this.isDraft ? "EDITOR DE CAMPOS" : "VERSÃO PUBLICADA"}</span><h1>${esc(t.name)} ${status}</h1>
   <p id="ed-save-state" class="tpl-save-state" aria-live="polite">${this.isDraft ? "Tudo salvo." : `Publicada em ${esc(date(v.publishedAt))}. Versões publicadas não mudam.`}</p></div>
   <div class="tpl-heading-actions">${actions}</div></div>
-<div class="tpl-toolbar" role="toolbar" aria-label="Ferramentas da ficha">
+<p id="ed-history-help" class="form-help">Desfazer e Refazer ficam disponíveis quando há alterações na edição atual. Setas movem; Shift redimensiona; Alt usa passo fino; Ctrl+S salva.</p><div class="tpl-toolbar" role="toolbar" aria-label="Ferramentas da ficha">${helpButton("modelos.editor.atalhos", "Atalhos do editor")}
   <div class="tpl-seg" role="group" aria-label="Modo">${button(this.isDraft ? "✎ Desenhar campos" : "◫ Visualizar", "ed-view", "draw", "subtle", 'aria-pressed="true"')}${button("▶ Testar ficha", "ed-view", "test", "subtle", 'aria-pressed="false"')}</div>
   <div class="tpl-zoom" role="group" aria-label="Zoom">${button("−", "ed-zoom", "-1", "subtle tpl-icon", 'aria-label="Diminuir zoom"')}<output id="ed-zoom" aria-live="polite">100%</output>${button("+", "ed-zoom", "1", "subtle tpl-icon", 'aria-label="Aumentar zoom"')}${button("Ajustar", "ed-zoom", "0", "subtle")}</div>
   ${
@@ -731,23 +752,23 @@ class Editor {
     const pagesOptions = this.doc.pages.map((_, i) => `<option value="${i}" ${f.page === i ? "selected" : ""}>Página ${i + 1}</option>`).join("");
     const num = (v) => (v == null ? "" : String(v));
     const pctv = (v) => String(Math.round(v * 10000) / 100);
-    return `<div class="tpl-prop-head"><span class="tpl-type-icon ${type.css}" aria-hidden="true">${esc(type.icon)}</span><div><strong>${esc(f.label || f.name)}</strong><small>@${esc(f.name)} · página ${f.page + 1}</small></div>
-  ${this.isDraft ? `<div class="tpl-prop-tools">${button("⧉", "ed-duplicate", "", "subtle tpl-icon", 'aria-label="Duplicar campo" title="Duplicar"')}${button("🗑", "ed-delete", "", "subtle danger tpl-icon", 'aria-label="Excluir campo" title="Excluir (Delete)"')}</div>` : ""}</div>
+    return `<div class="tpl-prop-head"><span class="tpl-type-icon ${type.css}" aria-hidden="true" data-tip="${esc(type.label)}">${esc(type.icon)}</span><div><strong>${esc(f.label || f.name)}</strong><small>@${esc(f.name)} · página ${f.page + 1}</small></div>
+  ${this.isDraft ? `<div class="tpl-prop-tools">${button("⧉", "ed-duplicate", "", "subtle tpl-icon", 'aria-label="Duplicar campo" data-tip="Duplicar"')}${button("🗑", "ed-delete", "", "subtle danger tpl-icon", 'aria-label="Excluir campo" data-tip="Excluir (Delete)"')}</div>` : ""}</div>
 <form class="tpl-props" id="ed-field-form" autocomplete="off" novalidate>
   <div class="field"><label for="ed-prop-label">Rótulo</label><input id="ed-prop-label" data-prop="label" maxlength="80" value="${esc(f.label)}" placeholder="${esc(f.name)}" ${ro}></div>
-  <div class="field"><label for="ed-prop-name">Nome nas fórmulas</label><div class="tpl-prefixed"><span aria-hidden="true">@</span><input id="ed-prop-name" data-prop="name" maxlength="40" spellcheck="false" value="${esc(f.name)}" aria-describedby="ed-prop-name-msg" aria-invalid="${!!nameError}" ${ro}></div>
+  <div class="field"><div class="field-label"><label for="ed-prop-name">Nome nas fórmulas</label>${helpButton("modelos.campo.nome", "Nome nas fórmulas")}</div><div class="tpl-prefixed"><span aria-hidden="true">@</span><input id="ed-prop-name" data-prop="name" maxlength="40" spellcheck="false" value="${esc(f.name)}" aria-describedby="ed-prop-name-msg" aria-invalid="${!!nameError}" ${ro}></div>
     <p class="tpl-msg ${nameError ? "is-error" : lost ? "is-warn" : ""}" id="ed-prop-name-msg" aria-live="polite">${nameError ? esc(nameError) : lost ? esc(`“${f.origin}” existe na versão publicada: ao migrar, as fichas perdem o valor desse campo. Volte ao nome antigo para preservá-lo.`) : "Minúsculas, números e _. É a chave do valor nas fichas."}</p></div>
   <div class="tpl-prop-row">
     <div class="field"><label for="ed-prop-type">Tipo</label><select id="ed-prop-type" data-prop="type" ${ro}>${FIELD_TYPES.map((t) => `<option value="${t.value}" ${t.value === f.type ? "selected" : ""}>${esc(t.icon)} ${t.label}</option>`).join("")}</select></div>
-    <div class="field"><label for="ed-prop-role">Papel na mesa</label><select id="ed-prop-role" data-prop="role" aria-describedby="ed-prop-role-msg" ${ro}><option value="">Nenhum</option>${FIELD_ROLES.map((r) => {
+    <div class="field"><div class="field-label"><label for="ed-prop-role">Papel na mesa</label>${helpButton("modelos.campo.papel-na-mesa", "Papel na mesa")}</div><select id="ed-prop-role" data-prop="role" aria-describedby="ed-prop-role-msg" ${ro}><option value="">Nenhum</option>${FIELD_ROLES.map((r) => {
       const owner = this.doc.fields.findIndex((o, i) => i !== this.selected && o.role === r.value);
       return `<option value="${r.value}" ${r.value === f.role ? "selected" : ""}>${r.label}${owner >= 0 ? " (em uso)" : ""}</option>`;
     }).join("")}</select></div>
   </div>
-  <p class="tpl-msg ${role && !role.types.includes(f.type) ? "is-error" : ""}" id="ed-prop-role-msg">${role ? esc(role.types.includes(f.type) ? role.help : role.value === "name" ? "O papel Nome exige um campo de texto curto." : "Este papel exige um campo de número ou calculado.") : "Papéis ligam o campo à mesa: vida, nível, deslocamento, armadura e nome."}</p>
+  <p class="tpl-msg ${role && !role.types.includes(f.type) ? "is-error" : ""}" id="ed-prop-role-msg">${role ? esc(role.types.includes(f.type) ? role.help : role.value === "name" ? "O papel Nome exige um campo de texto curto." : role.value === "senses" ? "O papel Sentidos exige um campo de texto." : "Este papel exige um campo de número ou calculado.") : "Papéis ligam o campo à mesa: vida, nível, deslocamento, armadura, nome, luz, visão, percepção, sentidos e alcance de ataque."}</p>
   ${
     f.type === "computed"
-      ? `<div class="field tpl-formula-field"><label for="ed-prop-formula">Fórmula</label><div class="tpl-combo"><input id="ed-prop-formula" data-prop="formula" maxlength="300" spellcheck="false" value="${esc(f.formula || "")}" placeholder="Ex.: floor((@forca - 10) / 2)" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="ed-prop-formula-list" aria-describedby="ed-prop-formula-msg" ${ro}><ul class="tpl-suggest" id="ed-prop-formula-list" role="listbox" hidden></ul></div>
+      ? `<div class="field tpl-formula-field"><div class="field-label"><label for="ed-prop-formula">Fórmula</label>${helpButton("modelos.campo.formula", "Fórmulas calculadas")}</div><div class="tpl-combo"><input id="ed-prop-formula" data-prop="formula" maxlength="300" spellcheck="false" value="${esc(f.formula || "")}" placeholder="Ex.: floor((@forca - 10) / 2)" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="ed-prop-formula-list" aria-describedby="ed-prop-formula-msg" ${ro}><ul class="tpl-suggest" id="ed-prop-formula-list" role="listbox" hidden></ul></div>
     <p class="tpl-msg" id="ed-prop-formula-msg" aria-live="polite"></p></div>`
       : ""
   }
@@ -934,7 +955,7 @@ class Editor {
         .map(({ f, i }) => {
           const type = typeInfo(f.type);
           const role = roleInfo(f.role);
-          return `<li><button type="button" data-action="ed-pick" data-id="${i}" class="${i === this.selected ? "is-selected" : ""}" aria-current="${i === this.selected}"><span class="tpl-type-icon ${type.css}" aria-hidden="true">${esc(type.icon)}</span><span class="tpl-field-text"><strong>${esc(f.label || f.name)}</strong><small>@${esc(f.name)} · ${type.label}</small></span>${role ? `<span class="status-chip">${PROP_LABELS[role.value]}</span>` : ""}${invalid.includes(f.name) ? '<span class="tpl-warn" aria-label="com problema" title="Com problema">⚠</span>' : ""}</button></li>`;
+          return `<li><button type="button" data-action="ed-pick" data-id="${i}" class="${i === this.selected ? "is-selected" : ""}" aria-current="${i === this.selected}"><span class="tpl-type-icon ${type.css}" aria-hidden="true" data-tip="${esc(type.label)}">${esc(type.icon)}</span><span class="tpl-field-text"><strong>${esc(f.label || f.name)}</strong><small>@${esc(f.name)} · ${type.label}</small></span>${role ? `<span class="status-chip">${PROP_LABELS[role.value]}</span>` : ""}${invalid.includes(f.name) ? '<span class="tpl-warn" aria-label="com problema" data-tip="Com problema">⚠</span>' : ""}</button></li>`;
         })
         .join("")}</ul>`;
     });
@@ -963,7 +984,7 @@ class Editor {
           return `<fieldset class="tpl-action" data-action-index="${i}"><legend><span aria-hidden="true">${esc(kind.icon)}</span> ${esc(a.name || "Nova ação")}</legend>
   <div class="tpl-prop-row"><div class="field"><label for="ed-act-name-${i}">Nome</label><input id="ed-act-name-${i}" data-act="name" data-index="${i}" maxlength="60" value="${esc(a.name)}" ${ro}></div>
   <div class="field"><label for="ed-act-kind-${i}">Tipo</label><select id="ed-act-kind-${i}" data-act="kind" data-index="${i}" ${ro}>${ACTION_KINDS.map((k) => `<option value="${k.value}" ${k.value === a.kind ? "selected" : ""}>${esc(k.icon)} ${k.label}</option>`).join("")}</select></div></div>
-  <div class="field"><label for="ed-act-key-${i}">Chave</label><input id="ed-act-key-${i}" data-act="key" data-index="${i}" maxlength="40" spellcheck="false" value="${esc(a.key)}" aria-invalid="${!!keyError}" aria-describedby="ed-act-key-msg-${i}" ${ro}><p class="tpl-msg ${keyError ? "is-error" : ""}" id="ed-act-key-msg-${i}">${esc(keyError || "Identifica a ação no histórico e nas migrações.")}</p></div>
+  <div class="field"><div class="field-label"><label for="ed-act-key-${i}">Chave</label>${helpButton("modelos.acoes.chave", "Chave da ação")}</div><input id="ed-act-key-${i}" data-act="key" data-index="${i}" maxlength="40" spellcheck="false" value="${esc(a.key)}" aria-invalid="${!!keyError}" aria-describedby="ed-act-key-msg-${i}" ${ro}><p class="tpl-msg ${keyError ? "is-error" : ""}" id="ed-act-key-msg-${i}">${esc(keyError || "Identifica a ação no histórico e nas migrações.")}</p></div>
   <div class="field tpl-formula-field"><label for="ed-act-formula-${i}">Rolagem</label><div class="tpl-combo"><input id="ed-act-formula-${i}" data-act="formula" data-index="${i}" maxlength="300" spellcheck="false" value="${esc(a.formula)}" placeholder="Ex.: 1d20 + @forca_mod" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="ed-act-formula-${i}-list" aria-describedby="ed-act-formula-msg-${i}" ${ro}><ul class="tpl-suggest" id="ed-act-formula-${i}-list" role="listbox" hidden></ul></div>
     <p class="tpl-msg" id="ed-act-formula-msg-${i}" aria-live="polite">${esc(this.actionCheck(a).text)}</p></div>
   <div class="field"><label for="ed-act-desc-${i}">Descrição</label><input id="ed-act-desc-${i}" data-act="description" data-index="${i}" maxlength="300" value="${esc(a.description)}" ${ro}></div>

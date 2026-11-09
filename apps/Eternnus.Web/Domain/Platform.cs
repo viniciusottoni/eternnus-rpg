@@ -27,6 +27,8 @@ public class RpgSystem
     [MaxLength(2000)] public string Description { get; set; } = "";
     /// <summary>Inativo: não aparece para novas campanhas, mas campanhas existentes continuam funcionando.</summary>
     public bool Active { get; set; } = true;
+    /// <summary>Configuração padrão da mesa (<see cref="TableSettings"/>) herdada pelas campanhas do sistema. Nula = padrão da plataforma.</summary>
+    [MaxLength(4000)] public string? TableSettings { get; set; }
     public int Revision { get; set; } = 1;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
@@ -138,6 +140,8 @@ public class SheetTemplate
     public static readonly Guid FreeTemplateId = Guid.Parse("00000000-0000-4000-8000-000000000101");
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid RpgSystemId { get; set; }
+    /// <summary>Modelo privado da campanha: fora do catálogo, editável só pelo mestre dela, sem privilégio de equipe.</summary>
+    public Guid? CampaignId { get; set; }
     [MaxLength(100)] public string Name { get; set; } = "";
     [MaxLength(2000)] public string Description { get; set; } = "";
     /// <summary>Versão publicada mais recente; nula enquanto só houver rascunho.</summary>
@@ -185,8 +189,11 @@ public static class SheetFieldTypes
 /// <summary>Papéis que ligam um campo à mesa ao vivo. A ficha sincroniza esses valores nas colunas clássicas de <see cref="Character"/>.</summary>
 public static class SheetFieldRoles
 {
-    public const string Name = "name", Level = "level", Hp = "hp", MaxHp = "maxHp", Movement = "movement", Armor = "armor";
-    public static readonly string[] All = [Name, Level, Hp, MaxHp, Movement, Armor];
+    public const string Name = "name", Level = "level", Hp = "hp", MaxHp = "maxHp", Movement = "movement", Armor = "armor",
+        Light = "light", Vision = "vision", Perception = "perception", Senses = "senses", Reach = "reach";
+    public static readonly string[] All = [Name, Level, Hp, MaxHp, Movement, Armor, Light, Vision, Perception, Senses, Reach];
+    /// <summary>Papéis de texto (os demais, exceto <see cref="Name"/>, exigem número ou cálculo).</summary>
+    public static bool IsText(string? role) => role is Name or Senses;
 }
 public class SheetField
 {
@@ -209,6 +216,12 @@ public class SheetField
     public List<string> Options { get; set; } = [];
     public double FontSize { get; set; } = 10;
     [MaxLength(10)] public string Align { get; set; } = "left";
+    /// <summary>Ficha resumida: "resource" (contador ajustável na mesa) ou "summary" (destaque). Nulo = só ficha completa.</summary>
+    [MaxLength(20)] public string? Track { get; set; }
+    /// <summary>Recurso: campo que guarda o teto (ex.: vida_max). Sem ele vale <see cref="Max"/>.</summary>
+    [MaxLength(40)] public string? MaxField { get; set; }
+    /// <summary>Seção na apresentação simples (modelos sem PDF).</summary>
+    [MaxLength(60)] public string? Section { get; set; }
 }
 public class SheetActionDefinition
 {
@@ -218,6 +231,7 @@ public class SheetActionDefinition
     /// <summary>Fórmula com dados (ex.: 1d20 + @forca_mod; 2d6kh1 + floor(@nivel / 2)).</summary>
     [MaxLength(300)] public string Formula { get; set; } = "";
     [MaxLength(300)] public string Description { get; set; } = "";
+    [MaxLength(30)] public string? Group { get; set; }
 }
 /// <summary>Histórico individual por campo da ficha de jogador.</summary>
 public class CharacterFieldChange

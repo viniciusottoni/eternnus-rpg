@@ -14,7 +14,7 @@ public static class AuthenticatorEndpoints
         var stamp = await signIn.UserManager.GetSecurityStampAsync(user);
         return ticket.Principal?.FindFirstValue("challenge_stamp") == stamp ? user : null;
     }
-    public static async Task<IResult> BeginAsync(AppUser user, SignInManager<AppUser> signIn, string? provider = null)
+    public static async Task<IResult> BeginAsync(AppUser user, SignInManager<AppUser> signIn, string? provider = null, bool remember = false)
     {
         var users = signIn.UserManager;
         var setup = !await users.GetTwoFactorEnabledAsync(user);
@@ -25,8 +25,10 @@ public static class AuthenticatorEndpoints
         }
         await signIn.Context.SignOutAsync(IdentityConstants.ApplicationScheme);
         var claims = new List<Claim> { new(ClaimTypes.Name, user.Id), new(ClaimTypes.AuthenticationMethod, provider ?? "pwd"), new("challenge_stamp", await users.GetSecurityStampAsync(user)) };
-        await signIn.Context.SignInAsync(IdentityConstants.TwoFactorUserIdScheme, new ClaimsPrincipal(new ClaimsIdentity(claims, IdentityConstants.TwoFactorUserIdScheme)),
-            new AuthenticationProperties { IsPersistent = false, ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(5) });
+        var properties = new AuthenticationProperties { IsPersistent = false, AllowRefresh = false,
+            ExpiresUtc = signIn.Context.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow().AddMinutes(5) };
+        properties.Items[LoginSession.Remember] = remember && user.Role != PlatformRoles.Admin ? "true" : "false";
+        await signIn.Context.SignInAsync(IdentityConstants.TwoFactorUserIdScheme, new ClaimsPrincipal(new ClaimsIdentity(claims, IdentityConstants.TwoFactorUserIdScheme)), properties);
         return Results.Ok(new { requiresTwoFactor = true, setupRequired = setup });
     }
     public static void MapAuthenticatorEndpoints(this WebApplication app)
@@ -46,6 +48,9 @@ public static class AuthenticatorEndpoints
             var user = await PendingAsync(signIn);
             var users = signIn.UserManager;
             if (user == null) return Results.Unauthorized();
+            var challenge = await signIn.Context.AuthenticateAsync(IdentityConstants.TwoFactorUserIdScheme);
+            var remember = LoginSession.Remembers(challenge.Properties);
+            var provider = challenge.Principal?.FindFirstValue(ClaimTypes.AuthenticationMethod);
             var setup = !await users.GetTwoFactorEnabledAsync(user);
             var valid = false;
             if (!setup && input.RecoveryCode is { Length: > 0 and <= 100 } recovery)
@@ -65,7 +70,7 @@ public static class AuthenticatorEndpoints
             }
             await users.ResetAccessFailedCountAsync(user);
             await signIn.Context.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
-            await signIn.SignInWithClaimsAsync(user, false, [new Claim("amr", "mfa")]);
+            await LoginSession.SignInAsync(signIn, user, remember, provider, mfa: true);
             return Results.Ok(new { recoveryCodes });
         });
     }

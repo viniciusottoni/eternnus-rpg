@@ -46,14 +46,8 @@ public static class ServiceRegistration
                 o.Cookie.Name = builder.Environment.IsDevelopment() ? "Eternnus.Session" : "__Host-Eternnus.Session";
                 o.Cookie.HttpOnly = true; o.Cookie.SameSite = SameSiteMode.Lax;
                 o.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
-                o.ExpireTimeSpan = TimeSpan.FromHours(8); o.SlidingExpiration = true;
-                o.Events.OnValidatePrincipal = async context =>
-                {
-                    await SecurityStampValidator.ValidatePrincipalAsync(context);
-                    if (context.Principal == null) return;
-                    var user = await context.HttpContext.RequestServices.GetRequiredService<UserManager<AppUser>>().GetUserAsync(context.Principal);
-                    if (user?.Role == PlatformRoles.Admin && (!user.TwoFactorEnabled || !context.Principal.HasClaim("amr", "mfa"))) context.RejectPrincipal();
-                };
+                o.ExpireTimeSpan = LoginSession.Window; o.SlidingExpiration = true;
+                o.Events.OnValidatePrincipal = LoginSession.ValidateAsync;
                 o.Events.OnRedirectToLogin = c => { c.Response.StatusCode = 401; return Task.CompletedTask; };
                 o.Events.OnRedirectToAccessDenied = c => { c.Response.StatusCode = 403; return Task.CompletedTask; };
             }).AddCookie(IdentityConstants.ExternalScheme, o =>
@@ -110,7 +104,11 @@ public static class ServiceRegistration
         builder.Services.AddHostedService<MailWorker>();
         builder.Services.AddSingleton<TemporaryImageRelay>();
         builder.Services.AddScoped<CampaignAssetsService>();
+        builder.Services.AddSingleton(_ => MusicStorage.FromConfiguration(builder.Configuration, builder.Environment)); builder.Services.AddScoped<MusicCatalogService>();
+        builder.Services.AddHostedService<MusicStorageSweeper>();
         builder.Services.AddScoped<OneShotLifecycleService>();
+        OneShotLifecycleService.Configure(builder.Configuration.GetValue<int?>("OneShots:RecoveryMinutes"));
+        builder.Services.AddScoped<PreparationService>(); builder.Services.AddScoped<PlayPreferences>();
         builder.Services.AddHostedService<OneShotWorker>();
         builder.Services.AddRateLimiter(o =>
         {
@@ -118,6 +116,8 @@ public static class ServiceRegistration
             o.AddPolicy("avatar", c => RateLimitPartition.GetFixedWindowLimiter(c.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? c.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new() { PermitLimit = 3, Window = TimeSpan.FromMinutes(1) }));
             o.AddPolicy("auth", c => RateLimitPartition.GetFixedWindowLimiter(c.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new() { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) }));
             o.AddPolicy("upload", c => RateLimitPartition.GetFixedWindowLimiter(c.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? c.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new() { PermitLimit = 10, Window = TimeSpan.FromMinutes(5) }));
+            // Envio ao catálogo de músicas (Admin): mais folgado que o "upload" comum para popular o catálogo em lote.
+            o.AddPolicy("catalog", c => RateLimitPartition.GetFixedWindowLimiter(c.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? c.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new() { PermitLimit = 30, Window = TimeSpan.FromMinutes(5) }));
             o.AddPolicy("social", c => RateLimitPartition.GetFixedWindowLimiter(c.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? c.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new() { PermitLimit = 12, Window = TimeSpan.FromMinutes(1) }));
             o.AddPolicy("mail", c => RateLimitPartition.GetFixedWindowLimiter(c.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new() { PermitLimit = 6, Window = TimeSpan.FromMinutes(1) }));
             // A consulta ao vivo é uma espera longa somente leitura: balde próprio no limitador global e concorrência por usuário na rota.

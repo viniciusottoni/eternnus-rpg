@@ -6,6 +6,8 @@ Antes de alterar uma funcionalidade, leia `docs/ARQUITETURA.md`, `docs/GUIA_VISU
 
 ## Visual e frontend
 
+- Classificar a ajuda de todo elemento novo por `docs/AJUDA_CONTEXTUAL.md` e registrar as chaves no catálogo da área.
+
 - Os quatro arquivos `assets/Mockup - Tela N.png`, o logotipo oficial e `Golden Valley Castle at Sunset.png` são a referência principal. Simplificar ornamentos para preservar leitura e operação; não substituir por uma identidade genérica.
 - Reutilizar `js/layout.js`, `js/ui.js`, `js/api.js` e tokens de `styles.css`. Não duplicar menus, modais, tratamento de fetch, campos ou feedback em cada nova tela.
 - Usar ES Modules e separar apresentação, chamadas HTTP e regras puras. Carregar funcionalidades de jogo sob demanda.

@@ -1,5 +1,7 @@
 # Segurança, estabilidade e desempenho
 
+Progressão e atlas: [PROGRESSAO_CENARIOS.md](PROGRESSAO_CENARIOS.md) registra as tarifas, reconhecimento histórico somente leitura, elegibilidade de sessão e limites preexistentes de concorrência do resumo de XP. Tetos de recompensa e janela entre entrada/encerramento não devem ser anunciados como prevenção completa de fraude. Mapas oficiais continuam validados pelo servidor; novas texturas e animações são apenas apresentação. Nenhum dado de XP, perfil ou mapa privado foi incluído no cache público v19.
+
 Este documento descreve controles e limites, não uma certificação nem garantia contra toda invasão. Segurança é mantida por implementação, testes, configuração do ambiente, atualizações e monitoramento. Não declarar capacidade de usuários simultâneos sem medição no ambiente de destino.
 
 ## Fronteiras de confiança
@@ -12,7 +14,7 @@ O navegador, parâmetros, e-mails, perfis de provedores e identificadores recebi
 | --- | --- | --- |
 | Credenciais locais | ASP.NET Identity, hash de senha e validação padrão; senha mínima 10, máxima 128. | Não guardar senha em logs, analytics ou estado persistido do frontend. |
 | Tentativas de login | Bloqueio de conta após cinco falhas, por 15 minutos; limites de requisição. | Limites por processo não substituem proteção distribuída ou na borda. |
-| Sessão | Cookie HttpOnly; Secure e prefixo `__Host-` em produção; SameSite Lax; validade de oito horas com renovação. | Não desabilitar HTTPS nem copiar cookie para localStorage. |
+| Sessão | Cookie HttpOnly; Secure e prefixo `__Host-` em produção; SameSite Lax; login comum de oito horas renováveis com teto de 24 h; persistência opcional de 14 dias fixos; administrador com MFA e oito horas fixas. | Não desabilitar HTTPS nem copiar cookie para localStorage. Polling e heartbeat não ultrapassam o teto absoluto. |
 | Senha alterada | Security stamp validado em cada requisição autenticada. | Essa verificação tem custo de banco; não cachear sem estratégia de invalidação. |
 | CSRF | Cookie/token antiforgery e `X-CSRF-TOKEN`, além de `X-Eternnus: 1` para escritas. | SameSite e HTTPS isoladamente não substituem validação antiforgery. |
 | Acesso pendente | Política `Verified` em APIs de jogo e leitura do estado real do usuário. | Botões bloqueados são apenas apresentação. |
@@ -75,6 +77,10 @@ Nenhum número de capacidade é declarado por este documento. Expansão para mú
 
 ## Operação e restauração
 
+Login persistente: a escolha explícita permite 14 dias fixos; login comum tem oito horas renováveis e teto de 24 horas; administrador tem MFA e oito horas fixas. O início fica protegido no ticket e não é reiniciado pelo security stamp, confirmação de e-mail ou tráfego automático. `logout-all` usa a identidade autenticada e CSRF para trocar o stamp, invalidando outros cookies e desafios MFA na próxima requisição. Não altera as permissões de conta pendente. A maior duração amplia a exposição de um dispositivo pessoal desbloqueado; usar Sair em dispositivos compartilhados.
+
+Na primeira publicação desta política, cookies anteriores sem início protegido são recusados e exigem novo login. Não há migração de dados. As chaves continuam em `App_Data/keys` (ou diretório privado configurado), excluídas do pacote pelo `.csproj`; o upload FTPS não apaga arquivos remotos. Preservar ACL, diretório e nome de aplicação entre deploys. O cliente fecha recursos contínuos após detectar perda de autenticação, sem reenviar escritas. Operações HTTP já autorizadas podem terminar; a revogação é observada em nova requisição. O fluxo não persiste rascunhos de formulários.
+
 Manter backup do PostgreSQL e das chaves, testar restauração, controlar acesso ao servidor e separar permissões de migração e de runtime quando a hospedagem permitir. Monitorar `/health`, falhas de login, fila, consumo de recursos e erros inesperados, sem capturar senha ou códigos de e-mail. Atualizar dependências com testes de regressão e análise de vulnerabilidades. Publicação, SMTP real e OAuth real dependem de validação na conta da hospedagem.
 
 
@@ -105,3 +111,27 @@ As revisões locais não equivalem a auditoria independente ou teste de invasão
 Campanhas/mapas/textos usam os contratos de CONTAS_MESAS_LIVRES.md e CAMPANHA_ACERVOS.md. Upload de mapa é exceção enumerada de 10 MiB + 64 KiB; parser, scanner e normalização continuam obrigatórios. Revisar limites IIS/proxy. Históricos de ficha permanecem privados mesmo quando a ficha é compartilhada. Admin exige autenticador e prova MFA no cookie, preservada na renovação do principal; bootstrap usa somente configuração privada.
 
 Imagens temporárias não são uploads: somente identificador/título e sinalização passam pelo servidor. WebRTC usa bytes reconstruídos nos navegadores, com descarte na saída. Origin do WebSocket e autorização de recurso são reaplicados; conexões diretas podem exigir STUN/TURN privado para redes restritas. Ver IMAGENS_TEMPORARIAS.md. Nada disso integra Cache Storage. O cache público v12 inclui apenas os novos módulos estáticos.
+
+
+## Névoa e visão
+
+A visibilidade é decidida no servidor. Jogadores não recebem marcadores fora da visão, criaturas ocultas não reveladas, marcas não reveladas, paredes/terreno de casas nunca vistas nem pixels de mapas enviados fora da exploração; eventos de criaturas não visíveis são do mestre; erros de movimento não revelam terreno nem ocupante. "Ver como" e toda edição de névoa exigem o mestre no servidor. A imagem mascarada usa a política restritiva do ImageMagick, cache em memória limitado (96 MiB) e duas gerações simultâneas; falha responde erro sem cair para a imagem completa. Limites: bytes já entregues não são revogáveis; desenho de mapas oficiais é público; carga não medida.
+
+
+## Condução da mesa e one-shots recuperáveis (ADR-046)
+
+- **Configuração:** `OneShots:RecoveryMinutes` (inteiro, 1–120; padrão 10) define quanto tempo a one-shot espera o mestre voltar antes da limpeza. Não é segredo; pode ficar no `appsettings` de produção. Alterar exige reiniciar o processo.
+- **Rolagens privadas:** visibilidade aplicada no servidor (`MasterOnly`/`VisibleToUserId`). A resposta HTTP de rolagem às cegas não traz o resultado ao autor, e logs não registram resultados.
+- **Convite guardado:** `PendingInvite` só aceita o formato de 32 hex. Não confirma existência a contas não verificadas e não concede acesso; a entrada continua em `POST /api/campaigns/join`, com Verified e quotas.
+- **Modelos privados:** não concedem papel de equipe; leitura restrita a mestre/membros e donos de fichas presas ao modelo. O editor da equipe recusa alterá-los.
+- **Arquivamento:** bloqueia escritas de jogo e preparação, preserva dados e não libera quota.
+- **Conversão:** bloqueios na ordem sessão → campanha → contas, evitando inversão com entrada e criação concorrentes. Coberto por `tests/table-play.mjs`.
+
+
+## Catálogo de músicas e trilha da sessão
+
+- Envio, renomeação e exclusão só para Admin (Verified, política Admin com MFA, CSRF, limitador `catalog` de 30 envios a cada 5 minutos), com auditoria `music.upload`, `music.rename` e `music.delete`. O mestre só busca título, formato e duração. `UploadLimits` acrescenta POST `/api/admin/music`: 20 MiB de arquivo e 20 MiB + 64 KiB por requisição; o restante continua em 64 KiB. O padrão de `requestFiltering` do IIS (~28,6 MB) comporta; revisar se o proxy tiver limite menor.
+- Tipo decidido pela estrutura do arquivo (`AudioProbe`), não pela extensão; ClamAV obrigatório (sem scanner, `503`, salvo a exceção de desenvolvimento já existente). Validação estrutural e antivírus não garantem ausência de conteúdo malicioso para os decodificadores do navegador; manter navegadores e servidor atualizados.
+- Bytes em diretório privado fora de wwwroot, nomes opacos, sem caminho em respostas ou logs. Entrega autenticada por requisição: jogador e mestre só recebem a faixa selecionada da sessão ativa em que estão; o Admin, a prévia do catálogo. `private, no-store`, `nosniff`, CSP `sandbox`, CORP `same-origin`. Nada entra no Cache Storage.
+- Bytes já entregues não podem ser revogados. Comandos da trilha seguem o bloqueio da sessão, eventos `masterOnly` e versão que recusa comandos obsoletos; a exclusão no catálogo recusa faixas em uso sem ciclo de bloqueio.
+- O diretório de áudio integra o plano de backup/restauração e o orçamento de disco (até 2 GiB no catálogo). Carga e consumo reais não foram medidos. Ver [TRILHA_SONORA.md](TRILHA_SONORA.md).

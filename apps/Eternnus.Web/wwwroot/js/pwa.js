@@ -1,4 +1,5 @@
 import { $, modal, toast } from "./ui.js";
+import { helpButton } from "./help.js";
 let promptEvent = null;
 const standalone = () =>
   window.matchMedia("(display-mode: standalone)").matches ||
@@ -6,7 +7,7 @@ const standalone = () =>
 export function installButton() {
   return standalone()
     ? ""
-    : '<button type="button" class="install-app subtle" data-action="pwa-install" aria-label="Instalar Eternnus RPG">↓ Instalar app</button>';
+    : `<span class="install-actions"><button type="button" class="install-app subtle" data-action="pwa-install" aria-label="Instalar Eternnus RPG">↓ Instalar app</button>${helpButton("conta.app.instalacao", "Instalar o Eternnus")}</span>`;
 }
 export function updateConnection() {
   const banner = $("#connection-banner");

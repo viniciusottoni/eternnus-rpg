@@ -219,6 +219,7 @@ export async function startEnvironment({ port = 5191, initialAdminPassword = "" 
           Platform__InitialAdmin__Password: initialAdminPassword,
           Mail__PickupDirectory: join(temp, "mail"),
           DataProtection__Directory: join(temp, "keys"),
+          Music__Directory: join(temp, "music"),
         },
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -240,6 +241,7 @@ export async function startEnvironment({ port = 5191, initialAdminPassword = "" 
   }
   return {
     origin,
+    temp,
     client,
     register,
     confirm,

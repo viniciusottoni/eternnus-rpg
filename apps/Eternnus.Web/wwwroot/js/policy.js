@@ -27,8 +27,18 @@ export const PLATFORM_ROUTES = Object.freeze({
   templates: ["./sheet-templates.js", "renderTemplates"],
   guild: ["./guild.js", "renderGuild"],
   progress: ["./progress.js", "renderProgress"],
+  "one-shot": ["./one-shots.js", "renderOneShots"],
 });
 export const isSafeSegment = (value) => /^[A-Za-z0-9_-]{1,64}$/.test(String(value));
+// Somente destinos internos sem query, token, URL ou segmento livre de usuário.
+export function safeReturnRoute(value) {
+  if (typeof value !== "string" || value.length > 256) return "overview";
+  const parts = value.split("/");
+  const roots = ["overview", "settings", "campaigns", "characters", "character", "history", "campaign", "table", "session", "dice", "invite", ...Object.keys(PLATFORM_ROUTES)];
+  return roots.includes(parts[0]) && parts.every(isSafeSegment) ? value : "overview";
+}
+/** Código de convite: 32 caracteres hexadecimais minúsculos (mesmo formato aceito pelo servidor). */
+export const isInviteCode = (value) => /^[0-9a-f]{32}$/.test(String(value || ""));
 export const isStaff = (user) => !!user && (user.role === "admin" || user.role === "ambassador");
 export const isAdmin = (user) => !!user && user.role === "admin";
 /** Somente UX: o servidor reaplica papel e verificação em cada endpoint. */
@@ -37,4 +47,36 @@ export function canOpenPlatform(user, route) {
   if (route === "admin") return isAdmin(user);
   if (route === "templates") return isStaff(user);
   return true;
+}
+
+// Árvore de pastas de mapas: o servidor devolve a lista plana (até 100 pastas, 8 níveis).
+// Pastas órfãs sobem para a raiz e ciclos são interrompidos para não travar a interface.
+export function folderTree(folders) {
+  const ids = new Set(folders.map((f) => f.id));
+  const children = new Map();
+  for (const folder of folders) {
+    const parent = folder.parentId && ids.has(folder.parentId) ? folder.parentId : "";
+    if (!children.has(parent)) children.set(parent, []);
+    children.get(parent).push(folder);
+  }
+  for (const list of children.values())
+    list.sort((a, b) => a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }));
+  return children;
+}
+export function folderPath(folders, id) {
+  const byId = new Map(folders.map((f) => [f.id, f]));
+  const path = [], seen = new Set();
+  for (let at = byId.get(id); at && !seen.has(at.id); at = byId.get(at.parentId)) {
+    seen.add(at.id);
+    path.unshift(at);
+  }
+  return path;
+}
+export function flattenFolders(children, parent = "", depth = 0, out = []) {
+  for (const folder of children.get(parent) || []) {
+    if (out.some((f) => f.id === folder.id)) continue;
+    out.push({ ...folder, depth });
+    if (depth < 8) flattenFolders(children, folder.id, depth + 1, out);
+  }
+  return out;
 }

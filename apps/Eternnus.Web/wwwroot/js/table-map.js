@@ -1,6 +1,8 @@
 // Tabuleiro da mesa: tileset desenhado em canvas a partir da grade oficial do servidor, ou imagem cartográfica.
 // Camada estática em cache; luzes, água e marcadores animados respeitam prefers-reduced-motion e abas ocultas.
+// Névoa: o servidor envia as máscaras (visível/explorado); aqui só se desenha. O mestre vê um véu translúcido e as marcas.
 import { initials } from "./session-policy.js";
+import { decodeBits, MARK_KINDS } from "./fog-policy.js";
 
 const reduceMotion = () =>
   matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -22,14 +24,37 @@ const at = (rows, x, y) =>
 const blocks = (c) => "#T".includes(c);
 
 /** Desenha uma célula do tileset na camada estática. */
-function drawTile(g, rows, x, y, s) {
+function drawTile(g, rows, x, y, s, outdoor, timber) {
   const c = at(rows, x, y);
+  // Entry rings inherit the adjacent surface instead of painting grass over a paved road.
+  const surface = c === "S" ? [...rows[y].slice(0, x)].reverse().find(tile => tile !== "S") || "." : c;
   const px = x * s,
     py = y * s,
     r = hash(x, y);
-  const outdoor = rows.some((row) => row.includes(","));
+  // Casa nunca vista pelo jogador: o servidor nem envia o terreno.
+  if (c === "?") {
+    g.fillStyle = "#050403";
+    g.fillRect(px, py, s, s);
+    return;
+  }
   const ground = () => {
-    if (outdoor) {
+    if (surface === "d" || (timber && "ShTb".includes(c))) {
+      g.fillStyle = `hsl(29 31% ${24 + r * 7}%)`;
+      g.fillRect(px, py, s, s);
+      for (let i = 0; i < 4; i++) {
+        g.fillStyle = "#17120d88";
+        g.fillRect(px, py + i * s / 4, s, Math.max(1, s / 35));
+        g.fillStyle = "#e3c39325";
+        g.fillRect(px + s * .12, py + i * s / 4 + s * .1, s * .65, Math.max(.5, s / 65));
+      }
+    } else if (surface === ":") {
+      g.fillStyle = `hsl(37 30% ${35 + r * 8}%)`;
+      g.fillRect(px, py, s, s);
+      for (let i = 0; i < 7; i++) {
+        g.fillStyle = i % 2 ? "#ddc69c44" : "#52432b44";
+        g.fillRect(px + hash(x,y,i+3)*s, py + hash(x,y,i+9)*s, Math.max(1,s/24), Math.max(1,s/30));
+      }
+    } else if (surface === "," || (outdoor && "trb".includes(c))) {
       g.fillStyle = `hsl(${92 + r * 18} ${26 + r * 10}% ${17 + r * 6}%)`;
       g.fillRect(px, py, s, s);
       g.strokeStyle = `hsla(${80 + r * 30} 40% 38% / .35)`;
@@ -95,9 +120,30 @@ function drawTile(g, rows, x, y, s) {
   if (c === "~") {
     g.fillStyle = `hsl(${192 + r * 10} 38% ${17 + r * 5}%)`;
     g.fillRect(px, py, s, s);
+    // Shoreline shadows follow the actual collision grid, never decorative obstacles.
+    g.strokeStyle = "#c5c5a84a";
+    g.lineWidth = Math.max(1, s * .055);
+    g.beginPath();
+    if (at(rows,x,y-1) !== "~") { g.moveTo(px,py+1); g.lineTo(px+s,py+1); }
+    if (at(rows,x-1,y) !== "~") { g.moveTo(px+1,py); g.lineTo(px+1,py+s); }
+    if (at(rows,x+1,y) !== "~") { g.moveTo(px+s-1,py); g.lineTo(px+s-1,py+s); }
+    if (at(rows,x,y+1) !== "~") { g.moveTo(px,py+s-1); g.lineTo(px+s,py+s-1); }
+    g.stroke();
     return;
   }
   ground();
+  if (c === "h") {
+    g.fillStyle = "#0008";
+    g.fillRect(px+s*.12, py+s*.22, s*.86, s*.76);
+    const wood = g.createLinearGradient(px,py,px+s,py+s);
+    wood.addColorStop(0,"#946b3d"); wood.addColorStop(1,"#49301e");
+    g.fillStyle = wood;
+    g.fillRect(px+s*.06, py+s*.08, s*.84, s*.74);
+    g.strokeStyle = "#d9af6b88"; g.lineWidth = Math.max(1,s/30);
+    g.strokeRect(px+s*.12, py+s*.14, s*.72, s*.62);
+    g.strokeStyle = "#2e1d15";
+    for (let i=1;i<4;i++) { g.beginPath(); g.moveTo(px+s*.08,py+s*(.08+i*.18)); g.lineTo(px+s*.88,py+s*(.08+i*.18)); g.stroke(); }
+  }
   if (c === "+") {
     g.fillStyle = "#4a3320";
     g.fillRect(px + s * 0.08, py + s * 0.08, s * 0.84, s * 0.84);
@@ -228,8 +274,10 @@ function buildStatic(rows, s) {
   layer.width = w * s;
   layer.height = h * s;
   const g = layer.getContext("2d");
+  const outdoor = rows.some(row => row.includes(","));
+  const timber = !outdoor && rows.some(row => row.includes("d")) && !rows.some(row => row.includes("~"));
   for (let y = 0; y < h; y++)
-    for (let x = 0; x < w; x++) drawTile(g, rows, x, y, s);
+    for (let x = 0; x < w; x++) drawTile(g, rows, x, y, s, outdoor, timber);
   // Vinheta para concentrar a atenção no centro da cena.
   const v = g.createRadialGradient(
     layer.width / 2,
@@ -277,8 +325,8 @@ function drawLights(g, rows, s, t, animate) {
       const c = rows[y][x];
       if (!LIGHTS.includes(c)) continue;
       const flicker = animate
-        ? 0.86 +
-          0.14 * Math.sin(t / 130 + x * 3.1 + y) * Math.sin(t / 77 + y * 1.7)
+        ? 0.94 +
+          0.06 * Math.sin(t / 710 + x * 3.1 + y) * Math.sin(t / 470 + y * 1.7)
         : 1;
       const cx = (x + 0.5) * s,
         cy = (y + (c === "T" ? 0.7 : 0.45)) * s;
@@ -289,7 +337,7 @@ function drawLights(g, rows, s, t, animate) {
       g.fillStyle = glow;
       g.fillRect(cx - s * 3.3, cy - s * 3.3, s * 6.6, s * 6.6);
       // Chama
-      const fh = s * (0.26 + (animate ? 0.06 * Math.sin(t / 90 + x) : 0));
+      const fh = s * (0.26 + (animate ? 0.025 * Math.sin(t / 480 + x) : 0));
       const flame = g.createRadialGradient(
         cx,
         cy - fh * 0.3,
@@ -338,12 +386,127 @@ function roundRect(g, x, y, w, h, r) {
   g.closePath();
 }
 
+/** Brilho suave das fontes de luz que não vêm da legenda do tileset (focos do mestre e luz dos marcadores). */
+function drawGlow(g, x, y, radius, s, t, animate) {
+  if (!radius) return;
+  const flicker = animate ? 0.97 + 0.03 * Math.sin(t / 530 + x * 2.3 + y) : 1;
+  const cx = (x + 0.5) * s, cy = (y + 0.5) * s, r = Math.max(s, radius * s * flicker);
+  const glow = g.createRadialGradient(cx, cy, 0, cx, cy, r);
+  glow.addColorStop(0, "rgba(255,190,100,.22)");
+  glow.addColorStop(0.6, "rgba(255,150,60,.08)");
+  glow.addColorStop(1, "rgba(255,150,60,0)");
+  g.save();
+  g.globalCompositeOperation = "lighter";
+  g.fillStyle = glow;
+  g.fillRect(cx - r, cy - r, r * 2, r * 2);
+  g.restore();
+}
+
+/** Grade pequena (1 px por casa) ampliada: preto nas casas desconhecidas e penumbra nas exploradas fora da vista. */
+function fogMask(width, height, fill) {
+  const c = document.createElement("canvas");
+  c.width = width;
+  c.height = height;
+  const ctx = c.getContext("2d");
+  const img = ctx.createImageData(width, height);
+  for (let i = 0; i < width * height; i++) {
+    const a = fill(i);
+    img.data[i * 4 + 3] = a;
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+const CELL_STYLE = {
+  "#": ["rgba(212,83,63,.22)", "rgba(212,83,63,.9)"],
+  m: ["rgba(230,160,60,.28)", "rgba(230,160,60,.85)"],
+  l: ["rgba(110,150,230,.28)", "rgba(110,150,230,.85)"],
+  d: ["rgba(160,110,60,.55)", "rgba(241,215,156,.95)"],
+  o: ["rgba(160,110,60,.18)", "rgba(241,215,156,.75)"],
+};
+
+function drawFog(g, state, view, s, t, animate) {
+  const fog = state.fog;
+  const r = state.map.rows;
+  if (!fog || !r?.length) return;
+  const w = r[0].length, h = r.length, n = w * h;
+  const master = state.me?.isMaster && !view.viewAs;
+  if (fog.active) {
+    if (master) {
+      // Véu do mestre: escurece o que os jogadores não veem pela luz/revelação compartilhada.
+      const shared = decodeBits(fog.shared, n);
+      const veil = fogMask(w, h, (i) => (shared[i] ? 0 : 120));
+      g.save();
+      g.imageSmoothingEnabled = false;
+      g.drawImage(veil, 0, 0, w * s, h * s);
+      g.restore();
+    } else {
+      const visible = decodeBits(fog.visible, n);
+      const explored = decodeBits(fog.explored, n);
+      g.save();
+      g.imageSmoothingEnabled = true;
+      g.drawImage(fogMask(w, h, (i) => (visible[i] ? 0 : explored[i] ? 150 : 0)), 0, 0, w * s, h * s);
+      g.imageSmoothingEnabled = false;
+      g.drawImage(fogMask(w, h, (i) => (explored[i] ? 0 : 255)), 0, 0, w * s, h * s);
+      g.restore();
+    }
+  }
+  for (const l of fog.lights || []) {
+    drawGlow(g, l.x, l.y, l.radius, s, t, animate);
+    if (master && view.fogTools) {
+      g.fillStyle = "#ffd27a";
+      g.font = `600 ${Math.max(10, s * 0.5)}px Georgia, serif`;
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.fillText("✹", (l.x + 0.5) * s, (l.y + 0.5) * s);
+    }
+  }
+  // Paredes, portas e obstáculos: o mestre vê ao preparar; jogadores veem só portas conhecidas.
+  if (master ? view.fogTools : true)
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        const c = fog.cells?.[y]?.[x];
+        const style = CELL_STYLE[c];
+        if (!style || (!master && c !== "d" && c !== "o")) continue;
+        g.fillStyle = style[0];
+        g.fillRect(x * s + 1, y * s + 1, s - 2, s - 2);
+        g.strokeStyle = style[1];
+        g.lineWidth = Math.max(1, s * 0.05);
+        if (c === "d" || c === "o") {
+          g.strokeRect(x * s + s * 0.2, y * s + s * 0.15, s * 0.6, s * 0.7);
+          if (c === "o") { g.beginPath(); g.moveTo(x * s + s * 0.2, y * s + s * 0.15); g.lineTo(x * s + s * 0.55, y * s + s * 0.3); g.lineTo(x * s + s * 0.55, y * s + s * 0.95); g.stroke(); }
+        } else g.strokeRect(x * s + 1.5, y * s + 1.5, s - 3, s - 3);
+      }
+  for (const m of fog.marks || []) {
+    const icon = MARK_KINDS.find((k) => k[0] === m.kind)?.[2] || "✦";
+    const cx = (m.x + 0.5) * s, cy = (m.y + 0.5) * s;
+    const hidden = master && !m.revealedAll && !(m.revealedTo || []).length;
+    g.save();
+    g.globalAlpha = hidden ? 0.6 : 1;
+    g.fillStyle = "#0b0a08cc";
+    g.beginPath();
+    g.arc(cx, cy, s * 0.3, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = m.kind === "trap" ? "#d4533f" : "#f1d79c";
+    g.lineWidth = Math.max(1, s * 0.05);
+    if (hidden) g.setLineDash([s * 0.08, s * 0.06]);
+    g.stroke();
+    g.fillStyle = "#f6ead0";
+    g.font = `600 ${Math.max(9, s * 0.34)}px Georgia, serif`;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(icon, cx, cy + s * 0.02);
+    g.restore();
+  }
+}
+
 function drawToken(g, token, s, opts, t) {
   const cx = (token.x + 0.5) * s,
     cy = (token.y + 0.5) * s,
     radius = s * 0.4;
   g.save();
   if (opts.offline) g.globalAlpha = 0.42;
+  if (token.hidden || token.perceived) g.globalAlpha = 0.55;
   g.fillStyle = "#00000080";
   g.beginPath();
   g.ellipse(
@@ -390,7 +553,10 @@ function drawToken(g, token, s, opts, t) {
   g.fill();
   g.strokeStyle = SIDE[token.side] || SIDE.neutral;
   g.lineWidth = Math.max(2, s * 0.07);
+  // Oculto (mestre) ou percebido por sentido (jogador): contorno tracejado.
+  if (token.hidden || token.perceived) g.setLineDash([s * 0.1, s * 0.07]);
   g.stroke();
+  g.setLineDash([]);
   if (opts.mine) {
     g.strokeStyle = "#f1d79caa";
     g.lineWidth = Math.max(1, s * 0.025);
@@ -443,11 +609,23 @@ export function createBoard(host, handlers = {}) {
     last = 0,
     cursor = null,
     dpr = 1;
+  const moves = new Map();
+  let drag = null, suppressClick = false; // arraste de marcador em andamento
   const rows = () => state?.map?.rows || [];
   const tileset = () => state?.map?.kind === "tileset" && rows().length > 0;
 
   const uploaded = () => Number(state?.map?.gridPixels) >= 8;
-  image.onload = () => { layout(); draw(); };
+  // Fundo do mapa enviado em buffer duplo: a nova versão (mais casas exploradas) só substitui a atual depois de carregar.
+  let background = null, pendingSrc = "";
+  function loadBackground(src) {
+    if (!src || src === pendingSrc) return;
+    pendingSrc = src;
+    const next = new Image();
+    next.referrerPolicy = "no-referrer";
+    next.onload = () => { if (pendingSrc !== src) return; background = next; layout(); draw(); };
+    next.onerror = () => { if (pendingSrc === src) status.textContent = "Não foi possível carregar o mapa. Tente atualizar a mesa."; };
+    next.src = src;
+  }
   image.onerror = () => { status.textContent = "Não foi possível carregar o mapa. Tente atualizar a mesa."; };
 
   function layout() {
@@ -465,7 +643,8 @@ export function createBoard(host, handlers = {}) {
     );
     ox = Math.floor((canvas.width - cell * r[0].length) / 2);
     oy = Math.floor((canvas.height - cell * r.length) / 2);
-    const key = state.map.key + ":" + cell;
+    // As linhas mudam quando o jogador explora (casas "?" passam a ter terreno): a camada estática é refeita.
+    const key = state.map.key + ":" + cell + ":" + (uploaded() ? "" : r.join("|"));
     if (key !== layerKey) {
       layer = uploaded() ? null : buildStatic(r, cell);
       layerKey = key;
@@ -480,11 +659,18 @@ export function createBoard(host, handlers = {}) {
     g.translate(ox, oy);
     const r = rows();
     if (uploaded()) {
-      if (image.complete && image.naturalWidth) g.drawImage(image, 0, 0, r[0].length * state.map.gridPixels, r.length * state.map.gridPixels, 0, 0, r[0].length * cell, r.length * cell);
+      // A grade começa no deslocamento definido no mapa (mesma grade autoritativa do servidor).
+      if (background?.naturalWidth) g.drawImage(background, Number(state.map.gridOffsetX) || 0, Number(state.map.gridOffsetY) || 0, r[0].length * state.map.gridPixels, r.length * state.map.gridPixels, 0, 0, r[0].length * cell, r.length * cell);
     } else {
       g.drawImage(layer, 0, 0);
       drawWater(g, r, cell, animate ? t : 0);
       drawLights(g, r, cell, t, animate);
+    }
+    drawFog(g, state, view, cell, t, animate);
+    for (const token of state.tokens || []) if (token.light > 0 && !token.hidden) drawGlow(g, token.x, token.y, token.light, cell, t, animate);
+    if (view.paint?.length) {
+      g.fillStyle = "rgba(241,215,156,.28)";
+      for (const c of view.paint) g.fillRect(c.x * cell + 1, c.y * cell + 1, cell - 2, cell - 2);
     }
     if (view.grid) {
       g.strokeStyle = uploaded() ? "rgba(241,215,156,.35)" : "rgba(241,215,156,.07)";
@@ -515,15 +701,39 @@ export function createBoard(host, handlers = {}) {
         g.strokeRect(c.x * cell + 2.5, c.y * cell + 2.5, cell - 5, cell - 5);
       }
     }
+    if (view.attack?.length) {
+      // Alcance de ataque: área avermelhada com contorno só na borda externa.
+      const inside = new Set(view.attack.map((c) => c.x + ":" + c.y));
+      g.fillStyle = "rgba(212,83,63,.10)";
+      g.strokeStyle = "rgba(230,110,90,.75)";
+      g.lineWidth = Math.max(1.5, cell * 0.05);
+      g.beginPath();
+      for (const c of view.attack) {
+        g.fillRect(c.x * cell, c.y * cell, cell, cell);
+        const x = c.x * cell, y = c.y * cell;
+        const edge = (dx, dy) => !inside.has(c.x + dx + ":" + (c.y + dy)) && !(state.tokens || []).some((t) => t.x === c.x + dx && t.y === c.y + dy && t.characterId === state.me?.characterId);
+        if (edge(0, -1)) { g.moveTo(x, y); g.lineTo(x + cell, y); }
+        if (edge(0, 1)) { g.moveTo(x, y + cell); g.lineTo(x + cell, y + cell); }
+        if (edge(-1, 0)) { g.moveTo(x, y); g.lineTo(x, y + cell); }
+        if (edge(1, 0)) { g.moveTo(x + cell, y); g.lineTo(x + cell, y + cell); }
+      }
+      g.stroke();
+    }
     const online = new Set(
       (state.participants || [])
         .filter((p) => p.online)
         .map((p) => p.characterId),
     );
-    for (const token of state.tokens || [])
+    for (const token of state.tokens || []) {
+      if (drag?.moved && drag.token.id === token.id) continue;
+      const move = moves.get(token.id);
+      const fraction = !animate || !move ? 1 : Math.min(1, (t - move.started) / 180);
+      const eased = 1 - (1 - fraction) ** 3;
+      const visual = move && fraction < 1 ? { ...token, x: move.x + (token.x - move.x) * eased, y: move.y + (token.y - move.y) * eased } : token;
+      if (fraction >= 1) moves.delete(token.id);
       drawToken(
         g,
-        token,
+        visual,
         cell,
         {
           active:
@@ -536,6 +746,17 @@ export function createBoard(host, handlers = {}) {
         },
         t,
       );
+    }
+    if (drag?.moved) {
+      // Boneco arrastado acompanha o ponteiro; a casa de destino fica marcada.
+      g.strokeStyle = "#f1d79c";
+      g.lineWidth = 2;
+      if (drag.cell) g.strokeRect(drag.cell.x * cell + 2, drag.cell.y * cell + 2, cell - 4, cell - 4);
+      g.save();
+      g.globalAlpha = 0.85;
+      drawToken(g, { ...drag.token, x: drag.px / cell - 0.5, y: drag.py / cell - 0.5 }, cell, { mine: true, selected: true, animate: false }, t);
+      g.restore();
+    }
     if (cursor) {
       g.strokeStyle = "#ffffff";
       g.lineWidth = 2;
@@ -548,17 +769,20 @@ export function createBoard(host, handlers = {}) {
     }
   }
   function loop(t) {
+    if (document.hidden) { frame = 0; return; }
     frame = requestAnimationFrame(loop);
-    if (document.hidden || t - last < 33) return; // ~30 fps é suficiente para chamas e brilho.
+    if (t - last < 50) return; // 20 fps para efeitos ambientais; interações redesenham imediatamente.
     last = t;
     draw(t);
   }
   function restart() {
     cancelAnimationFrame(frame);
+    if (document.hidden) return;
     if (tileset() && !reduceMotion()) frame = requestAnimationFrame(loop);
     else draw();
   }
   function cellAt(clientX, clientY) {
+    if (!tileset() || cell <= 0) return null;
     const rect = canvas.getBoundingClientRect();
     const x = Math.floor(((clientX - rect.left) * dpr - ox) / cell),
       y = Math.floor(((clientY - rect.top) * dpr - oy) / cell);
@@ -572,9 +796,77 @@ export function createBoard(host, handlers = {}) {
     if (token) handlers.onToken?.(token, c);
     else handlers.onCell?.(c);
   }
-  canvas.addEventListener("click", (e) =>
-    activate(cellAt(e.clientX, e.clientY)),
-  );
+  // Arrastar marcador: o jogador arrasta o próprio boneco no turno; o mestre arrasta qualquer marcador.
+  const boardPoint = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    return { px: (e.clientX - rect.left) * dpr - ox, py: (e.clientY - rect.top) * dpr - oy };
+  };
+  canvas.addEventListener("pointerdown", (e) => {
+    if (view.mode === "paint" || !view.draggable || !tileset()) return;
+    const c = cellAt(e.clientX, e.clientY);
+    const token = c && (state.tokens || []).find((t) => t.x === c.x && t.y === c.y);
+    if (!token || (view.draggable !== "*" && view.draggable !== token.id)) return;
+    drag = { token, start: c, cell: c, moved: false, pointer: e.pointerId, ...boardPoint(e) };
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.pointer) return;
+    const p = boardPoint(e);
+    if (!drag.moved && Math.hypot(p.px - drag.px, p.py - drag.py) < cell * 0.25) return;
+    if (!drag.moved) { drag.moved = true; canvas.setPointerCapture?.(e.pointerId); canvas.style.touchAction = "none"; }
+    Object.assign(drag, p, { cell: cellAt(e.clientX, e.clientY) });
+    draw();
+  });
+  const endDrag = (e, cancel = false) => {
+    if (!drag || e.pointerId !== drag.pointer) return;
+    const { token, start, cell: target, moved } = drag;
+    drag = null;
+    canvas.style.touchAction = view.mode === "paint" ? "none" : "";
+    if (!moved) return;
+    suppressClick = true;
+    draw();
+    if (!cancel && target && (target.x !== start.x || target.y !== start.y)) {
+      status.textContent = `${token.label} solto na coluna ${target.x + 1}, linha ${target.y + 1}.`;
+      handlers.onDrop?.(token, target);
+    }
+  };
+  canvas.addEventListener("pointerup", (e) => endDrag(e));
+  canvas.addEventListener("pointercancel", (e) => endDrag(e, true));
+
+  // Pintura por arraste (mestre): junta as casas e envia uma única escrita ao soltar.
+  let stroke = null;
+  canvas.addEventListener("pointerdown", (e) => {
+    if (view.mode !== "paint" || !tileset()) return;
+    const c = cellAt(e.clientX, e.clientY);
+    if (!c) return;
+    e.preventDefault();
+    canvas.setPointerCapture?.(e.pointerId);
+    stroke = new Map([[c.x + ":" + c.y, c]]);
+    view = { ...view, paint: [c] };
+    draw();
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!stroke) return;
+    const c = cellAt(e.clientX, e.clientY);
+    if (!c || stroke.has(c.x + ":" + c.y) || stroke.size >= 4096) return;
+    stroke.set(c.x + ":" + c.y, c);
+    view = { ...view, paint: [...stroke.values()] };
+    draw();
+  });
+  const finishStroke = () => {
+    if (!stroke) return;
+    const cells = [...stroke.values()];
+    stroke = null;
+    view = { ...view, paint: [] };
+    draw();
+    handlers.onPaint?.(cells);
+  };
+  canvas.addEventListener("pointerup", finishStroke);
+  canvas.addEventListener("pointercancel", () => { stroke = null; view = { ...view, paint: [] }; draw(); });
+  canvas.addEventListener("click", (e) => {
+    if (suppressClick) { suppressClick = false; return; }
+    if (view.mode === "paint") return;
+    activate(cellAt(e.clientX, e.clientY));
+  });
   canvas.addEventListener("keydown", (e) => {
     if (!tileset()) return;
     const moves = {
@@ -601,8 +893,9 @@ export function createBoard(host, handlers = {}) {
       draw();
     } else if ((e.key === "Enter" || e.key === " ") && cursor) {
       e.preventDefault();
-      activate(cursor);
-    } else if (e.key === "Escape") handlers.onCancel?.();
+      if (view.mode === "paint") handlers.onPaint?.([cursor]);
+      else activate(cursor);
+    } else if (e.key === "Escape" && !e.defaultPrevented && !dismissHelp()) handlers.onCancel?.();
   });
   canvas.addEventListener("blur", () => {
     cursor = null;
@@ -615,10 +908,21 @@ export function createBoard(host, handlers = {}) {
   observer.observe(host);
   const motion = matchMedia("(prefers-reduced-motion: reduce)");
   motion.addEventListener?.("change", restart);
+  document.addEventListener("visibilitychange", restart);
 
   return {
     update(next, nextView = view) {
       const previousKey = state?.map?.key;
+      if (previousKey !== next.map.key) moves.clear();
+      else if (!reduceMotion()) {
+        const previous = new Map((state?.tokens || []).map(token => [token.id, token]));
+        const now = performance.now();
+        for (const token of next.tokens || []) {
+          const old = previous.get(token.id);
+          if (old && (old.x !== token.x || old.y !== token.y)) moves.set(token.id, { x: old.x, y: old.y, started: now });
+        }
+        for (const id of moves.keys()) if (!(next.tokens || []).some(token => token.id === id)) moves.delete(id);
+      }
       state = next;
       view = { ...view, ...nextView };
       const isTile = tileset();
@@ -626,8 +930,10 @@ export function createBoard(host, handlers = {}) {
       image.hidden = isTile || uploaded();
       canvas.setAttribute("aria-label", uploaded() ? `Mapa tático ${state.map.name}. Cada quadrado representa ${state.map.scaleMeters} metros. Use as setas para escolher uma casa e Enter para confirmar.` : "Mapa tático. Use as setas para escolher uma casa e Enter para confirmar.");
       const src = state.map.imageUrl || "";
-      if (src && image.getAttribute("src") !== src) image.src = src;
+      if (uploaded()) loadBackground(src);
+      else if (src && image.getAttribute("src") !== src) image.src = src;
       image.alt = "Mapa: " + state.map.name;
+      canvas.style.touchAction = view.mode === "paint" ? "none" : "";
       if (!isTile) cancelAnimationFrame(frame);
       layout();
       if (uploaded()) draw();
@@ -640,16 +946,21 @@ export function createBoard(host, handlers = {}) {
     },
     setView(nextView) {
       view = { ...view, ...nextView };
-      if (reduceMotion() || !tileset()) draw();
+      canvas.style.touchAction = view.mode === "paint" ? "none" : "";
+      draw();
     },
     focus() {
       canvas.focus();
     },
     destroy() {
+      moves.clear();
       cancelAnimationFrame(frame);
+      pendingSrc = "";
       image.onload = null; image.onerror = null;
       observer.disconnect();
       motion.removeEventListener?.("change", restart);
+      document.removeEventListener("visibilitychange", restart);
     },
   };
 }
+import { dismissHelp } from "./help.js";

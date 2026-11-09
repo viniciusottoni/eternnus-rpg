@@ -35,6 +35,16 @@ public sealed class SessionServiceTests : IAsyncLifetime
         var result = await service.StartAsync(campaign.Id, new("Sessão", "Objetivo secreto", kind, map), Master, default);
         return (Guid)result.GetType().GetProperty("Id")!.GetValue(result)!;
     }
+    /// <summary>Cria a one-shot pelo caso de uso real (sessão única aberta) e vincula o jogador e sua ficha.</summary>
+    async Task<Guid> OneShotAsync()
+    {
+        var result = await service.CreateOneShotAsync(new("Mesa livre", "", RpgSystem.FreeSystemId), Master, default);
+        var id = Prop<Guid>(result, "campaignId");
+        campaign = await db.Campaigns.SingleAsync(c => c.Id == id);
+        db.AddRange(new Member { CampaignId = campaign.Id, UserId = Player }, new CampaignCharacter { CampaignId = campaign.Id, CharacterId = hero.Id });
+        await db.SaveChangesAsync();
+        return Prop<Guid>(result, "sessionId");
+    }
     static T Prop<T>(object o, string name) => (T)o.GetType().GetProperty(name)!.GetValue(o)!;
 
     [Fact]
@@ -85,6 +95,8 @@ public sealed class SessionServiceTests : IAsyncLifetime
     [Fact]
     public async Task Movement_respects_walls_reach_and_one_move_per_turn()
     {
+        // Regras clássicas (névoa desligada); a névoa tem testes próprios em TableFogTests.
+        campaign.TableSettings = new TableSettings { FogEnabled = false }.Serialize(); await db.SaveChangesAsync();
         var id = await StartAsync();
         await service.JoinAsync(id, null, Player, default);
         await service.NextTurnAsync(id, Master, default);
@@ -147,15 +159,19 @@ public sealed class SessionServiceTests : IAsyncLifetime
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task One_shot_is_deleted_when_master_leaves_or_ends(bool leave)
+    public async Task One_shot_survives_leaving_the_screen_and_is_deleted_only_when_ended(bool leave)
     {
-        campaign.IsOneShot = true;
-        campaign.ExpiresAt = clock.GetUtcNow().UtcDateTime.AddHours(72);
-        await db.SaveChangesAsync();
-        var sid = await StartAsync();
+        var sid = await OneShotAsync();
         await service.JoinAsync(sid, hero.Id, Player, default);
-        if (leave) await service.LeaveAsync(sid, Master, default);
-        else await service.EndAsync(sid, Master, default);
+        if (leave)
+        {
+            // Sair da tela não apaga: a mesa fica em espera recuperável até o mestre voltar.
+            await service.LeaveAsync(sid, Master, default);
+            db.ChangeTracker.Clear();
+            Assert.True(await db.Campaigns.AnyAsync(c => c.Id == campaign.Id));
+            await service.JoinAsync(sid, null, Master, default);
+        }
+        await service.EndAsync(sid, Master, default);
         db.ChangeTracker.Clear();
         Assert.False(await db.Campaigns.AnyAsync(c => c.Id == campaign.Id));
         Assert.False(await db.Sessions.AnyAsync(s => s.Id == sid));
@@ -166,16 +182,34 @@ public sealed class SessionServiceTests : IAsyncLifetime
     [Fact]
     public async Task One_shot_master_presence_is_persisted_and_expired_sessions_cannot_be_read()
     {
-        campaign.IsOneShot = true;
-        campaign.ExpiresAt = clock.GetUtcNow().UtcDateTime.AddHours(72);
-        await db.SaveChangesAsync();
-        var sid = await StartAsync();
+        var sid = await OneShotAsync();
         clock.Advance(TimeSpan.FromSeconds(20));
         await service.HeartbeatAsync(sid, Master, default);
         var seen = await db.Campaigns.AsNoTracking().Where(c => c.Id == campaign.Id).Select(c => c.MasterLastSeenAt).SingleAsync();
         Assert.Equal(clock.GetUtcNow().UtcDateTime, seen);
+        // Ausência breve: a mesa continua legível e indica a espera com prazo.
         clock.Advance(TimeSpan.FromSeconds(46));
+        var waiting = System.Text.Json.JsonSerializer.SerializeToElement(await service.StateAsync(sid, Player, default), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        Assert.True(waiting.GetProperty("play").GetProperty("masterAway").GetBoolean());
+        Assert.Equal(seen!.Value + OneShotLifecycleService.MasterAbsence, waiting.GetProperty("play").GetProperty("recoverUntil").GetDateTime());
+        clock.Advance(OneShotLifecycleService.MasterAbsence);
         Assert.Equal(410, (await Assert.ThrowsAsync<RuleException>(() => service.StateAsync(sid, Player, default))).Status);
+    }
+
+    [Fact]
+    public async Task One_shot_opens_its_single_session_on_creation_and_never_starts_another()
+    {
+        var sid = await OneShotAsync();
+        Assert.True(campaign.IsOneShot);
+        Assert.Equal(clock.GetUtcNow().UtcDateTime.AddHours(72), campaign.ExpiresAt);
+        Assert.Equal(clock.GetUtcNow().UtcDateTime, campaign.MasterLastSeenAt);
+        var session = await db.Sessions.SingleAsync(s => s.CampaignId == campaign.Id);
+        Assert.Equal(sid, session.Id);
+        Assert.Null(session.EndedAt);
+        Assert.True(await db.SessionParticipants.AnyAsync(p => p.SessionId == sid && p.UserId == Master && p.IsMaster && p.LastSeenAt != null));
+        Assert.Equal(1, (await db.Users.SingleAsync(u => u.Id == Master)).OneShotParticipations);
+        Assert.Equal(409, (await Assert.ThrowsAsync<RuleException>(() => service.StartAsync(campaign.Id, new("Outra", "", MapKinds.Tileset, "crypt"), Master, default))).Status);
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => service.CreateOneShotAsync(new(" ", "", RpgSystem.FreeSystemId), Master, default))).Status);
     }
 
     [Fact]
