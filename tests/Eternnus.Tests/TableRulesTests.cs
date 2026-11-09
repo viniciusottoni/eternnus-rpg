@@ -75,12 +75,34 @@ public sealed class TableRulesTests
         foreach (var map in BattleMaps.All.Where(m => m.Kind == MapKinds.Tileset))
         {
             Assert.All(map.Rows, row => Assert.Equal(map.Width, row.Length));
-            Assert.All(map.Rows, row => Assert.Matches(@"^[#ToAbt~.,+=rS]+$", row));
+            Assert.All(map.Rows, row => Assert.Matches(@"^[#ToAbt~.,+=rSdh:]+$", row));
             Assert.True(map.Spawns().Count() >= 6, map.Key + " needs entry points for a full party");
             Assert.All(map.Spawns(), p => Assert.True(map.CanStand(p.X, p.Y)));
             Assert.False(map.CanStand(-1, 0)); Assert.False(map.CanStand(map.Width, 0));
         }
         Assert.Null(BattleMaps.Find("unknown"));
         Assert.Equal(MapKinds.Cartographic, BattleMaps.Find("valley")!.Kind);
+    }
+
+    [Fact]
+    public void Official_maps_have_connected_walkable_areas_and_distinct_identities()
+    {
+        Assert.Equal(BattleMaps.All.Count, BattleMaps.All.Select(m => m.Key).Distinct().Count());
+        Assert.True(BattleMaps.All.Count >= 8);
+        foreach (var map in BattleMaps.All.Where(m => m.Kind == MapKinds.Tileset))
+        {
+            var visited = new HashSet<(int X, int Y)>();
+            var queue = new Queue<(int X, int Y)>();
+            queue.Enqueue(map.Spawns().First());
+            while (queue.TryDequeue(out var point))
+            {
+                if (!map.CanStand(point.X, point.Y) || !visited.Add(point)) continue;
+                foreach (var (dx, dy) in new[] { (-1, 0), (1, 0), (0, -1), (0, 1) })
+                    queue.Enqueue((point.X + dx, point.Y + dy));
+            }
+            for (var y = 0; y < map.Height; y++)
+                for (var x = 0; x < map.Width; x++)
+                    if (map.CanStand(x, y)) Assert.True(visited.Contains((x, y)), $"{map.Key}: isolated square {x},{y}");
+        }
     }
 }

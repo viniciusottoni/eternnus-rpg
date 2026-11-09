@@ -4,7 +4,15 @@ namespace Eternnus.Web;
 /// <summary>O banco mantém o prazo e a presença do mestre; sinais em memória apenas acordam os clientes.</summary>
 public sealed class OneShotLifecycleService(GameDb db, SessionSignals signals, TimeProvider clock)
 {
-    public static readonly TimeSpan MasterAbsence = TimeSpan.FromSeconds(45);
+    /// <summary>
+    /// Prazo de recuperação depois da última presença do mestre (configuração <c>OneShots:RecoveryMinutes</c>, 1–120, padrão 10).
+    /// Antes dele, a mesa fica em espera recuperável; depois, a limpeza remove os dados como antes.
+    /// </summary>
+    public static TimeSpan MasterAbsence { get; set; } = TimeSpan.FromMinutes(10);
+    public const int DefaultRecoveryMinutes = 10;
+    public static void Configure(int? minutes) => MasterAbsence = TimeSpan.FromMinutes(Math.Clamp(minutes ?? DefaultRecoveryMinutes, 1, 120));
+    /// <summary>Até quando a mesa espera o mestre voltar (nulo fora de one-shots).</summary>
+    public static DateTime? RecoverUntil(Campaign c) => c.IsOneShot && c.MasterLastSeenAt is { } seen ? seen + MasterAbsence : null;
     public static bool Expired(Campaign c, DateTime now) => c.IsOneShot &&
         (c.ExpiresAt <= now || c.MasterLastSeenAt is { } seen && seen <= now - MasterAbsence);
     public static void EnsureOpen(Campaign c, DateTime now)

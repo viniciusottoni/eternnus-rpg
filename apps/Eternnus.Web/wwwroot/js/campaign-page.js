@@ -1,3 +1,4 @@
+import { helpButton } from "./help.js";
 // Página da campanha (Tela 05) e abertura de sessão (Tela 06).
 import { api } from "./api.js";
 import { state } from "./state.js";
@@ -16,20 +17,24 @@ import {
 } from "./ui.js";
 import { campaignForm, confirmCampaign } from "./campaigns.js";
 import { formatDuration, isGuid, sessionLabel } from "./session-policy.js";
-import { mapThumbnail } from "./table-map.js";
+import { mapChoices, mountMapChoices } from "./map-picker.js";
 import { guardAvatars } from "./sheet.js";
 import { renderCampaignLibrary, renderCampaignMaps } from "./campaign-assets.js";
 import { keepMasterPresence } from "./session-presence.js";
 
 const TABS = [
   ["overview", "Visão geral", false],
+  ["journal", "Diário", false],
   ["sessions", "Sessões", true],
+  ["prep", "Cenas e personagens", true],
   ["players", "Jogadores", false],
   ["resources", "Bibliotecas", false],
-  ["maps", "Mapas", true],
+  ["maps", "Mapas e cenários", true],
+  ["table", "Configuração da mesa", true],
   ["settings", "Configurações", true],
 ];
 let page = 1,
+  lastSessions = [],
   generation = 0,
   currentCampaign = "";
 
@@ -43,28 +48,29 @@ export async function renderCampaignPage(id, tab = "overview") {
   const detail = await api("/campaigns/" + id);
   if (request !== generation) return;
   state.campaign = detail;
+  // One-shot tem sessão única, aberta na criação: sem aba de sessões nem "iniciar sessão".
   const visible = TABS.filter(
-    ([, , masterOnly]) => !masterOnly || detail.isMaster,
+    ([key, , masterOnly]) => (!masterOnly || detail.isMaster) && !(detail.isOneShot && key === "sessions"),
   );
   if (!visible.some(([key]) => key === tab))
-    tab = detail.isMaster ? "sessions" : "overview";
+    tab = detail.isMaster && !detail.isOneShot ? "sessions" : "overview";
   const online = !!detail.activeSession;
   const masterName = detail.masterName || "o mestre";
   $("#main").innerHTML =
-    `<a class="back-link" href="#campaigns">← Minhas campanhas</a>
-  <section class="campaign-hero metal"><div class="campaign-hero-copy"><span class="eyebrow">${esc(detail.system)}</span><h1>${esc(detail.name)}</h1><p>${esc(detail.description || "Uma nova história aguarda seu primeiro capítulo.")}</p><div class="hero-meta"><span>♛ <b>Mestre:</b> ${esc(masterName)}</span><span>♙ <b>${detail.members.length}</b> ${detail.members.length === 1 ? "jogador" : "jogadores"}</span>${detail.isMaster ? `<span>▣ <b>${detail.sessionCount}</b> ${detail.sessionCount === 1 ? "sessão" : "sessões"}</span>` : ""}${online ? '<span class="online-badge"><i aria-hidden="true"></i>ONLINE</span>' : ""}</div></div>${online ? `<a class="button primary enter-table" href="#table/${esc(id)}">▶ ${detail.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>` : ""}</section>
+    `${detail.isOneShot ? '<a class="back-link" href="#one-shot">← One-shots</a>' : '<a class="back-link" href="#campaigns">← Minhas campanhas</a>'}
+  <section class="campaign-hero metal"><div class="campaign-hero-copy"><span class="eyebrow">${esc(detail.system)}</span><h1>${esc(detail.name)}</h1>${detail.archived ? '<p class="notice-box">Campanha arquivada: conteúdo e histórico preservados, sem novas partidas até ser restaurada.</p>' : ""}<p>${esc(detail.description || "Uma nova história aguarda seu primeiro capítulo.")}</p><div class="hero-meta"><span>♛ <b>Mestre:</b> ${esc(masterName)}</span><span>♙ <b>${detail.members.length}</b> ${detail.members.length === 1 ? "jogador" : "jogadores"}</span>${detail.isMaster && !detail.isOneShot ? `<span>▣ <b>${detail.sessionCount}</b> ${detail.sessionCount === 1 ? "sessão" : "sessões"}</span>` : ""}${online ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>ONLINE</span>' : ""}</div></div>${online ? `<a class="button primary enter-table" href="#table/${esc(id)}">▶ ${detail.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>` : ""}</section>
   <nav class="page-tabs" aria-label="Seções da campanha">${visible.map(([key, label]) => `<a href="#campaign/${esc(id)}/${key}" ${key === tab ? 'aria-current="page" class="active"' : ""}>${label}</a>`).join("")}</nav>
   <div class="campaign-page-grid"><section id="campaign-tab" class="campaign-tab" aria-live="polite"></section>${overviewCard(detail)}</div>`;
   await renderTab(detail, tab);
   guardAvatars($("#main"));
-  if (detail.isOneShot) $(".campaign-hero-copy").insertAdjacentHTML("beforeend", `<p class="notice-box">One-shot: os dados serão removidos quando o mestre sair ou ficar 45 segundos desconectado. Prazo máximo: ${esc(new Date(detail.expiresAt).toLocaleString("pt-BR"))}.</p>`);
+  if (detail.isOneShot) $(".campaign-hero-copy").insertAdjacentHTML("beforeend", `<p class="notice-box">One-shot: se o mestre se desconectar, a mesa espera ${detail.recoveryMinutes || 10} minutos antes de ser removida. Encerrar apaga os dados; converter em campanha preserva tudo. Prazo máximo: ${esc(new Date(detail.expiresAt).toLocaleString("pt-BR"))}.</p>`);
   const releasePresence = keepMasterPresence(detail);
   return () => { ++generation; releasePresence(); };
 }
 
 function overviewCard(d) {
   const online = !!d.activeSession;
-  return `<aside class="campaign-aside metal" aria-label="Visão da campanha"><h2>Visão da campanha</h2><dl><div><dt>Estado atual</dt><dd>${online ? '<span class="online-badge"><i aria-hidden="true"></i>Online</span>' : '<span class="offline-badge">Offline</span>'}</dd></div>${d.isMaster ? `<div><dt>Sessões realizadas</dt><dd>${String(d.sessionCount).padStart(2, "0")} ${d.sessionCount === 1 ? "sessão" : "sessões"}</dd></div>` : ""}<div><dt>Participantes</dt><dd>${d.members.length} ${d.members.length === 1 ? "aventureiro" : "aventureiros"}</dd></div>${online ? `<div><dt>Sessão em andamento</dt><dd>${esc(sessionLabel(d.activeSession.number, d.activeSession.title))}</dd></div>` : ""}<div><dt>Seu acesso</dt><dd>${d.isMaster ? "Mestre · histórico e notas" : "Jogador · mesa e ficha"}</dd></div></dl>${online ? `<a class="button primary" href="#table/${esc(d.id)}">▶ ${d.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>` : d.isMaster ? button("✦ Iniciar nova sessão", "cp-start", d.id, "primary") : '<p class="muted small waiting-note">⌛ Aguardando o mestre abrir a próxima sessão.</p>'}${d.isMaster ? `<a class="button subtle" href="#campaign/${esc(d.id)}/players">⚑ Gerenciar jogadores</a>` : ""}</aside>`;
+  return `<aside class="campaign-aside metal" aria-label="Visão da campanha"><h2>Visão da campanha</h2><dl><div><dt>Estado atual</dt><dd>${online ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>Online</span>' : '<span class="offline-badge" data-tip="Nenhuma sessão está aberta nesta campanha.">Offline</span>'}</dd></div>${d.isMaster && !d.isOneShot ? `<div><dt>Sessões realizadas</dt><dd>${String(d.sessionCount).padStart(2, "0")} ${d.sessionCount === 1 ? "sessão" : "sessões"}</dd></div>` : ""}<div><dt>Participantes</dt><dd>${d.members.length} ${d.members.length === 1 ? "aventureiro" : "aventureiros"}</dd></div>${online ? `<div><dt>Sessão em andamento</dt><dd>${esc(sessionLabel(d.activeSession.number, d.activeSession.title))}</dd></div>` : ""}<div><dt>Seu acesso</dt><dd>${d.isMaster ? "Mestre · histórico e notas" : "Jogador · mesa e ficha"}</dd></div></dl>${online ? `<a class="button primary" href="#table/${esc(d.id)}">▶ ${d.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>` : d.isOneShot ? '<p class="muted small waiting-note">Mesa fechada: a sessão única desta one-shot não está aberta.</p>' : d.isMaster ? button("✦ Iniciar nova sessão", "cp-start", d.id, "primary") : '<p class="muted small waiting-note">⌛ Aguardando o mestre abrir a próxima sessão.</p>'}${d.isMaster ? `<a class="button subtle" href="#campaign/${esc(d.id)}/players">⚑ Gerenciar jogadores</a>` : ""}</aside>`;
 }
 
 async function renderTab(d, tab) {
@@ -89,27 +95,41 @@ async function renderTab(d, tab) {
     return;
   }
   if (tab === "resources") return renderCampaignLibrary(d, target);
+  if (tab === "prep") return (await import("./campaign-prep.js")).renderPrep(d, target);
+  if (tab === "journal") return (await import("./campaign-prep.js")).renderJournal(d, target);
   if (tab === "maps") return renderCampaignMaps(d, target);
+  if (tab === "table") return (await import("./fog-editor.js")).renderTableSettingsTab(d, target);
   if (tab === "settings") {
-    target.innerHTML = `<div class="section-title"><h2>Configurações</h2></div><div class="settings-list"><article class="metal"><h3>Identidade da campanha</h3><p class="muted small">Nome, sistema e premissa.</p>${button("Editar campanha", "cp-edit", d.id, "subtle")}</article>${inviteBox(d)}<article class="metal danger-zone"><h3>Excluir campanha</h3><p class="muted small">${d.members.length ? "Indisponível enquanto houver jogadores vinculados." : "Sessões, registros e recursos serão apagados. Fichas pessoais são preservadas."}</p>${button("Excluir campanha", "cp-delete", d.id, "danger", d.members.length ? "disabled" : "")}</article></div>`;
+    target.innerHTML = `<div class="section-title"><h2>Configurações</h2>${helpButton("campanhas.config.arquivamento", "Arquivar e restaurar")}</div><div class="settings-list"><article class="metal"><h3>Identidade da campanha</h3><p class="muted small">Nome, sistema e premissa.</p>${button("Editar campanha", "cp-edit", d.id, "subtle")}</article>${inviteBox(d)}${d.isOneShot ? `<article class="metal"><h3>Continuar depois</h3><p class="muted small">Converta em campanha persistente para guardar sessão, fichas, mapas e histórico. Usa uma das suas vagas de campanha; jogadores sem vaga podem voltar pelo convite.</p>${button("Converter em campanha", "cp-convert", d.id, "primary")}</article><article class="metal danger-zone"><h3>Encerrar one-shot</h3><p class="muted small">Encerre a sessão na mesa ou pela página One-shot. Todo o conteúdo da mesa é apagado; fichas pessoais são preservadas.</p><a class="button subtle" href="#one-shot">Ir para One-shot</a></article>` : `<article class="metal"><h3>${d.archived ? "Restaurar campanha" : "Arquivar campanha"}</h3><p class="muted small">${d.archived ? "Volta a permitir sessões e preparação. A campanha arquivada já ocupa sua vaga, então restaurar não ultrapassa o limite." : "Guarda conteúdo e histórico e impede novas partidas. A campanha continua contando no limite de campanhas."}</p>${button(d.archived ? "Restaurar" : "Arquivar", d.archived ? "cp-restore" : "cp-archive", d.id, "subtle", d.activeSession ? 'aria-disabled="true" data-tip="Encerre a sessão em andamento antes"' : "")}</article><article class="metal danger-zone"><h3>Excluir campanha</h3><p class="muted small">${d.members.length ? "Indisponível enquanto houver jogadores vinculados." : "Sessões, registros e recursos serão apagados. Fichas pessoais são preservadas."}</p>${button("Excluir campanha", "cp-delete", d.id, "danger", d.members.length ? "disabled" : "")}</article>`}</div>`;
     await templateSettings(d, target);
     return;
   }
-  target.innerHTML = `<a class="button primary" href="#character/new/${esc(d.id)}">+ Criar ficha para esta campanha</a><div class="section-title"><h2>Visão geral</h2></div><article class="overview-story metal"><h3>Premissa</h3><p>${esc(d.description || "A premissa desta campanha ainda será escrita.")}</p></article>${
+  const firstSteps = d.isMaster && !d.isOneShot && !d.archived && !d.sessionCount
+    ? `<article class="first-steps metal"><h3>Primeiros passos</h3><ol><li><strong>Convide o grupo</strong> — envie o link abaixo.${inviteLink(d)}</li><li><strong>Ficha</strong> — as fichas nascem com o modelo sugerido pelo sistema. <a href="#campaign/${esc(d.id)}/settings">Trocar ou criar um modelo simples</a>.</li><li><strong>Cenário (opcional)</strong> — <a href="#campaign/${esc(d.id)}/prep">prepare uma cena</a> ou comece direto.</li><li>${button("✦ Iniciar a primeira sessão", "cp-start", d.id, "primary small")}</li></ol><p class="form-help">Configurações avançadas (névoa, luz, ordem de turnos) ficam disponíveis quando você precisar.</p></article>`
+    : "";
+  const next = d.nextSessionAt ? `<article class="metal next-session"><h3>Próxima partida</h3><p><strong>${esc(new Date(d.nextSessionAt).toLocaleString("pt-BR", { weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit" }))}</strong></p><a class="text-button" href="#campaign/${esc(d.id)}/journal">${d.isMaster ? "Ver confirmações" : "Confirmar presença"} →</a></article>` : "";
+  target.innerHTML = `${firstSteps}${d.isMaster ? "" : `<a class="button primary" href="#character/new/${esc(d.id)}">+ Criar ficha com o modelo da campanha</a>`}${next}<div class="section-title"><h2>Visão geral</h2></div><article class="overview-story metal"><h3>Premissa</h3><p>${esc(d.description || "A premissa desta campanha ainda será escrita.")}</p></article>${
     d.activeSession
-      ? `<article class="live-callout metal"><span class="online-badge"><i aria-hidden="true"></i>Sessão em andamento</span><h3>${esc(sessionLabel(d.activeSession.number, d.activeSession.title))}</h3><p class="muted small">Iniciada em ${formatDate(d.activeSession.startedAt)}.</p><a class="button primary" href="#table/${esc(d.id)}">▶ ${d.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a></article>`
-      : `<article class="live-callout metal offline"><h3>Campanha offline</h3><p class="muted small">${d.isMaster ? "Inicie uma sessão para colocar a campanha online e receber os jogadores." : "Quando o mestre iniciar uma sessão, a campanha aparecerá como ONLINE e você entrará direto na mesa."}</p></article>`
+      ? `<article class="live-callout metal"><span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>Sessão em andamento</span><h3>${esc(sessionLabel(d.activeSession.number, d.activeSession.title))}</h3><p class="muted small">Iniciada em ${formatDate(d.activeSession.startedAt)}.</p><a class="button primary" href="#table/${esc(d.id)}">▶ ${d.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a></article>`
+      : d.isOneShot
+        ? `<article class="live-callout metal offline"><h3>Mesa fechada</h3><p class="muted small">A one-shot tem sessão única, aberta na criação. Sem ela, a mesa não volta a abrir.</p></article>`
+        : `<article class="live-callout metal offline"><h3>Campanha offline</h3><p class="muted small">${d.isMaster ? "Inicie uma sessão para colocar a campanha online e receber os jogadores." : "Quando o mestre iniciar uma sessão, a campanha aparecerá como ONLINE e você entrará direto na mesa."}</p></article>`
   }<article class="metal overview-party"><h3>Personagens do grupo</h3>${d.characters.length ? `<ul>${d.characters.map((c) => `<li><strong>${esc(c.name)}</strong><span>${esc(c.archetype || "Aventureiro")} · Nv. ${c.level} · Vida ${c.hp}/${c.maxHp}</span></li>`).join("")}</ul>` : '<p class="muted small">Nenhuma ficha vinculada ainda.</p>'}</article>`;
 }
 
+const inviteUrl = (d) => `${location.origin}/#invite/${d.inviteCode}`;
+function inviteLink(d) {
+  return d.inviteCode ? `<div class="invite-code"><code>${esc(inviteUrl(d))}</code>${button("Copiar link", "cp-copy", inviteUrl(d), "subtle small")}</div>` : "";
+}
 function inviteBox(d) {
-  return `<article class="metal invite-box"><h3>Código de convite</h3><p class="muted small">Compartilhe apenas com quem deseja convidar.</p><div class="invite-code"><code>${esc(d.inviteCode)}</code>${button("Copiar", "cp-copy", d.inviteCode, "subtle small")}</div></article>`;
+  return `<article class="metal invite-box"><h3>Convite</h3>${helpButton("campanhas.convite.codigo", "Convite da campanha")}<p class="muted small">Quem abrir o link entra, confirma o e-mail se precisar e escolhe o personagem. Compartilhe só com quem deseja convidar.</p>${inviteLink(d)}<details><summary>Código para digitar</summary><div class="invite-code"><code>${esc(d.inviteCode)}</code>${button("Copiar código", "cp-copy", d.inviteCode, "subtle small")}</div></details></article>`;
 }
 
 async function renderSessions(d, target) {
   target.innerHTML =
     '<p class="loading-line" role="status">Consultando as crônicas…</p>';
   const result = await api(`/campaigns/${d.id}/sessions?page=${page}`);
+  lastSessions = result.items;
   if ($("#campaign-tab") !== target) return;
   const live = result.items.find((s) => s.active);
   target.innerHTML = `<div class="section-title"><h2>Histórico de sessões</h2>${live ? `<a class="button primary" href="#table/${esc(d.id)}">▶ Voltar à mesa</a>` : button("✦ Iniciar nova sessão", "cp-start", d.id, "primary start-session")}</div>${
@@ -119,7 +139,7 @@ async function renderSessions(d, target) {
             const minutes = s.endedAt
               ? (new Date(s.endedAt) - new Date(s.startedAt)) / 60000
               : (Date.now() - new Date(s.startedAt)) / 60000;
-            return `<li class="session-row metal ${s.active ? "active" : ""}"><div class="session-thumb ${s.mapKind === "tileset" ? "tileset" : "cartographic"}" aria-hidden="true"></div><div class="session-info"><h3><a href="#session/${esc(s.id)}">${esc(sessionLabel(s.number, s.title))}</a></h3><p>${new Date(s.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })} · ${formatDuration(minutes)} · ${s.eventCount} eventos · ${s.noteCount} ${s.noteCount === 1 ? "nota" : "notas"} · ${s.participantCount} ${s.participantCount === 1 ? "aventureiro" : "aventureiros"}</p></div><div class="session-row-actions">${s.active ? '<span class="online-badge"><i aria-hidden="true"></i>Em andamento</span>' : '<span class="status-chip">◉ Encerrada</span>'}<a class="button subtle small" href="#session/${esc(s.id)}/timeline">◷ Histórico</a><a class="button subtle small" href="#session/${esc(s.id)}/notes">✎ Notas</a></div></li>`;
+            return `<li class="session-row metal ${s.active ? "active" : ""}"><div class="session-thumb ${s.mapKind === "tileset" ? "tileset" : "cartographic"}" aria-hidden="true"></div><div class="session-info"><h3><a href="#session/${esc(s.id)}">${esc(sessionLabel(s.number, s.title))}</a></h3><p>${new Date(s.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })} · ${formatDuration(minutes)} · ${s.eventCount} eventos · ${s.noteCount} ${s.noteCount === 1 ? "nota" : "notas"} · ${s.participantCount} ${s.participantCount === 1 ? "aventureiro" : "aventureiros"}</p></div><div class="session-row-actions">${s.active ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>Em andamento</span>' : '<span class="status-chip">◉ Encerrada</span>'}<a class="button subtle small" href="#session/${esc(s.id)}/timeline">◷ Histórico</a><a class="button subtle small" href="#session/${esc(s.id)}/notes">✎ Notas</a>${button(s.recapPublished ? "Resumo publicado" : "✍ Resumo", "cp-recap", s.id, "subtle small")}</div></li>`;
           })
           .join("")}</ol>${pagination(result)}`
       : empty(
@@ -149,14 +169,7 @@ async function startSessionModal(campaignId) {
   const firstTileset = choices.find((m) => m.kind === "tileset") || choices[0];
   modal(
     "✦ Iniciar nova sessão",
-    `<p class="modal-lead">A campanha ficará online para os aventureiros convidados.</p><form id="start-session"><div class="field"><label for="f-title">Nome da sessão</label><div class="title-field"><span aria-hidden="true">Sessão ${String(next).padStart(2, "0")} —</span><input id="f-title" name="title" required maxlength="120" placeholder="A Cripta dos Antigos" aria-describedby="title-help"></div><small id="title-help" class="form-help">O número da sessão é atribuído automaticamente.</small></div><div class="field"><label for="f-objective">Objetivo / nota inicial do mestre</label><textarea id="f-objective" name="objective" maxlength="2000" rows="3" placeholder="Visível apenas para você no histórico da sessão."></textarea></div><fieldset class="map-choices"><legend>Mapa inicial da sessão</legend>${choices
-      .map(
-        (m) =>
-          `<label class="map-choice"><input type="radio" name="map" value="${esc(m.kind)}|${esc(m.key)}" ${m === firstTileset ? "checked" : ""}><span class="map-preview" data-map-key="${esc(m.key)}"></span><span class="map-choice-text"><strong>${m.kind === "tileset" ? "▦ Tileset tático" : "◎ Mapa cartográfico"} · ${esc(m.name)}</strong><small>${esc(m.description)}</small></span></label>`,
-      )
-      .join(
-        "",
-      )}</fieldset><p class="notice-box">✧ Ao confirmar, a sessão será aberta e a campanha mudará para <strong>ONLINE</strong>. Os jogadores entrarão diretamente na mesa.</p>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">▶ Iniciar sessão</button></div></form>`,
+    `<p class="modal-lead">A campanha ficará online para os aventureiros convidados.</p><form id="start-session"><div class="field"><div class="field-label"><label for="f-title">Nome da sessão</label>${helpButton("sessoes.abertura.unica", "Uma sessão ativa")}</div><div class="title-field"><span aria-hidden="true">Sessão ${String(next).padStart(2, "0")} —</span><input id="f-title" name="title" required maxlength="120" placeholder="A Cripta dos Antigos" aria-describedby="title-help"></div><small id="title-help" class="form-help">O número da sessão é atribuído automaticamente.</small></div><div class="field"><label for="f-objective">Objetivo / nota inicial do mestre</label><textarea id="f-objective" name="objective" maxlength="2000" rows="3" placeholder="Visível apenas para você no histórico da sessão."></textarea></div>${mapChoices(choices, firstTileset?.key, "Mapa inicial da sessão")}<p class="notice-box">✧ Ao confirmar, a sessão será aberta e a campanha mudará para <strong>ONLINE</strong>. Os jogadores entrarão diretamente na mesa.</p>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">▶ Iniciar sessão</button></div></form>`,
   );
   $("#modal").classList.add("wide");
   $("#modal").addEventListener(
@@ -164,12 +177,7 @@ async function startSessionModal(campaignId) {
     () => $("#modal").classList.remove("wide"),
     { once: true },
   );
-  document.querySelectorAll(".map-preview").forEach((el) =>
-    mapThumbnail(
-      el,
-      choices.find((m) => m.key === el.dataset.mapKey),
-    ),
-  );
+  mountMapChoices($("#start-session"), choices);
   $("#f-title").focus();
   $("#start-session").onsubmit = (e) => {
     e.preventDefault();
@@ -275,6 +283,24 @@ document.addEventListener("click", async (e) => {
     }
     if (action === "cp-edit" && d?.isMaster)
       campaignForm(d, () => reload("settings"));
+    if (action === "cp-archive" && d?.isMaster && confirm("Arquivar a campanha? O histórico fica guardado e novas partidas ficam bloqueadas até restaurar.")) {
+      await api(`/campaigns/${d.id}/archive`, "POST"); toast("Campanha arquivada."); await reload("settings");
+    }
+    if (action === "cp-restore" && d?.isMaster) { await api(`/campaigns/${d.id}/restore`, "POST"); toast("Campanha restaurada."); await reload("settings"); }
+    if (action === "cp-convert" && d?.isMaster && confirm("Converter esta one-shot em campanha persistente? Ela passa a usar uma vaga de campanha sua; jogadores sem vaga deixam a mesa e podem voltar pelo convite.")) {
+      const r = await api(`/campaigns/${d.id}/convert`, "POST");
+      toast(r.removed ? `Campanha criada. ${r.removed} jogador(es) sem vaga ficaram de fora.` : "Campanha criada. Tudo foi preservado.");
+      navigate(`campaign/${d.id}`);
+    }
+    if (action === "cp-template-new" && d?.isMaster) (await import("./campaign-prep.js")).privateTemplateModal(d, null, () => reload("settings"));
+    if (action === "cp-template-edit" && d?.isMaster) {
+      const list = await api(`/campaigns/${d.id}/private-templates`);
+      (await import("./campaign-prep.js")).privateTemplateModal(d, list.items.find((t) => t.id === id), () => reload("settings"));
+    }
+    if (action === "cp-recap" && d?.isMaster) {
+      const sess = lastSessions.find((x) => x.id === id);
+      if (sess) (await import("./campaign-prep.js")).recapModal({ id: sess.id, number: sess.number, recap: sess.recap, published: sess.recapPublished }, () => reload("sessions"));
+    }
     if (action === "cp-delete" && d?.isMaster && !d.members.length)
       confirmCampaign({ id: d.id, name: d.name }, false, () =>
         navigate("campaigns"),
@@ -285,10 +311,10 @@ document.addEventListener("click", async (e) => {
 });
 
 async function templateSettings(campaign, target) {
-  const [templates, current] = await Promise.all([api(`/sheet-templates?systemId=${campaign.rpgSystemId}`), api(`/campaigns/${campaign.id}/sheet-template`)]);
+  const [templates, current, own] = await Promise.all([api(`/sheet-templates?systemId=${campaign.rpgSystemId}`), api(`/campaigns/${campaign.id}/sheet-template`), api(`/campaigns/${campaign.id}/private-templates`)]);
   if (!target.isConnected) return;
   const section = document.createElement("section"); section.className = "metal cs-template-settings";
-  section.innerHTML = `<h3>Ficha-modelo da campanha</h3><p>Novas fichas usam ${esc(current.template.name)}. Alterar esta escolha preserva as fichas existentes e suas versões.</p><form id="cp-template-form"><div class="field"><label for="cp-template">Modelo publicado do sistema</label><select id="cp-template" name="templateId"><option value="">Usar o padrão do sistema</option>${templates.map(t => `<option value="${esc(t.id)}" ${campaign.sheetTemplateId === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></div>${formError()}<button type="submit" class="primary">Salvar modelo da campanha</button></form>`;
+  section.innerHTML = `<h3>Ficha-modelo da campanha</h3>${helpButton("campanhas.config.modelo", "Ficha-modelo da campanha")}<p>Novas fichas usam ${esc(current.template.name)}. Alterar esta escolha preserva as fichas existentes e suas versões.</p><form id="cp-template-form"><div class="field"><label for="cp-template">Modelo das novas fichas</label><select id="cp-template" name="templateId"><option value="">Usar o padrão do sistema</option>${templates.map(t => `<option value="${esc(t.id)}" ${campaign.sheetTemplateId === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}${own.items.length ? `<optgroup label="Modelos desta campanha">${own.items.map(t => `<option value="${esc(t.id)}" ${campaign.sheetTemplateId === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</optgroup>` : ""}</select></div>${formError()}<button type="submit" class="primary">Salvar modelo da campanha</button></form><h4>Modelos simples desta campanha</h4><p class="muted small">Campos de texto, número, seleção e marcação; recursos como estresse ou munição; ações com fórmula opcional. Não entram no catálogo público.</p>${own.items.length ? `<ul class="plain-list">${own.items.map(t => `<li>${esc(t.name)} <small>v${t.version?.number ?? 1}${t.inUse ? " · em uso" : ""}</small> ${button("Editar", "cp-template-edit", t.id, "text-button small")}</li>`).join("")}</ul>` : ""}${campaign.archived ? "" : button("+ Criar modelo simples", "cp-template-new", "", "subtle small")}`;
   target.append(section);
   section.querySelector("form").onsubmit = event => {
     event.preventDefault(); submitForm(event.currentTarget, async data => {

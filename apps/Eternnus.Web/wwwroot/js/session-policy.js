@@ -7,7 +7,7 @@ export const ACTION_KINDS = Object.freeze([
   ["magia", "✦", "Magia"],
   ["item", "◈", "Item"],
 ]);
-const WALKABLE = ".,+=rS";
+const WALKABLE = ".,+=rSd:";
 
 /** Destino ao abrir uma campanha da lista: mesa ao vivo para jogador com sessão ativa; página da campanha nos demais casos. */
 export function campaignRoute(c) {
@@ -161,6 +161,7 @@ const EVENT_META = {
   token: ["⚑", "Marcador"],
   sheet: ["♜", "Ficha"],
   note: ["✎", "Anotação"],
+  music: ["♪", "Trilha sonora"],
 };
 export function eventMeta(kind) {
   return EVENT_META[kind] || ["•", "Registro"];
@@ -183,7 +184,7 @@ export function feedFor(events, tab) {
   if (tab === "chat")
     return events.filter(
       (e) =>
-        !["move", "token"].includes(e.kind) &&
+        !["move", "token", "music"].includes(e.kind) &&
         !(e.kind === "note" && e.masterOnly),
     );
   return events;

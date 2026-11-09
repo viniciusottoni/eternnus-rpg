@@ -49,18 +49,20 @@ export function formatSigned(value) {
 
 /** Valor da tabela "Como ganhar XP": fixo ou variável (bônus da equipe). */
 export function amountLabel(amount) {
+  if (amount === 0) return "Sem XP";
   return amount == null ? "Variável" : `+${numberFormat.format(amount)} XP`;
 }
 
 /** "10 por dia" / "Sem limite diário". */
 export function dailyLimitLabel(limit) {
+  if (limit === 0) return "Sem pontuação";
   if (limit == null) return "Sem limite diário";
   return `${numberFormat.format(limit)} por dia`;
 }
 
 /** Texto do uso de hoje para leitores de tela e para a tabela: "2 de 10 hoje" / "Limite de hoje atingido". */
 export function todayLabel(today, limit) {
-  if (limit == null) return "";
+  if (limit == null || limit === 0) return "";
   const used = Math.max(0, Math.trunc(Number(today) || 0));
   return used >= limit ? "Limite de hoje atingido" : `${used} de ${limit} hoje`;
 }
@@ -91,6 +93,29 @@ export function sortAchievements(list) {
 /** Próximos desbloqueios: ainda bloqueados, do menor nível ao maior. */
 export function nextUnlocks(unlocks, limit = 4) {
   return unlocks.filter((u) => !u.unlocked).sort((a, b) => a.level - b.level).slice(0, limit);
+}
+
+/** Marcos sem prazos; destinos locais conhecidos, nunca URLs vindas da API. */
+export function nextMilestones(achievements, limit = 3) {
+  const destinations = {
+    characters: ["#characters", "Criar personagem"],
+    sessions: ["#campaigns", "Ir às campanhas"],
+    sessions_played: ["#campaigns", "Ir às campanhas"],
+    sessions_mastered: ["#campaigns", "Preparar uma sessão"],
+    roles: ["#campaigns", "Explorar as mesas"],
+    campaigns_created: ["#campaigns", "Criar campanha"],
+    campaigns_joined: ["#campaigns", "Entrar com convite"],
+    guild_topics: ["#guild", "Visitar a Guilda"],
+    guild_posts: ["#guild", "Visitar a Guilda"],
+    useful_received: ["#guild", "Compartilhar conhecimento"],
+    paths: ["#overview", "Explorar caminhos"],
+  };
+  const seen = new Set();
+  return achievements.filter(a => !a.unlocked && destinations[a.counter])
+    .sort((a, b) => (b.current / b.threshold) - (a.current / a.threshold) || a.threshold - b.threshold)
+    .filter(a => !seen.has(a.counter) && seen.add(a.counter))
+    .slice(0, limit)
+    .map(a => ({ ...a, href: destinations[a.counter][0], action: destinations[a.counter][1] }));
 }
 
 /** Data UTC do servidor no fuso do navegador: "07/11/2026" ou "07/11/2026, 22:30". Valor inválido → "". */

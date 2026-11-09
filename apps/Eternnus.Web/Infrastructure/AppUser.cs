@@ -15,6 +15,10 @@ public class AppUser : IdentityUser
     public int OneShotParticipations { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastSeenAt { get; set; }
+    /// <summary>Código de convite guardado enquanto a conta aguarda verificação ou login; nunca concede acesso por si só.</summary>
+    [MaxLength(32)] public string? PendingInvite { get; set; }
+    /// <summary>Apresentação das ferramentas do mestre: "basic" ou "complete". Nula = Básica. Não altera regras nem a visão dos jogadores.</summary>
+    [MaxLength(10)] public string? InterfaceMode { get; set; }
 }
 
 public class MailDelivery

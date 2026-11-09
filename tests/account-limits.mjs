@@ -3,7 +3,7 @@ import { startEnvironment, password, totp, wait } from "./support/harness.mjs";
 const env = await startEnvironment({ port: 5310, initialAdminPassword: password });
 const { check, ok, sql } = env;
 const free = "00000000-0000-4000-8000-000000000001";
-const campaign = (name, isOneShot = false) => ({ name, description: "", rpgSystemId: free, isOneShot });
+const campaign = (name) => ({ name, description: "", rpgSystemId: free });
 try {
   const admin = env.client();
   await admin.renew();
@@ -60,20 +60,25 @@ try {
   check(race.map((r) => r.status).sort(), [200, 409], "criar e entrar concorrentes respeitam três campanhas");
   check((await common("/api/auth/limits")).activeCampaigns, 3);
   sql(`UPDATE "AspNetUsers" SET "Level"=100,"OneShotParticipations"=9 WHERE "Id"='${commonId}'`);
+  await common("/api/campaigns", "POST", { ...campaign("Pela lista"), isOneShot: true }, 400);
   const shots = await Promise.all([
-    common("/api/campaigns", "POST", campaign("Livre A", true), null, { raw: true }),
-    common("/api/campaigns", "POST", campaign("Livre B", true), null, { raw: true }),
+    common("/api/one-shots", "POST", campaign("Livre A"), null, { raw: true }),
+    common("/api/one-shots", "POST", campaign("Livre B"), null, { raw: true }),
   ]);
   check(shots.map((r) => r.status).sort(), [200, 409], "duas one-shots concorrentes não excedem quota10");
-  const shotId = shots.find((r) => r.status === 200).data.id;
+  const shotId = shots.find((r) => r.status === 200).data.campaignId;
+  check(sql(`SELECT count(*) FROM "Sessions" WHERE "CampaignId"='${shotId}' AND "EndedAt" IS NULL`), "1", "one-shot nasce com a sessão única aberta");
+  check((await common("/api/campaigns?oneShot=true")).items.map((c) => c.id), [shotId], "lista filtra one-shots");
+  check((await common("/api/campaigns?oneShot=false")).items.some((c) => c.isOneShot), false, "lista de campanhas não mostra one-shots");
+  await common(`/api/campaigns/${shotId}/sessions`, "POST", { title: "Outra", objective: "", mapKind: "tileset", mapKey: "crypt" }, 409);
   check((await common("/api/auth/limits")).oneShotParticipations, 10);
   await common("/api/campaigns", "POST", campaign("Acima do nível100"), 409);
 
-  const sharedShot = await admin("/api/campaigns", "POST", campaign("Reconexão", true));
-  const shotCode = (await admin(`/api/campaigns/${sharedShot.id}`)).inviteCode;
+  const sharedShot = await admin("/api/one-shots", "POST", campaign("Reconexão"));
+  const shotCode = (await admin(`/api/campaigns/${sharedShot.campaignId}`)).inviteCode;
   sql(`UPDATE "AspNetUsers" SET "OneShotParticipations"=9 WHERE "Id"='${playerId}'`);
   await player("/api/campaigns/join", "POST", { code: shotCode });
-  await player(`/api/campaigns/${sharedShot.id}/leave`, "POST", undefined, 204);
+  await player(`/api/campaigns/${sharedShot.campaignId}/leave`, "POST", undefined, 204);
   await player("/api/campaigns/join", "POST", { code: shotCode });
   check((await player("/api/auth/limits")).oneShotParticipations, 10, "reentrada na mesma mesa é idempotente");
   sql(`UPDATE "Campaigns" SET "ExpiresAt"=CURRENT_TIMESTAMP - interval '1 second' WHERE "Id"='${shotId}'`);

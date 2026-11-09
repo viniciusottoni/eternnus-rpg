@@ -1,5 +1,7 @@
 # Plataforma — Ondas A e B
 
+A evolução de progressão, conquistas, apresentação compartilhada e atlas oficial está em [PROGRESSAO_CENARIOS.md](PROGRESSAO_CENARIOS.md). As novas tarifas de XP não modificam lançamentos históricos nem quotas de conta.
+
 Este documento complementa ARQUITETURA.md, API.md e GUIA_VISUAL.md com o escopo integrado da plataforma. Os contratos são do monólito, no mesmo host e banco PostgreSQL.
 
 ## Módulos e acesso
@@ -12,7 +14,7 @@ Este documento complementa ARQUITETURA.md, API.md e GUIA_VISUAL.md com o escopo 
 | Guilda | Ler, responder, editar os próprios posts, marcar útil e denunciar | Também moderar tópicos/posts/denúncias | Também administrar categorias |
 | Suporte | Apenas seus próprios chamados | Apenas seus próprios chamados | Fila administrativa, atribuição, prioridade/status e notas internas |
 | Nível/conquistas | Sua jornada, ranking e cartão público sem e-mail | Mesmas leituras | Ajustar XP com motivo e auditoria |
-| Painel administrativo | Sem acesso | Sem acesso | Visão geral, usuários, papéis, suspensões, campanhas, sistemas e auditoria |
+| Painel administrativo | Sem acesso | Sem acesso | Visão geral, usuários, papéis, suspensões, campanhas, sistemas, fichas-modelo, tickets e auditoria |
 
 Papéis são lidos do banco nas políticas Verified/Staff/Admin e nos casos de uso. Botões, nível e dados enviados pelo navegador não concedem permissão. Suspensão invalida sessões. Alterações de equipe têm registro em AuditEntry na mesma unidade de gravação. A proteção do último administrador é reaplicada no servidor.
 
@@ -40,10 +42,10 @@ O PDF preenchido usa os últimos valores salvos. A exportação renderiza fundo 
 
 | Rota | Finalidade |
 | --- | --- |
-| `#admin` e abas `users`, `campaigns`, `systems`, `tickets`, `audit` | Gestão administrativa |
-| `#support` | Chamados próprios e conversa |
+| `#admin` e abas `users`, `campaigns`, `systems`, `templates`, `tickets`, `audit` | Gestão administrativa; `#admin/templates[/{id}[/versions/{versionId}]]` abre o editor de fichas-modelo no painel |
+| `#support` | Chamados próprios e conversa (fora do menu do admin, que atende pela aba Tickets do painel) |
 | `#library` | Acervo e visualizador |
-| `#templates` e detalhe/versão | Gestão e editor de modelos |
+| `#templates` e detalhe/versão | Gestão e editor de modelos para embaixadores; para admin redireciona a `#admin/templates` |
 | `#guild` | Categorias, tópicos, perfil e moderação |
 | `#progress` | Jornada, conquistas e ranking |
 | `#character/new` | Criar com modelo publicado |

@@ -134,8 +134,12 @@ public sealed class ProgressionTests : IAsyncLifetime
         await service.AwardAsync(Hero, XpReasons.CharacterCreated, "character_created:3");
         await db.SaveChangesAsync();
         Assert.Equal(["first_character"], await db.Achievements.Where(a => a.UserId == Hero).Select(a => a.Key).ToListAsync());
-        // Dez respostas no mesmo SaveChanges: a décima já vê as nove pendentes.
-        for (var i = 0; i < 10; i++) await service.AwardAsync(Second, XpReasons.GuildPost, $"guild_post:{i}");
+        // Cinco respostas por dia: o próximo dia considera também lançamentos ainda pendentes.
+        for (var i = 0; i < 10; i++)
+        {
+            if (i == 5) clock.Advance(TimeSpan.FromDays(1));
+            await service.AwardAsync(Second, XpReasons.GuildPost, $"guild_post:{i}");
+        }
         Assert.Contains(db.Achievements.Local, a => a.UserId == Second && a.Key == "posts_10");
         await db.SaveChangesAsync();
         Assert.Equal(1, await db.Achievements.CountAsync(a => a.UserId == Second && a.Key == "posts_10"));
@@ -171,7 +175,7 @@ public sealed class ProgressionTests : IAsyncLifetime
         await service.AwardAsync(Hero, XpReasons.SessionPlayed, "session_played:s:hero");
         var removal = await service.PrepareBonusAsync(Hero, -500, default);
         await db.SaveChangesAsync();
-        Assert.Equal(-30, removal.Amount);
+        Assert.Equal(-50, removal.Amount);
         Assert.StartsWith("staff_bonus:", removal.SourceKey);
         Assert.Equal(0, (await UserAsync(Hero)).Xp);
         Assert.Equal(409, (await Assert.ThrowsAsync<RuleException>(() => service.PrepareBonusAsync(Hero, -10, default))).Status);
@@ -243,14 +247,70 @@ public sealed class ProgressionTests : IAsyncLifetime
         await sessions.EndAsync(id, Master, default);
         var entries = await db.XpEntries.AsNoTracking().OrderBy(e => e.SourceKey).Select(e => new { e.UserId, e.Reason, e.Amount, e.SourceKey }).ToListAsync();
         Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => e.UserId == Master && e.Reason == XpReasons.SessionMastered && e.Amount == 50 && e.SourceKey == $"session_mastered:{id}");
-        Assert.Contains(entries, e => e.UserId == Hero && e.Reason == XpReasons.SessionPlayed && e.Amount == 30 && e.SourceKey == $"session_played:{id}:{Hero}");
-        Assert.Equal(30, (await UserAsync(Hero)).Xp);
-        Assert.Equal(50, (await UserAsync(Master)).Xp);
+        Assert.Contains(entries, e => e.UserId == Master && e.Reason == XpReasons.SessionMastered && e.Amount == 60 && e.SourceKey == $"session_mastered:{id}");
+        Assert.Contains(entries, e => e.UserId == Hero && e.Reason == XpReasons.SessionPlayed && e.Amount == 50 && e.SourceKey == $"session_played:{id}:{Hero}");
+        Assert.Equal(50, (await UserAsync(Hero)).Xp);
+        Assert.Equal(60, (await UserAsync(Master)).Xp);
         Assert.Equal(0, (await UserAsync(Second)).Xp);
         Assert.True(await db.Achievements.AnyAsync(a => a.UserId == Hero && a.Key == "first_session"));
         Assert.True(await db.Achievements.AnyAsync(a => a.UserId == Master && a.Key == "first_master"));
         Assert.Equal(409, (await Assert.ThrowsAsync<RuleException>(() => sessions.EndAsync(id, Master, default))).Status);
+    }
+
+    [Fact]
+    public async Task Support_has_no_xp_and_guild_reward_cap_does_not_create_extra_entries()
+    {
+        await service.AwardAsync(Hero, XpReasons.TicketResolved, "ticket_resolved:1");
+        Assert.Empty(db.XpEntries.Local);
+        for (var i = 0; i < 8; i++) await service.AwardAsync(Hero, XpReasons.GuildUsefulReceived, $"guild_useful:{i}");
+        await db.SaveChangesAsync();
+        Assert.Equal(30, (await UserAsync(Hero)).Xp);
+        Assert.Equal(5, await db.XpEntries.CountAsync());
+        Assert.True(await db.Achievements.AnyAsync(a => a.Key == "useful_5"));
+    }
+
+    [Fact]
+    public async Task Mixed_paths_and_roles_unlock_from_saved_and_pending_history()
+    {
+        await service.AwardAsync(Hero, XpReasons.CharacterCreated, "character_created:journey");
+        await service.AwardAsync(Hero, XpReasons.SessionPlayed, "session_played:journey");
+        await db.SaveChangesAsync();
+        await service.AwardAsync(Hero, XpReasons.SessionMastered, "session_mastered:journey");
+        await service.AwardAsync(Hero, XpReasons.SessionPlayed, "session_played:journey2");
+        await db.SaveChangesAsync();
+        var keys = await db.Achievements.Where(a => a.UserId == Hero).Select(a => a.Key).ToListAsync();
+        Assert.Contains("both_roles", keys); Assert.Contains("paths_3", keys); Assert.Contains("sessions_3", keys);
+        var counters = Progression.Counters(new Dictionary<string,int> { [XpReasons.StaffBonus] = 9, [XpReasons.TicketResolved] = 4 }, 2);
+        Assert.Equal(0, counters[AchievementCounters.Paths]);
+    }
+
+    [Fact]
+    public async Task Late_join_and_solo_session_do_not_award_xp()
+    {
+        var (sessions, id) = await PlayedSessionAsync();
+        clock.Advance(TimeSpan.FromMinutes(12));
+        var participant = await db.SessionParticipants.SingleAsync(p => p.SessionId == id && p.UserId == Hero);
+        participant.JoinedAt = clock.GetUtcNow().UtcDateTime.AddMinutes(-1);
+        await db.SaveChangesAsync();
+        await sessions.EndAsync(id, Master, default);
+        Assert.Empty(await db.XpEntries.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Leaving_early_preserves_reward_and_one_shot_xp_survives_cleanup()
+    {
+        var (sessions, id) = await PlayedSessionAsync();
+        clock.Advance(TimeSpan.FromMinutes(10));
+        await sessions.LeaveAsync(id, Hero, default);
+        var session = await db.Sessions.SingleAsync(s => s.Id == id);
+        var campaign = await db.Campaigns.SingleAsync(c => c.Id == session.CampaignId);
+        campaign.IsOneShot = true;
+        await db.SaveChangesAsync();
+        await sessions.EndAsync(id, Master, default);
+        Assert.False(await db.Campaigns.AnyAsync(c => c.Id == campaign.Id));
+        Assert.Equal(50, (await UserAsync(Hero)).Xp);
+        Assert.Equal(60, (await UserAsync(Master)).Xp);
+        Assert.Equal(2, await db.XpEntries.CountAsync());
     }
 
     sealed class ManualClock(DateTimeOffset start) : TimeProvider

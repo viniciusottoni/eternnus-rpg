@@ -8,6 +8,15 @@ const source = await readFile(
 const p = await import(
   "data:text/javascript;base64," + Buffer.from(source).toString("base64")
 );
+
+test("a legenda tática do navegador coincide com a fonte oficial do servidor", async () => {
+  const domain = await readFile(new URL("../apps/Eternnus.Web/Domain/BattleMaps.cs", import.meta.url), "utf8");
+  const walkable = domain.match(/const string Walkable = "([^"]+)"/)[1];
+  for (const cell of "#ToAbt~.,+=rSdh:")
+    assert.equal(p.canStand([cell], 0, 0), walkable.includes(cell), cell);
+  assert.equal(p.canStand(["h"], 0, 0), false);
+  assert.equal(p.canStand(["d:"], 1, 0), true);
+});
 const policySource = await readFile(
   new URL("../apps/Eternnus.Web/wwwroot/js/policy.js", import.meta.url),
   "utf8",

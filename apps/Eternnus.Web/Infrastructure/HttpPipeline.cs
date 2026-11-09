@@ -14,6 +14,8 @@ public static class HttpPipeline
         // deixa a causa no registro sanitizado de StartupFailure, em vez de HTTP 500 em toda escrita.
         var probe = app.Services.GetRequiredService<IDataProtectionProvider>().CreateProtector("Eternnus.Startup.Probe.v1");
         if (probe.Unprotect(probe.Protect("ok")) != "ok") throw new InvalidOperationException("Configure Data Protection key storage.");
+        // Diretório privado do acervo de músicas: criado e conferido fora de wwwroot já na inicialização.
+        app.Services.GetRequiredService<MusicStorage>();
     }
     public static void UseEternnusPipeline(this WebApplication app)
     {
@@ -73,7 +75,7 @@ public static class HttpPipeline
                         if (context.Request.Headers["X-Eternnus"] != "1") throw new AntiforgeryValidationException("Missing application header.");
                         await context.RequestServices.GetRequiredService<IAntiforgery>().ValidateRequestAsync(context);
                     }
-                    catch (AntiforgeryValidationException) { context.Response.StatusCode = 400; await context.Response.WriteAsJsonAsync(new { message = "Sua sessão de formulário expirou. Recarregue a página." }); return; }
+                    catch (AntiforgeryValidationException) { context.Response.StatusCode = 400; await context.Response.WriteAsJsonAsync(new { code = "csrf_expired", message = "Sua sessão de formulário expirou. Recarregue a página." }); return; }
                 }
             }
             await next();

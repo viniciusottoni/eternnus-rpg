@@ -17,6 +17,9 @@ let waitingForGesture = false;
 let pausedByVisibility = false;
 let graph = null;
 let installed = false;
+// Trilha da sessão ativa: a música global fica pausada e oculta; ao sair, volta conforme a preferência anterior.
+let suspended = false;
+let resumeAfterSuspend = false;
 
 function loadPreference() {
   try {
@@ -66,6 +69,7 @@ function setStatus(status) {
 }
 
 async function play(fromGesture) {
+  if (suspended) return;
   if (fromGesture) ensureGraph();
   if (audio.getAttribute("src") !== MUSIC_SRC) audio.src = MUSIC_SRC;
   audio.preload = "auto";
@@ -132,12 +136,12 @@ function render() {
         ? "Pausar trilha sonora"
         : "Tocar trilha sonora";
   toggle.setAttribute("aria-label", label);
-  toggle.title = label;
+  toggle.dataset.tip = label;
   toggle.dataset.playing = String(playing);
   const percent = Math.round(preference.volume * 100);
   volumeButton.dataset.level = volumeLevel(preference.volume);
   volumeButton.setAttribute("aria-label", `Volume da trilha sonora: ${percent}%`);
-  volumeButton.title = `Volume: ${percent}%`;
+  volumeButton.dataset.tip = `Volume: ${percent}%`;
   if (Number(slider.value) !== percent) slider.value = String(percent);
   slider.setAttribute("aria-valuetext", `${percent}%`);
   output.textContent = `${percent}%`;
@@ -168,6 +172,53 @@ function dock() {
     target.append(control);
   }
   control.classList.toggle("is-docked", Boolean(slot));
+}
+
+// Controles de mídia do sistema apontam para a trilha global; a trilha da sessão os assume enquanto estiver ativa.
+function applyMediaSession() {
+  if (!("mediaSession" in navigator)) return;
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: "The Blade and the Serpent",
+      artist: "Eternnus RPG",
+      artwork: [{ src: "/assets/icons/icon-512.png", sizes: "512x512", type: "image/png" }],
+    });
+    navigator.mediaSession.setActionHandler("play", () => {
+      preference.paused = false;
+      savePreference();
+      play(false);
+    });
+    navigator.mediaSession.setActionHandler("pause", () => {
+      preference.paused = true;
+      savePreference();
+      audio.pause();
+    });
+  } catch {
+    // Media Session é opcional; o controle da página continua disponível.
+  }
+}
+
+/**
+ * Suspende a trilha global enquanto a mesa toca a trilha da sessão. Não altera a preferência salva:
+ * `resumeMusic` só volta a tocar se a música estava tocando (ou aguardando o primeiro gesto) antes da suspensão.
+ */
+export function suspendMusic() {
+  if (!installed || suspended) return;
+  resumeAfterSuspend = !audio.paused || (waitingForGesture && !preference.paused);
+  suspended = true;
+  pausedByVisibility = false;
+  stopWaitingForGesture();
+  audio.pause();
+  openPanel(false);
+  control.hidden = true;
+}
+export function resumeMusic() {
+  if (!installed || !suspended) return;
+  suspended = false;
+  control.hidden = false;
+  applyMediaSession();
+  if (resumeAfterSuspend && !preference.paused) play(false);
+  resumeAfterSuspend = false;
 }
 
 export function installMusic() {
@@ -222,31 +273,11 @@ export function installMusic() {
       }
     } else if (pausedByVisibility) {
       pausedByVisibility = false;
-      if (!preference.paused) play(false);
+      if (!preference.paused && !suspended) play(false);
     }
   });
 
-  if ("mediaSession" in navigator) {
-    try {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: "The Blade and the Serpent",
-        artist: "Eternnus RPG",
-        artwork: [{ src: "/assets/icons/icon-512.png", sizes: "512x512", type: "image/png" }],
-      });
-      navigator.mediaSession.setActionHandler("play", () => {
-        preference.paused = false;
-        savePreference();
-        play(false);
-      });
-      navigator.mediaSession.setActionHandler("pause", () => {
-        preference.paused = true;
-        savePreference();
-        audio.pause();
-      });
-    } catch {
-      // Media Session é opcional; o controle da página continua disponível.
-    }
-  }
+  applyMediaSession();
 
   applyVolume();
   dock();

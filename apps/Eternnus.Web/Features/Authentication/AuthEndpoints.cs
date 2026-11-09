@@ -12,7 +12,7 @@ public static class AuthEndpoints
     static IResult Bad(string message) => Results.BadRequest(new { message });
     static bool Email(string? value) => value?.Length is > 0 and <= 200 && new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(value);
     static string? Decode(string? code) { try { return Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code ?? "")); } catch (FormatException) { return null; } }
-    public static object Profile(AppUser u) => new { u.Id, u.Email, name = u.DisplayName, u.AvatarUrl, verified = u.EmailConfirmed, role = u.Role, staff = PlatformRoles.IsStaff(u.Role), level = u.Level, xp = u.Xp, twoFactorEnabled = u.TwoFactorEnabled, oneShotParticipations = u.OneShotParticipations };
+    public static object Profile(AppUser u) => new { u.Id, u.Email, name = u.DisplayName, u.AvatarUrl, verified = u.EmailConfirmed, role = u.Role, staff = PlatformRoles.IsStaff(u.Role), level = u.Level, xp = u.Xp, twoFactorEnabled = u.TwoFactorEnabled, oneShotParticipations = u.OneShotParticipations, interfaceMode = u.InterfaceMode };
     public static void MapAuthEndpoints(this WebApplication app)
     {
         var api = app.MapGroup("/api/auth");
@@ -34,6 +34,14 @@ public static class AuthEndpoints
                 .ExecuteUpdateAsync(u => u.SetProperty(x => x.LastSeenAt, now), ct);
             return Results.NoContent();
         }).RequireAuthorization();
+        // Preferência visual do mestre (Básica/Completa). Não muda regras, visibilidade nem a mesa dos jogadores.
+        api.MapPut("/preferences", async (PreferencesInput x, ClaimsPrincipal principal, GameDb db, CancellationToken ct) =>
+        {
+            if (!InterfaceModes.IsValid(x.InterfaceMode)) return Bad("Escolha a interface Básica ou Completa.");
+            var id = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+            await db.Users.Where(u => u.Id == id).ExecuteUpdateAsync(u => u.SetProperty(p => p.InterfaceMode, x.InterfaceMode), ct);
+            return Results.NoContent();
+        }).RequireAuthorization();
         api.MapGet("/limits", async (ClaimsPrincipal principal, UserManager<AppUser> users, GameDb db, CancellationToken ct) =>
         {
             var user = await users.GetUserAsync(principal);
@@ -47,7 +55,7 @@ public static class AuthEndpoints
             await using var tx = await db.Database.BeginTransactionAsync();
             var result = await users.CreateAsync(user, x.Password);
             if (!result.Succeeded) return Bad("Não foi possível cadastrar. Use um e-mail disponível e senha com maiúscula, minúscula, número e símbolo.");
-            await mail.QueueAsync(user, false); await tx.CommitAsync(); await signIn.SignInAsync(user, false); return Results.Ok(Profile(user));
+            await mail.QueueAsync(user, false); await tx.CommitAsync(); await LoginSession.SignInAsync(signIn, user); return Results.Ok(Profile(user));
         }).RequireRateLimiting("auth");
         api.MapPost("/login", async (Credentials x, SignInManager<AppUser> signIn) =>
         {
@@ -56,11 +64,20 @@ public static class AuthEndpoints
             var result = user == null ? SignInResult.Failed : await signIn.CheckPasswordSignInAsync(user, x.Password, true);
             if (!result.Succeeded) return Results.Json(new { message = "E-mail ou senha inválidos, ou acesso temporariamente bloqueado." }, statusCode: 401);
             if (user!.Role == PlatformRoles.Admin || await signIn.UserManager.GetTwoFactorEnabledAsync(user))
-                return await AuthenticatorEndpoints.BeginAsync(user, signIn);
-            await signIn.SignInAsync(user, false);
+                return await AuthenticatorEndpoints.BeginAsync(user, signIn, remember: x.RememberMe);
+            await LoginSession.SignInAsync(signIn, user, x.RememberMe);
             return Results.Ok();
         }).RequireRateLimiting("auth");
         api.MapPost("/logout", async (SignInManager<AppUser> signIn) => { await signIn.SignOutAsync(); return Results.NoContent(); }).RequireAuthorization();
+        api.MapPost("/logout-all", async (SignInManager<AppUser> signIn) =>
+        {
+            var user = await signIn.UserManager.GetUserAsync(signIn.Context.User);
+            if (user == null) return Results.Unauthorized();
+            if (!(await signIn.UserManager.UpdateSecurityStampAsync(user)).Succeeded)
+                return Results.Json(new { message = "Não foi possível encerrar os acessos. Tente novamente." }, statusCode: 409);
+            await signIn.SignOutAsync();
+            return Results.NoContent();
+        }).RequireAuthorization();
         api.MapPost("/resend", async (ClaimsPrincipal principal, UserManager<AppUser> users, AccountMail mail) =>
         {
             var user = (await users.GetUserAsync(principal))!;
@@ -87,26 +104,30 @@ public static class AuthEndpoints
             if (user == null || token == null || !(await users.ResetPasswordAsync(user, token, x.Password)).Succeeded) return Bad("Link inválido, expirado ou já utilizado, ou senha fora dos requisitos.");
             return Results.Ok(new { message = "Senha alterada. Entre novamente com a nova senha." });
         }).RequireRateLimiting("auth");
-        api.MapGet("/external/{provider}", (string provider, IConfiguration config, SignInManager<AppUser> signIn) =>
+        api.MapGet("/external/{provider}", (string provider, bool? rememberMe, IConfiguration config, SignInManager<AppUser> signIn) =>
         {
             var scheme = provider switch { "google" => "Google", "discord" => "Discord", _ => "" };
             if (scheme == "" || string.IsNullOrWhiteSpace(config[$"Authentication:{scheme}:ClientId"])) return Results.Redirect("/?authError=provider#login");
-            return Results.Challenge(signIn.ConfigureExternalAuthenticationProperties(scheme, "/api/auth/external-callback"), [scheme]);
+            var properties = signIn.ConfigureExternalAuthenticationProperties(scheme, "/api/auth/external-callback");
+            properties.Items[LoginSession.Remember] = rememberMe == true ? "true" : "false";
+            return Results.Challenge(properties, [scheme]);
         }).RequireRateLimiting("auth");
         api.MapGet("/external-callback", async (SignInManager<AppUser> signIn, ExternalAccounts accounts) =>
         {
             var info = await signIn.GetExternalLoginInfoAsync();
             if (info == null) return Results.Redirect("/?authError=external#login");
+            var external = await signIn.Context.AuthenticateAsync(IdentityConstants.ExternalScheme);
+            var remember = LoginSession.Remembers(external.Properties);
             var user = await accounts.ResolveAsync(info);
             await signIn.Context.SignOutAsync(IdentityConstants.ExternalScheme);
             if (user == null) return Results.Redirect("/?authError=verified#login");
             if (await signIn.UserManager.IsLockedOutAsync(user)) return Results.Redirect("/?authError=external#login");
             if (user.Role == PlatformRoles.Admin || await signIn.UserManager.GetTwoFactorEnabledAsync(user))
             {
-                await AuthenticatorEndpoints.BeginAsync(user, signIn, info.LoginProvider);
+                await AuthenticatorEndpoints.BeginAsync(user, signIn, info.LoginProvider, remember);
                 return Results.Redirect("/?twoFactor=1#login");
             }
-            await signIn.SignInAsync(user, false, info.LoginProvider); return Results.Redirect("/#overview");
+            await LoginSession.SignInAsync(signIn, user, remember, info.LoginProvider); return Results.Redirect("/#overview");
         }).RequireRateLimiting("auth");
     }
 }

@@ -1,3 +1,4 @@
+import { helpButton } from "./help.js";
 // Nível, XP e conquistas (#progress) e ranking (#progress/ranking[/week]).
 // Apresentação apenas: valores e conquistas vêm de /api/progress; cálculos/formatação em progress-policy.js.
 import { api } from "./api.js";
@@ -15,6 +16,7 @@ import {
   rankingPeriod,
   sortAchievements,
   nextUnlocks,
+  nextMilestones,
   formatDay,
 } from "./progress-policy.js";
 
@@ -26,7 +28,7 @@ export async function renderProgress(segments = []) {
   const tab = segments[0] === "ranking" ? "ranking" : "overview";
   const period = rankingPeriod(segments[1]);
   $("#main").innerHTML =
-    `<div class="page-heading"><div><span class="eyebrow">SUA LENDA EM CONSTRUÇÃO</span><h1>Nível e conquistas <span class="heading-gem" aria-hidden="true">✶</span></h1><p>Cada sessão, ficha e conversa na Guilda rende experiência. Jogar nunca é bloqueado.</p></div></div>
+    `<div class="page-heading"><div><span class="eyebrow">SUA LENDA EM CONSTRUÇÃO</span><h1>Nível e conquistas ${helpButton("progresso.jornada.niveis", "Níveis e conquistas")}<span class="heading-gem" aria-hidden="true">✶</span></h1><p>Sessões, criação e colaboração constroem sua jornada. Evolua no seu ritmo.</p></div></div>
   <nav class="page-tabs" aria-label="Seções de progresso">${[
     ["overview", "#progress", "Minha jornada"],
     ["ranking", "#progress/ranking", "Ranking"],
@@ -64,9 +66,11 @@ function overviewView(d) {
   const progress = levelProgress(d.xp);
   const unlocked = d.achievements.filter((a) => a.unlocked).length;
   return `${heroView(d, progress, unlocked)}
+  <aside class="journey-principles metal"><strong>Uma jornada, muitos caminhos.</strong><p>Seu XP não expira por ausência. Não há sequência diária para manter, nem perda por deixar de jogar. Os tetos abaixo limitam somente as recompensas; você continua participando normalmente.</p></aside>
+  ${milestonesView(d.achievements)}
   <div class="progress-columns">
     <section class="progress-panel metal" aria-labelledby="xp-rules-title">
-      <div class="section-title"><h2 id="xp-rules-title">Como ganhar XP</h2><span>LIMITES DIÁRIOS EM UTC</span></div>
+      <div class="section-title"><h2 id="xp-rules-title">Como ganhar XP</h2>${helpButton("progresso.jornada.pontos", "Pontos e limites diários")}<span>TETOS DE RECOMPENSA · DIA UTC</span></div>
       ${rulesTable(d.rules)}
     </section>
     <section class="progress-panel metal" aria-labelledby="unlocks-title">
@@ -76,6 +80,7 @@ function overviewView(d) {
   </div>
   <section aria-labelledby="achievements-title">
     <div class="section-title"><h2 id="achievements-title">Conquistas</h2><span>${unlocked} DE ${d.achievements.length}</span></div>
+    <p class="muted small">Marcos permanentes, sem prazo. Os contadores consideram atividades que receberam XP; lançamentos antigos continuam valendo.</p>
     <ul class="achievement-grid">${sortAchievements(d.achievements).map(achievementView).join("")}</ul>
   </section>
   <section class="progress-panel metal" aria-labelledby="history-title">
@@ -129,9 +134,21 @@ function unlocksView(unlocks, level) {
 
 function achievementView(a) {
   const status = a.unlocked
-    ? `<span class="achievement-date">Desbloqueada em ${esc(formatDay(a.unlockedAt))}</span>`
-    : `<span class="achievement-date">Bloqueada</span>`;
-  return `<li class="achievement${a.unlocked ? " is-unlocked" : " is-locked"}"><span class="achievement-icon" aria-hidden="true">${esc(a.icon)}</span><div><strong>${esc(a.title)}</strong><p>${esc(a.description)}</p>${status}</div></li>`;
+    ? `<span class="achievement-date">✓ ${a.unlockedAt ? `Conquistada em ${esc(formatDay(a.unlockedAt))}` : "Conquistada · trajetória reconhecida"}</span>`
+    : `<span class="achievement-date">Em andamento · ${esc(a.current || 0)} de ${esc(a.threshold)}</span>`;
+  return `<li class="achievement${a.unlocked ? " is-unlocked" : " is-locked"}"><span class="achievement-icon" aria-hidden="true">${esc(a.icon)}</span><div><strong>${esc(a.title)}</strong><p>${esc(a.description)}</p>${status}${achievementMeter(a)}</div></li>`;
+}
+
+function achievementMeter(a) {
+  const max = Math.max(1, Number(a.threshold) || 1);
+  const value = Math.min(max, Math.max(0, Number(a.current) || 0));
+  return `<progress class="achievement-meter" max="${max}" value="${value}" aria-label="${esc(a.title)}: ${value} de ${max}">${value} de ${max}</progress>`;
+}
+
+function milestonesView(achievements) {
+  const next = nextMilestones(achievements);
+  if (!next.length) return "";
+  return `<section aria-labelledby="milestones-title"><div class="section-title"><h2 id="milestones-title">Seu próximo capítulo</h2><span>ESCOLHA O QUE COMBINA COM VOCÊ</span></div><div class="milestone-grid">${next.map(a => `<article class="milestone metal"><span class="eyebrow">${esc(a.current)} / ${esc(a.threshold)} · SEM PRAZO</span><h3>${esc(a.title)}</h3><p>${esc(a.description)}</p>${achievementMeter(a)}<a class="button subtle" href="${a.href}">${esc(a.action)} <span aria-hidden="true">→</span></a></article>`).join("")}</div></section>`;
 }
 
 function historyView(history) {

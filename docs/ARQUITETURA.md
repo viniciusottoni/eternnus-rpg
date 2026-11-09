@@ -1,5 +1,9 @@
 # Arquitetura da plataforma
 
+Névoa e iluminação: regras puras em `Domain/TableFog.cs` (`FogGrid`, `FogRules`, `TableSettings`, `MapFogState`); composição e imagem mascarada em `Application/TableFogService.cs`; casos de uso da mesa em `Application/SessionFog.cs` (parte de `SessionService`); preparação em `CampaignAssetsService`. Cliente: `js/fog-policy.js` (puro), `js/table-settings.js` (formulário), `js/fog-editor.js` (sob demanda) e camada de névoa em `js/table-map.js`. Ver [NEVOA_ILUMINACAO.md](NEVOA_ILUMINACAO.md).
+
+Evolução de jornada e atlas: `Domain/Progression` centraliza contadores compostos e os 21 marcos; `ProgressEndpoints` projeta progresso histórico sem escrever em GET. `SessionService` concede XP elegível também antes da limpeza explícita de one-shots. `js/map-picker.js` compartilha escolha e busca de cenários; `Domain/BattleMaps` continua sendo a única fonte das oito grades/referências oficiais. Ver [PROGRESSAO_CENARIOS.md](PROGRESSAO_CENARIOS.md) para compatibilidade e limitações.
+
 ## Objetivo e limites
 
 Um único processo ASP.NET Core entrega a interface, os endpoints e o processamento de e-mails. Um único banco PostgreSQL mantém os dados. O projeto adota separação de responsabilidades por funcionalidades, com infraestrutura compartilhada e componentes visuais reutilizáveis. Evita serviços distribuídos, repositórios genéricos e abstrações sem necessidade demonstrada.
@@ -68,6 +72,8 @@ Visibilidade: jogadores não recebem notas privadas nem o objetivo inicial; some
 
 ES Modules nativos, servidos pelo mesmo host. Não há framework ou processo Node em produção. O cliente não guarda senha, cookie de sessão ou token de provedor em localStorage.
 
+`Infrastructure/LoginSession.cs` centraliza emissão e validação dos tickets Identity de cadastro, senha, OAuth e MFA. O início original fica nas propriedades protegidas do ticket, preservadas na renovação do principal. O login comum tem janela de oito horas e teto de 24 horas; o persistente é opcional e termina em 14 dias; administrador tem MFA e oito horas fixas. `POST /auth/logout-all` invalida tickets e desafios pendentes pelo security stamp, sem nova tabela ou migração. A aplicação descarta a tela contínua ao perder autenticação e retoma somente uma rota interna validada após entrar; uma escrita não é repetida automaticamente.
+
 | Módulo | Contrato |
 | --- | --- |
 | `js/app.js` | Inicialização, término da abertura, roteamento e carregamento de funcionalidades. |
@@ -75,11 +81,13 @@ ES Modules nativos, servidos pelo mesmo host. Não há framework ou processo Nod
 | `js/loading.js` | Controlador único da superfície de abertura e de carregamentos em primeiro plano; controla concorrência, foco e bloqueio temporário da interação. |
 | `js/api.js` | Único caminho compartilhado de `fetch`, CSRF, credenciais same-origin e erros HTTP. |
 | `js/ui.js` | Escape de texto, campos, botões, modal, feedback e submissão de formulários. |
+| `js/help.js`, `js/help-policy.js`, `js/help/<area>.js` | Apresentação delegada de tooltip/popover, regras puras e catálogos públicos congelados importados sob demanda. Contratos em [AJUDA_CONTEXTUAL.md](AJUDA_CONTEXTUAL.md). |
 | `js/policy.js` | Regras puras de apresentação de acesso, ações e prazo da abertura. Espelha o servidor apenas para UX. |
 | `js/layout.js` | Shell, menu, perfil e início. |
 | `js/auth.js` | Login, cadastro, recuperação, renovação de CSRF e ações de confirmação. |
 | `js/campaigns.js` | Lista, busca, ordenação, paginação, formulários e confirmações de campanha. |
-| `js/game.js` | Personagens, mesa rápida de dados e versões das fichas, carregados sob demanda. |
+| `js/game.js` | Personagens e versões das fichas, carregados sob demanda. |
+| `js/one-shots.js` | Página One-shot (`#one-shot`, antiga "Mesa rápida"): lista, criação com sessão única aberta, convite, encerramento e saída. |
 | `js/sheet.js` | Formulário da ficha com editor de ações, visualização reutilizada pela mesa e barras de vida. |
 | `js/campaign-page.js` | Página da campanha (visão geral, sessões, jogadores, recursos, configurações) e abertura de sessão com escolha de mapa. |
 | `js/table.js` | Mesa ao vivo: entrada/escolha de ficha, consulta ao vivo, heartbeat, grupo, painel de registros, comandos do mestre e do jogador. Devolve uma função de descarte usada pelo roteador. |
@@ -107,7 +115,7 @@ O layout é criado pela camada de composição; uma funcionalidade ocupa `#main`
 
 ## Escopo posterior
 
-Regras específicas de um sistema de RPG (iniciativa automática, cálculo de acerto contra armadura, condições), névoa de guerra, desenho livre no mapa, áudio/vídeo e serviços distribuídos não fazem parte desta etapa. As ações registram a rolagem e o alvo; o mestre interpreta o resultado e ajusta a vida. Upload privado de mapas agora integra [CAMPANHA_ACERVOS.md](CAMPANHA_ACERVOS.md).
+Regras específicas de um sistema de RPG (iniciativa automática, cálculo de acerto contra armadura, condições), desenho livre no mapa, voz/vídeo e serviços distribuídos não fazem parte desta etapa. Névoa e trilha sonora compartilhada (catálogo do servidor) agora existem (ver seções próprias). As ações registram a rolagem e o alvo; o mestre interpreta o resultado e ajusta a vida. Upload privado de mapas agora integra [CAMPANHA_ACERVOS.md](CAMPANHA_ACERVOS.md).
 
 
 ## Perfil e imagens pessoais
@@ -129,3 +137,36 @@ CharacterSheetService centraliza origem, validação, colunas espelhadas, histó
 ## Campanhas, contas e acervos — evolução integrada
 
 [CONTAS_MESAS_LIVRES.md](CONTAS_MESAS_LIVRES.md) define quotas transacionais, expiração/coleta e bootstrap/MFA. [CAMPANHA_ACERVOS.md](CAMPANHA_ACERVOS.md) define os três acervos e mapas privados organizados. [IMAGENS_TEMPORARIAS.md](IMAGENS_TEMPORARIAS.md) define transmissão WebRTC sem upload. A migração CampaignWorkspace é aditiva e copia os textos legados para o novo acervo, preservando os originais. Toda alteração de ficha passa por SessionService, inclusive endpoints clássicos; os detalhes estão em FICHAS_PRIVACIDADE.md.
+
+
+## Condução independente do sistema (ADR-046)
+
+- Regras puras em `Domain/TablePlay.cs`: `PlayModes`, `TurnOrders`, `DiceRoller`/`DiceSpec`, `RollVisibility`, `SheetSummary` e `Shortcuts`.
+- Entidades de preparação em `Domain/Preparation.cs`: `Scene`, `MasterCharacter`, `RollRequest`, `CampaignAttendance`.
+- Escritas da mesa continuam em `SessionService`, nas parciais:
+  - `SessionPlay.cs`: pausa, ordem, rolagens, pedidos, recursos, condições e desfazer;
+  - `SessionScenes.cs`: cenas, personagens do mestre e resumo;
+  - `SessionLiveExtras.cs`: blocos de leitura;
+  - `SessionOneShots.cs`: conversão.
+  Todas seguem bloqueio → evento → `Revision++` → `Pulse`.
+- Preparação fora da mesa: `PreparationService` (cenas, PNJs, diário, convite, início e modelos privados). Arquivamento: `CampaignService`.
+- Endpoints finos em `Features/Play/PlayEndpoints.cs`.
+- Cliente:
+  - `js/play-policy.js`: puro;
+  - `js/table-tools.js`: construtor de rolagens, pedidos, ordem e PNJs, sob demanda;
+  - `js/campaign-prep.js`: cartões de cenas, PNJs, diário e modelos simples, sob demanda;
+  - `js/scene-policy.js` (puro), `js/scene-editor.js` (editor único de cenas e da preparação do mapa), `js/table-scenes.js` (aba Cenas da mesa), `js/interface-mode.js` (Básica/Completa), `js/grid-adjust.js` e `js/map-picker.js` (seletor compartilhado), sob demanda. Ver [CENAS_EDITOR.md](CENAS_EDITOR.md);
+  - `js/invite.js`: convite, sob demanda.
+  `table.js` usa esses módulos sem duplicar `api.js`/`ui.js`.
+- Ver [CONDUCAO_MESA.md](CONDUCAO_MESA.md).
+
+
+## Catálogo de músicas e trilha da sessão (ADR-049)
+
+- `Domain/Music.cs`: `MusicTrack` global (sem campanha), limites (`MusicLimits`), ações e `SoundtrackState` (posição esperada pura). `Domain/AudioProbe.cs`: validação estrutural MP3/M4A/OGG e duração.
+- `Application/MusicCatalogService.cs`: busca por nome para contas verificadas e gestão Admin (lista com uso, envio, renomear, excluir), com auditoria. Quota e duplicidade serializadas por `pg_advisory_xact_lock`; exclusão bloqueia a faixa `FOR UPDATE` e confere sessões ativas. `AudioUploads` lê, valida e passa pelo `IDocumentScanner`.
+- `Application/SessionSoundtrack.cs` (parcial de `SessionService`): comandos da trilha com bloqueio da sessão (e da faixa `FOR SHARE` na seleção) → evento → `Revision++` → `Pulse`, bloco `music` do estado ao vivo e autorização dos bytes pela sessão. `EndAsync` limpa a trilha.
+- `Features/Music/MusicEndpoints.cs`: `/api/music`, `/api/admin/music` e rotas da sessão; entrega com HTTP Range.
+- `Infrastructure/MusicStorage.cs`: diretório privado `Music:Directory` (fora de wwwroot, validado em `ValidateEternnusConfiguration`) e `MusicStorageSweeper` para órfãos. Metadados no PostgreSQL; bytes no disco.
+- Cliente: `js/soundtrack-policy.js` (puro: posição, correção, ordem de estados, limites, textos), `js/soundtrack-api.js` (HTTP via `api.js`: busca no catálogo, gestão Admin e comandos), `js/session-audio.js` (elemento de áudio, sincronização, autoplay, preferência pessoal), `js/table-soundtrack.js` (selo e aba ♪ Trilha da mesa), `js/admin-music.js` (Painel admin → Músicas, sob demanda). `js/music.js` expõe `suspendMusic`/`resumeMusic` para a trilha global.
+- Ver [TRILHA_SONORA.md](TRILHA_SONORA.md).

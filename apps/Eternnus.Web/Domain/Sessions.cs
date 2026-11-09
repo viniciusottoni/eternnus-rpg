@@ -17,8 +17,9 @@ public static class ActionKinds
 public static class EventKinds
 {
     public const string Start = "start", End = "end", Join = "join", Leave = "leave", Message = "message", Roll = "roll",
-        Action = "action", Turn = "turn", Map = "map", Move = "move", Token = "token", Sheet = "sheet", Note = "note";
-    public static readonly string[] Filterable = [Message, Roll, Action, Turn, Map, Move, Token, Sheet, Note, Join, Leave, Start, End];
+        Action = "action", Turn = "turn", Map = "map", Move = "move", Token = "token", Sheet = "sheet", Note = "note",
+        Request = "request", Pause = "pause", Scene = "scene", Music = "music";
+    public static readonly string[] Filterable = [Message, Roll, Action, Turn, Map, Move, Token, Sheet, Note, Join, Leave, Start, End, Request, Pause, Scene, Music];
 }
 
 public class CharacterAction
@@ -29,6 +30,8 @@ public class CharacterAction
     /// <summary>Fórmula de dados opcional (ex.: 1d20+3). Vazia para ações narrativas.</summary>
     [MaxLength(300)] public string Formula { get; set; } = "";
     [MaxLength(300)] public string Description { get; set; } = "";
+    /// <summary>Nome do agrupamento no sistema (ex.: "Perícias", "Truques"); vazio = nome do tipo.</summary>
+    [MaxLength(30)] public string? Group { get; set; }
 }
 
 /// <summary>Quem entrou na sessão. Presença é derivada de <see cref="LastSeenAt"/>, renovada por heartbeat.</summary>
@@ -54,4 +57,19 @@ public class SessionToken
     public int Y { get; set; }
     /// <summary>Número do turno em que o jogador moveu o marcador; limita um deslocamento por turno.</summary>
     public int LastMovedTurn { get; set; }
+    /// <summary>Sobrescritas do mestre (nulo = valor da ficha/configuração). Raios em casas.</summary>
+    public int? Light { get; set; }
+    public int? Vision { get; set; }
+    public int? Perception { get; set; }
+    [MaxLength(400)] public string? Senses { get; set; }
+    /// <summary>Oculto: só o mestre e os jogadores em <see cref="RevealedTo"/> o recebem.</summary>
+    public bool Hidden { get; set; }
+    /// <summary>Usuários para quem o marcador oculto foi revelado (JSON).</summary>
+    public List<string> RevealedTo { get; set; } = [];
+    /// <summary>Detecção automática: dificuldade de percepção, sentido exigido e distância máxima (casas).</summary>
+    public int? Dc { get; set; }
+    [MaxLength(40)] public string? DetectSense { get; set; }
+    public int? DetectRange { get; set; }
+    /// <summary>Personagem do mestre representado (cópia de encontro ou original).</summary>
+    public Guid? MasterCharacterId { get; set; }
 }

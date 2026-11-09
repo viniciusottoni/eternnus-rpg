@@ -35,6 +35,11 @@ public class GameDb(DbContextOptions<GameDb> options) : IdentityDbContext<AppUse
     public DbSet<GuildReport> GuildReports => Set<GuildReport>();
     public DbSet<XpEntry> XpEntries => Set<XpEntry>();
     public DbSet<UserAchievement> Achievements => Set<UserAchievement>();
+    public DbSet<Scene> Scenes => Set<Scene>();
+    public DbSet<MasterCharacter> MasterCharacters => Set<MasterCharacter>();
+    public DbSet<RollRequest> RollRequests => Set<RollRequest>();
+    public DbSet<CampaignAttendance> Attendance => Set<CampaignAttendance>();
+    public DbSet<MusicTrack> MusicTracks => Set<MusicTrack>();
     protected override void OnModelCreating(ModelBuilder b)
     {
         base.OnModelCreating(b);
@@ -82,6 +87,8 @@ public class GameDb(DbContextOptions<GameDb> options) : IdentityDbContext<AppUse
         b.Entity<SessionToken>().HasOne<Character>().WithMany().HasForeignKey(x => x.CharacterId).OnDelete(DeleteBehavior.Cascade);
         PlatformModel(b);
         CampaignAssetsModel.Configure(b);
+        PreparationModel.Configure(b);
+        MusicModel.Configure(b);
     }
 
     /// <summary>Plataforma: papéis, sistemas, auditoria, suporte, biblioteca, fichas-modelo, Guilda e progressão.</summary>
@@ -120,7 +127,9 @@ public class GameDb(DbContextOptions<GameDb> options) : IdentityDbContext<AppUse
         b.Entity<LibraryItem>().HasOne<StoredFile>().WithMany().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<LibraryItem>().HasOne<RpgSystem>().WithMany().HasForeignKey(x => x.RpgSystemId).OnDelete(DeleteBehavior.Restrict);
 
-        b.Entity<SheetTemplate>().HasIndex(x => new { x.RpgSystemId, x.Name }).IsUnique();
+        // Catálogo: nome único por sistema; modelos privados: nome único por campanha.
+        b.Entity<SheetTemplate>().HasIndex(x => new { x.RpgSystemId, x.Name }).IsUnique().HasFilter("\"CampaignId\" IS NULL");
+        b.Entity<SheetTemplate>().HasIndex(x => new { x.CampaignId, x.Name }).IsUnique().HasFilter("\"CampaignId\" IS NOT NULL").HasDatabaseName("IX_SheetTemplates_CampaignId_Name");
         b.Entity<SheetTemplate>().Property(x => x.Revision).IsConcurrencyToken();
         b.Entity<SheetTemplate>().HasOne<RpgSystem>().WithMany().HasForeignKey(x => x.RpgSystemId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<SheetTemplateVersion>().HasIndex(x => new { x.TemplateId, x.Number }).IsUnique();

@@ -49,6 +49,7 @@ public static class ProgressEndpoints
     {
         var user = await db.Users.AsNoTracking().Where(x => x.Id == userId).Select(x => new { x.Xp }).SingleAsync(ct);
         var progress = Progression.Progress(user.Xp);
+        var counters = await CountersAsync(db, userId, progress.Level, ct);
         var unlocked = await db.Achievements.AsNoTracking().Where(a => a.UserId == userId).Select(a => new { a.Key, a.UnlockedAt }).ToListAsync(ct);
         var unlockedAt = unlocked.ToDictionary(a => a.Key, a => a.UnlockedAt);
         var history = await db.XpEntries.AsNoTracking().Where(e => e.UserId == userId)
@@ -66,7 +67,10 @@ public static class ProgressEndpoints
             nextLevelXp = progress.NextLevelXp,
             percent = progress.Percent,
             achievements = Progression.Achievements
-                .Select(a => new { a.Key, a.Title, a.Description, a.Icon, unlocked = unlockedAt.ContainsKey(a.Key), unlockedAt = unlockedAt.TryGetValue(a.Key, out var at) ? at : (DateTime?)null }),
+                .Select(a => new { a.Key, a.Title, a.Description, a.Icon, a.Counter, a.Threshold,
+                    current = Math.Min(a.Threshold, unlockedAt.ContainsKey(a.Key) ? a.Threshold : counters.GetValueOrDefault(a.Counter)),
+                    unlocked = unlockedAt.ContainsKey(a.Key) || counters.GetValueOrDefault(a.Counter) >= a.Threshold,
+                    unlockedAt = unlockedAt.TryGetValue(a.Key, out var at) ? at : (DateTime?)null }),
             history = history.Select(e => new { e.Reason, label = Progression.Label(e.Reason), e.Amount, e.CreatedAt }),
             unlocks = await UnlocksAsync(db, progress.Level, ct),
             rules = Progression.Rules.Select(r => new { r.Reason, r.Label, r.Hint, r.Amount, r.DailyLimit, today = today.GetValueOrDefault(r.Reason) }),
@@ -101,8 +105,17 @@ public static class ProgressEndpoints
         if (user is null) return null;
         var keys = await db.Achievements.AsNoTracking().Where(a => a.UserId == id)
             .OrderByDescending(a => a.UnlockedAt).ThenBy(a => a.Key).Select(a => a.Key).ToListAsync(ct);
-        var achievements = keys.Select(Progression.Achievement).OfType<AchievementDefinition>().Select(a => new { a.Key, a.Title, a.Icon });
+        var counters = await CountersAsync(db, id, Progression.LevelForXp(user.Xp), ct);
+        var achievements = Progression.Achievements.Where(a => keys.Contains(a.Key) || counters.GetValueOrDefault(a.Counter) >= a.Threshold)
+            .Select(a => new { a.Key, a.Title, a.Icon });
         return new { user.Id, user.name, user.AvatarUrl, level = Progression.LevelForXp(user.Xp), user.Xp, user.role, achievements };
+    }
+
+    static async Task<Dictionary<string, int>> CountersAsync(GameDb db, string userId, int level, CancellationToken ct)
+    {
+        var counts = await db.XpEntries.AsNoTracking().Where(e => e.UserId == userId).GroupBy(e => e.Reason)
+            .Select(g => new { Reason = g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Reason, g => g.Count, ct);
+        return Progression.Counters(counts, level);
     }
 
     static async Task<object> LeaderboardAsync(GameDb db, TimeProvider clock, string? period, string me, CancellationToken ct)

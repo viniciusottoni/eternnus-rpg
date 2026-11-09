@@ -8,6 +8,7 @@ public sealed class AccountLimitsTests : IAsyncLifetime
     readonly SqliteConnection connection = new("Data Source=:memory:");
     GameDb db = null!;
     CampaignService campaigns = null!;
+    SessionService sessions = null!;
     public async Task InitializeAsync()
     {
         await connection.OpenAsync();
@@ -16,9 +17,17 @@ public sealed class AccountLimitsTests : IAsyncLifetime
         db.Users.AddRange(new AppUser { Id = "common", Level = 100 }, new AppUser { Id = "master", Role = PlatformRoles.Ambassador });
         await db.SaveChangesAsync();
         campaigns = new(db, new ProgressionService(db, new AuditService(db)), new AuditService(db));
+        sessions = new(db, new SessionSignals(), TimeProvider.System);
     }
     public async Task DisposeAsync() { await db.DisposeAsync(); await connection.DisposeAsync(); }
-    Task<Guid> Create(string user = "common", bool oneShot = false) => campaigns.CreateAsync(new("Teste", "", RpgSystemId: RpgSystem.FreeSystemId, IsOneShot: oneShot), user, default);
+    Task<Guid> Create(string user = "common") => campaigns.CreateAsync(new("Teste", "", RpgSystemId: RpgSystem.FreeSystemId), user, default);
+    /// <summary>One-shot pelo caso de uso real: campanha temporária e sessão única abertas na mesma transação.</summary>
+    async Task<(Guid Campaign, Guid Session)> OneShot(string user = "common")
+    {
+        var result = await sessions.CreateOneShotAsync(new("Teste", "", RpgSystem.FreeSystemId), user, default);
+        Guid Read(string name) => (Guid)result.GetType().GetProperty(name)!.GetValue(result)!;
+        return (Read("campaignId"), Read("sessionId"));
+    }
     [Fact]
     public async Task Three_campaigns_count_both_roles_even_at_high_level_and_membership_is_idempotent()
     {
@@ -40,7 +49,7 @@ public sealed class AccountLimitsTests : IAsyncLifetime
     [Fact]
     public async Task One_shot_quota_is_lifetime_and_rejoining_same_table_does_not_consume_again()
     {
-        var joined = await Create("master", true);
+        var (joined, _) = await OneShot("master");
         var code = (await db.Campaigns.SingleAsync(c => c.Id == joined)).InviteCode;
         await campaigns.JoinAsync(code, "common", default);
         await campaigns.LeaveAsync(joined, "common", default);
@@ -49,13 +58,13 @@ public sealed class AccountLimitsTests : IAsyncLifetime
         Assert.Equal(1, (await db.Users.SingleAsync(u => u.Id == "common")).OneShotParticipations);
         for (var i = 0; i < 9; i++)
         {
-            var id = await Create(oneShot: true);
-            await campaigns.DeleteAsync(id, "common", default);
+            var (_, session) = await OneShot();
+            await sessions.EndAsync(session, "common", default);
         }
         Assert.Equal(10, (await db.Users.SingleAsync(u => u.Id == "common")).OneShotParticipations);
-        Assert.Equal(409, (await Assert.ThrowsAsync<RuleException>(() => Create(oneShot: true))).Status);
+        Assert.Equal(409, (await Assert.ThrowsAsync<RuleException>(() => OneShot())).Status);
         db.ChangeTracker.Clear();
-        var other = await Create("master", true);
+        var (other, _) = await OneShot("master");
         Assert.Equal(409, (await Assert.ThrowsAsync<RuleException>(() => campaigns.JoinAsync(db.Campaigns.Local.Single(c => c.Id == other).InviteCode, "common", default))).Status);
         Assert.Equal(10, await db.OneShotParticipations.CountAsync(p => p.UserId == "common"));
     }
@@ -63,7 +72,7 @@ public sealed class AccountLimitsTests : IAsyncLifetime
     public async Task Ambassador_and_admin_are_not_limited()
     {
         for (var i = 0; i < 4; i++) await Create("master");
-        for (var i = 0; i < 11; i++) await Create("master", true);
+        for (var i = 0; i < 11; i++) await OneShot("master");
         db.ChangeTracker.Clear();
         await db.Users.Where(u => u.Id == "common").ExecuteUpdateAsync(u => u.SetProperty(x => x.Role, PlatformRoles.Admin));
         for (var i = 0; i < 4; i++) await Create();
@@ -71,11 +80,11 @@ public sealed class AccountLimitsTests : IAsyncLifetime
     [Fact]
     public async Task Cleanup_cascades_game_content_but_preserves_sheets_and_lifetime_receipts()
     {
-        var id = await Create(oneShot: true);
+        var (id, _) = await OneShot();
         var campaign = await db.Campaigns.SingleAsync(c => c.Id == id);
-        campaign.MasterLastSeenAt = DateTime.UtcNow.AddSeconds(-46);
+        campaign.MasterLastSeenAt = DateTime.UtcNow - OneShotLifecycleService.MasterAbsence - TimeSpan.FromSeconds(1);
         var sheet = new Character { OwnerId = "common", Name = "Preservada" };
-        db.AddRange(sheet, new CampaignCharacter { CampaignId = id, CharacterId = sheet.Id }, new MasterResource { CampaignId = id, Name = "Segredo" }, new GameSession { CampaignId = id, Number = 1 });
+        db.AddRange(sheet, new CampaignCharacter { CampaignId = id, CharacterId = sheet.Id }, new MasterResource { CampaignId = id, Name = "Segredo" });
         await db.SaveChangesAsync();
         Assert.Equal(1, await new OneShotLifecycleService(db, new SessionSignals(), TimeProvider.System).SweepAsync(default));
         Assert.False(await db.Campaigns.AnyAsync(c => c.Id == id));
@@ -102,9 +111,11 @@ public sealed class AccountLimitsTests : IAsyncLifetime
         Assert.False(await db.Sessions.AnyAsync(s => s.Id == session.Id));
     }
     [Fact]
-    public async Task Preparing_without_active_session_is_allowed_until_absolute_deadline()
+    public async Task One_shot_is_only_created_with_its_session_and_expired_tables_reject_entry_until_collected()
     {
-        var id = await Create(oneShot: true);
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => campaigns.CreateAsync(new("Antiga", "", RpgSystemId: RpgSystem.FreeSystemId, IsOneShot: true), "common", default))).Status);
+        Assert.False(await db.Campaigns.AnyAsync(c => c.IsOneShot));
+        var (id, _) = await OneShot();
         Assert.Equal(0, await new OneShotLifecycleService(db, new SessionSignals(), TimeProvider.System).SweepAsync(default));
         var c = await db.Campaigns.SingleAsync(c => c.Id == id);
         c.ExpiresAt = DateTime.UtcNow.AddSeconds(-1);

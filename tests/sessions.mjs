@@ -27,6 +27,8 @@ try {
     description: "Ruínas e segredos",
   });
   const path = "/api/campaigns/" + campaign.id;
+  // Regras clássicas de movimento (névoa desligada na campanha); a névoa tem integração própria em table-fog.mjs.
+  await master(path + "/table-settings", "PUT", { settings: { fogEnabled: false, rememberExplored: true, pathMovement: true, alliesAlwaysVisible: true, torchRadius: 4, brazierRadius: 3, creatureLight: 0, playerLightMeters: 0, playerVisionMeters: 0 } });
   const { inviteCode } = await master(path);
   await player("/api/campaigns/join", "POST", { code: inviteCode });
   await second("/api/campaigns/join", "POST", { code: inviteCode });

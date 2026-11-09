@@ -1,5 +1,7 @@
 # Contratos HTTP — contas, campanhas e sessões
 
+Névoa, iluminação, visão e configuração da mesa: contratos em [NEVOA_ILUMINACAO.md](NEVOA_ILUMINACAO.md). `GET …/live` inclui `fog` e filtra `tokens`/`map.rows` por jogador; `POST …/tokens` aceita `hidden` e `light`; erros de movimento com névoa usam mensagem genérica. `me.character` inclui `movementRole` e `reach` (alcance de ataque em metros); sem o papel Deslocamento no modelo, o movimento do jogador não tem limite de distância no servidor.
+
 Os campos JSON usam camelCase. Datas são UTC em ISO 8601. Não enviar identidade, proprietário ou permissões como autoridade do cliente. A base é `/api`; todas as respostas dessa base usam `Cache-Control: no-store`.
 
 ## Sessão e escrita
@@ -20,16 +22,26 @@ No shell móvel, a identificação da conta e “Sair da conta” são apresenta
 | `GET /auth/providers` | — | `200 { google, discord }`; indica disponibilidade configurada, não garante disponibilidade externa. |
 | `GET /auth/me` | Sessão | `200 { id, email, name, avatarUrl, verified }`; `401` sem sessão válida. |
 | `POST /auth/register` | `{ name, email, password, confirmPassword }` | `200` com perfil e sessão pendente; confirmação enfileirada. |
-| `POST /auth/login` | `{ email, password }` | `200` com cookie; conta pode estar pendente. Consultar `/me`. |
+| `POST /auth/login` | `{ email, password, rememberMe? }` | `200` com cookie ou `{ requiresTwoFactor, setupRequired }`; `rememberMe` booleano, padrão `false`. Conta pode estar pendente. Consultar `/me` após concluir MFA. |
 | `POST /auth/logout` | Sessão | `204`; limpa sessão. |
+| `POST /auth/logout-all` | Sessão + CSRF | `204`; troca o security stamp e limpa o acesso atual. Outros dispositivos e desafios MFA pendentes são recusados na próxima requisição. Falha de atualização retorna `409` controlado. |
 | `POST /auth/resend` | Sessão | `200 { message }`; enfileira se ainda necessário e fora do intervalo de envio. |
 | `POST /auth/confirm` | `{ userId, code }` | `200 { message }`; token válido confirma a conta. |
 | `POST /auth/forgot-password` | `{ email }` | `200 { message }` genérico, inclusive para e-mail inexistente ou inelegível. |
 | `POST /auth/reset-password` | `{ userId, code, password, confirmPassword }` | `200 { message }`; troca senha e invalida sessões anteriores. |
-| `GET /auth/external/google` | — | Redireciona ao Google configurado. |
-| `GET /auth/external/discord` | — | Redireciona ao Discord configurado. |
+| `GET /auth/external/google` | Query `rememberMe` booleana opcional | Redireciona ao Google configurado. Escolha protegida no state do OAuth. |
+| `GET /auth/external/discord` | Query `rememberMe` booleana opcional | Redireciona ao Discord configurado. Escolha protegida no state do OAuth. |
 
 Callbacks `/signin-google`, `/signin-discord` e `/api/auth/external-callback` pertencem ao fluxo do middleware de autenticação. Não são endpoints para receber perfil arbitrário do frontend.
+
+### Duração do login
+
+- Login comum e cadastro: cookie sem persistência explícita no navegador, validade de oito horas renovada por requisições autenticadas, com teto de 24 horas desde a autenticação original. Restauração de sessão pelo navegador pode conservar cookies de sessão; fechar o navegador não substitui Sair.
+- `rememberMe=true`: cookie persistente por até 14 dias desde o login, sem estender o prazo ao renovar o principal. Administrador ignora a opção, exige MFA e recebe cookie não persistente com prazo absoluto de oito horas.
+- MFA mantém a escolha somente no ticket temporário protegido de cinco minutos. O corpo de `/auth/two-factor/verify` não altera essa escolha. OAuth preserva a escolha no state e no ticket externo; query no callback não a altera.
+- O servidor valida prazo e security stamp; heartbeat, consulta ao vivo, confirmação de e-mail e renovação do principal não reiniciam o prazo absoluto. Cookies anteriores a esta política exigem novo login.
+- Falhas antiforgery mantêm `400` e passam a incluir `code: "csrf_expired"`. O cliente descarta o CSRF antigo e consulta `/auth/me`: com `401`, encerra os recursos contínuos e pede login. Não repete a escrita original.
+- A interface retorna a uma rota interna validada após autenticar. Somente essa rota, sem query ou credenciais, pode passar por `sessionStorage` durante OAuth. Rascunhos não salvos não são persistidos por este fluxo.
 
 ### Validação de conta
 
@@ -47,8 +59,9 @@ Todas estas rotas exigem sessão **e** conta verificada. As permissões de propr
 
 | Método e caminho | Entrada | Resultado principal |
 | --- | --- | --- |
-| `GET /campaigns` | Query `search`, `sort`, `page` opcionais | `200 { items, total, page, pageSize }`. Somente campanhas próprias ou com participação. |
-| `POST /campaigns` | `{ name, system, description }` | `200 { id }`; o criador é obtido da sessão. |
+| `GET /campaigns` | Query `search`, `sort`, `page`, `oneShot` opcionais | `200 { items, total, page, pageSize }`. Somente campanhas próprias ou com participação. |
+| `POST /campaigns` | `{ name, system, description }` | `200 { id }`; o criador é obtido da sessão. Somente campanhas persistentes; `isOneShot=true` → `400`. |
+| `POST /one-shots` | `{ name, description, rpgSystemId, system? }` | `200 { campaignId, sessionId }`; cria a one-shot com a sessão única já aberta. Ver [Contas e one-shots](CONTAS_MESAS_LIVRES.md). |
 | `PUT /campaigns/{id}` | `{ name, system, description, revision }` | `204`; somente criador, com revisão atual. |
 | `DELETE /campaigns/{id}` | — | `204`; somente criador e sem outros jogadores. |
 | `POST /campaigns/join` | `{ code }` | `200 { id }`; cria participação se ainda inexistente. |
@@ -113,9 +126,9 @@ Todas as rotas exigem sessão **e** conta verificada. O servidor identifica o us
 | Método e caminho | Quem | Entrada | Resultado |
 | --- | --- | --- | --- |
 | `GET /campaigns/{id}/sessions?page=` | Mestre | — | `200 { campaign, items, total, page, pageSize: 20, lastActivityAt }`. Itens: `id, number, title, objective, startedAt, endedAt, mapKind, mapKey, active, eventCount, noteCount, participantCount`, do mais recente ao mais antigo. Jogador recebe `403`: ele não vê a lista de sessões. |
-| `POST /campaigns/{id}/sessions` | Mestre | `{ title, objective, mapKind, mapKey }` | `200 { id, number }`. Abre a sessão e coloca a campanha online. `409` se já houver sessão em andamento. |
+| `POST /campaigns/{id}/sessions` | Mestre | `{ title, objective, mapKind, mapKey }` | `200 { id, number }`. Abre a sessão e coloca a campanha online. `409` se já houver sessão em andamento ou se a campanha for one-shot (sessão única aberta na criação). |
 | `GET /campaigns/{id}/table` | Mestre/jogador | — | `200 { campaign, isMaster, online, session, joinedCharacterId, characters }`. Ponto de entrada da mesa; `characters` lista as fichas do próprio jogador (vinculadas primeiro). |
-| `GET /campaigns/{id}/maps` | Mestre | — | `200 { items }` com mapas oficiais (`valley`, `crypt`, `forest`) e recursos `mapa` da campanha (`resource:{id}`), com `rows` para tilesets. |
+| `GET /campaigns/{id}/maps` | Mestre | — | `200 { items }` com mapas oficiais (`valley`, `crypt`, `forest`, `tavern`, `bridge`, `courtyard`, `harbor`, `sanctuary`) e recursos `mapa` da campanha (`resource:{id}`), com `rows` para tilesets. |
 
 `GET /campaigns` passa a incluir `activeSessionId` (ou `null`) em cada item. `GET /campaigns/{id}` substitui a lista antiga de sessões agendadas por `sessionCount` (somente mestre; `null` para jogadores) e `activeSession { id, number, title, startedAt }`, e inclui `revision` e `masterName`. Membros retornam `{ id, name, avatarUrl }`, sem e-mail.
 
@@ -216,10 +229,114 @@ Campos da ficha: número aceita vírgula decimal e min/max; papéis numéricos e
 Os contratos abaixo complementam e substituem as permissões anteriores nas rotas correspondentes:
 
 - [Fichas e auditoria privada](FICHAS_PRIVACIDADE.md): leitura compartilhada configurável, escrita dono/mestre, histórico por campo e snapshots com ator/sessão. As rotas de sheet, field-history, history e migration autorizam dono/mestre vinculado; histórico do mestre restringe-se às sessões que mestra. private só pode ser alterado pelo dono.
-- [Contas e one-shots](CONTAS_MESAS_LIVRES.md): sistema explícito válido obrigatório, isOneShot na criação, limites de 3 campanhas persistentes e 10 one-shots acumuladas para comuns; limites na conta/lista, bootstrap privado e MFA obrigatório admin.
+- [Contas e one-shots](CONTAS_MESAS_LIVRES.md): sistema explícito válido obrigatório, one-shot criada por POST /one-shots com sessão única aberta, limites de 3 campanhas persistentes e 10 one-shots acumuladas para comuns; limites na conta/lista, bootstrap privado e MFA obrigatório admin.
 - [Bibliotecas e mapas](CAMPANHA_ACERVOS.md): acervo textual/publicação da campanha, hierarquia, upload privado de 10 MiB, grade/escala e visibilidade na sessão. Mapas atualmente mostrados devem ser ocultados antes de editar/excluir; conflito retorna 409.
 - [Imagens temporárias](IMAGENS_TEMPORARIAS.md): comandos transacionais de apresentação e WebSocket de sinalização; bytes exclusivamente entre navegadores.
 
 POST /api/campaigns/{id}/assets/maps é a nova exceção enumerada em UploadLimits: até 10 MiB de imagem e 64 KiB de margem multipart. Demais limites e proteções mantêm seus contratos.
 
 DELETE /api/campaigns/{id} também retorna409 se há sessão ativa; encerrar a sessão antes da exclusão. A restrição de participantes continua aplicada. Encerrar/sair como mestre de uma one-shot remove seus dados pelo comando transacional da sessão.
+
+## Jornada e atlas — evolução de novembro de 2026
+
+- `GET /api/progress/me`: cada conquista acrescenta `counter`, `threshold` e `current` (limitado ao limiar). `unlocked` considera a conquista persistida ou o histórico suficiente; `unlockedAt` pode ser nulo em um marco histórico ainda não persistido. GET continua somente leitura. O cartão público reconhece os mesmos marcos e mantém somente `key`, `title`, `icon`, sem contadores privados.
+- Valores de XP e tetos são retornados em `rules`: sessão jogada 50, mestrada 60 (quatro/dia cada); respostas 4 e marcações úteis 6 (cinco/dia cada). Suporte retorna amount/dailyLimit zero e não gera lançamento. Valores anteriores do histórico não são recalculados com as novas tarifas.
+- Recompensa de encerramento exige sessão de pelo menos dez minutos e jogador elegível com ficha e `JoinedAt <= EndedAt - 10 minutos`. Não exige presença online ao encerrar. Mestre recebe apenas com jogador elegível. Encerramento explícito/saída do mestre de one-shot aplica a mesma regra antes da exclusão; coleta automática não concede XP. Sessões curtas continuam podendo ser encerradas normalmente, sem recompensa.
+- `GET /api/campaigns/{id}/maps` mantém o formato e passa a incluir `tavern`, `bridge`, `courtyard`, `harbor`, `sanctuary`, além de `valley`, `crypt`, `forest`. Todos os novos mapas são `tileset`. A legenda admite `d` (madeira livre), `:` (areia livre) e `h` (mobiliário bloqueado). Miniaturas e estado live usam as grades oficiais, nunca uma cópia divergente no cliente.
+- Novos cenários não exigem nível; acesso de mestre à escolha e política Verified continuam aplicados. As regras completas e limites estão em [PROGRESSAO_CENARIOS.md](PROGRESSAO_CENARIOS.md).
+
+
+## Condução, preparação e continuidade (ADR-046)
+
+Todas as rotas exigem `Verified`, exceto `/api/invites/pending`, que exige só autenticação. Escritas passam pelo antiforgery comum. Detalhes de regras em [CONDUCAO_MESA.md](CONDUCAO_MESA.md).
+
+### Mesa (`/api/sessions/{id}`)
+
+| Método/caminho | Quem | Entrada → resultado |
+| --- | --- | --- |
+| POST `/rolls` | Participante | `{formula?, spec?, label?, visibility: table|master|blind}`. `spec = {count, sides, modifier, keep?, keepCount, explode, successAt?, percentTarget?, percentRule?}`. → `{hidden, visibility, roll?, total?}`; `blind` de jogador → `{hidden:true}`. |
+| POST `/pause` | Mestre | `{paused}` → 204. |
+| PUT `/turn-order` | Mestre | `{entries:[{key:"c:{id}"|"t:{id}"|"g:x", label, initiative, members}], sortByInitiative}` → 204. Lista vazia volta à ordem de entrada. |
+| POST `/turn` | Mestre | `{characterId}` ou `{key}` (entrada da ordem) → 204. |
+| POST `/roll-requests` | Mestre | `{label, formula?, spec?, visibility, target?, rule?: gte|lte, characterIds[]}` → `{id}`. Máximo 5 abertos. |
+| POST `/roll-requests/{rid}/respond` | Jogador convidado | → `{hidden, total?, outcome?, roll?}`; segunda resposta 409; cancelado 409. |
+| POST `/roll-requests/{rid}/cancel` | Mestre | → 204. |
+| POST `/characters/{cid}/resource` | Dono ou mestre | `{field, delta, reason?}` → `{hp, maxHp, resources}`; campo que não é recurso 404. |
+| POST `/characters/{cid}/conditions` | Dono ou mestre | `{conditions}` (≤ 300) → 204. |
+| POST `/undo` | Mestre ou autor | `{eventId}` → 204; já desfeito/concorrente 409; rolagem 400. |
+| POST `/scene` | Mestre | `{sceneId, restart}` → 204. |
+| POST `/scene/capture` | Mestre | `{sceneId}` → 204 (posições atuais viram o preparo). |
+| POST `/npc-tokens` | Mestre | `{masterCharacterId, x, y, hidden, copy}` → `{id, masterCharacterId}`. |
+| POST `/npcs/{npcId}/resource` | Mestre | `{index, delta}` → 204. |
+| POST `/recap` | Mestre | `{text, publish}` → 204 (também após o encerramento). |
+
+`GET /live` acrescenta `play = {mode, modeLabel, paused, turnOrder, activeTurnKey, myTurn, scene, masterAway, recoverUntil, recoveryMinutes, rollRequests, npcs, recap, recapPublished}`. `npcs` e `recap` vêm só para o mestre; `scene.description`/`privateNotes` vêm vazios para jogadores. Também acrescenta `me.character.{resources, stats, conditions, shortcuts, classic}` e `participants[].summary` (nulo para ficha privada alheia). `GET /campaigns/{id}/table` acrescenta `incompatible[]`, `template`, `paused` e `campaign.archived`.
+
+### Campanha (`/api/campaigns/{id}`)
+
+| Método/caminho | Quem | Entrada → resultado |
+| --- | --- | --- |
+| POST `/api/campaigns` | Conta | Novo campo opcional `playMode`. |
+| POST `/archive`, `/restore` | Mestre | → 204; arquivar com sessão ativa 409. |
+| POST `/convert` | Mestre de one-shot | → `{campaignId, kept, removed}`; sem vaga 409. |
+| GET/POST `/scenes`, PUT/DELETE `/scenes/{sid}`, POST `/scenes/{sid}/duplicate` | Mestre | `{name, description, kind: map|image|text, mapKind, mapKey, sharedText, privateNotes, visionMode: all|manual|character|null, order, revision}`. |
+| GET/POST `/npcs`, PUT/DELETE `/npcs/{nid}`, POST `/npcs/{nid}/copy` | Mestre | `{name, summary, notes, side, resources:[{label, value, max}], revision}`. |
+| GET `/journal` | Membro | `{nextSession, myAttendance, attendance, pending, recaps, entries}` (jogador: só publicados). |
+| PUT `/schedule` | Mestre | `{at: ISO com fuso | null, note}` → 204. |
+| POST `/attendance` | Jogador | `{status: yes|maybe|no}` → 204; sem data 409. |
+| GET/POST `/private-templates`, PUT `/private-templates/{tid}` | Leitura: membros; escrita: mestre | `{name, description, sections:[{title, fields:[{label, type, options, resource, max, maxFrom, summary, min, default}]}], actions:[{name, formula, group, kind}], useForCampaign}` → `{id, versionId, number}`. |
+| PUT/POST `/assets/library` | Mestre | Novo campo `kind: text|objective|clue`. |
+
+### Conta
+
+| Método/caminho | Entrada → resultado |
+| --- | --- |
+| GET `/api/home` | `{active, recent, upcoming, pendingInvite, pendingTests, hasCharacters}`. |
+| GET `/api/invites/{code}` | Prévia `{campaignId, name, system, master, isOneShot, archived, expired, member, isMaster, online, playMode, playModeLabel}`. |
+| GET/POST/DELETE `/api/invites/pending` | Autenticado (sem Verified): guarda/lê/limpa o código (formato 32 hex). |
+| PUT `/api/characters/{id}/shortcuts` | Dono: `{actions:[id], rolls:[{label, spec|formula}]}` (até 8 cada). |
+
+Mudança de contrato: `POST /api/sessions/{id}/leave` do mestre de one-shot **não** apaga mais a mesa (espera recuperável); apagar exige `/end`. `GET /api/rpg-systems` acrescenta `playMode` sugerido.
+
+## Editor de cenas, preparação privada e apresentação (ADR-048)
+
+Todas as rotas exigem `Verified` (preferências: só autenticação) e escritas passam pelo antiforgery comum. Regras em [CENAS_EDITOR.md](CENAS_EDITOR.md).
+
+| Método/caminho | Quem | Entrada → resultado |
+| --- | --- | --- |
+| GET `/api/campaigns/{id}/scenes` | Mestre | Itens acrescentam `layerMode`; resposta acrescenta `characters:[{id, name}]` (personagens vinculados à campanha). |
+| GET `/api/campaigns/{id}/scenes/{sid}` | Mestre | Cena completa: `prepared:[{characterId, masterCharacterId, label, side, x, y, hidden, light}]`, `layerMode`, `revision`, `live:{sessionId, current, textPending, mapPending} \| null`, `characters:[{id, name, lightMeters, visionMeters}]` (luz/visão da ficha, usadas só na simulação do editor). Jogador 403. |
+| POST/PUT `/api/campaigns/{id}/scenes[/{sid}]` | Mestre | Novos campos opcionais `prepared` (nulo mantém) e `layerMode: map\|scene` (nulo mantém). Arranjo inválido 400; alcance trocado com a cena em apresentação 409; imagem sem grade como mapa 400. Salvar nunca altera a mesa. |
+| DELETE `/api/campaigns/{id}/scenes/{sid}` | Mestre | Cena em apresentação 409; remove também a camada própria dela. |
+| GET `/api/campaigns/{id}/assets/layers?key=&scene=` | Mestre | `scene` opcional seleciona a camada própria. Acrescenta `layerKey`, `mode`, `manual`, `prepVersion`, `pending`, `sharedWith:[{id, name}]`, `gridOffsetX/Y`. Os campos de preparação vêm da preparação pendente quando houver. |
+| PUT `/api/campaigns/{id}/assets/layers?key=&scene=` | Mestre | Aceita `prepVersion` (preferido à `revision`). Camada fora da mesa: aplica à estrutura. Na mesa: guarda `Prepared` sem mudar o ao vivo. → `{revision, prepVersion, pendingLive, inUse}`. Versão obsoleta 409; `resetExploration` com a camada na mesa 409. |
+| POST `/api/campaigns/{id}/assets/maps` (multipart) | Mestre | Campos opcionais `hasGrid` (`false` = apenas imagem), `gridOffsetX`, `gridOffsetY` (0 até lado − 1). Ausentes = grade sem deslocamento. |
+| PUT `/api/campaigns/{id}/assets/maps/{mid}` | Mestre | `{…, hasGrid, gridOffsetX, gridOffsetY}`. Tirar a grade com cena tática usando o mapa 409. |
+| POST `/api/sessions/{id}/scene` | Mestre | Igual; agora grava `SceneName/SceneText` (o que os jogadores veem) e `LayerKey`. `restart` aplica a preparação do mapa (inclusive a pendente) e zera a exploração. |
+| POST `/api/sessions/{id}/scene/apply` | Mestre | `{sceneId, text, vision, layer, tokens?, sceneRevision, prepVersion?}` → `{applied:[…]}`. Nenhuma parte marcada: 400. Cena não apresentada, revisão ou versão obsoletas, cenário trocado, `tokens` numa cena sem grade: 409. `tokens` (opcional, padrão `false`) recoloca os marcadores no arranjo preparado com a mesma regra de “Reiniciar cena” (personagens sem posição entram pelos pontos de entrada; criaturas fora do arranjo saem). Nunca apaga explorações nem cobre áreas reveladas. |
+| POST `/api/sessions/{id}/scene/save-as` | Mestre | `{name, sharedText?}` → `{id, revision}`: cenário improvisado vira cena (posições atuais como arranjo). Com cena já apresentada 409. |
+| POST `/api/sessions/{id}/map` | Mestre | Agora guarda o estado da cena atual para "Retomar" e deixa a sessão sem cena (improviso). Aceita `mapKind: cartographic` para imagem da campanha. |
+| PUT `/api/auth/preferences` | Autenticado | `{interfaceMode: basic\|complete}` → 204; outro valor 400. `GET /api/auth/me` acrescenta `interfaceMode` (nulo = Básica). |
+
+`GET /live` (mestre): `play.scene` acrescenta `layerMode`, `revision`, `prepared:{name, sharedText}` e `pending:{text, vision, layer, map}`. Para jogadores, `play.scene.name/sharedText` são os apresentados (`GameSession.SceneName/SceneText`; sessões anteriores seguem a cena). Mapa da campanha apresentado como imagem chega como `kind: cartographic`, sem linhas.
+
+## Catálogo de músicas e trilha da sessão (ADR-049)
+
+Todas as rotas exigem `Verified`; as de `/api/admin/music` também a política Admin (papel no banco e MFA). Escritas passam pelo antiforgery comum. Não há rotas de música por campanha. Regras em [TRILHA_SONORA.md](TRILHA_SONORA.md).
+
+| Método/caminho | Quem | Entrada → resultado |
+| --- | --- | --- |
+| GET `/api/music?search=&page=` | Conta verificada (mestre na mesa) | `{items, total, page, pageSize: 20}`; item somente `{id, title, format, durationMs}`, sem bytes nem URL de áudio. `search` até 100 caracteres; `page` limitada a 1–100.000. |
+| GET `/api/admin/music?search=&page=` | Admin | `{items, total, page, pageSize, usage:{tracks, bytes}, limits:{maxFileBytes, maxTracks, maxCatalogBytes, formats}}`; item `{id, title, contentType, format, sizeBytes, durationMs, createdAt, revision, inUse, audioUrl}`. |
+| POST `/api/admin/music` | Admin | Multipart: um arquivo em `file` e `title` opcional; outro campo `400`. Até 20 MiB (requisição 20 MiB + 64 KiB); limitador `catalog` (30/5 min). Arquivo já existente (mesmo SHA-256), 200 faixas ou 2 GiB `409`. → item. Auditoria `music.upload`. |
+| PUT `/api/admin/music/{trackId}` | Admin | `{title, revision}` → item; revisão antiga `409`. Auditoria `music.rename`. |
+| DELETE `/api/admin/music/{trackId}` | Admin | `204`; faixa tocando em sessão ativa `409`. Auditoria `music.delete`. |
+| GET `/api/admin/music/{trackId}/audio` | Admin | Bytes da prévia (ver abaixo). |
+| POST `/api/sessions/{id}/music` | Mestre | `{action: select\|play\|pause\|stop\|seek\|loop, version, trackId?, positionMs?, loop?, autoplay?}` → `{serverTime, revision, music}`. `version` diferente da atual `409`; sem faixa para play/pause/seek `409`; faixa inexistente `404` ("Faixa não encontrada no catálogo"); ação desconhecida ou posição negativa `400`; sessão encerrada `409`. |
+| GET `/api/sessions/{id}/music/{trackId}/audio` | Mestre ou participante presente | Somente a faixa selecionada na sessão em andamento; senão `404`. |
+
+Bytes: HTTP Range (`206`/`416`), ETag, tipo validado no envio (`audio/mpeg`, `audio/mp4`, `audio/ogg`), `private, no-store`, `nosniff`, CSP `sandbox` e `Cross-Origin-Resource-Policy: same-origin`.
+
+`GET …/live` acrescenta `music = {trackId, title, durationMs, contentType, playing, positionMs, referenceAt, loop, version, audioUrl}` (sem faixa: `trackId`/`audioUrl` nulos, `playing` falso), igual para mestre e jogadores. `serverTime` passa a ser lido ao fim da montagem da resposta. Novo tipo de evento `music`, sempre `masterOnly`.
+
+Erros: 400 campos/formulário; 403 sem papel Admin; 404 sem vínculo ou faixa indisponível; 409 versão, revisão, quota, duplicidade, faixa em uso ou estado; 413 tamanho; 415 formato; 422 scanner recusou; 429 limite; 503 scanner indisponível. Upload não é repetido automaticamente.

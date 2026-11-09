@@ -254,7 +254,7 @@ try {
     statuses.push(response.status);
   }
   check(statuses, [...Array(12).fill(200), 429], "social rate limit");
-  check(sql(`SELECT count(*) FROM "XpEntries" WHERE "Reason"='guild_post' AND "UserId"=(SELECT "Id" FROM "AspNetUsers" WHERE "Email"='eve.guild@example.test')`), "10", "reply XP respects the daily limit");
+  check(sql(`SELECT count(*) FROM "XpEntries" WHERE "Reason"='guild_post' AND "UserId"=(SELECT "Id" FROM "AspNetUsers" WHERE "Email"='eve.guild@example.test')`), "5", "reply XP respects the daily limit");
   await eve(`/api/guild/topics/${announcement.id}`, "GET"); // leitura não entra no limite social
 
   // ---------- Nenhum e-mail nas respostas ----------

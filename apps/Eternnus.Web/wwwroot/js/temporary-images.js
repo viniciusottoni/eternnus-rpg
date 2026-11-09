@@ -1,3 +1,4 @@
+import { helpButton } from "./help.js";
 import { api } from "./api.js";
 import { toast } from "./ui.js";
 
@@ -11,7 +12,7 @@ export function mountTemporaryImages(sessionId, host) {
   const peers = new Map(), candidates = new Map(), peerStarted = new Map();
   const panel = document.createElement("section");
   panel.className = "temporary-image-panel metal";
-  panel.innerHTML = `<div class="temporary-controls" hidden><label>Imagem temporária (JPEG/PNG, até 5 MiB)<input type="file" accept="image/jpeg,image/png"></label><button type="button" class="subtle" data-hide>Retirar imagem</button><p class="muted">Transmitida entre navegadores. Mantenha esta aba aberta. Outros participantes podem capturar a imagem.</p></div><p class="temporary-status" role="status"></p><figure hidden><figcaption></figcaption><img alt=""></figure>`;
+  panel.innerHTML = `<details class="temporary-controls" hidden><summary>Apresentar imagem temporária</summary>${helpButton("mesa.imagens.temporarias", "Imagens temporárias")}<label>Imagem (JPEG/PNG, até 5 MiB)<input type="file" accept="image/jpeg,image/png"></label><button type="button" class="subtle" data-hide>Retirar imagem</button><p class="muted">Transmitida entre navegadores. Mantenha esta aba aberta. Outros participantes podem capturar a imagem.</p></details><p class="temporary-status" role="status"></p><figure hidden><figcaption></figcaption><img alt=""></figure>`;
   host.append(panel);
   const controls = panel.querySelector(".temporary-controls"), status = panel.querySelector(".temporary-status");
   const figure = panel.querySelector("figure"), img = panel.querySelector("img");

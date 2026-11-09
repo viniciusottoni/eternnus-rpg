@@ -36,6 +36,9 @@ public static class GameApi
                 c.Revision,
                 c.IsOneShot,
                 c.ExpiresAt,
+                archived = c.ArchivedAt != null,
+                c.NextSessionAt,
+                recoveryMinutes = (int)OneShotLifecycleService.MasterAbsence.TotalMinutes,
                 masterName = await db.Users.Where(x => x.Id == c.OwnerId).Select(x => x.DisplayName).SingleOrDefaultAsync(),
                 isMaster = master,
                 inviteCode = master ? c.InviteCode : null,
@@ -99,7 +102,7 @@ public static class GameApi
         });
     }
 }
-public record Credentials(string Email, string Password);
+public record Credentials(string Email, string Password, bool RememberMe = false);
 /// <summary>Ficha clássica (clientes antigos) e criação por modelo: com <see cref="TemplateId"/>, <see cref="CampaignId"/> ou <see cref="Values"/>
 /// a ficha nasce da ficha-modelo e os campos clássicos são ignorados (exceto <see cref="Name"/>, usado se o campo de nome não vier).</summary>
 public record CharacterInput(string Name, string Archetype, int Level, int Hp, int MaxHp, int Strength, int Agility, int Intellect, string Notes, int Revision, int Constitution = 10, int Armor = 10, int Movement = 9, List<CharacterAction>? Actions = null,

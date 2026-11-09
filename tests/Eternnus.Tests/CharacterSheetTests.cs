@@ -381,7 +381,10 @@ public sealed class CharacterSheetTests : IAsyncLifetime
         var wrong = await service.CreateAsync(Classic(), Player, default);
         var sid = Json(await sessions.StartAsync(campaign.Id, new("Mesa", "", MapKinds.Tileset, "crypt"), Master, default)).GetProperty("id").GetGuid();
         db.ChangeTracker.Clear();
-        Assert.DoesNotContain(wrong.Id.ToString(), Json(await sessions.EntryAsync(campaign.Id, Player, default)).ToString());
+        var entry = Json(await sessions.EntryAsync(campaign.Id, Player, default));
+        Assert.DoesNotContain(wrong.Id.ToString(), entry.GetProperty("characters").ToString());
+        // A ficha incompatível aparece com o motivo, para o jogador criar uma ficha com o modelo da campanha.
+        Assert.Contains(wrong.Id.ToString(), entry.GetProperty("incompatible").ToString());
         Assert.Equal(400, (await Fails(() => sessions.JoinAsync(sid, wrong.Id, Player, default))).Status);
         db.ChangeTracker.Clear();
         Assert.False(await db.SessionParticipants.AnyAsync(p => p.SessionId == sid && p.UserId == Player));

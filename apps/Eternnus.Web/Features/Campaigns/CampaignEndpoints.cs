@@ -7,7 +7,7 @@ public static class CampaignEndpoints
     {
         var api = app.MapGroup("/api/campaigns").RequireAuthorization("Verified");
         static string Id(ClaimsPrincipal u) => u.FindFirstValue(ClaimTypes.NameIdentifier)!;
-        api.MapGet("", (string? search, string? sort, int? page, CampaignService service, ClaimsPrincipal u, CancellationToken ct) => service.ListAsync(Id(u), search, sort, page ?? 1, ct));
+        api.MapGet("", (string? search, string? sort, int? page, bool? oneShot, CampaignService service, ClaimsPrincipal u, CancellationToken ct) => service.ListAsync(Id(u), search, sort, page ?? 1, ct, oneShot));
         api.MapPost("", async (CampaignInput x, CampaignService service, ClaimsPrincipal u, CancellationToken ct) => Results.Ok(new { id = await service.CreateAsync(x, Id(u), ct) }));
         api.MapPut("/{id:guid}", async (Guid id, CampaignInput x, CampaignService service, ClaimsPrincipal u, CancellationToken ct) => { await service.UpdateAsync(id, x, Id(u), ct); return Results.NoContent(); });
         api.MapPut("/{id:guid}/sheet-template", (Guid id, CampaignSheetTemplateInput input, CampaignService service, ClaimsPrincipal u, CancellationToken ct) => service.SetSheetTemplateAsync(id, input, Id(u), ct));

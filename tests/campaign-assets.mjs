@@ -10,6 +10,8 @@ try {
   const outsider = await env.verifiedClient("outsider.assets@example.test", "Visitante");
   const campaign = await master("/api/campaigns", "POST", { name: "Bibliotecas e mapas", description: "Teste", rpgSystemId: systemId });
   const path = `/api/campaigns/${campaign.id}`;
+  // Este roteiro cobre mapas sem névoa; table-fog.mjs cobre a imagem mascarada.
+  await master(path + "/table-settings", "PUT", { settings: { fogEnabled: false, rememberExplored: true, pathMovement: true, alliesAlwaysVisible: true, torchRadius: 4, brazierRadius: 3, creatureLight: 0, playerLightMeters: 0, playerVisionMeters: 0 } });
   await player("/api/campaigns/join", "POST", { code: (await master(path)).inviteCode });
   const base = path + "/assets";
   const text = await master(base + "/library", "POST", { title: "NPC", text: "Segredo", published: false });
@@ -66,15 +68,22 @@ try {
   await player(map.imageUrl, "GET", undefined, 404);
   await player(path + "/leave", "POST", undefined, 204);
   await master(path, "DELETE", undefined, 204);
-  const one = await master("/api/campaigns", "POST", { name: "Livre", description: "Teste de descarte", rpgSystemId: systemId, isOneShot: true });
-  const onePath = `/api/campaigns/${one.id}`, oneBase = onePath + "/assets";
+  // One-shot nasce com a sessão única aberta; o preparo acontece com a mesa aberta e o mestre presente.
+  const one = await master("/api/one-shots", "POST", { name: "Livre", description: "Teste de descarte", rpgSystemId: systemId });
+  const onePath = `/api/campaigns/${one.campaignId}`, oneBase = onePath + "/assets";
+  await master(onePath + "/sessions", "POST", { title: "Outra", objective: "", mapKind: "tileset", mapKey: "crypt" }, 409);
   const oneRoot = await master(oneBase + "/folders", "POST", { name: "Raiz", parentId: null });
   const oneChild = await master(oneBase + "/folders", "POST", { name: "Filha", parentId: oneRoot.id });
+  await master(`/api/sessions/${one.sessionId}/heartbeat`, "POST", undefined, 204);
   const oneMap = await upload("Temporário da mesa livre", oneBase, oneChild.id);
-  const oneSession = await master(onePath + "/sessions", "POST", { title: "Livre", objective: "", mapKind: oneMap.kind, mapKey: oneMap.key });
-  await master(`/api/sessions/${oneSession.id}/leave`, "POST", undefined, 204);
+  await master(`/api/sessions/${one.sessionId}/map`, "POST", { mapKind: oneMap.kind, mapKey: oneMap.key }, 204);
+  // Sair da tela não apaga a one-shot (espera recuperável); encerrar apaga.
+  await master(`/api/sessions/${one.sessionId}/leave`, "POST", undefined, 204);
+  await master(onePath, "GET", undefined, 200);
+  await master(`/api/sessions/${one.sessionId}/join`, "POST", {}, 204);
+  await master(`/api/sessions/${one.sessionId}/end`, "POST", undefined, 204);
   await master(onePath, "GET", undefined, 404);
-  check(env.sql(`SELECT count(*) FROM "CampaignMap" WHERE "CampaignId"='${one.id}'`), "0");
-  check(env.sql(`SELECT count(*) FROM "CampaignMapFolder" WHERE "CampaignId"='${one.id}'`), "0");
+  check(env.sql(`SELECT count(*) FROM "CampaignMap" WHERE "CampaignId"='${one.campaignId}'`), "0");
+  check(env.sql(`SELECT count(*) FROM "CampaignMapFolder" WHERE "CampaignId"='${one.campaignId}'`), "0");
   console.log(`Campaign assets: ${env.count()} verificações passaram.`);
 } finally { await env.stop(); }

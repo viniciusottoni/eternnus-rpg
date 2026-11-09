@@ -262,3 +262,160 @@ Por solicitação do usuário, o shell até 760 px mantém somente logo e subtí
 **Motivo:** em produção, `/api/auth/csrf` e `/api/auth/external/*` respondiam HTTP 500, e com isso o boot do cliente deixava login e botões sociais indisponíveis. O DPAPI de usuário exige perfil carregado, o que o pool compartilhado do SmarterASP não oferece. O escopo de máquina é o mesmo que o ASP.NET Core adota por padrão no IIS sem perfil.
 
 **Limites:** com DPAPI de máquina, qualquer processo do servidor que consiga ler os arquivos das chaves pode decifrá-las. O isolamento passa a depender da ACL da pasta, que fica fora de `wwwroot` e restrita à identidade do site. As chaves gravadas antes desta mudança deixam de ser lidas: cookies e tokens emitidos com elas expiram, e é preciso entrar de novo. A causa exata do 500 não foi lida no servidor; se o teste de inicialização falhar, o registro sanitizado mostra o tipo e o código.
+
+## ADR-039 — One-shot nasce pela página One-shot, com sessão única
+
+**Decisão:** o link "Mesa rápida" passa a se chamar **One-shot** (`#one-shot`; `#dice` redireciona). One-shots são criadas somente ali, por `POST /api/one-shots`, que cria a campanha temporária, reserva a quota e abre a sessão única na mesma transação. O modal de campanha deixa de oferecer tipo de mesa e `POST /api/campaigns` rejeita `isOneShot=true` (400). `SessionService.StartAsync` rejeita one-shots (409). "Minhas campanhas" lista só persistentes; a página One-shot lista as one-shots. A página da campanha de uma one-shot não mostra aba de sessões nem "iniciar sessão".
+
+**Motivo:** a sessão da one-shot é única: encerrar ou sair como mestre já apaga a mesa. Permitir criar a mesa e iniciar a sessão em passos separados expunha um fluxo de campanha que não se aplica.
+
+**Limites:** o rolador pessoal de dados da antiga página "Mesa rápida" saiu da interface; `POST /api/rolls` e `GET /api/events` continuam no servidor. Como a sessão abre na criação, o preparo ocorre com a mesa aberta e exige presença do mestre (página da campanha e editor de ficha mantêm o heartbeat). One-shots criadas antes desta mudança sem sessão não podem mais abrir mesa; expiram em até 72 h ou podem ser excluídas pelo mestre.
+
+## ADR-040 — Fichas-modelo e tickets do admin ficam no Painel admin
+
+**Decisão:** para administradores, "Fichas-modelo" vira a aba `#admin/templates` do Painel admin (lista, página do modelo e editor de versão, com o mesmo módulo `sheet-templates.js` montado no painel), e `#templates` redireciona para ela com `location.replace`. "Suporte" e "Fichas-modelo" saem do menu lateral e do painel "Mais" do admin. Embaixadores mantêm "Fichas-modelo" no menu (`#templates`), pois não acessam o painel. Links de auditoria e o contador de fichas publicadas apontam para `#admin/templates`.
+
+**Motivo:** quem resolve chamados é o admin, pela aba Tickets; o próprio menu de suporte e uma entrada separada para fichas-modelo duplicavam caminhos da equipe.
+
+**Limites:** mudança somente de navegação. `#support` continua acessível ao admin por link direto (chamados próprios). Papel e permissões continuam conferidos no servidor em cada endpoint de fichas-modelo e suporte.
+
+## ADR-041 — Aba "Mapas e cenários" como explorador de pastas
+
+**Decisão:** a aba de mapas da campanha passa a se chamar **Mapas e cenários** e funciona como um explorador de arquivos: árvore lateral com níveis ligados por linhas, ícones de pasta (fechada/aberta) e chevrons para expandir/recolher; à direita, caminho clicável, botão de subir, contagem, grade de pastas e miniaturas de mapas. A árvore é montada no cliente a partir da lista plana de pastas já devolvida por `GET …/assets/maps` (até 100 pastas, 8 níveis), com funções puras em `policy.js`. O estado expandido é apenas visual, por campanha, em memória. A escolha de pasta no envio/edição mostra a hierarquia indentada.
+
+**Motivo:** a lista de botões soltos não mostrava hierarquia nem localização; o mestre organiza cenários por região/local e precisa reconhecer a estrutura como em um sistema operacional.
+
+**Limites:** sem arrastar e soltar nem renomear pasta (o contrato da API não mudou). No celular a árvore fica acima do conteúdo, com altura limitada e alvos de 44 px.
+
+## ADR-042 — Progressão por participação, sem obrigação diária
+
+**Decisão:** preservar curva e histórico, aumentar XP de sessão para 50 (jogador) e 60 (mestre), exigir jogador com ficha e entrada pelo menos dez minutos antes do encerramento, limitar respostas/marcações úteis recompensadas a cinco por dia e retirar incentivo de XP do suporte. Fechamento explícito de one-shot concede XP antes da limpeza. Acrescentar oito conquistas com progresso e sugestões opcionais, reconhecendo marcos históricos por projeção somente leitura. Quotas de conta continuam independentes do nível.
+
+**Motivo:** valorizar encontros e colaboração, reduzir incentivo à repetição e mostrar objetivos alcançáveis sem penalizar ausências ou saídas antecipadas.
+
+**Limites:** contadores consideram lançamentos recompensados; tempo entre entrada e encerramento não mede presença contínua. Expiração automática de one-shot não concede recompensa. A concorrência preexistente do resumo de XP não foi reformulada. Regras, valores, compatibilidade e limites estão em [PROGRESSAO_CENARIOS.md](PROGRESSAO_CENARIOS.md).
+
+## ADR-043 — Atlas compartilhado e movimento ambiental
+
+**Decisão:** ampliar o atlas para oito cenários, com cinco tilesets neutros novos, corrigir a grade da cripta e conectar as margens da floresta. Renderizar madeira, areia, mobiliário e bordas de água usando a grade oficial; usar um único seletor pesquisável nas sessões e na mesa. Expor o atlas na campanha sem substituir as pastas privadas. Refinar componentes compartilhados, pausar animações em aba oculta e interpolar marcadores somente na apresentação. Cache público v19.
+
+**Motivo:** oferecer locais utilizáveis por diferentes sistemas e histórias, com leitura tática consistente e melhor descoberta dos cenários disponíveis.
+
+**Limites:** tilesets são ilustrações procedurais no canvas, sem novas imagens de terceiros; movimento não altera alcance, colisão ou estado autorizado. Prefers-reduced-motion e abertura de 3.000 ms preservados. Não força atualização de PWA em sessão ativa.
+
+## ADR-044 — Persistência de login opcional e limitada
+
+**Decisão:** oferecer “Manter conectado por 14 dias” desmarcado, para senha, Google e Discord. Centralizar os tickets no Identity: login comum com janela de oito horas e teto de 24 horas; persistente com 14 dias fixos; administrador com MFA obrigatório, cookie sem persistência e oito horas fixas. Guardar início original nas propriedades protegidas do ticket e conferir o limite a cada requisição, inclusive ao reconstruir o principal. Preservar escolha de OAuth/MFA somente em tickets/state protegidos. Adicionar `POST /auth/logout-all` com CSRF e invalidação por security stamp. Descartar recursos contínuos ao perder autenticação e retomar apenas uma rota interna validada depois do login, sem repetir comandos.
+
+**Motivo:** acomodar mesas longas e encontros semanais em dispositivos pessoais, com limite explícito de exposição e revogação no servidor. A renovação automática do Identity e o tráfego da mesa não podem manter um login válido indefinidamente.
+
+**Limites:** tickets anteriores sem data original exigem novo login no rollout. Fechar o navegador não garante apagar cookie de sessão em navegadores que restauram sessões. Sair limpa o cookie local; sair de todos troca o stamp e afeta também desafios MFA na próxima requisição. Não inclui lista/revogação individual de dispositivos, detecção de atividade humana nem persistência de rascunhos. OAuth real depende de credenciais; testes usam state e tickets protegidos do middleware. Cache público v20, sem novos caminhos públicos nem atualização forçada.
+
+
+## ADR-045 — Névoa, iluminação e visão decididas no servidor
+
+**Decisão:** a mesa ganha névoa ativa por padrão em mapas com grade, paredes, portas e obstáculos por casa (bloqueio de movimento e de luz independentes), focos de luz, luz e visão por marcador (ficha → sobrescrita do mestre), elementos ocultos com revelação manual e automática (percepção/sentidos) e "ver como" para o mestre. O servidor calcula visibilidade e exploração (`FogRules`) e envia a cada jogador só o que ele enxerga: marcadores, marcas, paredes, linhas de tileset e, em mapas enviados, pixels da imagem. Eventos de criaturas não visíveis ficam com o mestre. A camada de cada mapa (`CampaignMapLayer`) é da campanha e continua entre sessões; "Recomeçar exploração" substitui "salvar como padrão". Configuração em três níveis: sistema (admin) → campanha (aba do mestre) → sessão (ajuste pontual, com pergunta de escopo na mesa).
+
+**Motivo:** exploração com sigilo real. Esconder no canvas não protege contra as ferramentas do navegador, que todo jogador tem. Ajustes do mestre não devem ser refeitos a cada sessão.
+
+**Limites:** bytes já entregues não são revogáveis; desenho dos mapas oficiais é público; exploração por mudança de ficha fora da mesa só é gravada na próxima escrita; custo de luz/máscara sem medição de carga. Cache público v21 com `fog-policy`, `fog-editor` e `table-settings`. Detalhes em [NEVOA_ILUMINACAO.md](NEVOA_ILUMINACAO.md).
+
+**Complemento — alcance no turno:** no turno do jogador a mesa mostra casas de movimento e a área do alcance de ataque, com arraste do boneco. Os valores vêm dos papéis `movement` e `reach` da ficha-modelo; sem eles nada é desenhado e o mestre informa verbalmente (sem `movement`, o servidor deixa de limitar a distância).
+
+
+## ADR-046 — Condução independente do sistema, preparação reutilizável e continuidade
+
+**Contexto:** a mesa presumia convenções de um único estilo de jogo: ataque básico 1d20 + Força, quatro categorias fixas, vida/nível sempre visíveis e turno obrigatório. One-shots eram apagadas 45 s depois de o mestre perder presença. Convites dependiam de código digitado, e o destino se perdia na confirmação de e-mail.
+
+**Decisão:**
+- **Forma de jogar** (`free`/`turns`/`tactical`) na cadeia de `TableSettings` (sistema → campanha → sessão), fixada em `GameSession.PlayMode` ao abrir a sessão. Valor ausente = tática (compatibilidade explícita). Mudança na mesa é ato explícito do mestre e gera evento; mudança da campanha fora da mesa não altera a partida em andamento.
+- **Ações vêm da ficha e do modelo**, com `group` opcional para os nomes do sistema. Ataque básico e Defender ficam restritos à ficha clássica do Sistema livre.
+- **Ficha resumida** derivada de `SheetField.Track` (`resource`/`summary`) e `MaxField`. O papel Vida da ficha clássica vira recurso. Atalhos pessoais em `Character.Shortcuts`, como preferência fora do versionamento.
+- **Modelos privados de campanha** reutilizam `SheetTemplate`/`SheetTemplateVersion`, validação, publicação e migração. `CampaignId` (sem FK, para preservar versões de fichas pessoais) os tira do catálogo e do editor da equipe.
+- **Rolagens:** construtor visual (`DiceSpec` + `DiceRoller`, puro e testado) ao lado do motor de fórmulas, que segue como opção avançada. Não ampliamos a gramática de fórmulas, para manter a paridade servidor/cliente já testada. Visibilidade `table`/`master`/`blind` aplicada com os campos existentes `MasterOnly`/`VisibleToUserId`.
+- **Pedidos de teste** em `RollRequests` (alvos em JSON). Duplicidade impedida pelo bloqueio da sessão. Sem critério, nenhum resultado é declarado.
+- **Desfazer** cria evento corretivo (`undoOf`), revalida permissão e estado atual e recusa mudanças concorrentes. Rolagens não são desfeitas.
+- **Cenas** referenciam mapas por chave e guardam `Prepared`/`Saved` em JSON; exploração continua na camada por mapa. **Personagens do mestre** reutilizáveis, com cópias de encontro (`SourceId`). Visão simplificada por mapa (`MapFogState.Manual`/`Fog`) e `TableSettings.ManualReveal`.
+- **One-shot recuperável:** sair da tela e perder presença não apagam; prazo `OneShots:RecoveryMinutes` (padrão 10, 1–120). Pausa (`PausedAt`) mantém a sessão como a única ativa. Encerrar continua apagando.
+- **Conversão** de one-shot com ordem sessão → campanha → contas e quotas preservadas. **Arquivamento** sem sessão ativa, contando na quota.
+- **Convite por link** com `AppUser.PendingInvite`, guardado sem Verified e sem conceder acesso. **Início** com próxima partida em destaque. **Diário** reaproveitando o acervo (`Kind` objetivo/pista), resumo publicado, data em UTC e presença.
+
+**Motivo:** simplicidade sem perder compatibilidade. Cada ponto reaproveita um mecanismo existente — configuração em cascata, eventos com visibilidade, bloqueio da sessão, acervo, modelos versionados — em vez de criar camadas paralelas.
+
+**Consequências e limites:**
+- Migração aditiva `TablePlayEvolution`: colunas e tabelas novas. O índice único de nome de modelo foi recriado com filtro, sem tocar nos dados.
+- O motor não cobre todas as mecânicas de todos os sistemas; o restante é resolução manual.
+- Arquivadas continuam na quota. A proposta de liberar vaga fica separada, pois depende de decisão comercial.
+- O prazo de recuperação é global do servidor.
+- Testes cobrem regras puras, SQLite e PostgreSQL. Não houve medição de carga nem teste em aparelho físico.
+- Detalhes em [CONDUCAO_MESA.md](CONDUCAO_MESA.md).
+
+## ADR-047 — Ajuda contextual em três níveis com popover nativo
+
+Status: aceito em 8 de novembro de 2026. Contexto: title não atende toque/teclado; o sistema possui um único modal e mesa imersiva, campos e conceitos com necessidades diferentes.
+
+Decisão: texto auxiliar visível para requisitos; tooltip acessível breve para reforço; botão ⓘ para conceitos detalhados em popover nativo único não modal. Núcleo no shell, regras puras e catálogos públicos congelados por área, importados sob demanda. Modelo e inventário em [AJUDA_CONTEXTUAL.md](AJUDA_CONTEXTUAL.md), fonte de verdade para novas telas.
+
+Alternativas descartadas: title nativo (inacessível a toque/foco), modal aninhado (conflita com o diálogo compartilhado), biblioteca externa (complexidade sem necessidade) e ajuda servida pelo backend nesta etapa (não precisa de contrato ou persistência).
+
+Consequências: foco, Esc, hover persistente, viewport e descarte precisam de testes; inventário e catálogo acompanham cada funcionalidade. Cache pode incluir apenas textos estáticos públicos. Conteúdo de usuário, busca e telemetria ficam como evolução separada. Nenhum contrato HTTP é alterado.
+
+## ADR-048 — Editor de cenas único, interface Básica/Completa e preparação separada da apresentação
+
+**Contexto:**
+- Cenas só podiam ser preparadas na mesa ao vivo ("apresentar, arrumar, guardar arranjo").
+- Havia três editores paralelos: modal da cena, editor de névoa e paleta da mesa. As ferramentas da mesa só tinham ícones.
+- `play.scene` lia a cena preparada: editar o texto mudava o que os jogadores viam sem aplicar.
+- A camada de névoa era única por mapa, e o editor da camada aplicava direto à mesa quando o mapa estava em uso.
+- Imagens enviadas exigiam grade, sem alinhamento.
+
+**Decisão:**
+- **Interface Básica/Completa** como preferência visual da conta (`AppUser.InterfaceMode`, nula = Básica). Separada das regras (`PlayMode`) e da visibilidade.
+  - A Básica fica sempre no topo e na mesma posição; a Completa acrescenta grupos (`TOOL_INVENTORY`, testado contra as ferramentas reais).
+  - Ajustes avançados ativos continuam valendo e são indicados.
+- **Editor único** (`scene-editor.js`) para cena nova, cena existente, preparação compartilhada do mapa (Mapas e cenários) e edição sobre a mesa, sem substituí-la.
+  - Abre em "Selecionar e mover". Arranjo privado (`Scene.Prepared`) validado no servidor contra a grade e a preparação do mapa.
+- **Preparação × apresentação:**
+  - `GameSession.SceneName/SceneText` guardam o que foi apresentado.
+  - `CampaignMapLayer.Prepared` guarda a preparação salva com a camada na mesa.
+  - "Aplicar à cena atual" é uma escrita explícita do `SessionService`, por partes, com revisão da cena e `prepVersion`. Preserva posições, explorações, portas da partida e revelações (soma, nunca cobre).
+- **Mesmo mapa em várias cenas:** `Scene.LayerMode` `map` (compartilhada, padrão anterior) ou `scene` (`{mapa}@{cena}`, independente, sem duplicar bytes). `GameSession.LayerKey` indica a camada em uso.
+- **Grade autoritativa com deslocamento** (`CampaignMap.GridOffsetX/Y`) e **apenas imagem** (`HasGrid`). Mesma conta em servidor (`CampaignMapView.Grid`), máscara de imagem, tabuleiro e `gridFor`.
+- **Improviso:** trocar o cenário salva o estado da cena para retomar. "Salvar como cena" registra o improviso.
+
+**Motivo:** permitir que um mestre iniciante prepare sem expor conteúdo, e que o experiente encontre tudo, sem criar camadas paralelas. Cada ponto reaproveita mecanismos existentes: bloqueio da sessão, eventos, `Revision`/`Pulse`, camada por chave, `TableFog.Fit` e o seletor compartilhado.
+
+**Consequências e limites:**
+- Migração aditiva `SceneEditorPresentation`, com padrões que preservam o comportamento anterior: `HasGrid = true` e `LayerMode = "map"`. Colunas nulas em sessões, camadas e contas.
+- Sessões anteriores sem `SceneName` continuam mostrando a cena.
+- "Aplicar" recoloca marcadores só com a parte opcional `tokens` (desmarcada por padrão); trocar o cenário continua exigindo "Reiniciar cena", oferecida como atalho com confirmação.
+- A simulação do editor reproduz luz, revelação e a visão da ficha do personagem escolhido (mesmas regras de `FogRules`); sentidos especiais, Percepção e explorações anteriores ficam de fora. A prévia real continua na mesa.
+- No celular, a vista Mapa da mesa mostra o tabuleiro logo após o topo e o grupo do mestre só na aba Grupo; o controle de Interface mantém as descrições associadas (`aria-describedby`) e explicadas no ⓘ, sem ocupar o topo.
+- A preferência de interface é por conta. Sem teste em aparelho físico nem medição de carga.
+- Detalhes em [CENAS_EDITOR.md](CENAS_EDITOR.md).
+
+
+## ADR-049 — Catálogo global de músicas e trilha sonora compartilhada pela consulta ao vivo
+
+**Contexto:**
+- A mesa não tinha áudio próprio; só existia a trilha global do site (`music.js`).
+- O mestre precisa escolher e controlar a mesma música para todos, com quem entra depois acompanhando o ponto atual.
+- A hospedagem é IIS compartilhado com PostgreSQL de quota limitada; arquivos de áudio são grandes e tocados por HTTP Range.
+- A primeira versão previa um acervo enviado pelo mestre em cada campanha. Antes de qualquer publicação, o usuário decidiu que as músicas vêm do servidor.
+
+**Decisão:**
+- **Catálogo global gerenciado pelo Admin.** O mestre não envia arquivos: só busca por nome e reproduz. Envio, renomeação e exclusão ficam no Painel admin, com auditoria. A busca do mestre recebe só título, formato e duração.
+- **Limites e validação:** MP3, M4A (AAC) e OGG; 20 MiB por arquivo, 200 faixas e 2 GiB no catálogo; arquivo repetido (SHA-256) recusado. Validação estrutural própria (`AudioProbe`) e ClamAV pelo `IDocumentScanner` existente; áudio não passa pelos decodificadores de imagem. Quota serializada por `pg_advisory_xact_lock`.
+- **Bytes em disco privado** (`Music:Directory`, padrão `App_Data/music`), metadados no PostgreSQL. Diferente dos mapas (bytea): o Range servido do disco não carrega o arquivo inteiro na memória a cada trecho e não infla a quota do banco compartilhado. Nomes opacos, gravação atômica, exclusão após commit e varredura de órfãos.
+- **Estado autoritativo em `GameSession`** (faixa, tocando, posição e instante de referência, repetição, versão). Escrita só pelo `SessionService`, com o fluxo comum da mesa.
+- **Bloqueios sem ciclo:** seleção bloqueia sessão → faixa (`FOR SHARE`); exclusão bloqueia só a faixa (`FOR UPDATE`) e recusa com `409` se alguma sessão ativa a usa.
+- **Distribuição pela consulta ao vivo existente**: sem WebSocket ou novo canal. A latência do long-poll basta porque o cliente calcula a posição pelo relógio do servidor.
+- **Versão de comando**: o cliente envia a versão conhecida; diferente da atual, `409`. Respostas e eventos antigos são descartados no cliente.
+- **Sincronização tolerante**: ajuste suave de velocidade para desvios médios, salto raro para grandes; "Ativar áudio da sessão" quando o navegador bloqueia.
+
+**Consequências e limites:**
+- Migração aditiva `SessionSoundtrack` (colunas em `Sessions` com padrões neutros e tabela `MusicTracks` sem campanha). A versão anterior por campanha nunca foi aplicada nem publicada e foi regenerada.
+- Excluir uma campanha não afeta o catálogo. O backup passa a incluir o diretório de áudio junto com o PostgreSQL e as chaves.
+- Bytes entregues não são revogáveis; não há sincronização perfeita nem reprodução automática garantida. OGG pode não tocar em alguns aparelhos Apple.
+- Excluir faixa em uso exige que o mestre pare ou troque a música. Vários hosts exigiriam armazenamento compartilhado de áudio.
+- Detalhes em [TRILHA_SONORA.md](TRILHA_SONORA.md).

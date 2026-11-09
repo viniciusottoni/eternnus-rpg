@@ -1,3 +1,4 @@
+import { helpButton } from "./help.js";
 // Biblioteca geral (#library e #library/<id>): grade de materiais, filtros, visualizador (imagem / pdf.js) e gestão da equipe.
 // Leitura para contas verificadas; escrita para admin/embaixador (publica direto, auditado); restaurar/reverter só admin.
 // O servidor reaplica papel e verificação em todas as rotas: os botões aqui são apenas UX.
@@ -84,7 +85,7 @@ export async function renderLibrary(segments = []) {
   shell("library");
   const staff = isStaff(state.user);
   const main = $("#main");
-  main.innerHTML = `<div class="page-heading"><div><span class="eyebrow">SABER GUARDADO PELA GUILDA</span><h1>Biblioteca <span class="heading-gem">✦</span></h1><p>Regras, aventuras, mapas, fichas e artes para a sua mesa.</p></div>${staff ? button("+ Adicionar material", "lib-add", "", "primary") : ""}</div>
+  main.innerHTML = `<div class="page-heading"><div><span class="eyebrow">SABER GUARDADO PELA GUILDA</span><h1>Biblioteca ${helpButton("biblioteca.arquivos.verificacao", "Arquivos da Biblioteca")}<span class="heading-gem">✦</span></h1><p>Regras, aventuras, mapas, fichas e artes para a sua mesa.</p></div>${staff ? button("+ Adicionar material", "lib-add", "", "primary") : ""}</div>
 <form id="lib-filters" class="lib-toolbar" role="search">
   <div class="lib-search"><label for="lib-q">Buscar</label><div class="lib-search-row"><input id="lib-q" name="q" type="search" maxlength="100" value="${esc(filters.q)}" placeholder="Título ou descrição…"><button type="submit" class="subtle">Buscar</button></div></div>
   <div class="lib-filter"><label for="lib-system">Sistema</label><select id="lib-system" name="systemId"><option value="">Todos os sistemas</option></select></div>
@@ -312,14 +313,14 @@ function openItem(item) {
   }
   const root = openModal(
     item.title,
-    `${meta}<div class="lib-pdf-toolbar" role="toolbar" aria-label="Controles do PDF">
-  ${button("‹", "pdf-prev", "", "subtle", 'aria-label="Página anterior" disabled')}
+    `${meta}<div class="lib-pdf-toolbar" role="toolbar" aria-label="Controles do PDF">${helpButton("biblioteca.leitor.controles", "Leitor de PDF")}
+  ${button("‹", "pdf-prev", "", "subtle", 'aria-label="Página anterior" aria-describedby="pdf-page-help" disabled')}
   <span class="lib-page-label" aria-live="polite">Página <b data-pdf-page>–</b> de <b data-pdf-pages>–</b></span>
-  ${button("›", "pdf-next", "", "subtle", 'aria-label="Próxima página" disabled')}
+  ${button("›", "pdf-next", "", "subtle", 'aria-label="Próxima página" aria-describedby="pdf-page-help" disabled')}
   <span class="lib-zoom">${button("−", "pdf-zoom-out", "", "subtle", 'aria-label="Diminuir zoom"')}<b data-pdf-zoom>100%</b>${button("+", "pdf-zoom-in", "", "subtle", 'aria-label="Aumentar zoom"')}${button("Ajustar", "pdf-fit", "", "subtle", 'aria-label="Ajustar à largura"')}</span>
 </div>
 <div class="lib-stage lib-pdf-stage" tabindex="0" aria-label="Documento ${esc(item.title)}. Use as setas para trocar de página e + ou − para o zoom."><p class="lib-stage-status" role="status">Abrindo o documento…</p><canvas class="lib-canvas" hidden></canvas></div>
-<p class="muted small lib-keyboard-hint">Teclado: ← → trocam de página · + − ajustam o zoom · 0 ajusta à largura.</p>
+<p id="pdf-page-help" class="muted small lib-keyboard-hint">Anterior fica indisponível na primeira página; Próxima, na última. Durante a abertura, aguarde o documento. Teclado: ← → trocam de página · + − ajustam o zoom · 0 ajusta à largura.</p>
 <div class="form-actions">${actions}</div>`,
     { wide: true },
   );

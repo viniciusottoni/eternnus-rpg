@@ -8,7 +8,8 @@ public static partial class SheetCalculator
 {
     internal const int MaxFields = 300, DefaultTextLength = 200, MaxTextLength = 2000, MaxTextAreaLength = 10000;
     private const double GeometryTolerance = 1e-6, MinSize = 0.005;
-    private static readonly string[] NumericRoles = [SheetFieldRoles.Level, SheetFieldRoles.Hp, SheetFieldRoles.MaxHp, SheetFieldRoles.Movement, SheetFieldRoles.Armor];
+    private static readonly string[] NumericRoles = [SheetFieldRoles.Level, SheetFieldRoles.Hp, SheetFieldRoles.MaxHp, SheetFieldRoles.Movement, SheetFieldRoles.Armor,
+        SheetFieldRoles.Light, SheetFieldRoles.Vision, SheetFieldRoles.Perception, SheetFieldRoles.Reach];
     private static readonly string[] TruthyValues = ["true", "1", "on", "sim"];
 
     private static bool IsNumericType(string? type) => type is SheetFieldTypes.Number or SheetFieldTypes.Computed or SheetFieldTypes.Checkbox;
@@ -263,6 +264,8 @@ public static partial class SheetCalculator
                         errors.Add($"{p}: o papel {role} exige campo de número ou calculado.");
                     if (validType && role == SheetFieldRoles.Name && type != SheetFieldTypes.Text)
                         errors.Add($"{p}: o papel name exige campo de texto.");
+                    if (validType && role == SheetFieldRoles.Senses && type is not (SheetFieldTypes.Text or SheetFieldTypes.TextArea))
+                        errors.Add($"{p}: o papel senses exige campo de texto.");
                 }
             }
 

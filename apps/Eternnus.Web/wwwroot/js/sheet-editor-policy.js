@@ -36,6 +36,11 @@ export const FIELD_ROLES = Object.freeze([
   { value: "maxHp", label: "Vida máxima", help: "Limite da barra de vida e dos ajustes do mestre.", types: ["number", "computed"] },
   { value: "movement", label: "Deslocamento (m)", help: "Define quantas casas o personagem anda por turno no mapa (1,5 m por casa).", types: ["number", "computed"] },
   { value: "armor", label: "Armadura", help: "Mostrada ao mestre como defesa do personagem.", types: ["number", "computed"] },
+  { value: "light", label: "Luz (m)", help: "Raio da luz que o personagem carrega; ilumina o mapa para todos.", types: ["number", "computed"] },
+  { value: "vision", label: "Visão própria (m)", help: "Visão no escuro: só o dono do personagem enxerga essa área.", types: ["number", "computed"] },
+  { value: "perception", label: "Percepção", help: "Percepção passiva: revela elementos ocultos com dificuldade igual ou menor.", types: ["number", "computed"] },
+  { value: "reach", label: "Alcance de ataque (m)", help: "Mostrado no turno do jogador. Use um campo calculado para variar com a arma escolhida.", types: ["number", "computed"] },
+  { value: "senses", label: "Sentidos especiais", help: "Um por linha, \"nome\" ou \"nome: metros\" (ex.: sentir magia: 9).", types: ["text", "textarea"] },
 ]);
 export const ACTION_KINDS = Object.freeze([
   { value: "ataque", label: "Ataque", icon: "⚔" },
@@ -395,7 +400,7 @@ export function publishIssues(doc) {
     const add = (message) => issues.push({ field: f.name, index: i, message: `Campo ${f.name}: ${message}` });
     if (f.page >= pages.length) add(`está na página ${f.page + 1}, mas a ficha tem ${pages.length}.`);
     const role = roleInfo(f.role);
-    if (role && !role.types.includes(f.type)) add(role.value === "name" ? "o papel Nome exige um campo de texto." : "este papel exige um campo numérico ou calculado.");
+    if (role && !role.types.includes(f.type)) add(role.value === "name" ? "o papel Nome exige um campo de texto." : role.value === "senses" ? "o papel Sentidos exige um campo de texto." : "este papel exige um campo numérico ou calculado.");
     if (f.type === "computed" && !String(f.formula || "").trim()) add("campo calculado precisa de fórmula.");
     if (f.type === "select" && !(f.options || []).length) add("lista de opções vazia.");
     if (f.default != null && f.default !== "") {

@@ -28,6 +28,13 @@
   font-size: 12px;
   line-height: 1.55;
 }
+/* Fichas-modelo dentro do Painel admin: cabeçalho de seção com a ação principal ao lado. */
+.tpl-embed-head {
+  gap: 12px 22px;
+}
+.tpl-embed-head p {
+  margin: 6px 0 0;
+}
 .tpl-filters {
   display: flex;
   flex-wrap: wrap;
