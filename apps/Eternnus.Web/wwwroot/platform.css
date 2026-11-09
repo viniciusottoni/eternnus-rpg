@@ -30,6 +30,9 @@
 
 /* Tabela de dados compartilhada (admin, suporte, auditoria, moderação). */
 .data-table-wrap {
+  /* Bloco de contenção dos textos sr-only (position:absolute) das células: sem isso, eles escapam da rolagem
+     horizontal e alargam a página no celular, descentralizando diálogos e popups. */
+  position: relative;
   overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius);

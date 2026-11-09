@@ -419,3 +419,21 @@ Consequências: foco, Esc, hover persistente, viewport e descarte precisam de te
 - Bytes entregues não são revogáveis; não há sincronização perfeita nem reprodução automática garantida. OGG pode não tocar em alguns aparelhos Apple.
 - Excluir faixa em uso exige que o mestre pare ou troque a música. Vários hosts exigiriam armazenamento compartilhado de áudio.
 - Detalhes em [TRILHA_SONORA.md](TRILHA_SONORA.md).
+
+## ADR-050 — Revisão de modais e da ajuda: popup centralizado, ⓘ junto ao texto e X único
+
+**Contexto:** em uso real, os ⓘ de 44 px visíveis ficaram desproporcionais e, por serem irmãos de títulos em blocos ou em linhas `space-between`, apareciam soltos no meio da linha ou abaixo do título. O popup ancorado ao gatilho (folha inferior no celular) variava de posição. Modais tinham X e botão “Fechar” ao mesmo tempo, tooltip “Fechar” sobre o X, rolagem do diálogo e do corpo ao mesmo tempo, bordas padrão do navegador em `fieldset` e um input dentro de `legend`. Na aba Mapas e cenários, criar pasta e enviar mapa ficavam no topo, longe do explorador, abaixo do Atlas.
+
+**Decisão:** substitui as partes de posição e tamanho do ADR-047.
+- ⓘ de 18 px visíveis, área de toque por pseudo-elemento (cerca de 30 px no mouse e 44 px em toque), sempre colado ao texto: dentro do título, da legenda ou do `summary`, ou ao lado do label em `.field-label`.
+- O popup de ajuda é sempre centralizado com fundo levemente escurecido e fecha só pelo X (mais Esc e clique fora).
+- Modais têm cabeçalho fixo (título + X sem tooltip). Só o corpo rola, e os botões de texto “Fechar” redundantes saem. Formulários mantêm Cancelar.
+- `fieldset`/`legend` ganham a moldura dourada comum. O modelo simples da campanha deixa de usar input dentro de `legend`.
+- Na aba Mapas e cenários, ações de pasta e envio ficam no bloco “Mapas da campanha”, abaixo do Atlas. A pasta aberta pode ser renomeada (`PUT /folders/{id}`, mesmo bloqueio de campanha das demais escritas).
+
+**Consequências:**
+- Nomes acessíveis de títulos com ⓘ incluem “Ajuda: …”, uma troca aceita pela proximidade visual.
+- `tests/help-ui.mjs` passa a medir tamanho e distância do ⓘ, centralização e X.
+- `tests/modals-ui.mjs` abre os modais alcançáveis em desktop e celular e acusa rolagem dupla, transbordo, `fieldset` padrão, ⓘ grande, tooltip no X e “Fechar” duplicado.
+- Cache público v29.
+

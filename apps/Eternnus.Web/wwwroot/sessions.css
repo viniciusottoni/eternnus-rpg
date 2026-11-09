@@ -105,7 +105,7 @@
   font-size: 12px;
 }
 .modal-lead {
-  margin: -12px 0 14px;
+  margin: 0 0 14px;
   color: var(--muted);
 }
 dialog.wide {
@@ -1819,6 +1819,13 @@ button.party-button:hover {
   gap: 10px;
   margin-left: auto;
 }
+/* Ações de pasta e envio ficam junto do explorador que elas alteram (abaixo do Atlas). */
+.fx-section { margin-top: 8px; }
+.fx-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 20px; }
+.fx-head h3 { margin: 0 0 4px; font: normal 20px var(--serif); color: var(--bright); }
+.fx-head p { margin: 0; max-width: 72ch; }
+.fx-head .fx-actions { flex: none; }
+.fx-folder-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
 .fx-explorer {
   --fx-row: 34px;
   --fx-line: #6f5c3a;
@@ -2533,36 +2540,48 @@ dialog.fog-editor-modal {
 .interface-option input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
 .interface-option span { display: inline-flex; align-items: center; min-height: 34px; padding: 0 12px; border-radius: 999px; color: var(--text); font-size: 13px; }
 .interface-option input:checked + span { color: #20160b; background: linear-gradient(115deg, #b9893d, #edc876 48%, #ba8a41); font-weight: 600; }
-.interface-option input:checked + span::before { content: "✓ "; }
+.interface-option input:checked + span::before { content: "✓"; margin-right: 5px; }
 .interface-option input:focus-visible + span { outline: 2px solid var(--bright); outline-offset: 2px; }
 /* Descrições continuam associadas (aria-describedby) e explicadas no ⓘ, sem ocupar a barra do topo. */
 .interface-toggle .form-help { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .top-separator { width: 1px; align-self: stretch; margin: 4px 6px; background: var(--line); }
 
-dialog.scene-editor-modal { width: min(1440px, calc(100vw - 16px)); max-width: none; height: calc(100dvh - 16px); max-height: none; padding: 12px 14px; }
-dialog.scene-editor-modal #modal-body { height: calc(100% - 44px); }
-.scene-editor { display: flex; flex-direction: column; gap: 10px; height: 100%; min-height: 0; }
-.se-top { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; }
-.se-name { flex: 1 1 240px; margin: 0; }
-.se-map-title { display: grid; margin: 0; }
+/* Editor de cena: uma única área rolável por coluna; o diálogo em si não rola. */
+dialog.scene-editor-modal { width: min(1440px, calc(100vw - 16px)); max-width: none; height: calc(100dvh - 16px); max-height: none; padding: 12px 16px 14px; overflow: hidden; }
+dialog.scene-editor-modal[open] { display: flex; flex-direction: column; }
+dialog.scene-editor-modal .modal-head { flex: none; margin-bottom: 12px; padding-bottom: 8px; }
+dialog.scene-editor-modal #modal-body { flex: 1; min-height: 0; height: auto; overflow: hidden; margin: 0; padding: 0; }
+.scene-editor { display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 0; }
+.se-top { display: grid; grid-template-columns: minmax(220px, 360px) minmax(0, 1fr); grid-template-areas: "name controls" "status status"; align-items: start; gap: 8px 20px; }
+.se-name { grid-area: name; margin: 0; }
+.se-name input { min-height: 44px; }
+.se-name .form-help { margin: 4px 0 0; }
+.se-map-title { display: grid; gap: 2px; margin: 0; }
 .se-map-title small { color: var(--muted); }
-.se-status { display: flex; flex-wrap: wrap; gap: 6px; flex: 2 1 320px; }
-.se-chip { display: inline-flex; align-items: center; min-height: 28px; padding: 2px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--text); background: #0d0c0a; }
+.se-status { grid-area: status; display: flex; flex-wrap: wrap; gap: 6px; }
+.se-status:empty { display: none; }
+.se-chip { display: inline-flex; align-items: center; min-height: 28px; padding: 2px 12px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; line-height: 1.3; color: var(--text); background: #0d0c0a; }
 .se-chip.private { border-color: #6e96e6; }
 .se-chip.live { border-color: #e6a03c; color: #ffd9a0; }
 .se-chip.dirty { border-color: var(--bright); color: var(--bright); }
 .se-chip.pending { border-color: var(--danger); color: var(--danger); }
 .se-chip.ok { color: var(--muted); }
-.se-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.se-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.se-actions button { min-height: 44px; }
-.se-body { display: grid; grid-template-columns: 196px minmax(0, 1fr) 320px; gap: 10px; flex: 1; min-height: 0; }
-.se-tools { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; scrollbar-width: thin; }
-.se-tool-group { display: grid; gap: 4px; }
-.se-tool-group h3 { margin: 6px 0 2px; color: var(--gold); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
-.se-more { display: grid; gap: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+/* Alinha os botões à caixa do nome (altura do rótulo + espaço). */
+.se-controls { grid-area: controls; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; padding-top: 24px; }
+.se-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.se-actions button { min-height: 44px; padding-inline: 16px; white-space: nowrap; }
+.se-actions #se-apply-slot:empty { display: none; }
+.scene-editor .interface-toggle { min-height: 44px; }
+.scene-editor .interface-toggle legend { display: inline-flex; align-items: center; padding: 0 8px 0 10px; line-height: 38px; }
+.scene-editor .interface-option span { min-height: 38px; padding: 0 14px; }
+.se-body { display: grid; grid-template-columns: 200px minmax(0, 1fr) 340px; gap: 12px; flex: 1; min-height: 0; }
+.se-tools { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.se-tool-group { display: grid; gap: 6px; }
+.se-tool-group h3 { margin: 4px 0 0; color: var(--gold); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.se-more { display: grid; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .se-category { display: none; }
-.se-tool { min-height: 44px; padding: 6px 10px; text-align: left; font-size: 13px; border-color: #6c5a3b; background: linear-gradient(#24211af2, #15130ef2); color: var(--text); }
+.se-tool { justify-content: flex-start; width: 100%; min-height: 44px; padding: 8px 12px; text-align: left; font-size: 13px; line-height: 1.3; border-color: #6c5a3b; background: linear-gradient(#24211af2, #15130ef2); color: var(--text); }
+.se-tools .help-disabled-reason { margin: -2px 2px 2px; font-size: 11px; line-height: 1.45; color: var(--muted); }
 .se-tool.active, .se-tool[aria-pressed="true"] { color: #20160b; background: linear-gradient(115deg, #b9893d, #edc876 48%, #ba8a41); border-color: var(--bright); font-weight: 600; }
 .se-tool.active::before { content: "✓ "; }
 .se-tool:disabled { opacity: .45; }
@@ -2577,26 +2596,46 @@ dialog.scene-editor-modal #modal-body { height: calc(100% - 44px); }
 .se-sim-viewer select { min-height: 44px; max-width: 100%; }
 .se-text-preview { display: grid; place-items: center; height: 100%; padding: 24px; }
 .se-text-card { max-width: 60ch; padding: 20px 24px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-raised); white-space: pre-wrap; }
-.se-side { overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
-.se-panel { display: grid; gap: 10px; padding: 12px; border: 1px solid #a07b3a55; border-radius: var(--radius); background: #12110ecc; }
-.se-panel h3 { margin: 0; font-size: 16px; }
+.se-side { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 4px; }
+.se-panel { display: grid; gap: 12px; padding: 14px; border: 1px solid #a07b3a55; border-radius: var(--radius); background: #12110ecc; }
+.se-panel > * { margin: 0; }
+.se-panel h3 { margin: 0; font-size: 16px; line-height: 1.3; }
+.se-panel .field { margin: 0; }
 .se-panel textarea { width: 100%; }
+.se-panel fieldset { display: grid; gap: 2px; min-width: 0; margin: 0; padding: 6px 12px 8px; border: 1px solid #a07b3a44; border-radius: var(--radius); }
+.se-panel fieldset > legend { padding: 0 6px; color: var(--gold); font-size: 12px; }
 .se-subform { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid #a07b3a33; }
 .se-subform h4 { margin: 0; font-size: 13px; color: var(--gold); }
 .se-pick-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .se-pick-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .se-pick-list small { display: block; color: var(--muted); }
-.se-option { align-items: flex-start; }
-.se-option span { display: grid; gap: 2px; }
-.se-option small { color: var(--muted); }
+.se-option { align-items: flex-start; margin: 0; padding: 7px 0; cursor: pointer; }
+.se-option input { flex: none; margin: 1px 0 0; }
+.se-option span { display: grid; gap: 2px; min-width: 0; }
+.se-option strong { color: var(--text); font-size: 13px; line-height: 1.35; }
+.se-option small { color: var(--muted); font-size: 12px; line-height: 1.45; }
 .se-summary { display: grid; gap: 6px; margin: 0; }
 .se-summary div { display: grid; grid-template-columns: 120px 1fr; gap: 8px; }
 .se-summary dt { color: var(--muted); font-size: 12px; }
 .se-summary dd { margin: 0; font-size: 13px; }
 .se-danger-zone { justify-content: flex-start; padding-top: 8px; border-top: 1px solid #a07b3a33; }
 .se-conflict { border-color: var(--danger); }
-.se-scenery .map-choices { margin: 0; }
-.se-scenery .map-group-list { grid-template-columns: 1fr 1fr; }
+/* Cenários na lateral: lista de cartões horizontais (miniatura à esquerda), sem colunas espremidas. */
+.se-scenery .map-choices { display: grid; gap: 12px; margin: 0; padding: 0; border: 0; }
+.se-scenery .map-choices > legend { float: left; width: 100%; margin: 0 0 4px; padding: 0; font-size: 12px; color: var(--gold); }
+.se-scenery .map-picker-tools { display: grid; gap: 4px; padding: 0; }
+.se-scenery .map-picker-tools .field { margin: 0; }
+.se-scenery .map-picker-tools .form-help { max-width: none; margin: 0; }
+.se-scenery .map-group { gap: 8px; margin: 0; }
+.se-panel .map-group-title { margin: 0; color: var(--gold); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.se-scenery .map-group-list { grid-template-columns: 1fr; gap: 8px; }
+.se-scenery .map-choice { grid-template-columns: 96px minmax(0, 1fr); align-items: stretch; min-height: 84px; }
+.se-scenery .map-preview { aspect-ratio: auto; height: 100%; min-height: 84px; border-right: 1px solid #6c5a3b66; }
+.se-scenery .map-choice-text { display: grid; align-content: start; gap: 3px; padding: 8px 10px; }
+.se-scenery .map-choice-text .eyebrow { margin: 0; font-size: 9px; line-height: 1.4; }
+.se-scenery .map-choice-text strong { font-size: 13px; line-height: 1.3; }
+.se-scenery .map-choice-text small { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 11.5px; line-height: 1.45; }
+.se-scenery .map-choice-state { margin-top: 2px; }
 
 .map-group { display: grid; gap: 6px; margin-top: 10px; }
 .map-group[hidden] { display: none; }
@@ -2682,9 +2721,10 @@ dialog.scene-editor-modal #modal-body { height: calc(100% - 44px); }
 }
 @media (max-width: 900px) {
   dialog.scene-editor-modal { width: 100vw; height: 100dvh; margin: 0; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); border-radius: 0; }
-  .se-top { align-items: stretch; }
-  .se-controls { width: 100%; justify-content: space-between; }
-  .se-body { display: flex; flex-direction: column; overflow-y: auto; }
+  .se-top { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "controls" "status"; }
+  .se-controls { justify-content: flex-start; padding-top: 0; }
+  .se-body { display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+  .se-tool { width: auto; }
   .se-tools { flex-direction: row; flex-wrap: nowrap; gap: 6px; overflow-x: auto; overflow-y: visible; padding-bottom: 4px; flex: 0 0 auto; }
   .se-tool-group { display: flex; gap: 6px; }
   .se-tool { white-space: nowrap; }

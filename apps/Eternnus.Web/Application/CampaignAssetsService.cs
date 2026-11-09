@@ -6,6 +6,7 @@ namespace Eternnus.Web;
 
 public record CampaignTextInput(string Title, string Text, bool Published, int Revision = 0, string? Kind = null);
 public record CampaignFolderInput(string Name, Guid? ParentId);
+public record CampaignFolderNameInput(string Name);
 public record CampaignMapInput(string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int Revision = 0, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0);
 /// <summary>Preparação de névoa/luz de um mapa: estado completo editado no editor e a revisão lida.</summary>
 public record MapLayerInput(bool? Fog, string[] Cells, List<FogLight>? Lights, string? Revealed, List<FogMarkInput>? Marks, int Revision, bool ResetExploration = false, string? PrepVersion = null);
@@ -129,6 +130,14 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
         while (parent != null) { if (++depth > 8) throw new RuleException(400, "Use até oito níveis de pastas."); parent = (await Folders.SingleOrDefaultAsync(f => f.CampaignId == campaign && f.Id == parent, ct) ?? throw Missing()).ParentId; }
         var folder = new CampaignMapFolder { CampaignId = campaign, ParentId = x.ParentId, Name = name };
         db.Add(folder); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return folder;
+    }
+    /// <summary>Renomeia a pasta sob o mesmo bloqueio da campanha; o lugar na árvore e o conteúdo não mudam.</summary>
+    public async Task<CampaignMapFolder> RenameFolderAsync(Guid campaign, Guid id, string user, CampaignFolderNameInput x, CancellationToken ct)
+    {
+        var name = Name(x.Name, 100);
+        await using var tx = await db.Database.BeginTransactionAsync(ct); await Lock(campaign, user, ct);
+        var folder = await Folders.SingleOrDefaultAsync(f => f.CampaignId == campaign && f.Id == id, ct) ?? throw Missing();
+        folder.Name = name; await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return folder;
     }
     public async Task DeleteFolderAsync(Guid campaign, Guid id, string user, CancellationToken ct)
     {
