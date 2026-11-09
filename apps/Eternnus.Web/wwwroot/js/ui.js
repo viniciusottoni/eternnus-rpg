@@ -58,10 +58,15 @@ export function passwordField(name, label, autocomplete, options = {}) {
 export function formError() {
   return '<p class="form-error" data-form-error role="alert"></p>';
 }
+// Classes de layout (wide, editor de cena) saem só ao abrir o próximo modal: assim o modal que fecha mantém o tamanho
+// durante o fade de saída. Quem precisa delas as adiciona depois de chamar modal().
+const MODAL_LAYOUTS = ["wide", "scene-editor-modal"];
 export function modal(title, content) {
+  const dialog = $("#modal");
+  if (!dialog.open) dialog.classList.remove(...MODAL_LAYOUTS);
   $("#modal-title").textContent = title;
   $("#modal-body").innerHTML = content;
-  if (!$("#modal").open) $("#modal").showModal();
+  if (!dialog.open) dialog.showModal();
 }
 export async function submitForm(form, task) {
   if (form.getAttribute("aria-busy") === "true") return;

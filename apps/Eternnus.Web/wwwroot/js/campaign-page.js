@@ -172,11 +172,6 @@ async function startSessionModal(campaignId) {
     `<p class="modal-lead">A campanha ficará online para os aventureiros convidados.</p><form id="start-session"><div class="field"><div class="field-label"><label for="f-title">Nome da sessão</label>${helpButton("sessoes.abertura.unica", "Uma sessão ativa")}</div><div class="title-field"><span aria-hidden="true">Sessão ${String(next).padStart(2, "0")} —</span><input id="f-title" name="title" required maxlength="120" placeholder="A Cripta dos Antigos" aria-describedby="title-help"></div><small id="title-help" class="form-help">O número da sessão é atribuído automaticamente.</small></div><div class="field"><label for="f-objective">Objetivo / nota inicial do mestre</label><textarea id="f-objective" name="objective" maxlength="2000" rows="3" placeholder="Visível apenas para você no histórico da sessão."></textarea></div>${mapChoices(choices, firstTileset?.key, "Mapa inicial da sessão")}<p class="notice-box">✧ Ao confirmar, a sessão será aberta e a campanha mudará para <strong>ONLINE</strong>. Os jogadores entrarão diretamente na mesa.</p>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">▶ Iniciar sessão</button></div></form>`,
   );
   $("#modal").classList.add("wide");
-  $("#modal").addEventListener(
-    "close",
-    () => $("#modal").classList.remove("wide"),
-    { once: true },
-  );
   mountMapChoices($("#start-session"), choices);
   $("#f-title").focus();
   $("#start-session").onsubmit = (e) => {

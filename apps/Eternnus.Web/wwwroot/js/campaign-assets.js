@@ -142,7 +142,7 @@ function mapModal(d, item, folders, folderId, reload) {
     if (e.target.name === "useGrid") host.hidden = e.target.value !== "yes";
     if (e.target.name === "file" && e.target.files?.[0]) { if (objectUrl) URL.revokeObjectURL(objectUrl); objectUrl = URL.createObjectURL(e.target.files[0]); mount(objectUrl); }
   });
-  $("#modal").addEventListener("close", () => { adjust?.dispose(); if (objectUrl) URL.revokeObjectURL(objectUrl); $("#modal").classList.remove("wide"); }, { once: true });
+  $("#modal").addEventListener("close", () => { adjust?.dispose(); if (objectUrl) URL.revokeObjectURL(objectUrl); }, { once: true });
   $("#ca-name").focus();
   form.onsubmit = e => { e.preventDefault(); submitForm(form, async data => {
     const grid = data.useGrid === "yes";

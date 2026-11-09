@@ -339,4 +339,4 @@ Bytes: HTTP Range (`206`/`416`), ETag, tipo validado no envio (`audio/mpeg`, `au
 
 `GET …/live` acrescenta `music = {trackId, title, durationMs, contentType, playing, positionMs, referenceAt, loop, version, audioUrl}` (sem faixa: `trackId`/`audioUrl` nulos, `playing` falso), igual para mestre e jogadores. `serverTime` passa a ser lido ao fim da montagem da resposta. Novo tipo de evento `music`, sempre `masterOnly`.
 
-Erros: 400 campos/formulário; 403 sem papel Admin; 404 sem vínculo ou faixa indisponível; 409 versão, revisão, quota, duplicidade, faixa em uso ou estado; 413 tamanho; 415 formato; 422 scanner recusou; 429 limite; 503 scanner indisponível. Upload não é repetido automaticamente.
+Erros: 400 campos/formulário; 403 sem papel Admin; 404 sem vínculo ou faixa indisponível; 409 versão, revisão, quota, duplicidade, faixa em uso ou estado; 413 tamanho; 415 formato; 429 limite. Áudio não passa por antivírus (ADR-051). Upload não é repetido automaticamente.

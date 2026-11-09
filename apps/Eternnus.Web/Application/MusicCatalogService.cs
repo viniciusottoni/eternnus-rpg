@@ -5,14 +5,15 @@ namespace Eternnus.Web;
 
 public record MusicTrackInput(string Title, int Revision);
 
-/// <summary>Áudio lido, validado pela estrutura real e verificado pelo antivírus, pronto para virar faixa.</summary>
+/// <summary>Áudio lido e validado pela estrutura real, pronto para virar faixa.</summary>
 public sealed record AudioUpload(byte[] Content, string ContentType, int? DurationMs, string SuggestedTitle, string Sha256);
 
-/// <summary>Leitura segura do envio de áudio: tamanho real, estrutura MP3/M4A/OGG (<see cref="AudioProbe"/>) e ClamAV
-/// (mesmo <see cref="IDocumentScanner"/> dos documentos). Áudio não passa pelos decodificadores de imagem.</summary>
+/// <summary>Leitura segura do envio de áudio: tamanho real e estrutura MP3/M4A/OGG (<see cref="AudioProbe"/>).
+/// Sem antivírus por decisão (ADR-051): só Admin com MFA envia, e a hospedagem compartilhada não oferece clamd.
+/// Áudio não passa pelos decodificadores de imagem.</summary>
 public static class AudioUploads
 {
-    public static async Task<AudioUpload> ReadAsync(IFormFile? file, IDocumentScanner scanner, CancellationToken ct)
+    public static async Task<AudioUpload> ReadAsync(IFormFile? file, CancellationToken ct)
     {
         if (file is null || file.Length <= 0) throw new RuleException(400, "Escolha um arquivo de áudio.");
         if (file.Length > MusicLimits.MaxFileBytes) throw new RuleException(413, "Envie um arquivo de até 20 MB.");
@@ -29,7 +30,6 @@ public static class AudioUploads
             if (read != content.Length || stream.ReadByte() != -1) throw new RuleException(400, "O envio do arquivo foi interrompido. Tente novamente.");
         }
         var probe = AudioProbe.Inspect(content) ?? throw new RuleException(415, "Formato não aceito. Envie um arquivo MP3, M4A (AAC) ou OGG válido.");
-        await scanner.ScanAsync(content, ct);
         var name = (file.FileName ?? "").Replace('\\', '/').Split('/')[^1];
         return new AudioUpload(content, probe.ContentType, probe.DurationMs, MusicCatalogService.CleanTitle(Path.GetFileNameWithoutExtension(name).Replace('_', ' ')), Convert.ToHexStringLower(SHA256.HashData(content)));
     }

@@ -13,6 +13,15 @@ Validação local com bancos PostgreSQL exclusivos de teste (harness), Chrome he
 | `node tests/modals-ui.mjs` (novo) | 59 modais abertos (desktop + celular) sem rolagem no diálogo, transbordo, `fieldset` padrão, ⓘ grande, tooltip no X ou “Fechar” duplicado; capturas e folhas de contato em `artifacts/qa/modais/` |
 | `node tests/help-ui.mjs` | 422 verificações, 40 capturas: ⓘ ≤ 20 px e a até 16 px do texto, popup centralizado com fundo escurecido e X, foco/Esc, editor de cena sem rolagem externa, “Continuar” compacto, sem erro de CSP |
 
+Complemento (formulários, foco e fade):
+
+- `node tests/forms-ui.mjs` (novo): 64 páginas (32 rotas × desktop/celular) sem desalinhamento nem foco cortado.
+- `node tests/modals-ui.mjs`: 61 modais (incluindo o editor de cena), agora também com alinhamento e foco.
+- `node tests/help-ui.mjs`: 422 verificações.
+- `node --test tests/*.test.mjs`: 137 passaram.
+- Medição de opacidade: o modal e a ajuda entram e saem em cerca de 160 ms, com `display: none` só após a opacidade chegar a 0.
+- Limite: a verificação de foco desliga a transição do elemento durante a leitura, porque com movimento reduzido a regra global de 0,01 ms faria ler o valor inicial.
+
 Correção encontrada pela suíte: no celular, o `<span class="sr-only">` (posição absoluta) de cabeçalhos de `.data-table` escapava da rolagem horizontal e alargava o viewport de layout para 799 px, o que descentralizava diálogos e popups no Painel admin. Agora `.data-table-wrap` tem `position: relative`.
 
 ## Catálogo de músicas do servidor e trilha sonora da sessão (ADR-049) — 9 de novembro de 2026

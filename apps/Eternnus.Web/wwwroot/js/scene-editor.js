@@ -569,7 +569,6 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       root.removeEventListener("click", onClick); root.removeEventListener("input", onInput); root.removeEventListener("change", onChange); root.removeEventListener("submit", onSubmit);
       dialog.removeEventListener("cancel", onCancel); closeButton.removeEventListener("click", guardedClose, true);
       disposeToggle(); stopMode(); disposePicker(); disposeGrid?.dispose();
-      dialog.classList.remove("wide", "scene-editor-modal");
       board.destroy();
       onClose?.({ id: saved.id });
       resolve({ id: saved.id });

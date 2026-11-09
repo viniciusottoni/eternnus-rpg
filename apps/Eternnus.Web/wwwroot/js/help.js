@@ -176,12 +176,13 @@ export function installHelp() {
       const controls = [...group.querySelectorAll('input:not([type=hidden]), select, textarea')];
       if (!controls.length) continue;
       let hints = [...group.querySelectorAll('small:not([aria-hidden=true])')];
-      // Busca não precisa de limite visível: o campo só filtra a lista.
-      if (!hints.length && group.matches('.field') && controls.length === 1 && controls[0].type !== 'search' && !controls[0].hasAttribute('aria-describedby')) {
+      // Filtros e buscas não ganham dica automática: só filtram listas, e a dica desalinha a barra horizontal.
+      // Limite sozinho só aparece em texto longo; num campo curto opcional o navegador já impede passar do limite.
+      if (!hints.length && group.matches('.field') && !group.closest('[role=search]') && controls.length === 1 && controls[0].type !== 'search' && !controls[0].hasAttribute('aria-describedby')) {
         const input = controls[0], parts = [];
         if (input.required) parts.push('Campo obrigatório.');
         if (input.hasAttribute('minlength')) parts.push(`Mínimo de ${input.getAttribute('minlength')} caracteres.`);
-        if (input.hasAttribute('maxlength')) parts.push(`Até ${input.getAttribute('maxlength')} caracteres.`);
+        if (input.hasAttribute('maxlength') && (parts.length || input.matches('textarea'))) parts.push(`Até ${input.getAttribute('maxlength')} caracteres.`);
         if (input.type === 'number') {
           if (input.min && input.max) parts.push(`Use de ${input.min} a ${input.max}.`);
           else if (input.min) parts.push(`Mínimo: ${input.min}.`);

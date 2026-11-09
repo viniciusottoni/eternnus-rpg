@@ -93,7 +93,6 @@ export function createScenePanel({ base, campaign, getLive }) {
     maps = maps || await api(`/campaigns/${campaign.id}/maps`);
     modal("Usar outro cenário agora", `<form id="ts-improvise"><p class="form-help">Escolher só muda a prévia. A troca acontece ao clicar em “Apresentar agora”. ${l.play?.scene ? "A cena atual guarda o estado para você retomar depois." : ""}</p><fieldset class="ts-improvise-kind"><legend>Mostrar como</legend><label class="check"><input type="radio" name="as" value="tileset" checked> Mapa com grade</label><label class="check"><input type="radio" name="as" value="cartographic"> Imagem sem grade</label></fieldset>${mapChoices(maps.items, l.map?.key, "Cenário", { recentKeys: recentMapKeys(data?.items || [], l.map?.key), complete, folders })}<p class="ts-improvise-pick" role="status"></p>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">Apresentar agora</button></div></form>`);
     $("#modal").classList.add("wide");
-    $("#modal").addEventListener("close", () => $("#modal").classList.remove("wide"), { once: true });
     const form = $("#ts-improvise");
     const status = form.querySelector(".ts-improvise-pick");
     const dispose = mountMapChoices(form, maps.items, { onChange: (m) => { status.textContent = m ? `Selecionado: ${m.name} (${mapTypeLabel(m)}). Ainda não apresentado.` : ""; if (m && m.kind !== "tileset") form.querySelector('input[name=as][value="cartographic"]').checked = true; } });
