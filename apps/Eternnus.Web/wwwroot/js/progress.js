@@ -70,7 +70,7 @@ function overviewView(d) {
   ${milestonesView(d.achievements)}
   <div class="progress-columns">
     <section class="progress-panel metal" aria-labelledby="xp-rules-title">
-      <div class="section-title"><h2 id="xp-rules-title">Como ganhar XP</h2>${helpButton("progresso.jornada.pontos", "Pontos e limites diários")}<span>TETOS DE RECOMPENSA · DIA UTC</span></div>
+      <div class="section-title"><h2 id="xp-rules-title">Como ganhar XP${helpButton("progresso.jornada.pontos", "Pontos e limites diários")}</h2><span>TETOS DE RECOMPENSA · DIA UTC</span></div>
       ${rulesTable(d.rules)}
     </section>
     <section class="progress-panel metal" aria-labelledby="unlocks-title">

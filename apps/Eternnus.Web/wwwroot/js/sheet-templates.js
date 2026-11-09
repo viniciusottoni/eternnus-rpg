@@ -260,7 +260,7 @@ function templateRow(t) {
 }
 function openCreate(systems) {
   if (!systems.length) {
-    modal("Nova ficha-modelo", `<p>Não foi possível carregar os sistemas de RPG agora. Atualize a página e tente novamente.</p><div class="form-actions">${button("Fechar", "modal-close", "", "subtle")}</div>`);
+    modal("Nova ficha-modelo", `<p>Não foi possível carregar os sistemas de RPG agora. Atualize a página e tente novamente.</p>`);
     return;
   }
   const preset = listState.systemId;
@@ -317,7 +317,7 @@ async function renderTemplatePage(gen, id) {
       ? `<a class="button primary" href="#${routeOf(t.id, "versions", draft.id)}">Editar rascunho v${Number(draft.number)}</a>`
       : button(t.currentVersion ? "+ Nova versão" : "+ Criar rascunho", "tpl-version-new", "", "primary")
   }</div></div>
-<section class="tpl-section"><div class="section-title"><h2>Versões</h2>${helpButton("modelos.versao.publicacao", "Rascunho e publicação")}<span>PUBLICADAS SÃO IMUTÁVEIS</span></div>
+<section class="tpl-section"><div class="section-title"><h2>Versões${helpButton("modelos.versao.publicacao", "Rascunho e publicação")}</h2><span>PUBLICADAS SÃO IMUTÁVEIS</span></div>
 ${
   versions.length
     ? `<div class="data-table-wrap"><table class="data-table tpl-versions"><thead><tr><th scope="col">Versão</th><th scope="col">Situação</th><th scope="col">Criada</th><th scope="col">Publicada</th><th scope="col">PDF</th><th scope="col" class="num">Fichas</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead><tbody>${versions

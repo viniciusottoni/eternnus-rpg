@@ -70,7 +70,7 @@ export function mountSoundtrack({ sessionId, campaignId, chipHost, onOpen = () =
   function panelHtml() {
     const master = isMaster();
     return `<section class="soundtrack" aria-labelledby="st-heading">
-      <div class="section-title"><h2 id="st-heading">Trilha sonora</h2>${helpButton("mesa.trilha.compartilhada", "Trilha sonora compartilhada")}</div>
+      <div class="section-title"><h2 id="st-heading">Trilha sonora${helpButton("mesa.trilha.compartilhada", "Trilha sonora compartilhada")}</h2></div>
       <div class="st-now metal" data-status="idle">
         <p class="st-track"><span aria-hidden="true">♪</span> <strong class="st-title">Sem trilha</strong></p>
         <p class="st-status" id="st-status">${master ? "Busque uma faixa do catálogo para tocar para todos." : "O mestre ainda não escolheu uma música."}</p>

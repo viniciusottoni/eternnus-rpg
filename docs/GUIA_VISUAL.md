@@ -69,10 +69,10 @@ Texto funcional usa fontes do sistema. O produto não depende de serviço extern
 | Botão/link de ação | `ui.button`, `.button`, `.primary`, `.subtle`, `.danger` | Botões para comandos, links para navegação. Estado disabled deve impedir ação e ter motivo quando relevante. |
 | Campo `.field` | `ui.field` / `ui.passwordField` | Label permanente, autocomplete apropriado, limites e erro junto ao formulário. Nunca usar placeholder como único label. |
 | Tooltip `.tooltip` | `help.tip`, `help.installHelp` | Até 80 caracteres; hover de 400 ms, foco imediato, Esc e aria-describedby. Não abre por toque. |
-| Botão ⓘ `.help-button` | `help.helpButton` | Irmão do label em `.field-label`; nome Ajuda: tema, expanded/controls/haspopup; alvo de 44 × 44 px. |
-| Popup de ajuda `.help-popup.metal` | `help.js` | Popover único não modal com foco e retorno, Fechar visível e folha móvel acima da navegação/área segura. Ver [AJUDA_CONTEXTUAL.md](AJUDA_CONTEXTUAL.md). |
+| Botão ⓘ `.help-button` | `help.helpButton` | 18 px visíveis, colado ao texto (dentro do título/legenda ou ao lado do label em `.field-label`); nome Ajuda: tema, expanded/controls/haspopup; área de toque por pseudo-elemento. |
+| Popup de ajuda `.help-popup` | `help.js` | Popover único não modal, sempre centralizado, fundo levemente escurecido, foco e retorno, fecha pelo X. Ver [AJUDA_CONTEXTUAL.md](AJUDA_CONTEXTUAL.md). |
 | Formulário | `ui.submitForm` | Impede submissão repetida, sinaliza `aria-busy`, preserva erro legível e restaura o botão. |
-| Modal | `ui.modal`, `#modal` | Título visível, botão fechar, cancelamento e foco de diálogo. Não abrir diálogos aninhados. |
+| Modal | `ui.modal`, `#modal` | Cabeçalho fixo com título e X (sem tooltip e sem botão de texto “Fechar” duplicado); só o corpo rola, dentro da borda; formulários mantêm Cancelar. `fieldset` usa a moldura dourada discreta comum. Não abrir diálogos aninhados. |
 | Banner de confirmação | `layout.renderHome` | Explica o bloqueio, mostra e-mail e oferece reenviar/já confirmei. Não promete entrega antes de resposta do servidor. |
 | Card de destino `.feature-card` | `layout.renderHome` | Acesso verificado usa link; pendente usa superfície não clicável com indicação de bloqueio. |
 | Linha `.campaign-row` | `campaigns.js` | Capa atmosférica, título, papel, metadados de atualização e ações. Ações vêm das capacidades retornadas e das regras compartilhadas. |
@@ -112,7 +112,7 @@ Os atributos `data-action` são comandos de interface, não autorização. Valor
 
 ## Movimento e acessibilidade
 
-Ajuda: entrada por fade de 120 ms, removido com movimento reduzido. O popup recebe foco ao abrir; Esc, Fechar e clique fora devolvem ao ⓘ. Após re-render, usar o gatilho substituto; na ausência dele, fechar com foco no conteúdo principal. Esc fecha primeiro a ajuda e depois pode cancelar o modo da mesa. Texto necessário ao preenchimento permanece visível e associado por aria-describedby.
+Ajuda: entrada por fade de 120 ms, removido com movimento reduzido. O popup recebe foco ao abrir; Esc, o X e clique fora devolvem ao ⓘ. Após re-render, usar o gatilho substituto; na ausência dele, fechar com foco no conteúdo principal. Esc fecha primeiro a ajuda e depois pode cancelar o modo da mesa. Texto necessário ao preenchimento permanece visível e associado por aria-describedby.
 
 Movimento é ambiental: névoa lenta, brasas discretas, brilho suave e transição de entrada. Na mesa, o movimento comunica estado: chamas e água do tileset, revelação do mapa ao trocar, arauto de turno, brilho da barra no "Seu turno", lampejo vermelho/verde no cartão quando a vida muda e entrada de novos registros com dado girando. Tudo isso é removido ou fica estático com `prefers-reduced-motion`; o canvas pausa em aba oculta. Controles respondem rapidamente; não dançam nem mudam de posição durante a tarefa. Evitar parallax dependente do mouse, flashes e grandes deslocamentos de texto.
 
@@ -189,8 +189,8 @@ Seguir [AJUDA_CONTEXTUAL.md](AJUDA_CONTEXTUAL.md).
 | Componente | Fonte | Contrato |
 | --- | --- | --- |
 | Tooltip `.tooltip` | `help.tip`, `help.installHelp` | Até 80 caracteres, hover 400 ms, foco imediato, Esc, aria-describedby, sem abertura por toque. |
-| Botão ⓘ `.help-button` | `help.helpButton` | Ouro/metal, ícone serifado, alvo 44 px, irmão do label, nome Ajuda: tema, expanded/controls/haspopup. |
-| Popup `.help-popup.metal` | `help.js` | Popover único não modal, foco inicial e retorno, folha móvel acima da barra e área segura, Fechar sempre visível. |
+| Botão ⓘ `.help-button` | `help.helpButton` | Ouro discreto, “i” serifado de 18 px, colado ao texto, nome Ajuda: tema, expanded/controls/haspopup. |
+| Popup `.help-popup` | `help.js` | Popover único não modal, centralizado com fundo escurecido, foco inicial e retorno, fecha pelo X. |
 
 Estados obrigatórios da ajuda: catálogo carregando, falha curta com nova tentativa no popup e chave inexistente sem quebrar a tela (omitida em produção). Movimento e acessibilidade: fade curto, sem animação com movimento reduzido; Esc fecha primeiro a ajuda, depois permite cancelar o modo da mesa. Texto necessário ao preenchimento é sempre visível com aria-describedby.
 

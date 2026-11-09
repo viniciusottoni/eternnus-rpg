@@ -76,7 +76,7 @@ export function renderMusicCatalog(view) {
     result = null,
     timer = 0,
     previewId = "";
-  view.innerHTML = `<div class="section-title"><h2>Catálogo de músicas</h2>${helpButton("admin.musicas.catalogo", "Catálogo de músicas")}${button("+ Enviar faixa", "am-upload", "", "primary")}</div>
+  view.innerHTML = `<div class="section-title"><h2>Catálogo de músicas${helpButton("admin.musicas.catalogo", "Catálogo de músicas")}</h2>${button("+ Enviar faixa", "am-upload", "", "primary")}</div>
     <p class="form-help">${RIGHTS} Os mestres buscam estas faixas pelo nome no painel “Trilha” da mesa; jogadores só recebem a faixa que estiver tocando.</p>
     <p class="ml-usage" id="am-usage" aria-live="polite"></p>
     <form class="ml-search" role="search"><div class="field"><label for="am-search">Buscar faixa</label><input id="am-search" type="search" maxlength="100" autocomplete="off" spellcheck="false"></div></form>

@@ -261,7 +261,7 @@ async function renderUser(ctx) {
     ctx.view.innerHTML = `<a class="back-link" href="#admin/users">← Usuários</a><section class="metal admin-profile"><div class="admin-profile-id">${avatar(u.avatarUrl, u.name)}<div><h2>${esc(u.name)}${u.isSelf ? ' <span class="badge">VOCÊ</span>' : ""}</h2><p class="admin-email">${esc(u.email)}</p><p>${roleChip(u.role)} ${userStatusChip(u)}${suspended ? ` <span class="muted small">Suspenso ${esc(suspendedText(u.suspendedUntil))}</span>` : ""}</p></div></div><div class="admin-actions">${button("♛ Alterar papel", "admin-role", u.id, "subtle", u.isSelf ? 'disabled aria-describedby="self-note"' : "")}${suspended ? button("↺ Reativar conta", "admin-unsuspend", u.id, "primary") : button("⛔ Suspender", "admin-suspend", u.id, "danger", canSuspend ? "" : 'disabled aria-describedby="suspend-note"')}<small id="self-note" class="muted small">${u.isSelf ? "Você não altera o próprio papel nem se suspende. Peça a outro admin." : ""}</small><small id="suspend-note" class="muted small">${!u.isSelf && u.role === "admin" ? "Admins não podem ser suspensos: rebaixe o papel primeiro." : ""}</small></div></section>
 <div class="stat-grid admin-user-stats">${tile(u.level, "nível", `${number(u.xp)} XP`)}${tile(u.stats.campaignsAsMaster, "campanhas como mestre")}${tile(u.stats.campaignsAsMember, "campanhas como jogador")}${tile(u.stats.characters, "personagens")}</div>
 <dl class="admin-facts metal"><div><dt>Cadastro</dt><dd>${esc(when(u.createdAt))}</dd></div><div><dt>Último acesso</dt><dd>${esc(when(u.lastSeenAt, "nunca"))}</dd></div><div><dt>E-mail</dt><dd>${u.verified ? "Confirmado" : "Aguardando confirmação"}</dd></div><div><dt>Suspensão</dt><dd>${suspended ? esc(suspendedText(u.suspendedUntil)) : "Nenhuma"}</dd></div></dl>
-<div class="section-title"><h2>Histórico administrativo</h2>${helpButton("admin.acoes.auditoria", "Motivo e auditoria")}${button("Ver na auditoria →", "admin-user-audit", u.id, "text-button")}</div>${u.audit.length ? auditTable(u.audit, "Ações administrativas sobre esta conta") : blank("Nenhuma ação registrada.", "Mudanças de papel e suspensões desta conta aparecerão aqui.")}`;
+<div class="section-title"><h2>Histórico administrativo${helpButton("admin.acoes.auditoria", "Motivo e auditoria")}</h2>${button("Ver na auditoria →", "admin-user-audit", u.id, "text-button")}</div>${u.audit.length ? auditTable(u.audit, "Ações administrativas sobre esta conta") : blank("Nenhuma ação registrada.", "Mudanças de papel e suspensões desta conta aparecerão aqui.")}`;
     fillAuditData(ctx.view, u.audit);
   });
 }
@@ -269,7 +269,7 @@ function roleModal(ctx) {
   const u = ctx.user;
   modal(
     "Alterar papel",
-    `<p class="modal-lead">${esc(u.name)} hoje é <strong>${esc(roleLabel(u.role))}</strong>.</p><form id="admin-role-form"><fieldset class="admin-choice"><legend>Novo papel</legend>${helpButton("admin.usuarios.papeis", "Papéis da plataforma")}${Object.entries(ROLE_LABELS)
+    `<p class="modal-lead">${esc(u.name)} hoje é <strong>${esc(roleLabel(u.role))}</strong>.</p><form id="admin-role-form"><fieldset class="admin-choice"><legend>Novo papel${helpButton("admin.usuarios.papeis", "Papéis da plataforma")}</legend>${Object.entries(ROLE_LABELS)
       .map(([key, label]) => `<label><input type="radio" name="role" value="${key}" ${key === u.role ? "checked" : ""} required> <span><strong>${label}</strong><small>${{ common: "Joga, mestra e participa da Guilda.", ambassador: "Publica na biblioteca e nas fichas-modelo e modera a Guilda (auditado).", admin: "Acesso total ao painel, inclusive papéis e suspensões." }[key]}</small></span></label>`)
       .join("")}</fieldset>${reasonField()}${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">Salvar papel</button></div></form>`,
   );
@@ -388,7 +388,7 @@ async function renderCampaign(ctx) {
             "Sessões recentes da campanha",
           )
         : '<p class="muted small">Nenhuma sessão realizada.</p>'
-    }</section></div><div class="section-title"><h2>Histórico administrativo</h2>${helpButton("admin.acoes.auditoria", "Motivo e auditoria")}${button("Ver na auditoria →", "admin-campaign-audit", c.id, "text-button")}</div>`;
+    }</section></div><div class="section-title"><h2>Histórico administrativo${helpButton("admin.acoes.auditoria", "Motivo e auditoria")}</h2>${button("Ver na auditoria →", "admin-campaign-audit", c.id, "text-button")}</div>`;
   });
 }
 function deleteCampaignModal(ctx) {

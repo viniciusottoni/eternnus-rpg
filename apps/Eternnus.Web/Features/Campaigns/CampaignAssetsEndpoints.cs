@@ -15,6 +15,7 @@ public static class CampaignAssetsEndpoints
         api.MapDelete("/library/{id:guid}", async (Guid campaignId, Guid id, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeleteTextAsync(campaignId, id, Id(u), ct); return Results.NoContent(); });
         api.MapGet("/maps", (Guid campaignId, Guid? folderId, int? page, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.MapTreeAsync(campaignId, Id(u), folderId, page ?? 1, ct));
         api.MapPost("/folders", (Guid campaignId, CampaignFolderInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.CreateFolderAsync(campaignId, Id(u), x, ct));
+        api.MapPut("/folders/{id:guid}", (Guid campaignId, Guid id, CampaignFolderNameInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.RenameFolderAsync(campaignId, id, Id(u), x, ct));
         api.MapDelete("/folders/{id:guid}", async (Guid campaignId, Guid id, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeleteFolderAsync(campaignId, id, Id(u), ct); return Results.NoContent(); });
         api.MapPost("/maps", async (Guid campaignId, HttpRequest request, DocumentFiles files, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
         {

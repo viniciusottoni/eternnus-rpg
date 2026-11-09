@@ -43,6 +43,19 @@ public sealed class CampaignAssetsTests : IAsyncLifetime
         Assert.Equal(409, (await Assert.ThrowsAsync<RuleException>(() => service.DeleteFolderAsync(campaign.Id, root.Id, "master", default))).Status);
     }
     [Fact]
+    public async Task Folder_rename_keeps_place_and_requires_master()
+    {
+        var root = await service.CreateFolderAsync(campaign.Id, "master", new("Raiz", null), default);
+        var child = await service.CreateFolderAsync(campaign.Id, "master", new("Filha", root.Id), default);
+        var renamed = await service.RenameFolderAsync(campaign.Id, child.Id, "master", new("  Cidade baixa  "), default);
+        Assert.Equal(("Cidade baixa", root.Id), (renamed.Name, renamed.ParentId));
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => service.RenameFolderAsync(campaign.Id, child.Id, "master", new(" "), default))).Status);
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => service.RenameFolderAsync(campaign.Id, child.Id, "master", new(new string('a', 101)), default))).Status);
+        Assert.Equal(403, (await Assert.ThrowsAsync<RuleException>(() => service.RenameFolderAsync(campaign.Id, child.Id, "player", new("Negada"), default))).Status);
+        Assert.Equal(404, (await Assert.ThrowsAsync<RuleException>(() => service.RenameFolderAsync(campaign.Id, Guid.NewGuid(), "master", new("Sumida"), default))).Status);
+        Assert.Equal("Cidade baixa", (await db.Set<CampaignMapFolder>().SingleAsync(f => f.Id == child.Id)).Name);
+    }
+    [Fact]
     public async Task Private_images_only_reach_players_while_selected_in_an_active_session()
     {
         var map = new CampaignMap { CampaignId = campaign.Id, Name = "Oculto", Content = [1, 2, 3], Width = 100, Height = 100 };

@@ -25,6 +25,11 @@ try {
   check((await player("/api/library?systemId=none")).total, 0);
   const folder = await master(base + "/folders", "POST", { name: "Mundo", parentId: null });
   const child = await master(base + "/folders", "POST", { name: "Cidade", parentId: folder.id });
+  const renamed = await master(`${base}/folders/${folder.id}`, "PUT", { name: "  Mundo antigo  " });
+  check([renamed.id, renamed.name, renamed.parentId], [folder.id, "Mundo antigo", null]);
+  await player(`${base}/folders/${folder.id}`, "PUT", { name: "Invasão" }, 403);
+  await master(`${base}/folders/${folder.id}`, "PUT", { name: " " }, 400);
+  await outsider(`${base}/folders/${folder.id}`, "PUT", { name: "Fora" }, 404);
   const bytes = await readFile(new URL("./fixtures/avatar.png", import.meta.url));
   async function upload(name, destination = base, destinationFolder = child.id) {
     const form = new FormData();

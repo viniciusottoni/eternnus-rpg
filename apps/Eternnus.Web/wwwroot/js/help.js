@@ -14,7 +14,7 @@ export function helpButton(key, label) {
     return '';
   }
   if (!canReadHelp(HELP_KEYS[key], state.user, context())) return '';
-  return `<button type="button" class="help-button metal" data-help="${esc(key)}" aria-label="Ajuda: ${esc(label)}" aria-expanded="false" aria-controls="help-popup" aria-haspopup="dialog"><span aria-hidden="true">i</span></button>`;
+  return `<button type="button" class="help-button" data-help="${esc(key)}" aria-label="Ajuda: ${esc(label)}" aria-expanded="false" aria-controls="help-popup" aria-haspopup="dialog"><span aria-hidden="true">i</span></button>`;
 }
 
 let installed = false, popup, tooltip, trigger, tipTrigger, hoverTarget, focusedTarget;
@@ -76,17 +76,10 @@ function availableBottom() {
   }
   return bottom;
 }
-function place(el, origin, sheet = false) {
+function place(el, origin) {
   if (!origin?.isConnected) return;
   const bottom = availableBottom(), rect = origin.getBoundingClientRect();
   el.style.maxHeight = `${Math.max(44, bottom - 24)}px`;
-  if (sheet && matchMedia('(max-width: 760px)').matches) {
-    el.style.left = '12px';
-    el.style.top = 'auto';
-    el.style.bottom = `${Math.max(12, innerHeight - bottom + 12)}px`;
-    return;
-  }
-  el.style.bottom = 'auto';
   const size = el.getBoundingClientRect(), gap = 8;
   el.style.left = `${Math.max(8, Math.min(innerWidth - size.width - 8, rect.left + rect.width / 2 - size.width / 2))}px`;
   const above = rect.top - size.height - gap;
@@ -129,7 +122,6 @@ async function openHelp(button) {
   popupStatus('Carregando ajuda…');
   mount(popup, button);
   if (!popup.matches(':popover-open')) popup.showPopover();
-  place(popup, button, true);
   popup.focus({ preventScroll: true });
   const module = catalogModule(key);
   try {
@@ -153,7 +145,6 @@ async function openHelp(button) {
       next.setAttribute('aria-label', `Ajuda: ${relatedTitle}`); next.setAttribute('aria-controls', 'help-popup'); next.setAttribute('aria-expanded', 'false'); next.setAttribute('aria-haspopup', 'dialog');
     }
     if (entry.route && safeHelpRoute(entry.route)) { const link = textNode('a', 'Saiba mais', content); link.href = entry.route; }
-    place(popup, currentTrigger(), true);
   } catch {
     if (version !== request || !popup.matches(':popover-open')) return;
     popupStatus('Não foi possível carregar esta ajuda.');
@@ -170,7 +161,7 @@ export function installHelp() {
   popup.setAttribute('popover', 'auto'); popup.setAttribute('role', 'dialog'); popup.setAttribute('aria-labelledby', 'help-title'); popup.tabIndex = -1;
   const header = document.createElement('header'); popup.append(header);
   textNode('h2', 'Ajuda', header).id = 'help-title';
-  const close = textNode('button', 'Fechar', header); close.type = 'button'; close.dataset.helpClose = ''; close.className = 'subtle';
+  const close = textNode('button', '×', header); close.type = 'button'; close.dataset.helpClose = ''; close.className = 'icon-button help-close'; close.setAttribute('aria-label', 'Fechar ajuda');
   const content = document.createElement('div'); content.id = 'help-content'; popup.append(content);
   tooltip = document.createElement('div'); tooltip.id = 'help-tooltip'; tooltip.className = 'tooltip'; tooltip.setAttribute('role', 'tooltip'); tooltip.setAttribute('popover', 'manual');
   document.body.append(popup, tooltip);
@@ -185,7 +176,8 @@ export function installHelp() {
       const controls = [...group.querySelectorAll('input:not([type=hidden]), select, textarea')];
       if (!controls.length) continue;
       let hints = [...group.querySelectorAll('small:not([aria-hidden=true])')];
-      if (!hints.length && group.matches('.field') && controls.length === 1 && !controls[0].hasAttribute('aria-describedby')) {
+      // Busca não precisa de limite visível: o campo só filtra a lista.
+      if (!hints.length && group.matches('.field') && controls.length === 1 && controls[0].type !== 'search' && !controls[0].hasAttribute('aria-describedby')) {
         const input = controls[0], parts = [];
         if (input.required) parts.push('Campo obrigatório.');
         if (input.hasAttribute('minlength')) parts.push(`Mínimo de ${input.getAttribute('minlength')} caracteres.`);
@@ -207,7 +199,8 @@ export function installHelp() {
     }
     const elements = [...(root.matches?.('[data-tip], button[aria-label]') ? [root] : []), ...root.querySelectorAll('[data-tip], button[aria-label]')];
     for (const el of elements) {
-      if (!el.dataset.tip && el.matches('button[aria-label]:not([data-help])') && !/\p{L}/u.test(el.textContent)) {
+      // Botões de fechar (×) já são óbvios: sem tooltip "Fechar" sobre o X.
+      if (!el.dataset.tip && el.matches('button[aria-label]:not([data-help]):not([data-help-close]):not(#close-modal)') && !/^Fechar\b/.test(el.getAttribute('aria-label')) && !/\p{L}/u.test(el.textContent)) {
         const name = el.getAttribute('aria-label');
         if (validTip(name)) el.dataset.tip = name;
       }
@@ -266,7 +259,6 @@ export function installHelp() {
   }, true);
   const reposition = () => {
     if (tipTrigger?.isConnected) place(tooltip, tipTrigger); else if (tipTrigger) hideTip();
-    if (popup.matches(':popover-open')) place(popup, currentTrigger(), true);
   };
   window.addEventListener('resize', reposition);
   document.addEventListener('scroll', reposition, true);

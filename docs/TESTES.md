@@ -1,5 +1,20 @@
 # Validação
 
+## Revisão de modais, ajuda e Mapas e cenários (ADR-050) — 9 de novembro de 2026
+
+Validação local com bancos PostgreSQL exclusivos de teste (harness), Chrome headless, desktop 1440×900 e viewport móvel 390×844. A viewport não equivale a aparelho físico, e não houve teste com leitor de tela real.
+
+| Verificação | Resultado |
+| --- | --- |
+| `dotnet build Eternnus.sln` | 0 erros, 0 avisos |
+| `dotnet test tests/Eternnus.Tests --filter CampaignAssets` | 7 passaram, incluindo `Folder_rename_keeps_place_and_requires_master` |
+| `node --test tests/*.test.mjs` | 137 passaram |
+| `node tests/campaign-assets.mjs` | 84 verificações (renomear pasta: mestre 200, nome em branco 400, jogador 403, fora da campanha 404) |
+| `node tests/modals-ui.mjs` (novo) | 59 modais abertos (desktop + celular) sem rolagem no diálogo, transbordo, `fieldset` padrão, ⓘ grande, tooltip no X ou “Fechar” duplicado; capturas e folhas de contato em `artifacts/qa/modais/` |
+| `node tests/help-ui.mjs` | 422 verificações, 40 capturas: ⓘ ≤ 20 px e a até 16 px do texto, popup centralizado com fundo escurecido e X, foco/Esc, editor de cena sem rolagem externa, “Continuar” compacto, sem erro de CSP |
+
+Correção encontrada pela suíte: no celular, o `<span class="sr-only">` (posição absoluta) de cabeçalhos de `.data-table` escapava da rolagem horizontal e alargava o viewport de layout para 799 px, o que descentralizava diálogos e popups no Painel admin. Agora `.data-table-wrap` tem `position: relative`.
+
 ## Catálogo de músicas do servidor e trilha sonora da sessão (ADR-049) — 9 de novembro de 2026
 
 Validação local com bancos PostgreSQL exclusivos de teste e diretório de áudio temporário (`Music__Directory` do harness). Nenhuma partida real, ClamAV real ou aparelho físico foi usado. Revalidado depois da mudança de direção: catálogo global enviado pelo Admin; mestre só busca e reproduz.

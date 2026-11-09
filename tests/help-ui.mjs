@@ -58,6 +58,22 @@ try {
     }
     throw new Error('Teclado não alcançou '+selector);
   }
+  // ⓘ discreto e colado ao texto a que se refere (mesma linha, poucos pixels depois do texto anterior).
+  async function aligned(page, name) {
+    const items = await page.evaluate(() => [...document.querySelectorAll('.help-button')].filter((b) => b.checkVisibility()).map((b) => {
+      const r = b.getBoundingClientRect(), range = document.createRange();
+      range.setStart(b.parentElement, 0); range.setEndBefore(b);
+      // Ao lado de um controle (ex.: Instalar app), mede a partir da borda do controle, não do texto dentro dele.
+      const prev = b.previousElementSibling, control = prev && prev.matches('button, a, input, select') && prev.nextSibling === b ? prev.getBoundingClientRect() : null;
+      const last = control || [...range.getClientRects()].filter((x) => x.width > 0 && x.height > 0).at(-1);
+      return { key: b.dataset.help, size: Math.round(r.width), gap: last ? Math.round(r.left - last.right) : null, dy: last ? Math.round(r.top + r.height / 2 - (last.top + last.height / 2)) : null };
+    }));
+    check(items.length > 0, name+' tem ⓘ');
+    for (const i of items) {
+      check(i.size <= 20, `${name} ${i.key} discreto (${i.size}px)`);
+      if (i.gap !== null) check(i.gap >= 0 && i.gap <= 16 && Math.abs(i.dy) <= 10, `${name} ${i.key} ao lado do texto (gap ${i.gap}, dy ${i.dy})`);
+    }
+  }
   async function help(page, key, name, keyboard = false) {
     console.log('Verificando', name, key);
     const selector = `[data-help="${key}"]`, button = page.locator(selector).first();
@@ -69,15 +85,12 @@ try {
     check(await page.locator('#help-popup').evaluate((el) => document.activeElement === el), name+' foco no popup');
     check(await button.getAttribute('aria-expanded') === 'true', name+' expanded sincronizado');
     check(await page.locator('#help-popup').getAttribute('role') === 'dialog', name+' semântica de diálogo não modal');
-    if (name.includes('mobile')) {
-      const rect = await page.locator('#help-popup').boundingBox();
-      const bottom = await page.evaluate(() => {
-        const nav = document.querySelector('.table-bottom') || document.querySelector('.app-shell .sidebar nav');
-        return nav && getComputedStyle(nav).position === 'fixed' ? nav.getBoundingClientRect().top : innerHeight;
-      });
-      check(rect.y+rect.height <= bottom+1, name+' acima da navegação');
-      check(await page.locator('#help-popup').evaluate((el) => getComputedStyle(el).animationName === 'none'), name+' movimento reduzido');
-    }
+    // Padrão único: popup centralizado, fundo escurecido e só o X para fechar.
+    const rect = await page.locator('#help-popup').boundingBox(), viewport = page.viewportSize();
+    check(Math.abs(rect.x + rect.width / 2 - viewport.width / 2) <= 2 && Math.abs(rect.y + rect.height / 2 - viewport.height / 2) <= 2, name+' centralizado');
+    check(await page.locator('#help-popup').evaluate((el) => getComputedStyle(el, '::backdrop').backgroundColor !== 'rgba(0, 0, 0, 0)'), name+' fundo escurecido');
+    check(await page.locator('#help-popup [data-help-close]').evaluate((el) => el.textContent.trim() === '×' && el.getAttribute('aria-label') === 'Fechar ajuda' && !el.dataset.tip), name+' fecha só pelo X');
+    if (name.includes('mobile')) check(await page.locator('#help-popup').evaluate((el) => getComputedStyle(el).animationName === 'none'), name+' movimento reduzido');
     await shot(page,name);
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('#help-popup').matches(':popover-open'));
@@ -87,9 +100,15 @@ try {
   for (const mobile of [false,true]) {
     const suffix = mobile ? 'mobile' : 'desktop';
     const m = await pageFor(master,mobile), p = await pageFor(player,mobile), a = await pageFor(ambassador,mobile), ad = await pageFor(admin,mobile);
+    await go(m,'overview','#home-next .resume-card');
+    const resume = await m.locator('#home-next .resume-card').first().evaluate((card) => ({ card: card.getBoundingClientRect().width, button: card.querySelector('.button').getBoundingClientRect().width }));
+    check(resume.button < resume.card * 0.6, suffix+' Continuar sem ocupar o cartão inteiro');
+    await shot(m,`inicio-${suffix}`);
     await go(m,'settings','#avatar-form');
+    await aligned(m,`conta-${suffix}`);
     await help(m,'conta.perfil.avatar',`conta-${suffix}`,true);
     await go(m,'campaigns','[data-action=campaign-create]');
+    await aligned(m,`campanhas-${suffix}`);
     await help(m,'campanhas.lista.papeis',`campanhas-${suffix}`,true);
     const tip = m.locator('.level-chip');
     if (mobile) await m.locator('[data-action=nav-more]').click();
@@ -119,14 +138,25 @@ try {
     await help(m,'sessoes.abertura.unica',`sessoes-${suffix}`,true);
     await m.locator('#close-modal').click();
     await go(m,`campaign/${campaign.id}/prep`,'[data-action=pp-scene]');
+    await aligned(m,`preparo-${suffix}`);
+    await shot(m,`preparo-${suffix}`);
     await m.locator('[data-action=pp-scene][data-id="'+scene.id+'"]').click();
     await m.locator('.scene-editor').waitFor();
+    check(await m.locator('[data-action=se-close]').count() === 0, suffix+' editor sem botão Fechar duplicado');
+    check(await m.locator('#close-modal').evaluate((el) => !el.dataset.tip), suffix+' X do diálogo sem tooltip');
+    if (!mobile) check(await m.locator('#modal').evaluate((el) => el.scrollHeight <= el.clientHeight + 1), 'editor sem rolagem externa');
+    await m.locator('[data-action=se-tool][data-id=scenery]').first().click();
+    await m.locator('.se-scenery .map-choice').first().waitFor();
+    check(await m.locator('.se-kind .se-option').first().evaluate((l) => l.querySelector('small').getBoundingClientRect().top > l.querySelector('strong').getBoundingClientRect().bottom - 1), suffix+' tipo de cena com título e descrição em linhas separadas');
+    await aligned(m,`editor-${suffix}`);
+    await shot(m,`editor-cenario-${suffix}`);
     await help(m,'mesa.interface.apresentacao',`editor-basico-${suffix}`);
     await m.locator('[data-interface-toggle] input[name=se-interface][value=complete]').check();
     if (mobile) await m.locator('[data-se-category]').selectOption('scene');
     await m.locator('[data-action=se-tool][data-id=sceneSettings]').click();
     await help(m,'campanhas.cenas.alcance',`editor-completo-${suffix}`);
-    await m.locator('[data-action=se-close]').click();
+    await m.locator('#close-modal').click();
+    await m.waitForFunction(() => !document.querySelector('#modal').open);
     await go(m,`table/${campaign.id}`,'#t-turn .turn-actions');
     await help(m,'mesa.interface.apresentacao',`mesa-interface-${suffix}`,true);
     await m.locator('[data-interface-toggle] input[name=t-interface][value=complete]').check();

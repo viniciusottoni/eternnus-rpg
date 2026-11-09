@@ -322,7 +322,7 @@ function replyBox(data) {
   if (data.topic.deleted) return "";
   if (!data.canReply)
     return `<section class="guild-reply locked metal" role="note"><span aria-hidden="true">🔒</span> Este tópico foi trancado pela moderação e não recebe novas respostas.</section>`;
-  return `<section class="guild-reply metal" aria-labelledby="guild-reply-title"><h2 id="guild-reply-title">Sua resposta</h2>${helpButton("guilda.posts.util", "Marcar como útil")}${data.topic.locked ? '<p class="muted small">Tópico trancado: somente a equipe pode responder.</p>' : ""}<form id="guild-reply-form">${textareaField("reply", "Mensagem", LIMITS.bodyMax, LIMITS.bodyMin, "", 5, "Texto puro; links http(s) ficam clicáveis.").replace('name="reply"', 'name="body"')}${formError()}<div class="form-actions"><button type="submit" class="primary">Publicar resposta</button></div></form></section>`;
+  return `<section class="guild-reply metal" aria-labelledby="guild-reply-title"><h2 id="guild-reply-title">Sua resposta${helpButton("guilda.posts.util", "Marcar como útil")}</h2>${data.topic.locked ? '<p class="muted small">Tópico trancado: somente a equipe pode responder.</p>' : ""}<form id="guild-reply-form">${textareaField("reply", "Mensagem", LIMITS.bodyMax, LIMITS.bodyMin, "", 5, "Texto puro; links http(s) ficam clicáveis.").replace('name="reply"', 'name="body"')}${formError()}<div class="form-actions"><button type="submit" class="primary">Publicar resposta</button></div></form></section>`;
 }
 const findPost = (id) => topicData?.posts.find((p) => String(p.id) === String(id));
 
@@ -335,10 +335,10 @@ async function openAuthor(id) {
     const p = await api(`/progress/users/${encodeURIComponent(id)}`, "GET", undefined, { background: true });
     if (!$("#modal").open || body !== $("#modal-body")) return;
     const achievements = Array.isArray(p.achievements) ? p.achievements.slice(0, 12) : [];
-    body.innerHTML = `<div class="guild-profile"><img class="avatar" src="${esc(safeAvatar(p.avatarUrl))}" alt="" width="72" height="72" referrerpolicy="no-referrer"><div><h3>${esc(p.name || "Aventureiro")}</h3><p><span class="guild-level">Nível ${esc(Number(p.level) || 1)}</span> <span class="muted small">${esc(Number(p.xp || 0).toLocaleString("pt-BR"))} XP</span> ${badge(p.role)}</p></div></div><h4 class="guild-profile-title">Conquistas</h4>${achievements.length ? `<ul class="guild-achievements">${achievements.map((x) => `<li><span aria-hidden="true">${esc(x.icon || "✦")}</span> ${esc(x.title)}</li>`).join("")}</ul>` : '<p class="muted small">Nenhuma conquista ainda. Toda lenda começa em algum lugar.</p>'}<div class="form-actions">${button("Fechar", "modal-close", "", "subtle")}</div>`;
+    body.innerHTML = `<div class="guild-profile"><img class="avatar" src="${esc(safeAvatar(p.avatarUrl))}" alt="" width="72" height="72" referrerpolicy="no-referrer"><div><h3>${esc(p.name || "Aventureiro")}</h3><p><span class="guild-level">Nível ${esc(Number(p.level) || 1)}</span> <span class="muted small">${esc(Number(p.xp || 0).toLocaleString("pt-BR"))} XP</span> ${badge(p.role)}</p></div></div><h4 class="guild-profile-title">Conquistas</h4>${achievements.length ? `<ul class="guild-achievements">${achievements.map((x) => `<li><span aria-hidden="true">${esc(x.icon || "✦")}</span> ${esc(x.title)}</li>`).join("")}</ul>` : '<p class="muted small">Nenhuma conquista ainda. Toda lenda começa em algum lugar.</p>'}`;
     guardAvatars(body);
   } catch (error) {
-    if ($("#modal").open) body.innerHTML = `<p role="alert">${esc(error.message || "Não foi possível carregar o perfil.")}</p><div class="form-actions">${button("Fechar", "modal-close", "", "subtle")}</div>`;
+    if ($("#modal").open) body.innerHTML = `<p role="alert">${esc(error.message || "Não foi possível carregar o perfil.")}</p>`;
   }
 }
 
@@ -498,7 +498,7 @@ async function renderModeration(request) {
   else if (tab === "topics") body = await deletedTopicsPanel();
   else body = await reportsPanel(tab);
   if (stale(request)) return;
-  main.innerHTML = `<a class="back-link" href="#guild">← Salão da Guilda</a><div class="page-heading"><div><span class="eyebrow">GUARDIÕES DO SALÃO</span><h1>Moderação da Guilda</h1>${helpButton("guilda.equipe.moderacao", "Papéis e moderação")}<p>Denúncias, tópicos removidos e categorias. Toda decisão exige motivo e fica na auditoria.</p></div></div><nav class="page-tabs" aria-label="Seções da moderação">${tabs.map(([key, label]) => `<a href="#guild/moderation/${key}" ${key === tab ? 'aria-current="page" class="active"' : ""}>${label}</a>`).join("")}</nav>${body}`;
+  main.innerHTML = `<a class="back-link" href="#guild">← Salão da Guilda</a><div class="page-heading"><div><span class="eyebrow">GUARDIÕES DO SALÃO</span><h1>Moderação da Guilda${helpButton("guilda.equipe.moderacao", "Papéis e moderação")}</h1><p>Denúncias, tópicos removidos e categorias. Toda decisão exige motivo e fica na auditoria.</p></div></div><nav class="page-tabs" aria-label="Seções da moderação">${tabs.map(([key, label]) => `<a href="#guild/moderation/${key}" ${key === tab ? 'aria-current="page" class="active"' : ""}>${label}</a>`).join("")}</nav>${body}`;
 }
 async function reportsPanel(status) {
   const data = await api(`/guild/moderation/reports?status=${status}&page=${modState.page}`);
