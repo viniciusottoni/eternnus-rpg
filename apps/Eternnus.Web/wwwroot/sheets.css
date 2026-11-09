@@ -511,52 +511,6 @@
 .tpl-msg.is-ok {
   color: #cfe6c9;
 }
-.tpl-combo {
-  position: relative;
-}
-.tpl-combo input {
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-}
-.tpl-suggest {
-  position: absolute;
-  z-index: 5;
-  top: calc(100% + 4px);
-  right: 0;
-  left: 0;
-  max-height: 220px;
-  margin: 0;
-  padding: 4px;
-  overflow-y: auto;
-  list-style: none;
-  border: 1px solid var(--gold);
-  border-radius: 5px;
-  background: #121a19;
-  box-shadow: var(--shadow);
-}
-.tpl-suggest li {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 36px;
-  align-items: center;
-  padding: 6px 9px;
-  color: var(--text);
-  font: 13px ui-monospace, Consolas, monospace;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.tpl-suggest li small {
-  overflow: hidden;
-  color: var(--muted);
-  font: 11px system-ui, sans-serif;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tpl-suggest li[aria-selected="true"],
-.tpl-suggest li:hover {
-  background: #c6a46326;
-  color: var(--bright);
-}
 .tpl-list-title {
   margin: 16px 0 6px !important;
   color: var(--gold) !important;

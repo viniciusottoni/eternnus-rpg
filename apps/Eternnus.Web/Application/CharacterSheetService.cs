@@ -4,6 +4,9 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
 
+/// <summary>Atributo disponível em fórmulas: nome usado com @ e rótulo exibido.</summary>
+public sealed record FormulaField(string Name, string Label);
+
 /// <summary>Gravação da ficha baseada em modelo: valores por nome de campo (calculados nunca vêm do cliente).
 /// Envio parcial: somente os campos presentes mudam. <see cref="Actions"/> nulo preserva as ações do jogador.</summary>
 public record CharacterSheetInput(Dictionary<string, JsonElement>? Values, List<CharacterAction>? Actions, int Revision, bool? Private = null);
@@ -401,6 +404,10 @@ public static class CharacterSheets
 
     /// <summary>Nomes numéricos (@nome) aceitos nas fórmulas das ações.</summary>
     public static IReadOnlySet<string> NumericNames(SheetTemplateVersion v) => SheetTemplateService.NumericNames(v.Fields);
+
+    /// <summary>Atributos que uma fórmula aceita como @nome (campos numéricos e calculados), com o rótulo para o autocompletar.</summary>
+    public static IEnumerable<FormulaField> FormulaFields(IEnumerable<SheetField> fields) =>
+        fields.Where(f => f.Type is SheetFieldTypes.Number or SheetFieldTypes.Computed).Select(f => new FormulaField(f.Name, string.IsNullOrWhiteSpace(f.Label) ? f.Name : f.Label));
 
     /// <summary>Ações da versão do modelo (identificador "t:chave") seguidas das ações do jogador.</summary>
     public static List<object> CombinedActions(SheetTemplateVersion v, IEnumerable<CharacterAction>? own) =>

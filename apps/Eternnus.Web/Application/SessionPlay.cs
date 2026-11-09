@@ -78,17 +78,29 @@ public partial class SessionService
     }
 
     // ---------- Rolagens ----------
-    /// <summary>Rolagem livre: construtor visual (<see cref="DiceSpec"/>) ou fórmula avançada. Visibilidade garantida no servidor e nos eventos.</summary>
+    /// <summary>
+    /// Rolagem livre: construtor visual (<see cref="DiceSpec"/>) ou fórmula avançada. Só o mestre escolhe quem vê
+    /// (mesa, só ele ou ele e jogadores escolhidos); a rolagem de jogador segue a configuração da mesa e ignora o que o cliente enviar.
+    /// </summary>
     public async Task<object> RollAsync(Guid sessionId, SessionRollInput x, string user, CancellationToken ct)
     {
         var label = Trim(x.Label, 60, "A descrição da rolagem aceita até 60 caracteres.", false);
-        var visibility = RollVisibility.Normalize(x.Visibility);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var a = await LockAsync(sessionId, user, ct); var me = await RequireJoinedAsync(a, user, ct);
         RequireNotPaused(a);
+        string visibility;
+        List<string> recipients = [];
+        if (a.IsMaster)
+        {
+            visibility = RollVisibility.Normalize(x.Visibility);
+            // "Jogador e mestre" numa rolagem do próprio mestre equivale a só ele.
+            if (visibility == RollVisibility.Master) visibility = RollVisibility.Blind;
+            if (visibility == RollVisibility.Group) recipients = await RecipientsAsync(a.Session.Id, x.Recipients, ct);
+        }
+        else visibility = (await Fog.SettingsAsync(a.Campaign, a.Session, ct)).PlayerRollVisibility;
         var who = await ActorAsync(me, user, ct);
         var (roll, notation, total) = await RollAnyAsync(me.IsMaster ? null : me.CharacterId, x.Spec, x.Formula, ct);
-        RecordRoll(a.Session, user, await NameAsync(user, ct), who, label, roll, notation, total, visibility, a.IsMaster, null);
+        RecordRoll(a.Session, user, await NameAsync(user, ct), who, label, roll, notation, total, visibility, a.IsMaster, null, recipients);
         await CommitAsync(tx, a.Session, ct);
         // Rolagem "somente mestre": quem rolou não recebe o resultado nem na resposta.
         return visibility == RollVisibility.Blind && !a.IsMaster ? new { hidden = true, visibility } : new { hidden = false, visibility, roll, total };
@@ -118,11 +130,30 @@ public partial class SessionService
         };
     }
 
-    void RecordRoll(GameSession s, string user, string author, string actor, string label, object roll, string notation, double total, string visibility, bool master, object? request)
+    /// <summary>Destinatários de uma rolagem em grupo: personagens desta sessão (fora o mestre), de 1 a <see cref="RollVisibility.MaxRecipients"/>.</summary>
+    async Task<List<string>> RecipientsAsync(Guid sessionId, List<Guid>? characterIds, CancellationToken ct)
+    {
+        var ids = (characterIds ?? []).Distinct().ToList();
+        if (ids.Count is < 1 or > RollVisibility.MaxRecipients) throw new RuleException(400, $"Escolha de 1 a {RollVisibility.MaxRecipients} jogadores para ver a rolagem.");
+        var users = await db.SessionParticipants.Where(p => p.SessionId == sessionId && !p.IsMaster && p.CharacterId != null && ids.Contains(p.CharacterId!.Value))
+            .Select(p => p.UserId).Distinct().ToListAsync(ct);
+        if (users.Count == 0 || await db.SessionParticipants.CountAsync(p => p.SessionId == sessionId && !p.IsMaster && p.CharacterId != null && ids.Contains(p.CharacterId!.Value), ct) != ids.Count)
+            throw new RuleException(400, "Escolha jogadores que estão nesta sessão.");
+        return users;
+    }
+
+    void RecordRoll(GameSession s, string user, string author, string actor, string label, object roll, string notation, double total, string visibility, bool master, object? request, List<string>? recipients = null)
     {
         var text = $"{actor} rolou {(label.Length > 0 ? label + ": " : "")}{notation} = {Formula.Format(total)}";
         var data = new { roll, label, actor, visibility, request };
         if (visibility == RollVisibility.Table) { Event(s, user, author, EventKinds.Roll, text, data); return; }
+        if (visibility == RollVisibility.Group)
+        {
+            // Original só para o mestre; cada destinatário recebe uma cópia privada (o mestre não vê as cópias).
+            Event(s, user, author, EventKinds.Roll, text, data, masterOnly: true);
+            foreach (var to in recipients ?? []) Event(s, user, author, EventKinds.Roll, text, data, masterOnly: true, visibleTo: to, recipientCopy: true);
+            return;
+        }
         if (visibility == RollVisibility.Master) { Event(s, user, author, EventKinds.Roll, text, data, masterOnly: true, visibleTo: master ? null : user); return; }
         Event(s, user, author, EventKinds.Roll, text, data, masterOnly: true);
         // Aviso sem resultado para quem rolou às cegas.
@@ -134,6 +165,7 @@ public partial class SessionService
     {
         var label = Trim(x.Label, 80, "Dê um nome de até 80 caracteres ao teste.");
         var visibility = RollVisibility.Normalize(x.Visibility);
+        if (!RollVisibility.IsPlayerChoice(visibility)) throw new RuleException(400, "Pedidos de teste: escolha mesa inteira, quem rolou e o mestre, ou somente o mestre.");
         var criterion = DiceRoller.ValidateCriterion(x.Target, x.Rule);
         string formula = ""; string? spec = null;
         if (x.Spec != null) spec = RollRequest.SerializeSpec(DiceRoller.Validate(x.Spec));

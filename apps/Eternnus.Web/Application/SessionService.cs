@@ -6,12 +6,13 @@ public record StartSessionInput(string Title, string Objective, string MapKind, 
 public record JoinSessionInput(Guid? CharacterId);
 public record SessionTextInput(string Content);
 public record SessionNoteInput(string Content, bool Shared);
-public record SessionRollInput(string? Formula, string? Label, DiceSpec? Spec = null, string? Visibility = null);
+public record SessionRollInput(string? Formula, string? Label, DiceSpec? Spec = null, string? Visibility = null, List<Guid>? Recipients = null);
 public record TurnInput(Guid? CharacterId, string? Key = null);
 public record ActionInput(string Kind, string? ActionId, string? Target);
 public record MapInput(string MapKind, string MapKey);
 public record MoveInput(int X, int Y);
-public record MapTokenInput(string Label, string Side, int X, int Y, bool Hidden = false, int? Light = null);
+/// <summary>Novo marcador. Com <c>TemplateId</c> ou <c>ImageUrl</c>, nasce uma criatura do mestre com ficha/imagem ligada ao marcador.</summary>
+public record MapTokenInput(string Label, string Side, int X, int Y, bool Hidden = false, int? Light = null, Guid? TemplateId = null, string? ImageUrl = null);
 public record HpInput(int Delta, string? Reason);
 
 /// <summary>
@@ -70,12 +71,12 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
     async Task<string> NameAsync(string user, CancellationToken ct) =>
         await db.Users.Where(x => x.Id == user).Select(x => x.DisplayName).SingleOrDefaultAsync(ct) ?? "Aventureiro";
 
-    void Event(GameSession s, string user, string author, string kind, string content, object? data = null, bool masterOnly = false, string? visibleTo = null)
+    void Event(GameSession s, string user, string author, string kind, string content, object? data = null, bool masterOnly = false, string? visibleTo = null, bool recipientCopy = false)
     {
         db.Events.Add(new TableEvent
         {
             CampaignId = s.CampaignId, SessionId = s.Id, UserId = user, Author = author, Kind = kind,
-            Content = content.Length > 2000 ? content[..2000] : content, MasterOnly = masterOnly, VisibleToUserId = visibleTo,
+            Content = content.Length > 2000 ? content[..2000] : content, MasterOnly = masterOnly, VisibleToUserId = visibleTo, IsRecipientCopy = recipientCopy,
             Data = data == null ? "" : JsonSerializer.Serialize(data, Json), CreatedAt = Now
         });
     }
@@ -149,7 +150,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         {
             s.Id, s.Number, s.Title, s.Objective, s.StartedAt, s.EndedAt, s.MapKind, s.MapKey, s.Recap, recapPublished = s.RecapPublishedAt != null,
             active = s.EndedAt == null,
-            eventCount = db.Events.Count(e => e.SessionId == s.Id),
+            eventCount = db.Events.Count(e => e.SessionId == s.Id && !e.IsRecipientCopy),
             noteCount = db.Events.Count(e => e.SessionId == s.Id && e.Kind == EventKinds.Note),
             participantCount = db.SessionParticipants.Count(p => p.SessionId == s.Id && !p.IsMaster)
         }).ToListAsync(ct);
@@ -635,11 +636,26 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         if (scene.Raw.Values.Any(t => t.X == x.X && t.Y == x.Y)) throw new RuleException(409, "Já existe alguém nesse ponto.");
         if (scene.Raw.Count >= 60) throw new RuleException(409, "Limite de 60 marcadores no mapa.");
         var token = new SessionToken { SessionId = sessionId, Label = label, Side = x.Side, X = x.X, Y = x.Y, Hidden = x.Hidden, Light = x.Light };
+        if (x.TemplateId != null || !string.IsNullOrWhiteSpace(x.ImageUrl))
+        {
+            // Criatura com ficha e/ou imagem: vira personagem do mestre da campanha, acompanhável pela ficha.
+            if (await db.MasterCharacters.CountAsync(m => m.CampaignId == a.Campaign.Id, ct) >= PreparationService.MaxNpcs) throw new RuleException(409, $"A campanha aceita até {PreparationService.MaxNpcs} personagens do mestre.");
+            var npc = new MasterCharacter { CampaignId = a.Campaign.Id, Name = label, Side = x.Side, Kind = NpcKinds.Creature, UpdatedAt = Now, ImageUrl = await PreparationService.ValidImageAsync(a.Campaign.Id, x.ImageUrl, db, ct) };
+            if (x.TemplateId is { } templateId)
+            {
+                var template = await AllowedTemplates(a.Campaign).SingleOrDefaultAsync(t => t.Id == templateId, ct) ?? throw new RuleException(404, "Ficha-modelo não encontrada para esta campanha.");
+                var version = await db.SheetTemplateVersions.AsNoTracking().SingleAsync(v => v.Id == template.CurrentVersionId, ct);
+                npc.TemplateVersionId = version.Id;
+                npc.Values = JsonSerializer.Serialize(CharacterSheets.Complete(version.Fields, new Dictionary<string, string>()).Stored);
+            }
+            db.MasterCharacters.Add(npc);
+            token.MasterCharacterId = npc.Id;
+        }
         db.SessionTokens.Add(token);
         Event(a.Session, user, await NameAsync(user, ct), EventKinds.Token, $"{label} surgiu no mapa", new { tokenId = token.Id, side = x.Side, x = x.X, y = x.Y }, masterOnly: Secret(scene, token));
         await RefreshFogAsync(a, user, ct);
         await CommitAsync(tx, a.Session, ct);
-        return new { token.Id };
+        return new { token.Id, masterCharacterId = token.MasterCharacterId };
     }
 
     public async Task RemoveTokenAsync(Guid sessionId, Guid tokenId, string user, CancellationToken ct)
@@ -729,7 +745,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
             summary = p.CharacterId is { } pc && summaries.TryGetValue(pc, out var sum) ? sum : null,
         }).ToList();
         var me = people.FirstOrDefault(p => p.UserId == user);
-        var events = await db.Events.AsNoTracking().Where(e => e.SessionId == sessionId && (a.IsMaster || (!e.MasterOnly && e.Kind != EventKinds.Sheet) || e.VisibleToUserId == user))
+        var events = await db.Events.AsNoTracking().Where(e => e.SessionId == sessionId && (a.IsMaster ? !e.IsRecipientCopy : (!e.MasterOnly && e.Kind != EventKinds.Sheet) || e.VisibleToUserId == user))
             .OrderByDescending(e => e.Id).Take(LiveEvents)
             .Select(e => new { e.Id, e.Kind, e.Author, e.Content, e.Data, e.CreatedAt, e.MasterOnly, mine = e.UserId == user }).ToListAsync(ct);
         events.Reverse();
@@ -742,7 +758,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         if (s.MapKind == MapKinds.Tileset && await Fog.SceneAsync(s, a.Campaign, false, ct) is { } scene)
         {
             var players = participants.Where(p => !p.isMaster && p.characterId != null).Select(p => (object)new { p.userId, p.name, p.characterName });
-            (map, boardTokens, fog) = Board(scene, user, a.IsMaster, map, players);
+            (map, boardTokens, fog) = Board(scene, user, a.IsMaster, map, players, portraits: await PortraitsAsync(sessionId, ct));
         }
         Character? sheet = null;
         if (!a.IsMaster && me?.CharacterId is { } mine) sheet = await db.Characters.AsNoTracking().SingleOrDefaultAsync(c => c.Id == mine, ct);
@@ -760,7 +776,18 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
                 // Alcances para a mesa destacar no turno: nulos quando o modelo não define o papel (o mestre informa).
                 movementRole = context.Version.Fields.Any(f => f.Role == SheetFieldRoles.Movement), reach = sheet.ReachMeters,
                 actions = CharacterSheets.CombinedActions(context.Version, sheet.Actions),
+                formulaFields = CharacterSheets.FormulaFields(context.Version.Fields),
             };
+        }
+        // Mestre: atributos das fichas na mesa (pedidos de teste rolam com a ficha de cada personagem). Uma consulta por tabela.
+        List<FormulaField> masterFormulaFields = [];
+        if (a.IsMaster)
+        {
+            var joined = participants.Where(p => p.characterId != null).Select(p => p.characterId!.Value).ToList();
+            var versionIds = (await db.Characters.AsNoTracking().Where(c => joined.Contains(c.Id)).Select(c => c.TemplateVersionId).ToListAsync(ct))
+                .Select(v => v ?? SheetTemplateVersion.FreeTemplateV1Id).Distinct().ToList();
+            var versions = await db.SheetTemplateVersions.AsNoTracking().Where(v => versionIds.Contains(v.Id)).ToListAsync(ct);
+            masterFormulaFields = versions.SelectMany(v => CharacterSheets.FormulaFields(v.Fields)).DistinctBy(f => f.Name).OrderBy(f => f.Name).Take(200).ToList();
         }
         var active = participants.FirstOrDefault(p => p.characterId != null && p.characterId == s.ActiveCharacterId);
         var play = await PlayStateAsync(a, user, me?.CharacterId, ct);
@@ -774,7 +801,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
             session = new { s.Id, s.Number, s.Title, objective = a.IsMaster ? s.Objective : null, s.StartedAt, s.EndedAt, s.TurnNumber, s.TemporaryImageId, s.TemporaryImageTitle, activeCharacterId = s.ActiveCharacterId, activeName = active?.characterName ?? ActiveEntry(s)?.Label },
             play,
             campaign = new { a.Campaign.Id, a.Campaign.Name, a.Campaign.IsOneShot, a.Campaign.ExpiresAt, master = masterName },
-            me = new { userId = user, isMaster = a.IsMaster, joined = me?.LastSeenAt != null, characterId = me?.CharacterId, character = liveCharacter },
+            me = new { userId = user, isMaster = a.IsMaster, joined = me?.LastSeenAt != null, characterId = me?.CharacterId, character = liveCharacter, formulaFields = a.IsMaster ? masterFormulaFields : null },
             participants, map, tokens = boardTokens, fog, events, music,
         };
     }
@@ -799,7 +826,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         if (search?.Length > 100) throw new RuleException(400, "Busca muito longa.");
         page = Math.Clamp(page, 1, 100000);
         var s = a.Session;
-        var all = db.Events.AsNoTracking().Where(e => e.SessionId == sessionId);
+        var all = db.Events.AsNoTracking().Where(e => e.SessionId == sessionId && !e.IsRecipientCopy);
         var query = all;
         if (kind == "rolls") query = query.Where(e => e.Kind == EventKinds.Roll || e.Kind == EventKinds.Action);
         else if (!string.IsNullOrEmpty(kind))

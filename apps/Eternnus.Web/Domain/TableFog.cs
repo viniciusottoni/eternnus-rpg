@@ -22,6 +22,8 @@ public sealed record TableSettings
     public string PlayMode { get; init; } = PlayModes.Tactical;
     /// <summary>Revelação manual: com névoa, só as casas reveladas pelo mestre aparecem (luz e visão não revelam).</summary>
     public bool ManualReveal { get; init; }
+    /// <summary>Quem vê as rolagens dos jogadores (<see cref="RollVisibility"/>: table, master ou blind). Jogadores não escolhem.</summary>
+    public string PlayerRollVisibility { get; init; } = RollVisibility.Table;
 
     public static readonly TableSettings Default = new();
     static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -42,6 +44,7 @@ public sealed record TableSettings
         if (PlayerLightMeters is < 0 or > 300 || PlayerVisionMeters is < 0 or > 300)
             throw new RuleException(400, "Luz e visão padrão dos personagens ficam entre 0 e 300 metros.");
         if (!PlayModes.IsValid(PlayMode)) throw new RuleException(400, "Escolha a forma de jogar: livre, por turnos ou tática.");
+        if (!RollVisibility.IsPlayerChoice(PlayerRollVisibility)) throw new RuleException(400, "Escolha quem vê as rolagens dos jogadores.");
         return this;
     }
     TableSettings Clamp() => this with
@@ -50,6 +53,7 @@ public sealed record TableSettings
         CreatureLight = Math.Clamp(CreatureLight, 0, TableFog.MaxRadius),
         PlayerLightMeters = Math.Clamp(PlayerLightMeters, 0, 300), PlayerVisionMeters = Math.Clamp(PlayerVisionMeters, 0, 300),
         PlayMode = PlayModes.Effective(PlayMode),
+        PlayerRollVisibility = RollVisibility.IsPlayerChoice(PlayerRollVisibility) ? PlayerRollVisibility : RollVisibility.Table,
     };
 }
 

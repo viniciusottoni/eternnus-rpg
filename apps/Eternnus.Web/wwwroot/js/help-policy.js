@@ -69,6 +69,8 @@ export const HELP_KEYS = Object.freeze({
   "mesa.rolagem.mecanicas": "all",
   "mesa.rolagem.visibilidade": "all",
   "mesa.rolagem.formula": "all",
+  "mesa.npcs.ficha": "master",
+  "mesa.npcs.imagem": "master",
   "mesa.testes.pedidos": "master",
   "mesa.acoes.desfazer": "all",
   "mesa.mapa.legenda": "all",

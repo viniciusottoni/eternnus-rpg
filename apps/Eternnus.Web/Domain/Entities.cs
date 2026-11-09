@@ -172,6 +172,8 @@ public class TableEvent
     public bool MasterOnly { get; set; }
     /// <summary>Destinatário adicional de um evento privado de ficha, além do mestre.</summary>
     [MaxLength(450)] public string? VisibleToUserId { get; set; }
+    /// <summary>Cópia privada entregue a um destinatário escolhido pelo mestre (rolagem em grupo). O mestre vê só o original.</summary>
+    public bool IsRecipientCopy { get; set; }
     /// <summary>Detalhes estruturados em JSON (antes/depois, rolagem, origem/destino).</summary>
     [MaxLength(4000)] public string Data { get; set; } = "";
 }

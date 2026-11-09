@@ -164,6 +164,8 @@ CharacterSheetService centraliza origem, validação, colunas espelhadas, histó
 ## Catálogo de músicas e trilha da sessão (ADR-049)
 
 - `Domain/Music.cs`: `MusicTrack` global (sem campanha), limites (`MusicLimits`), ações e `SoundtrackState` (posição esperada pura). `Domain/AudioProbe.cs`: validação estrutural MP3/M4A/OGG e duração.
+- `Application/SessionNpcSheets.cs`: fichas de NPCs/criaturas por modelo da campanha (leitura e gravação só do mestre, fluxo comum da mesa com sessão ativa) e imagem do acervo dos marcadores com checagem de visibilidade (ADR-054).
+- `wwwroot/js/formula-suggest.js` (autocompletar de `@atributos` em qualquer campo de fórmula) e `wwwroot/js/npc-sheet.js` (ficha de NPC, campos de imagem e visualizador), carregados sob demanda.
 - `Application/MusicCatalogService.cs`: busca por nome para contas verificadas e gestão Admin (lista com uso, envio, renomear, excluir), com auditoria. Quota e duplicidade serializadas por `pg_advisory_xact_lock`; exclusão bloqueia a faixa `FOR UPDATE` e confere sessões ativas. `AudioUploads` lê e valida a estrutura; não usa o `IDocumentScanner` (ADR-051).
 - `Application/SessionSoundtrack.cs` (parcial de `SessionService`): comandos da trilha com bloqueio da sessão (e da faixa `FOR SHARE` na seleção) → evento → `Revision++` → `Pulse`, bloco `music` do estado ao vivo e autorização dos bytes pela sessão. `EndAsync` limpa a trilha.
 - `Features/Music/MusicEndpoints.cs`: `/api/music`, `/api/admin/music` e rotas da sessão; entrega com HTTP Range.

@@ -93,10 +93,11 @@ const entries = {
   },
   "mesa.rolagem.visibilidade": {
     "title": "Quem vê a rolagem",
-    "summary": "A visibilidade é aplicada no servidor.",
+    "summary": "Só o Mestre escolhe; o servidor aplica a escolha.",
     "body": [
-      "Mesa inteira compartilha o resultado com a mesa. Jogador e Mestre reserva o resultado a quem rolou e ao Mestre.",
-      "Só o Mestre (blind) reserva o resultado ao Mestre. Se você é Jogador, recebe apenas a confirmação de envio, sem o resultado da sua rolagem."
+      "Só o Mestre escolhe quem vê. Nas próprias rolagens: mesa inteira, somente ele ou ele e os jogadores que marcar (um ou mais).",
+      "As rolagens dos jogadores seguem a configuração da mesa: mesa inteira, quem rolou e o Mestre, ou somente o Mestre. Neste último caso o jogador recebe só a confirmação de envio, sem o resultado.",
+      "Nos pedidos de teste, o Mestre escolhe entre as mesmas três opções das rolagens dos jogadores."
     ],
     "audience": "all"
   },
@@ -104,11 +105,30 @@ const entries = {
     "title": "Fórmula de rolagem",
     "summary": "A fórmula avançada substitui os dados escolhidos acima.",
     "body": [
-      "Você pode usar os nomes numéricos da ficha com @nome. O servidor valida e rola os dados.",
+      "Você pode usar os nomes numéricos da ficha com @nome. Ao digitar @, aparecem os atributos disponíveis; use as setas e Enter para inserir. O servidor valida e rola os dados.",
       "Sem critério de alvo, o servidor não declara sucesso ou falha. Regras que a plataforma não implementa são interpretadas pelo Mestre."
     ],
     "audience": "all",
     "example": "2d6 + @forca_mod"
+  },
+  "mesa.npcs.ficha": {
+    "title": "Ficha de NPC ou criatura",
+    "summary": "Acompanhe vida, atributos e o estado de cada NPC ou criatura.",
+    "body": [
+      "Escolha qualquer modelo de ficha aceito pela campanha: o mesmo dos jogadores ou outro, como um modelo próprio para criaturas.",
+      "No mapa, selecione o marcador e use “Ficha do elemento”. Trocar o modelo recomeça os valores. Só você, Mestre, vê e edita essas fichas."
+    ],
+    "audience": "master"
+  },
+  "mesa.npcs.imagem": {
+    "title": "Imagem de NPC ou criatura",
+    "summary": "Quando o marcador está visível, os jogadores clicam nele e veem a imagem maior.",
+    "body": [
+      "Prefira uma imagem do acervo da campanha: ela fica no servidor e só chega a quem enxerga o marcador.",
+      "Um link https carrega a imagem direto do site de terceiros: esse site vê o endereço IP de quem abre e pode trocar o conteúdo depois.",
+      "Marcadores ocultos ou apenas percebidos (“?”) não mostram a imagem."
+    ],
+    "audience": "master"
   },
   "mesa.testes.pedidos": {
     "title": "Pedidos de teste",

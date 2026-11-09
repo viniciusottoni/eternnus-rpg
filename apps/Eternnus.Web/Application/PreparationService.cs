@@ -6,7 +6,7 @@ namespace Eternnus.Web;
 
 /// <summary>Preparação da cena. <c>Prepared</c> nulo mantém o arranjo; <c>LayerMode</c> nulo mantém o alcance da preparação do mapa.</summary>
 public record SceneInput(string Name, string? Description, string Kind, string? MapKind, string? MapKey, string? SharedText, string? PrivateNotes, string? VisionMode, int Order = 0, int Revision = 0, List<SceneTokenInput>? Prepared = null, string? LayerMode = null);
-public record NpcInput(string Name, string? Summary, string? Notes, string? Side, List<NpcResource>? Resources, int Revision = 0);
+public record NpcInput(string Name, string? Summary, string? Notes, string? Side, List<NpcResource>? Resources, int Revision = 0, string? Kind = null, string? ImageUrl = null);
 public record ScheduleInput(DateTimeOffset? At, string? Note);
 public record AttendanceInput(string Status);
 public record InviteCodeInput(string Code);
@@ -194,7 +194,17 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
     {
         await AccessAsync(campaignId, user, true, false, ct);
         var items = await db.MasterCharacters.AsNoTracking().Where(m => m.CampaignId == campaignId).OrderBy(m => m.SourceId != null).ThenBy(m => m.Name).Take(MaxNpcs).ToListAsync(ct);
-        return new { items = items.Select(m => new { m.Id, m.Name, m.Summary, m.Notes, m.Side, m.Resources, m.SourceId, m.Revision, copy = m.SourceId != null }) };
+        var versionIds = items.Where(m => m.TemplateVersionId != null).Select(m => m.TemplateVersionId!.Value).Distinct().ToList();
+        var templates = await db.SheetTemplateVersions.AsNoTracking().Where(v => versionIds.Contains(v.Id))
+            .Join(db.SheetTemplates, v => v.TemplateId, t => t.Id, (v, t) => new { v.Id, t.Name }).ToDictionaryAsync(x => x.Id, x => x.Name, ct);
+        return new
+        {
+            items = items.Select(m => new
+            {
+                m.Id, m.Name, m.Summary, m.Notes, m.Side, m.Resources, m.SourceId, m.Revision, copy = m.SourceId != null, m.Kind, m.ImageUrl,
+                templateName = m.TemplateVersionId is { } v && templates.TryGetValue(v, out var name) ? name : null,
+            })
+        };
     }
 
     public async Task<object> SaveNpcAsync(Guid campaignId, Guid? id, NpcInput x, string user, CancellationToken ct)
@@ -218,10 +228,21 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
             db.MasterCharacters.Add(npc);
         }
         npc.Name = name; npc.Side = side; npc.Resources = resources; npc.UpdatedAt = Now;
+        npc.Kind = NpcKinds.Normalize(x.Kind ?? npc.Kind);
+        npc.ImageUrl = await ValidImageAsync(campaignId, x.ImageUrl, db, ct);
         npc.Summary = Text(x.Summary, 500, "O resumo aceita até 500 caracteres.");
         npc.Notes = Text(x.Notes, 4000, "As notas aceitam até 4.000 caracteres.");
         try { await db.SaveChangesAsync(ct); } catch (DbUpdateConcurrencyException) { throw new RuleException(409, "O personagem mudou em outra tela. Recarregue antes de salvar."); }
         return new { npc.Id, npc.Revision };
+    }
+
+    /// <summary>Imagem do NPC: link https ou imagem do acervo desta campanha.</summary>
+    public static async Task<string?> ValidImageAsync(Guid campaignId, string? input, GameDb db, CancellationToken ct)
+    {
+        var url = NpcImages.Normalize(input, out var asset);
+        if (asset is { } id && !await db.Set<CampaignMap>().AnyAsync(m => m.Id == id && m.CampaignId == campaignId, ct))
+            throw new RuleException(400, "Escolha uma imagem do acervo desta campanha.");
+        return url;
     }
 
     static List<NpcResource> ValidateResources(List<NpcResource>? input)
@@ -240,6 +261,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
     public static MasterCharacter CopyOf(MasterCharacter m, DateTime now) => new()
     {
         CampaignId = m.CampaignId, Name = Cut(m.Name, 32) + " (cópia)", Summary = m.Summary, Notes = m.Notes, Side = m.Side, SourceId = m.SourceId ?? m.Id, UpdatedAt = now,
+        Kind = m.Kind, TemplateVersionId = m.TemplateVersionId, Values = m.Values, ImageUrl = m.ImageUrl,
         Resources = m.Resources.Select(r => new NpcResource { Label = r.Label, Value = r.Max ?? r.Value, Max = r.Max }).ToList(),
     };
 

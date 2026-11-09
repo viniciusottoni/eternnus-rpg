@@ -433,6 +433,7 @@ button.small {
 .map-choice {
   position: relative;
   display: grid;
+  margin: 0; /* anula a margem global de label (game.css), que desalinhava os cartões na grade */
   border: 1px solid #6c5a3b;
   border-radius: 6px;
   overflow: hidden;
@@ -1806,6 +1807,9 @@ button.party-button:hover {
 .temporary-image-panel img { display: block; width: 100%; max-height: 40vh; object-fit: contain; }
 .temporary-image-panel figcaption { margin-bottom: 8px; overflow-wrap: anywhere; }
 .temporary-image-panel p { font-size: .85rem; overflow-wrap: anywhere; }
+/* Status vazio não reserva espaço (continua no DOM como região viva). */
+.temporary-image-panel .temporary-status:empty { margin: 0; }
+.temporary-image-panel .temporary-status { margin: 8px 0 0; }
 
 /* Trilha sonora: no celular fica ao lado do título; as ações da mesa ocupam a linha seguinte. */
 @media (max-width: 900px) {
@@ -2465,6 +2469,10 @@ dialog.fog-editor-modal {
 .request-board header { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
 .request-board ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
 .roll-quick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+/* ⓘ da barra de turno no tamanho padrão (18 px, circular); a área de toque vem do ::before comum. */
+.turn-actions button.help-button { width: 18px; height: 18px; min-width: 18px; min-height: 18px; padding: 0; align-self: center; }
+/* Montar rolagem e Pedir teste: mesma largura e altura. */
+.roll-quick > button { flex: 1 1 0; min-width: max-content; min-height: 44px; }
 .roll-quick small { flex-basis: 100%; color: var(--muted); }
 .roll-detail s { color: var(--muted); }
 .outcome { font-style: normal; padding: 0 6px; border-radius: 999px; border: 1px solid currentColor; font-size: 12px; }
@@ -2538,9 +2546,11 @@ dialog.fog-editor-modal {
 }
 
 /* ---------- Interface Básica/Completa, editor de cenas e painel de cenas ---------- */
-.interface-toggle { display: inline-flex; align-items: center; gap: 4px; margin: 0; padding: 2px; border: 1px solid var(--line); border-radius: 999px; background: #0d0c0acc; }
-.interface-toggle legend { float: left; padding: 0 6px 0 8px; color: var(--muted); font-size: 12px; }
-.interface-option { position: relative; display: inline-flex; }
+/* Compacto e centrado: a opção marcada nunca encosta na borda (respiro de 4 px). */
+.interface-toggle { display: inline-flex; align-items: center; align-self: center; gap: 4px; margin: 0; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: #0d0c0acc; }
+.interface-toggle legend { float: left; display: inline-flex; align-items: center; padding: 0 6px 0 8px; color: var(--muted); font-size: 12px; line-height: 1; }
+/* margin: 0 anula a margem global de label (game.css), que empurrava as opções 5 px para baixo. */
+.interface-option { position: relative; display: inline-flex; margin: 0; }
 .interface-option input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
 .interface-option span { display: inline-flex; align-items: center; min-height: 34px; padding: 0 12px; border-radius: 999px; color: var(--text); font-size: 13px; }
 .interface-option input:checked + span { color: #20160b; background: linear-gradient(115deg, #b9893d, #edc876 48%, #ba8a41); font-weight: 600; }
@@ -2643,10 +2653,11 @@ dialog.scene-editor-modal #modal-body { flex: 1; min-height: 0; height: auto; ov
 .se-scenery .map-choice-text small { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 11.5px; line-height: 1.45; }
 .se-scenery .map-choice-state { margin-top: 2px; }
 
-.map-group { display: grid; gap: 6px; margin-top: 10px; }
+/* O grupo ocupa a linha inteira da grade do seletor; os cartões ficam lado a lado na lista interna. */
+.map-group { grid-column: 1 / -1; display: grid; gap: 6px; margin-top: 10px; min-width: 0; }
 .map-group[hidden] { display: none; }
 .map-group-title { margin: 0; color: var(--gold); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
-.map-group-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.map-group-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
 .map-choice-state { display: none; margin-top: 4px; color: var(--bright); font-size: 11px; font-weight: 600; }
 .map-choice.selected .map-choice-state, .map-choice:has(input:checked) .map-choice-state { display: block; }
 .map-picker-tools select { min-height: 40px; }
@@ -2664,13 +2675,20 @@ dialog.scene-editor-modal #modal-body { flex: 1; min-height: 0; height: auto; ov
 .map-upload [data-grid-host][hidden] { display: none; }
 
 /* Mesa do mestre: ferramentas com rótulos visíveis (a Básica fica sempre no topo do trilho). */
-.stage-tools.labeled-tools { width: 172px; gap: 4px; }
-.tool.labeled { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 4px 10px; font-size: 13px; text-align: left; }
+/* Trilho vertical: nunca rola na horizontal; filhos limitados à largura e foco desenhado por dentro. */
+.stage-tools.labeled-tools { width: 200px; gap: 4px; overflow-x: hidden; }
+.stage-tools.labeled-tools :is(.tool-group, .tool-group-title, .tool.labeled, .help-disabled-reason) { min-width: 0; max-width: 100%; box-sizing: border-box; margin-inline: 0; }
+.stage-tools.labeled-tools .tool.labeled:focus-visible { outline-offset: -3px; }
+/* Ícone e rótulo alinhados à esquerda: a coluna de ícones forma uma linha vertical única no trilho. */
+.tool.labeled { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; min-height: 40px; padding: 4px 10px; font-size: 13px; text-align: left; }
+.tool.labeled > span[aria-hidden="true"] { flex: 0 0 16px; text-align: center; }
 .tool.labeled .tool-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-group { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid #a07b3a55; }
 .tool-group-title { color: var(--gold); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
-.stage:has(.labeled-tools) .board { left: 190px; }
-.stage:has(.labeled-tools) .fog-palette { left: 190px; max-width: calc(100% - 200px); }
+.stage:has(.labeled-tools) .board { left: 218px; }
+/* Com o trilho rotulado, o chip do cenário alinha à esquerda do trilho (o recuo de 56 px era do trilho só de ícones). */
+.stage:has(.labeled-tools) .stage-chip { left: 10px; }
+.stage:has(.labeled-tools) .fog-palette { left: 218px; max-width: calc(100% - 228px); }
 .fog-palette .tool.labeled { width: auto; }
 .fog-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; width: 100%; }
 .live-note { color: #ffd9a0; font-size: 12px; }
@@ -2880,3 +2898,15 @@ dialog.scene-editor-modal #modal-body { flex: 1; min-height: 0; height: auto; ov
   .session-audio[data-status="playing"] .sa-note { animation: none; }
   .st-fill { transition: none; }
 }
+
+/* ---------- NPCs e criaturas: ficha, resumo e imagem ---------- */
+.npc-portrait { display: grid; place-items: center; margin: 0; }
+.npc-portrait img { display: block; max-width: 100%; max-height: min(70dvh, 720px); object-fit: contain; border: 1px solid var(--line); border-radius: var(--radius); background: #0b0a08; }
+.npc-portrait figcaption:empty { display: none; }
+.npc-kind { margin-left: 6px; color: var(--muted); font: 11px system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.npc-sheet-summary, .npc-buttons { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.npc-sheet-section .form-grid.two { gap: 0 12px; }
+.roll-visibility-note { margin: 4px 0 0; }
+.roll-recipients { margin-top: 8px; }
+.roll-recipients[hidden] { display: none; }
+
