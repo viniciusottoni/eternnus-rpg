@@ -6,26 +6,47 @@ const pending = new Set();
 let splash, previousFocus;
 const locked = new Map();
 
+// Operações rápidas não piscam a tela: a interface trava na hora, mas a superfície só aparece se a espera passar
+// deste limite. Não atrasa a ação; abertura e manutenção continuam imediatas.
+export const OPERATION_REVEAL_MS = 300;
+let revealTimer = null;
+
+function lock() {
+  if (!locked.size) previousFocus = document.activeElement;
+  for (const node of document.querySelectorAll("body > :not(#splash)")) {
+    if (!locked.has(node)) locked.set(node, node.inert);
+    node.inert = true;
+  }
+  document.querySelector("#app")?.setAttribute("aria-busy", "true");
+}
+
 function render() {
   if (!splash) return;
   const visible = opening || maintenance || pending.size > 0;
-  splash.dataset.mode = opening || maintenance ? "opening" : "operation";
+  const immediate = opening || maintenance;
+  splash.dataset.mode = immediate ? "opening" : "operation";
   splash.setAttribute("aria-label", maintenance ? "Atualização do Eternnus RPG" : opening ? "Abertura do Eternnus RPG" : "Carregando sua mesa");
   const heading = splash.querySelector?.(".splash-content h1");
   const message = splash.querySelector?.(".splash-content > p");
   if (heading) heading.textContent = maintenance ? "Atualizando sua mesa…" : normalHeading;
   if (message) message.textContent = maintenance ? "Sua jornada continua após a atualização." : normalMessage;
   if (visible) {
-    if (!splash.matches(":popover-open")) {
-      previousFocus = document.activeElement;
+    lock();
+    if (splash.matches(":popover-open")) return;
+    if (immediate) {
+      clearTimeout(revealTimer);
+      revealTimer = null;
       splash.showPopover();
+    } else if (!revealTimer) {
+      // Trava já; a superfície só aparece se a operação ainda estiver pendente depois do limite.
+      revealTimer = setTimeout(() => {
+        revealTimer = null;
+        if (pending.size && !splash.matches(":popover-open")) splash.showPopover();
+      }, OPERATION_REVEAL_MS);
     }
-    for (const node of document.querySelectorAll("body > :not(#splash)")) {
-      if (!locked.has(node)) locked.set(node, node.inert);
-      node.inert = true;
-    }
-    document.querySelector("#app")?.setAttribute("aria-busy", "true");
   } else {
+    clearTimeout(revealTimer);
+    revealTimer = null;
     if (splash.matches(":popover-open")) splash.hidePopover();
     for (const [node, inert] of locked) node.inert = inert;
     locked.clear();

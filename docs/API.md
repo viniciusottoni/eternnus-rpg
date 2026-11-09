@@ -254,11 +254,11 @@ Todas as rotas exigem `Verified`, exceto `/api/invites/pending`, que exige só a
 
 | Método/caminho | Quem | Entrada → resultado |
 | --- | --- | --- |
-| POST `/rolls` | Participante | `{formula?, spec?, label?, visibility: table|master|blind}`. `spec = {count, sides, modifier, keep?, keepCount, explode, successAt?, percentTarget?, percentRule?}`. → `{hidden, visibility, roll?, total?}`; `blind` de jogador → `{hidden:true}`. |
+| POST `/rolls` | Participante | `{formula?, spec?, label?, visibility?, recipients?}`. `spec = {count, sides, modifier, keep?, keepCount, explode, successAt?, percentTarget?, percentRule?}`. Mestre: `visibility: table|blind|group` (`master` equivale a `blind`); `group` exige `recipients` = 1 a 20 `characterId` da sessão (cópia privada para cada jogador; o mestre vê só o original). Jogador: `visibility`/`recipients` são ignorados; vale `TableSettings.playerRollVisibility`. → `{hidden, visibility, roll?, total?}`; resultado às cegas de jogador → `{hidden:true}`. |
 | POST `/pause` | Mestre | `{paused}` → 204. |
 | PUT `/turn-order` | Mestre | `{entries:[{key:"c:{id}"|"t:{id}"|"g:x", label, initiative, members}], sortByInitiative}` → 204. Lista vazia volta à ordem de entrada. |
 | POST `/turn` | Mestre | `{characterId}` ou `{key}` (entrada da ordem) → 204. |
-| POST `/roll-requests` | Mestre | `{label, formula?, spec?, visibility, target?, rule?: gte|lte, characterIds[]}` → `{id}`. Máximo 5 abertos. |
+| POST `/roll-requests` | Mestre | `{label, formula?, spec?, visibility: table|master|blind, target?, rule?: gte|lte, characterIds[]}` → `{id}`; `group` → 400. Máximo 5 abertos. |
 | POST `/roll-requests/{rid}/respond` | Jogador convidado | → `{hidden, total?, outcome?, roll?}`; segunda resposta 409; cancelado 409. |
 | POST `/roll-requests/{rid}/cancel` | Mestre | → 204. |
 | POST `/characters/{cid}/resource` | Dono ou mestre | `{field, delta, reason?}` → `{hp, maxHp, resources}`; campo que não é recurso 404. |
@@ -268,9 +268,11 @@ Todas as rotas exigem `Verified`, exceto `/api/invites/pending`, que exige só a
 | POST `/scene/capture` | Mestre | `{sceneId}` → 204 (posições atuais viram o preparo). |
 | POST `/npc-tokens` | Mestre | `{masterCharacterId, x, y, hidden, copy}` → `{id, masterCharacterId}`. |
 | POST `/npcs/{npcId}/resource` | Mestre | `{index, delta}` → 204. |
+| POST `/tokens` | Mestre | `{label, side, x, y, hidden, light?, templateId?, imageUrl?}` → `{id, masterCharacterId}`. Com `templateId` (modelo permitido à campanha) ou `imageUrl`, cria uma criatura do mestre ligada ao marcador. |
+| GET `/tokens/{tid}/portrait` | Mestre; jogador da sessão | Imagem do acervo do NPC (`private, no-store`, `nosniff`). Jogador só recebe se o marcador estiver visível para ele e não apenas percebido; senão 404. |
 | POST `/recap` | Mestre | `{text, publish}` → 204 (também após o encerramento). |
 
-`GET /live` acrescenta `play = {mode, modeLabel, paused, turnOrder, activeTurnKey, myTurn, scene, masterAway, recoverUntil, recoveryMinutes, rollRequests, npcs, recap, recapPublished}`. `npcs` e `recap` vêm só para o mestre; `scene.description`/`privateNotes` vêm vazios para jogadores. Também acrescenta `me.character.{resources, stats, conditions, shortcuts, classic}` e `participants[].summary` (nulo para ficha privada alheia). `GET /campaigns/{id}/table` acrescenta `incompatible[]`, `template`, `paused` e `campaign.archived`.
+`GET /live` acrescenta `play = {mode, modeLabel, paused, playerRollVisibility, turnOrder, activeTurnKey, myTurn, scene, masterAway, recoverUntil, recoveryMinutes, rollRequests, npcs, recap, recapPublished}`. `npcs[]` traz `{tokenId, id, name, kind, image, hasSheet, sheet:{resources, stats}, resources, revision}`. Marcadores trazem `image` (link https ou `/api/sessions/{id}/tokens/{tid}/portrait`) só quando visíveis; o mestre recebe também `masterCharacterId`. `me.character.formulaFields` (jogador) e `me.formulaFields` (mestre: atributos das fichas na mesa) listam `{name, label}` para o autocompletar de fórmulas. `npcs` e `recap` vêm só para o mestre; `scene.description`/`privateNotes` vêm vazios para jogadores. Também acrescenta `me.character.{resources, stats, conditions, shortcuts, classic}` e `participants[].summary` (nulo para ficha privada alheia). `GET /campaigns/{id}/table` acrescenta `incompatible[]`, `template`, `paused` e `campaign.archived`.
 
 ### Campanha (`/api/campaigns/{id}`)
 
@@ -280,7 +282,9 @@ Todas as rotas exigem `Verified`, exceto `/api/invites/pending`, que exige só a
 | POST `/archive`, `/restore` | Mestre | → 204; arquivar com sessão ativa 409. |
 | POST `/convert` | Mestre de one-shot | → `{campaignId, kept, removed}`; sem vaga 409. |
 | GET/POST `/scenes`, PUT/DELETE `/scenes/{sid}`, POST `/scenes/{sid}/duplicate` | Mestre | `{name, description, kind: map|image|text, mapKind, mapKey, sharedText, privateNotes, visionMode: all|manual|character|null, order, revision}`. |
-| GET/POST `/npcs`, PUT/DELETE `/npcs/{nid}`, POST `/npcs/{nid}/copy` | Mestre | `{name, summary, notes, side, resources:[{label, value, max}], revision}`. |
+| GET/POST `/npcs`, PUT/DELETE `/npcs/{nid}`, POST `/npcs/{nid}/copy` | Mestre | `{name, summary, notes, side, resources:[{label, value, max}], revision, kind?: npc|creature, imageUrl?}`. `imageUrl`: `https://…` (sem credenciais, ≤ 500) ou `asset:{id}` de imagem do acervo desta campanha; vazio remove. A lista devolve também `kind`, `imageUrl`, `templateName`. |
+| GET `/npc-templates` | Mestre | Modelos aceitos pela campanha (sistema da campanha, privados dela e o Sistema livre) → `{items:[{id, name, campaign, playerDefault}]}`. |
+| GET/PUT `/npcs/{nid}/sheet` | Mestre | PUT `{templateId|null, values?:{campo: texto}, revision}`. Trocar o modelo recomeça os valores; campo inexistente 400; revisão antiga 409. Com sessão ativa, grava evento privado e atualiza a mesa. → `{id, name, kind, revision, imageUrl, template, fields, values, resources, stats}`. |
 | GET `/journal` | Membro | `{nextSession, myAttendance, attendance, pending, recaps, entries}` (jogador: só publicados). |
 | PUT `/schedule` | Mestre | `{at: ISO com fuso | null, note}` → 204. |
 | POST `/attendance` | Jogador | `{status: yes|maybe|no}` → 204; sem data 409. |

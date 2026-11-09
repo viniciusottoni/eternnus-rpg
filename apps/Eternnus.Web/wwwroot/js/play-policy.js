@@ -9,11 +9,19 @@ export const VISION_MODES = Object.freeze([
   ["manual", "Revelação manual", "Você revela as áreas; luz e visão não revelam sozinhas."],
   ["character", "Visão por personagem", "Cada um vê pela luz e visão do próprio personagem."],
 ]);
+/** Rolagem do mestre: só ele escolhe quem vê. */
+export const MASTER_VISIBILITY = Object.freeze([
+  ["table", "Mesa inteira"],
+  ["blind", "Somente eu"],
+  ["group", "Eu e jogadores escolhidos"],
+]);
+/** Pedido de teste e configuração das rolagens dos jogadores. */
 export const VISIBILITY = Object.freeze([
   ["table", "Mesa inteira"],
-  ["master", "Eu e o mestre"],
-  ["blind", "Somente o mestre (não vejo o resultado)"],
+  ["master", "Quem rolou e o mestre"],
+  ["blind", "Somente o mestre (quem rolou não vê)"],
 ]);
+export const visibilityLabel = (v) => (VISIBILITY.find(([k]) => k === v) || VISIBILITY[0])[1];
 export const DICE = Object.freeze([4, 6, 8, 10, 12, 20, 100]);
 const KIND_LABELS = { ataque: "Ataques", habilidade: "Habilidades", magia: "Magias", item: "Itens" };
 

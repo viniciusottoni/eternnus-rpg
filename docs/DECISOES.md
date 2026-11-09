@@ -445,6 +445,18 @@ Consequências: foco, Esc, hover persistente, viewport e descarte precisam de te
 - Novas verificações automáticas de alinhamento e foco cortado.
 - Cache v30.
 
+**Correção (mesmo dia):** ao fechar, modal e popup de ajuda perdiam `[open]`/`:popover-open` mas seguiam visíveis no fade de 160 ms; a coluna flex e o `overflow` estavam presos a esses seletores, e o layout se rearranjava (popup de ajuda saltava de 247 para 397 px), parecendo piscar. Direção e `overflow` passam à regra base; só `display` depende do estado aberto. Cache v31.
+
+**Revisão visual da mesa e formulários (mesmo dia, cache v31):**
+- Rádio e checkbox não herdam `min-height: 44px` nem o `padding` dos campos de texto; o foco volta a ser circular.
+- Regra global `label` do `game.css` (`margin: 15px 0 5px`) anulada nos rótulos usados como componentes (cartões de cenário, opções Básica/Completa), que desalinhava grades e o alternador.
+- Seletor de cenários: cada grupo ocupa a linha inteira e os cartões ficam lado a lado (4 colunas no desktop, 2 no celular).
+- Trilho do mestre com 200 px, sem rolagem horizontal, ícones numa coluna e rótulos inteiros; chip do cenário alinhado ao trilho.
+- Alternador Básica/Completa com 44 px (mesma altura dos botões do topo) e 4 px de respiro em volta da opção marcada.
+- ⓘ da barra de turno no tamanho padrão de 18 px.
+- Aba Rolagens só com “Montar rolagem” e “Pedir teste”, do mesmo tamanho; atalhos 1d20/1d6/1d100 removidos.
+- Painel de imagem temporária sem espaço reservado pelo status vazio.
+
 ## ADR-051 — Áudio do catálogo sem antivírus
 
 **Contexto:** a produção roda em hospedagem compartilhada (SmarterASP.NET). O suporte confirmou que a aplicação não pode chamar o antivírus do servidor nem manter um `clamd` próprio; só VPS/Cloud permite. Migrar para VPS não é opção. Com o ClamAV obrigatório, todo envio de música respondia `503`.
@@ -455,3 +467,36 @@ Consequências: foco, Esc, hover persistente, viewport e descarte precisam de te
 - Um arquivo de áudio infectado enviado por um Admin não seria detectado. O navegador só o reproduz; a plataforma não executa os bytes.
 - A segurança do envio depende da conta Admin (MFA) e da validação estrutural; decodificadores de áudio do navegador continuam sendo superfície externa.
 - Os erros `422`/`503` de scanner deixam de existir na rota de música.
+
+## ADR-052 — Espera em primeiro plano sem piscar em operações rápidas
+
+**Contexto:** a superfície de carregamento (ADR-012) aparecia e sumia em toda ação de formulário, mesmo quando a resposta chegava em ~100 ms. Na mesa isso aparecia como piscadas na tela (por exemplo, ao registrar uma nota compartilhada) e deixava ver o fade do modal através do fundo translúcido.
+
+**Decisão:** em operações (fora da abertura e da manutenção), `js/loading.js` trava a interface na hora (`inert`, `aria-busy`, Esc bloqueado no modal) e só exibe a superfície se a operação continuar pendente depois de `OPERATION_REVEAL_MS` (300 ms). Nenhuma ação é atrasada; abertura e manutenção continuam imediatas. Com a superfície aberta, o modal que fecha some sem transição.
+
+**Consequências:** respostas rápidas não piscam; esperas longas mantêm o mesmo retorno visual. Durante os primeiros 300 ms a interface fica bloqueada sem aviso visual além do botão ocupado do formulário.
+
+## ADR-053 — Só o mestre escolhe quem vê as rolagens
+
+**Contexto:** jogadores escolhiam a visibilidade das próprias rolagens; o mestre queria decidir e também mostrar uma rolagem só a alguns jogadores.
+
+**Decisão:**
+- Rolagens do mestre: mesa inteira, somente ele ou ele e jogadores escolhidos (`group`, 1 a 20 personagens da sessão).
+- Rolagens de jogador seguem `TableSettings.PlayerRollVisibility` (mesa inteira, quem rolou e o mestre, ou somente o mestre), definida na configuração da mesa; o servidor ignora o valor enviado pelo jogador.
+- `group` grava o original privado do mestre e uma cópia privada por destinatário (`TableEvent.IsRecipientCopy`, migração aditiva `RollRecipientCopies`); o mestre não recebe as cópias no estado ao vivo nem no histórico.
+- Pedidos de teste mantêm mesa / quem rolou e o mestre / só o mestre.
+
+**Consequências:** a escolha do jogador some do construtor (ele vê a regra vigente). Uma rolagem em grupo gera N+1 eventos.
+
+## ADR-054 — Fichas e imagens de NPCs e criaturas
+
+**Contexto:** o mestre precisava acompanhar o estado de cada NPC/criatura e mostrar uma imagem aos jogadores.
+
+**Decisão:**
+- `MasterCharacter` ganha `Kind` (npc/creature), `TemplateVersionId`, `Values` e `ImageUrl` (migração aditiva `NpcSheetsAndImages`; registros antigos ficam `npc`, sem ficha).
+- A ficha usa os mesmos modelos aceitos pelas fichas da campanha e a mesma validação de valores. A gravação bloqueia sessão ativa → personagem, grava evento privado e incrementa a revisão.
+- Imagem: do acervo (`asset:{id}`, servida por rota que confere a visibilidade do marcador) ou link `https://` validado (sem credenciais). A CSP já permitia `img-src https:`. Marcador oculto ou apenas percebido não envia imagem ao jogador.
+- O envio de novas imagens ao acervo continua passando pelo antivírus (mesma rota dos mapas): sem ClamAV na hospedagem compartilhada, use o link https ou imagens já presentes no acervo.
+
+**Consequências:** link externo expõe o IP de quem abre ao site da imagem e pode mudar de conteúdo; o formulário avisa e recomenda o acervo. Fichas de NPC não têm histórico por campo nem PDF.
+

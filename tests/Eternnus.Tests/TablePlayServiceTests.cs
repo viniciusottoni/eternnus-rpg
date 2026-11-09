@@ -149,24 +149,50 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Private_and_blind_rolls_never_reach_other_players()
+    public async Task Player_roll_visibility_comes_from_the_table_settings_and_never_reaches_other_players()
     {
         var id = await StartAsync(PlayModes.Free);
-        var blind = JsonSerializer.SerializeToElement(await service.RollAsync(id, new(null, "Furtividade", new DiceSpec(1, 20, 7), RollVisibility.Blind), Player, default), Web);
+        // Padrão: mesa inteira, mesmo que o jogador peça outra coisa.
+        await service.RollAsync(id, new("1d20+1", "Atletismo", null, RollVisibility.Blind), Player, default);
+        Assert.Contains("1d20+1", await StateText(id, Other));
+        Assert.Equal("table", (await State(id, Player)).GetProperty("play").GetProperty("playerRollVisibility").GetString());
+
+        await service.UpdateCampaignTableSettingsAsync(campaign.Id, TableSettings.Default with { PlayMode = PlayModes.Free, FogEnabled = false, PlayerRollVisibility = RollVisibility.Blind }, Master, default);
+        db.ChangeTracker.Clear();
+        var blind = JsonSerializer.SerializeToElement(await service.RollAsync(id, new(null, "Furtividade", new DiceSpec(1, 20, 7), RollVisibility.Table), Player, default), Web);
         Assert.True(blind.GetProperty("hidden").GetBoolean());
         Assert.False(blind.TryGetProperty("total", out _));
-        await service.RollAsync(id, new("1d20+3", "Intuição", null, RollVisibility.Master), Player, default);
         var mine = await StateText(id, Player);
         Assert.Contains("rolagem secreta", mine);
         Assert.DoesNotContain("1d20+7", mine);
-        Assert.Contains("1d20+3", mine);
+
+        await service.UpdateCampaignTableSettingsAsync(campaign.Id, TableSettings.Default with { PlayMode = PlayModes.Free, FogEnabled = false, PlayerRollVisibility = RollVisibility.Master }, Master, default);
+        db.ChangeTracker.Clear();
+        await service.RollAsync(id, new("1d20+3", "Intuição", null, "todos"), Player, default);
+        Assert.Contains("1d20+3", await StateText(id, Player));
         var other = await StateText(id, Other);
         Assert.DoesNotContain("Furtividade", other);
         Assert.DoesNotContain("Intuição", other);
         var master = await StateText(id, Master);
         Assert.Contains("1d20+7", master);
         Assert.Contains("1d20+3", master);
-        Assert.Equal(400, await Status(() => service.RollAsync(id, new("1d20", null, null, "todos"), Player, default)));
+        Assert.Equal(400, await Status(() => service.UpdateCampaignTableSettingsAsync(campaign.Id, TableSettings.Default with { PlayerRollVisibility = RollVisibility.Group }, Master, default)));
+    }
+
+    [Fact]
+    public async Task Master_chooses_table_only_self_or_a_group_of_players_without_duplicates()
+    {
+        var id = await StartAsync(PlayModes.Free);
+        await service.RollAsync(id, new("1d6+40", "Emboscada", null, RollVisibility.Blind), Master, default);
+        Assert.DoesNotContain("1d6+40", await StateText(id, Player));
+        await service.RollAsync(id, new("1d6+50", "Sussurro", null, RollVisibility.Group, [hero.Id]), Master, default);
+        Assert.Contains("1d6+50", await StateText(id, Player));
+        Assert.DoesNotContain("1d6+50", await StateText(id, Other));
+        var master = await State(id, Master);
+        Assert.Single(master.GetProperty("events").EnumerateArray(), e => e.GetProperty("content").GetString()!.Contains("1d6+50"));
+        Assert.Equal(400, await Status(() => service.RollAsync(id, new("1d6", null, null, RollVisibility.Group, []), Master, default)));
+        Assert.Equal(400, await Status(() => service.RollAsync(id, new("1d6", null, null, RollVisibility.Group, [Guid.NewGuid()]), Master, default)));
+        Assert.Equal(400, await Status(() => service.CreateRollRequestAsync(id, new("Reflexos", "1d20", null, RollVisibility.Group, null, null, [hero.Id]), Master, default)));
     }
 
     [Fact]
@@ -364,6 +390,71 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
         Assert.DoesNotContain("Traidor", journal.ToString());
         await prep.ScheduleAsync(campaign.Id, new(when.AddDays(7), null), Master, default);
         Assert.Equal(JsonValueKind.Null, JsonSerializer.SerializeToElement(await prep.JournalAsync(campaign.Id, Player, default), Web).GetProperty("myAttendance").ValueKind);
+    }
+
+    [Fact]
+    public async Task Npc_and_creature_sheets_follow_campaign_templates_and_only_the_master_reads_them()
+    {
+        await SheetTemplateService.EnsureFreeTemplateAsync(db, default);
+        var id = await StartAsync(PlayModes.Free);
+        var templates = JsonSerializer.SerializeToElement(await service.NpcTemplatesAsync(campaign.Id, Master, default), Web).GetProperty("items");
+        var free = templates.EnumerateArray().Single(t => t.GetProperty("id").GetGuid() == SheetTemplate.FreeTemplateId).GetProperty("id").GetGuid();
+        Assert.Equal(403, await Status(() => service.NpcTemplatesAsync(campaign.Id, Player, default)));
+
+        var npc = JsonSerializer.SerializeToElement(await prep.SaveNpcAsync(campaign.Id, null, new("Capitã Vela", "Guarda", "", "neutral", [], Kind: NpcKinds.Npc), Master, default), Web);
+        var npcId = npc.GetProperty("id").GetGuid();
+        db.ChangeTracker.Clear();
+        var empty = JsonSerializer.SerializeToElement(await service.NpcSheetAsync(campaign.Id, npcId, Master, default), Web);
+        Assert.Equal(JsonValueKind.Null, empty.GetProperty("template").ValueKind);
+        var withSheet = JsonSerializer.SerializeToElement(await service.SaveNpcSheetAsync(campaign.Id, npcId, new(free, null, empty.GetProperty("revision").GetInt32()), Master, default), Web);
+        var numeric = withSheet.GetProperty("fields").EnumerateArray().First(f => f.GetProperty("type").GetString() == SheetFieldTypes.Number).GetProperty("name").GetString()!;
+        db.ChangeTracker.Clear();
+        var saved = JsonSerializer.SerializeToElement(await service.SaveNpcSheetAsync(campaign.Id, npcId, new(free, new() { [numeric] = "7" }, withSheet.GetProperty("revision").GetInt32()), Master, default), Web);
+        Assert.Equal("7", saved.GetProperty("values").GetProperty(numeric).GetString());
+        // Revisão antiga, campo inexistente e leitura por jogador são recusados.
+        db.ChangeTracker.Clear();
+        Assert.Equal(409, await Status(() => service.SaveNpcSheetAsync(campaign.Id, npcId, new(free, null, 1), Master, default)));
+        db.ChangeTracker.Clear();
+        Assert.Equal(400, await Status(() => service.SaveNpcSheetAsync(campaign.Id, npcId, new(free, new() { ["inexistente"] = "1" }, saved.GetProperty("revision").GetInt32()), Master, default)));
+        Assert.Equal(403, await Status(() => service.NpcSheetAsync(campaign.Id, npcId, Player, default)));
+        // A gravação durante a sessão segue o fluxo da mesa (evento privado do mestre).
+        Assert.DoesNotContain("atualizou a ficha de Capitã Vela", await StateText(id, Player));
+        Assert.Contains("atualizou a ficha de Capitã Vela", await StateText(id, Master));
+    }
+
+    [Fact]
+    public async Task Creature_images_reach_players_only_while_the_token_is_visible()
+    {
+        await SheetTemplateService.EnsureFreeTemplateAsync(db, default);
+        var id = await StartAsync(PlayModes.Free);
+        var free = SheetTemplate.FreeTemplateId;
+        var asset = new CampaignMap { CampaignId = campaign.Id, Name = "Retrato", HasGrid = false, Content = [0xFF, 0xD8, 0xFF, 0xD9] };
+        var elsewhere = new Campaign { OwnerId = Other, Name = "Outra mesa" };
+        var foreign = new CampaignMap { CampaignId = elsewhere.Id, Name = "Alheio", HasGrid = false, Content = [0xFF, 0xD8, 0xFF, 0xD9] };
+        db.AddRange(elsewhere, asset, foreign);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        Assert.Equal(400, await Status(() => service.AddTokenAsync(id, new("Lobo", "enemy", 2, 2, ImageUrl: "http://exemplo.com/lobo.png"), Master, default)));
+        db.ChangeTracker.Clear();
+        Assert.Equal(400, await Status(() => service.AddTokenAsync(id, new("Lobo", "enemy", 2, 2, ImageUrl: "asset:" + foreign.Id), Master, default)));
+        db.ChangeTracker.Clear();
+        var wolf = JsonSerializer.SerializeToElement(await service.AddTokenAsync(id, new("Lobo", "enemy", 2, 2, TemplateId: free, ImageUrl: "https://exemplo.com/lobo.png"), Master, default), Web);
+        Assert.Equal(JsonValueKind.String, wolf.GetProperty("masterCharacterId").ValueKind);
+        db.ChangeTracker.Clear();
+        var ghost = JsonSerializer.SerializeToElement(await service.AddTokenAsync(id, new("Espectro", "enemy", 3, 2, Hidden: true, ImageUrl: "asset:" + asset.Id), Master, default), Web);
+        var ghostId = ghost.GetProperty("id").GetGuid();
+        var player = await StateText(id, Player);
+        Assert.Contains("https://exemplo.com/lobo.png", player);
+        Assert.DoesNotContain(ghostId + "/portrait", player);
+        Assert.Equal(404, await Status(() => service.PortraitAsync(id, ghostId, Player, default)));
+        Assert.Equal(404, await Status(() => service.PortraitAsync(id, ghostId, Outsider, default)));
+        Assert.Equal(4, (await service.PortraitAsync(id, ghostId, Master, default)).Length);
+        // Revelado, a imagem do acervo chega ao jogador pela rota protegida.
+        await db.SessionTokens.Where(t => t.Id == ghostId).ExecuteUpdateAsync(t => t.SetProperty(x => x.Hidden, false));
+        Assert.Contains(ghostId + "/portrait", await StateText(id, Player));
+        Assert.Equal(4, (await service.PortraitAsync(id, ghostId, Player, default)).Length);
+        var master = (await State(id, Master)).GetProperty("play").GetProperty("npcs");
+        Assert.Contains(master.EnumerateArray(), n => n.GetProperty("kind").GetString() == NpcKinds.Creature && n.GetProperty("hasSheet").GetBoolean());
     }
 
     sealed class Clock(DateTimeOffset start) : TimeProvider

@@ -525,3 +525,32 @@ export function applySuggestion(text, start, caret, name) {
 export function lostOnRename(originalName, newName, publishedNames) {
   return !!originalName && originalName !== newName && publishedNames.includes(originalName);
 }
+
+/**
+ * Atributos numéricos de um modelo simples (seções com campos por rótulo), com os mesmos nomes que o servidor gera
+ * (PreparationJournal.Slug): sem acentos, minúsculas, "_" entre palavras, até 34 caracteres, repetições com _2, _3…
+ */
+export function simpleTemplateFormulaFields(sections = []) {
+  const used = new Set();
+  const slug = (label) => {
+    let clean = String(label).normalize("NFD").replace(/\p{Mn}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    if (!clean || !/^[a-z]/.test(clean)) clean = "campo_" + clean;
+    if (clean.length > 34) clean = clean.slice(0, 34).replace(/_+$/, "");
+    let candidate = clean, n = 2;
+    while (used.has(candidate)) candidate = `${clean}_${n++}`;
+    used.add(candidate);
+    return candidate;
+  };
+  const all = sections.flatMap((s) => s.fields || []);
+  const hasName = all.some((f) => f.type === "text" && String(f.label || "").trim().toLowerCase() === "nome");
+  if (!hasName) slug("Nome");
+  const out = [];
+  for (const f of all) {
+    const label = String(f.label || "").trim();
+    if (!label) continue;
+    const name = slug(label);
+    if (f.type === "number") out.push({ name, label });
+  }
+  return out;
+}
+

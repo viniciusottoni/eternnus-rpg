@@ -47,6 +47,9 @@ public static class PlayEndpoints
         campaign.MapGet("/npcs", (Guid campaignId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.NpcsAsync(campaignId, Id(u), ct));
         campaign.MapPost("/npcs", (Guid campaignId, NpcInput x, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.SaveNpcAsync(campaignId, null, x, Id(u), ct));
         campaign.MapPut("/npcs/{npcId:guid}", (Guid campaignId, Guid npcId, NpcInput x, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.SaveNpcAsync(campaignId, npcId, x, Id(u), ct));
+        campaign.MapGet("/npc-templates", (Guid campaignId, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.NpcTemplatesAsync(campaignId, Id(u), ct));
+        campaign.MapGet("/npcs/{npcId:guid}/sheet", (Guid campaignId, Guid npcId, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.NpcSheetAsync(campaignId, npcId, Id(u), ct));
+        campaign.MapPut("/npcs/{npcId:guid}/sheet", (Guid campaignId, Guid npcId, NpcSheetInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveNpcSheetAsync(campaignId, npcId, x, Id(u), ct));
         campaign.MapPost("/npcs/{npcId:guid}/copy", (Guid campaignId, Guid npcId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.CopyNpcAsync(campaignId, npcId, Id(u), ct));
         campaign.MapDelete("/npcs/{npcId:guid}", async (Guid campaignId, Guid npcId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => { await p.DeleteNpcAsync(campaignId, npcId, Id(u), ct); return Ok(); });
         campaign.MapGet("/journal", (Guid campaignId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.JournalAsync(campaignId, Id(u), ct));
@@ -70,6 +73,13 @@ public static class PlayEndpoints
         session.MapPost("/scene/save-as", async (Guid sessionId, SaveSceneAsInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => Results.Ok(await s.SaveSceneAsAsync(sessionId, x, Id(u), ct)));
         session.MapPost("/scene/capture", async (Guid sessionId, CaptureSceneInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.CaptureSceneAsync(sessionId, x, Id(u), ct); return Ok(); });
         session.MapPost("/npc-tokens", async (Guid sessionId, NpcTokenInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => Results.Ok(await s.AddNpcTokenAsync(sessionId, x, Id(u), ct)));
+        session.MapGet("/tokens/{tokenId:guid}/portrait", async (Guid sessionId, Guid tokenId, HttpContext http, SessionService s, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            var bytes = await s.PortraitAsync(sessionId, tokenId, Id(u), ct);
+            http.Response.Headers.CacheControl = "private, no-store";
+            http.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            return Results.File(bytes, DocumentKinds.Jpeg, enableRangeProcessing: false);
+        });
         session.MapPost("/npcs/{npcId:guid}/resource", async (Guid sessionId, Guid npcId, NpcResourceInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.AdjustNpcResourceAsync(sessionId, npcId, x, Id(u), ct); return Ok(); });
         session.MapPost("/recap", async (Guid sessionId, RecapInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.RecapAsync(sessionId, x, Id(u), ct); return Ok(); });
     }

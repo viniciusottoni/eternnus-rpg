@@ -7,6 +7,7 @@ import { validate } from "./formula.js";
 import { editableValues, ownActions, downloadName } from "./character-policy.js";
 import { withLoading } from "./loading.js";
 import { keepMasterPresence } from "./session-presence.js";
+import { formulaSuggestOn } from "./formula-suggest.js";
 
 const KINDS = [["ataque", "Ataque"], ["habilidade", "Habilidade"], ["magia", "Magia"], ["item", "Item"]];
 function actionRow(a = {}) {
@@ -37,6 +38,8 @@ export async function renderCharacterPage(id, context) {
   const abort = new AbortController();
   const opts = { signal: abort.signal };
   let controller, sheet, dirty = false, historyPage = 1, dead = false, releasePresence = () => {};
+  // Fórmulas das ações pessoais: @atributos numéricos do modelo desta ficha.
+  const releaseSuggest = formulaSuggestOn(root, '.cs-action input[data-k="formula"]', () => (sheet?.version?.fields || []).filter((f) => f.type === "number" || f.type === "computed"));
   const fresh = id === "new";
   const campaignId = fresh && context && /^[0-9a-f-]{36}$/i.test(context) ? context : null;
   const returnCampaignId = !fresh && context && /^[0-9a-f-]{36}$/i.test(context) ? context : null;
@@ -169,5 +172,5 @@ export async function renderCharacterPage(id, context) {
   } catch (error) {
     if (!dead) root.innerHTML = `<section class="empty"><h2>Não foi possível abrir a ficha.</h2><p>${esc(error.message)}</p><a class="button subtle" href="#characters">Voltar aos personagens</a></section>`;
   }
-  return () => { dead = true; abort.abort(); releasePresence(); controller?.destroy(); root.removeEventListener("click", click); };
+  return () => { dead = true; abort.abort(); releasePresence(); releaseSuggest(); controller?.destroy(); root.removeEventListener("click", click); };
 }

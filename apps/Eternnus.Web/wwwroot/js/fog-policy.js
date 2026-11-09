@@ -152,6 +152,8 @@ export function sharedPreview(layer, width, height) {
 export const SETTING_FIELDS = [
   { key: "playMode", type: "choice", label: "Forma de jogar", help: "A sessão guarda a forma com que começou; mudar aqui na mesa vale a partir de agora.",
     options: [["free", "Livre — ações sem turnos"], ["turns", "Por turnos — o mestre concede a vez"], ["tactical", "Tática — turnos, grade e deslocamento"]], fallback: "tactical" },
+  { key: "playerRollVisibility", type: "choice", label: "Quem vê as rolagens dos jogadores", help: "Jogadores não escolhem; vale para todas as rolagens deles.",
+    options: [["table", "Mesa inteira"], ["master", "Quem rolou e o mestre"], ["blind", "Somente o mestre (quem rolou não vê)"]], fallback: "table" },
   { key: "fogEnabled", type: "bool", label: "Névoa ativa", help: "Jogadores veem só o que luz, visão e o mestre revelam." },
   { key: "manualReveal", type: "bool", label: "Revelação manual", help: "Com névoa, só aparece o que você revelar; luz e visão não revelam sozinhas." },
   { key: "rememberExplored", type: "bool", label: "Lembrar áreas exploradas", help: "Casas já vistas ficam atenuadas, sem mostrar criaturas." },

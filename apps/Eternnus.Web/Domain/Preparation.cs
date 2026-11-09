@@ -79,6 +79,46 @@ public class MasterCharacter
     public Guid? SourceId { get; set; }
     public int Revision { get; set; } = 1;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>Personagem do mestre ("npc") ou criatura ("creature"). Só muda a apresentação e a organização.</summary>
+    [MaxLength(10)] public string Kind { get; set; } = NpcKinds.Npc;
+    /// <summary>Versão do modelo de ficha (o mesmo dos jogadores ou outro da campanha). Nula = sem ficha, só recursos simples.</summary>
+    public Guid? TemplateVersionId { get; set; }
+    /// <summary>Valores editáveis da ficha (JSON nome → texto), validados pelo modelo.</summary>
+    [MaxLength(100000)] public string Values { get; set; } = "{}";
+    /// <summary>Imagem mostrada aos jogadores quando o marcador está visível: https://… ou asset:{id} (imagem do acervo da campanha).</summary>
+    [MaxLength(500)] public string? ImageUrl { get; set; }
+}
+
+public static class NpcKinds
+{
+    public const string Npc = "npc", Creature = "creature";
+    public static string Normalize(string? v) => v switch { null or "" => Npc, Npc or Creature => v, _ => throw new RuleException(400, "Escolha personagem ou criatura.") };
+}
+
+/// <summary>
+/// Imagem de NPC/criatura: link https (sem credenciais, até 500 caracteres) ou asset:{guid} de uma imagem do acervo da
+/// própria campanha. Links externos carregam do site de terceiros no navegador dos jogadores (o site vê o IP deles).
+/// </summary>
+public static class NpcImages
+{
+    public const string AssetPrefix = "asset:";
+    /// <summary>Normaliza a entrada. Devolve null (sem imagem), o link https canônico ou asset:{guid}; a existência do asset é conferida pelo serviço.</summary>
+    public static string? Normalize(string? input, out Guid? asset)
+    {
+        asset = null;
+        var text = (input ?? "").Trim();
+        if (text.Length == 0) return null;
+        if (text.StartsWith(AssetPrefix, StringComparison.Ordinal))
+        {
+            if (!Guid.TryParse(text[AssetPrefix.Length..], out var id)) throw new RuleException(400, "Imagem do acervo inválida.");
+            asset = id;
+            return AssetPrefix + id.ToString("D");
+        }
+        if (text.Length > 500 || text.Any(ch => char.IsWhiteSpace(ch) || char.IsControl(ch))
+            || !Uri.TryCreate(text, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || uri.Host.Length == 0 || uri.UserInfo.Length > 0)
+            throw new RuleException(400, "Use um link https:// válido para a imagem (até 500 caracteres) ou escolha uma imagem do acervo.");
+        return uri.AbsoluteUri.Length > 500 ? throw new RuleException(400, "O link da imagem aceita até 500 caracteres.") : uri.AbsoluteUri;
+    }
 }
 
 /// <summary>Resposta de um personagem a um pedido de teste. A sessão bloqueada impede respostas duplicadas.</summary>

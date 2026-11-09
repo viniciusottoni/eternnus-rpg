@@ -65,15 +65,33 @@ public partial class SessionService
         }
         var masterOnline = await db.SessionParticipants.AsNoTracking().Where(p => p.SessionId == s.Id && p.IsMaster).Select(p => p.LastSeenAt).FirstOrDefaultAsync(ct);
         var away = !TableRules.IsOnline(masterOnline, Now);
-        var npcs = a.IsMaster
-            ? await db.SessionTokens.AsNoTracking().Where(t => t.SessionId == s.Id && t.MasterCharacterId != null)
-                .Join(db.MasterCharacters, t => t.MasterCharacterId, m => m.Id, (t, m) => new { tokenId = t.Id, m.Id, m.Name, m.Summary, m.Resources, m.SourceId }).ToListAsync(ct)
-            : [];
+        List<object> npcs = [];
+        if (a.IsMaster)
+        {
+            var rows = await db.SessionTokens.AsNoTracking().Where(t => t.SessionId == s.Id && t.MasterCharacterId != null)
+                .Join(db.MasterCharacters, t => t.MasterCharacterId, m => m.Id, (t, m) => new { tokenId = t.Id, m.Id, m.Name, m.Summary, m.Resources, m.SourceId, m.Kind, m.ImageUrl, m.TemplateVersionId, m.Values, m.Revision }).ToListAsync(ct);
+            // Resumo da ficha (recursos e destaques do modelo) para acompanhar cada NPC/criatura; versões numa só consulta.
+            var versionIds = rows.Where(r => r.TemplateVersionId != null).Select(r => r.TemplateVersionId!.Value).Distinct().ToList();
+            var versions = await db.SheetTemplateVersions.AsNoTracking().Where(v => versionIds.Contains(v.Id)).ToDictionaryAsync(v => v.Id, ct);
+            foreach (var r in rows)
+            {
+                object? sheet = null;
+                if (r.TemplateVersionId is { } vid && versions.TryGetValue(vid, out var version))
+                {
+                    var all = CharacterSheets.All(version.Fields, CharacterSheets.Complete(version.Fields, CharacterSheets.ParseValues(r.Values)).Stored);
+                    var (resources, stats) = SheetSummary.Build(version.Fields, all);
+                    sheet = new { resources, stats };
+                }
+                npcs.Add(new { r.tokenId, r.Id, r.Name, r.Summary, r.Resources, r.SourceId, r.Kind, r.Revision, image = PortraitUrl(s.Id, r.tokenId, r.ImageUrl), hasSheet = sheet != null, sheet });
+            }
+        }
         return new
         {
             mode = PlayModes.Effective(s.PlayMode),
             modeLabel = PlayModes.Label(s.PlayMode),
             paused = s.PausedAt != null,
+            // Jogadores veem quem recebe as próprias rolagens (definido pelo mestre na configuração da mesa).
+            playerRollVisibility = (await Fog.SettingsAsync(a.Campaign, s, ct)).PlayerRollVisibility,
             turnOrder = entries,
             activeTurnKey = s.ActiveTurnKey,
             myTurn = IsTurnOf(s, myCharacter),

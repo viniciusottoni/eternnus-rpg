@@ -219,26 +219,28 @@ public partial class SessionService
     }
 
     // ---------- Projeção ----------
-    static object MasterToken(SessionToken t, FogToken f) => new
+    static object MasterToken(SessionToken t, FogToken f, string? image = null) => new
     {
-        t.Id, t.CharacterId, t.Label, t.Side, t.X, t.Y, t.LastMovedTurn, light = f.Light, vision = f.Vision, perception = f.Perception,
+        t.Id, t.CharacterId, t.Label, t.Side, t.X, t.Y, t.LastMovedTurn, light = f.Light, vision = f.Vision, perception = f.Perception, image, masterCharacterId = t.MasterCharacterId,
         overrides = new { light = t.Light, vision = t.Vision, perception = t.Perception, senses = t.Senses },
         hidden = t.CharacterId == null && t.Hidden, revealedTo = t.RevealedTo, dc = t.Dc, detectSense = t.DetectSense, detectRange = t.DetectRange,
     };
 
-    static object PlayerToken(SessionToken t, FogToken f, bool perceived) => new
+    // Imagem só para marcador visível de fato: percebido ("?") não revela nome nem imagem.
+    static object PlayerToken(SessionToken t, FogToken f, bool perceived, string? image = null) => new
     {
-        t.Id, t.CharacterId, label = perceived ? "?" : t.Label, t.Side, t.X, t.Y, t.LastMovedTurn, light = f.Light, perceived,
+        t.Id, t.CharacterId, label = perceived ? "?" : t.Label, t.Side, t.X, t.Y, t.LastMovedTurn, light = f.Light, perceived, image = perceived ? null : image,
     };
 
     /// <summary>Mapa, marcadores e névoa que <paramref name="viewer"/> pode receber. O mestre recebe tudo; jogadores, só o que enxergam.</summary>
-    (object Map, object Tokens, object Fog) Board(FogScene scene, string viewer, bool master, object map, IEnumerable<object> players, bool viewAs = false)
+    (object Map, object Tokens, object Fog) Board(FogScene scene, string viewer, bool master, object map, IEnumerable<object> players, bool viewAs = false, IReadOnlyDictionary<Guid, string>? portraits = null)
     {
         var effective = scene.Tokens.ToDictionary(t => t.Id);
+        string? Image(Guid id) => portraits != null && portraits.TryGetValue(id, out var url) ? url : null;
         if (master)
-            return (map, scene.Raw.Values.Select(t => MasterToken(t, effective[t.Id])).ToList(), Fog.MasterFog(scene, players));
+            return (map, scene.Raw.Values.Select(t => MasterToken(t, effective[t.Id], Image(t.Id))).ToList(), Fog.MasterFog(scene, players));
         if (!scene.Active)
-            return (map, scene.Raw.Values.Select(t => PlayerToken(t, effective[t.Id], false)).ToList(), new { active = false });
+            return (map, scene.Raw.Values.Select(t => PlayerToken(t, effective[t.Id], false, t.Hidden ? null : Image(t.Id))).ToList(), new { active = false });
         var view = scene.View(viewer);
         var known = scene.Settings.RememberExplored ? view.Explored : view.Visible;
         var width = scene.Map.Width;
@@ -247,7 +249,7 @@ public partial class SessionService
         var version = TableFogService.ImageVersion(known);
         if (scene.Map.Key.StartsWith("asset:") && node["imageUrl"]?.GetValue<string>() is { } url)
             node["imageUrl"] = url + "?v=" + version + (viewAs ? "&as=" + Uri.EscapeDataString(viewer) : "");
-        var tokens = scene.Raw.Values.Where(t => view.Tokens.Contains(t.Id)).Select(t => PlayerToken(t, effective[t.Id], view.PerceivedTokens.Contains(t.Id))).ToList();
+        var tokens = scene.Raw.Values.Where(t => view.Tokens.Contains(t.Id)).Select(t => PlayerToken(t, effective[t.Id], view.PerceivedTokens.Contains(t.Id), Image(t.Id))).ToList();
         var fog = new
         {
             active = true, remember = scene.Settings.RememberExplored,
@@ -267,7 +269,7 @@ public partial class SessionService
             throw new RuleException(404, "Jogador não encontrado nesta sessão.");
         var scene = await Fog.SceneAsync(a.Session, a.Campaign, false, ct) ?? throw new RuleException(409, "Névoa existe somente em mapas com grade.");
         var map = await LiveMapAsync(a.Session, ct);
-        var (boardMap, tokens, fog) = Board(scene, asUser, false, map, [], viewAs: true);
+        var (boardMap, tokens, fog) = Board(scene, asUser, false, map, [], viewAs: true, portraits: await PortraitsAsync(sessionId, ct));
         return new { a.Session.Revision, asUser, map = boardMap, tokens, fog };
     }
 }

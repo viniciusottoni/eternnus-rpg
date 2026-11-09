@@ -81,11 +81,18 @@ Não há suporte automático a todas as mecânicas, como dados de cores diferent
 
 | Valor | Quem recebe | Como é garantido |
 | --- | --- | --- |
-| `table` | Mesa inteira. | Evento público. |
-| `master` | Jogador e mestre. | `MasterOnly` + `VisibleToUserId` do autor. |
-| `blind` | Somente o mestre. | `MasterOnly` sem destinatário. O autor recebe só um aviso sem resultado; a resposta HTTP traz `hidden: true`. |
+Só o mestre escolhe (ADR-053). Nas rolagens do mestre: `table`, `blind` (só ele) ou `group` (ele e 1 a 20 jogadores marcados). Rolagens de jogador seguem `TableSettings.PlayerRollVisibility` (`table`, `master` ou `blind`, padrão `table`), configurada pelo mestre; o servidor ignora o que o cliente enviar. Pedidos de teste aceitam `table`, `master` ou `blind`.
 
-O filtro de eventos do estado ao vivo e do histórico já aplica `MasterOnly`/`VisibleToUserId`; nenhum resultado privado vai para outros payloads.
+| Valor | Quem recebe | Como é garantido |
+| --- | --- | --- |
+| `table` | Mesa inteira. | Evento público. |
+| `master` | Quem rolou e o mestre. | `MasterOnly` + `VisibleToUserId` do autor. |
+| `blind` | Somente o mestre. | `MasterOnly` sem destinatário. O autor recebe só um aviso sem resultado; a resposta HTTP traz `hidden: true`. |
+| `group` | Mestre e jogadores escolhidos. | Original `MasterOnly`; uma cópia `MasterOnly` + `VisibleToUserId` por destinatário com `IsRecipientCopy`, que o mestre não recebe (sem duplicar no registro nem no histórico). |
+
+O filtro de eventos do estado ao vivo e do histórico já aplica `MasterOnly`/`VisibleToUserId`/`IsRecipientCopy`; nenhum resultado privado vai para outros payloads.
+
+**Autocompletar de fórmulas:** em qualquer campo de fórmula (construtor de rolagem, pedido de teste, ações da ficha, modelo simples e editor de modelos), digitar `@` lista os atributos numéricos e calculados da ficha (`js/formula-suggest.js`). O mestre não tem ficha nas próprias rolagens; nos pedidos de teste recebe os atributos das fichas na mesa.
 
 ### Pedidos de teste
 
@@ -124,7 +131,9 @@ O filtro de eventos do estado ao vivo e do histórico já aplica `MasterOnly`/`V
   - revelação manual: névoa ligada, e só as casas reveladas pelo mestre aparecem;
   - visão por personagem: névoa com luz e visão.
   As opções detalhadas e **Ver como jogador** continuam disponíveis.
-- **Personagens do mestre** (`MasterCharacters`): nome, resumo, notas privadas, lado e até 8 recursos. A **cópia para encontro** (`SourceId`) recebe recursos cheios e não altera o original. Marcadores guardam `MasterCharacterId`.
+- **Personagens do mestre** (`MasterCharacters`): nome, tipo (personagem ou criatura), resumo, notas privadas, lado e até 8 recursos. A **cópia para encontro** (`SourceId`) recebe recursos cheios e não altera o original. Marcadores guardam `MasterCharacterId`.
+- **Ficha de NPC/criatura** (ADR-054): o mestre escolhe qualquer modelo aceito pela campanha (o dos jogadores ou outro). Valores validados pelo tipo de cada campo; trocar o modelo recomeça os valores. Na mesa, “Ficha do elemento” abre a ficha do marcador selecionado e o painel de personagens do mestre mostra os recursos e destaques de cada um. “Adicionar ao mapa” com ficha ou imagem cria a criatura ligada ao marcador. Só o mestre lê ou edita.
+- **Imagem de NPC/criatura:** imagem do acervo da campanha (`asset:{id}`) ou link `https://`. O jogador recebe a imagem só de marcador visível e não apenas percebido; clicar no marcador abre a imagem maior. A imagem do acervo sai por `/tokens/{id}/portrait`, que repete a checagem de visibilidade. Link externo é carregado do site de terceiros (o site vê o IP de quem abre e pode trocar o conteúdo).
 - Jogadores recebem nome, tipo e texto compartilhado da cena; descrição de preparo e notas privadas nunca entram no payload deles.
 
 ## Pausa, espera recuperável e encerramento

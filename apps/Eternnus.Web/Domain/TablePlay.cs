@@ -110,12 +110,19 @@ public static class TurnOrders
         entry != null && character is { } c && (CharacterOf(entry.Key) == c || entry.Members.Contains(c));
 }
 
-/// <summary>Quem recebe uma rolagem: mesa inteira, jogador e mestre, ou somente o mestre (o jogador não vê o resultado).</summary>
+/// <summary>
+/// Quem recebe uma rolagem: mesa inteira, quem rolou e o mestre, somente o mestre (quem rolou não vê o resultado)
+/// ou o mestre e jogadores escolhidos por ele. Só o mestre escolhe; rolagens de jogador seguem
+/// <see cref="TableSettings.PlayerRollVisibility"/>.
+/// </summary>
 public static class RollVisibility
 {
-    public const string Table = "table", Master = "master", Blind = "blind";
-    public static string Normalize(string? v) => v switch { null or "" => Table, Table or Master or Blind => v, _ => throw new RuleException(400, "Escolha quem vê a rolagem.") };
-    public static string Label(string v) => v switch { Master => "jogador e mestre", Blind => "somente o mestre", _ => "mesa inteira" };
+    public const string Table = "table", Master = "master", Blind = "blind", Group = "group";
+    public const int MaxRecipients = 20;
+    /// <summary>Valores aceitos na configuração das rolagens de jogador e nos pedidos de teste.</summary>
+    public static bool IsPlayerChoice(string? v) => v is Table or Master or Blind;
+    public static string Normalize(string? v) => v switch { null or "" => Table, Table or Master or Blind or Group => v, _ => throw new RuleException(400, "Escolha quem vê a rolagem.") };
+    public static string Label(string v) => v switch { Master => "jogador e mestre", Blind => "somente o mestre", Group => "mestre e jogadores escolhidos", _ => "mesa inteira" };
 }
 
 /// <summary>

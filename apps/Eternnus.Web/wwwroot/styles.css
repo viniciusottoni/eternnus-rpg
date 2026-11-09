@@ -2751,7 +2751,9 @@ button.help-button:hover, button.help-button[aria-expanded="true"] { color: var(
 /* Popup de ajuda: sempre centralizado, fundo levemente escurecido, fecha pelo X, Esc ou clique fora. */
 .help-popup { position: fixed; inset: 0; margin: auto; width: min(440px, calc(100vw - 32px)); height: fit-content; max-height: min(72dvh, 560px); padding: 0; overflow: hidden; }
 .help-popup::backdrop { background: #02090b99; }
-.help-popup:popover-open { display: flex; flex-direction: column; }
+/* flex-direction fica na base: no fade de saída o popup já perdeu :popover-open, mas segue exibido por 160 ms. */
+.help-popup { flex-direction: column; }
+.help-popup:popover-open { display: flex; }
 .help-popup header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .7rem .6rem .7rem 1.1rem; border-bottom: 1px solid var(--line); flex: none; }
 .help-popup h2 { margin: 0; font: 1.2rem/1.3 var(--serif); color: var(--bright); }
 .help-popup .help-close { display: inline-flex; align-items: center; justify-content: center; width: 36px; min-width: 36px; height: 36px; min-height: 36px; padding: 0; font-size: 24px; line-height: 1; color: var(--muted); border-radius: 50%; flex: none; }
@@ -2773,7 +2775,9 @@ button.help-button:hover, button.help-button[aria-expanded="true"] { color: var(
 /* ---------- Modais: base comum (revisão de 9 nov. 2026) ----------
    Cabeçalho fixo com título e X; só o corpo rola (uma única barra, dentro da borda);
    grupos de campos com a mesma moldura dourada discreta em todo o sistema. */
-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+/* Só display depende de [open]; direção e overflow ficam na base para o layout não mudar durante o fade de saída. */
+dialog { flex-direction: column; overflow: hidden; }
+dialog[open] { display: flex; }
 dialog > .modal-head { flex: none; gap: 12px; }
 dialog > .modal-head h2 { min-width: 0; overflow-wrap: anywhere; }
 #close-modal { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 40px; min-width: 40px; height: 40px; min-height: 40px; padding: 0; font-size: 26px; line-height: 1; border-radius: 50%; }
@@ -2840,6 +2844,8 @@ textarea:focus-visible,
 select:focus-visible { outline: none; border-color: var(--bright); box-shadow: inset 0 0 0 1px var(--bright); }
 button:focus-visible, a:focus-visible, summary:focus-visible, .button:focus-visible,
 input[type=checkbox]:focus-visible, input[type=radio]:focus-visible, input[type=file]:focus-visible { outline: 2px solid var(--bright); outline-offset: 2px; }
+/* Rádio e checkbox sem o padding dos campos de texto: o controle fica quadrado e o foco, circular/regular. */
+input:is([type=radio], [type=checkbox]) { min-height: 0; padding: 0; box-sizing: border-box; flex: none; }
 :is(#modal-body, .se-tools, .se-side, .panel-tabs, .panel-body, .page-tabs, .fx-sidebar, .fx-path, .data-table-wrap, .stage-tools, .admin-tabs, .lib-pdf-toolbar)
   :is(button, a, summary, .button):focus-visible { outline: 2px solid var(--bright); outline-offset: -2px; box-shadow: inset 0 0 0 4px #0b0a08cc; }
 #modal-body .form-actions :is(button, .button):focus-visible { outline-offset: 2px; box-shadow: none; }
@@ -2862,6 +2868,56 @@ dialog[open]::backdrop, .help-popup:popover-open::backdrop { opacity: 1; }
   dialog[open] { transform: translateY(6px); }
   dialog[open]::backdrop, .help-popup:popover-open::backdrop { opacity: 0; }
 }
+/* Sob a tela de carregamento (fundo translúcido), o modal que fecha some na hora: o fade apareceria através dela. */
+html:has(#splash:popover-open) dialog, html:has(#splash:popover-open) dialog::backdrop { transition: none; }
 @media (prefers-reduced-motion: reduce) {
   dialog, .help-popup, .tooltip, dialog::backdrop, .help-popup::backdrop { transition: none; transform: none; }
+}
+
+/* ---------- Autocompletar de @atributos em fórmulas (combobox comum: modelos, fichas e mesa) ---------- */
+.tpl-combo, .formula-host {
+  position: relative;
+}
+.tpl-combo input {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+.tpl-suggest {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 220px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--gold);
+  border-radius: 5px;
+  background: #121a19;
+  box-shadow: var(--shadow);
+}
+.tpl-suggest li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 36px;
+  align-items: center;
+  padding: 6px 9px;
+  color: var(--text);
+  font: 13px ui-monospace, Consolas, monospace;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.tpl-suggest li small {
+  overflow: hidden;
+  color: var(--muted);
+  font: 11px system-ui, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tpl-suggest li[aria-selected="true"],
+.tpl-suggest li:hover {
+  background: #c6a46326;
+  color: var(--bright);
 }

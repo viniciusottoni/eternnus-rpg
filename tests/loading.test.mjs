@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
@@ -44,7 +44,7 @@ test('failures dismiss loading and restore the form; a later operation can start
   const f = await fixture();
   f.endOpening();
   await assert.rejects(f.withLoading(async () => {
-    assert.equal(f.splash.visible, true);
+    assert.equal(f.app.inert, true);
     throw new Error('network unavailable');
   }), /network unavailable/);
   assert.equal(f.splash.visible, false);
@@ -65,4 +65,28 @@ test('maintenance keeps the canonical opening overlay without reloading or disca
   assert.equal(f.splash.visible, false);
   assert.equal(f.app.inert, false);
   assert.equal(f.protectedNode.inert, true);
+});
+
+test('quick foreground work locks at once but only reveals the surface after the threshold (no flash)', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const f = await fixture();
+    f.endOpening();
+    const restoredBefore = f.focus.restored;
+    const quick = f.beginLoading();
+    assert.equal(f.app.inert, true);
+    assert.equal(f.splash.visible, false);
+    mock.timers.tick(f.OPERATION_REVEAL_MS - 1);
+    quick();
+    mock.timers.tick(10);
+    assert.equal(f.splash.visible, false);
+    assert.equal(f.app.inert, false);
+    assert.equal(f.focus.restored, restoredBefore + 1);
+    const slow = f.beginLoading();
+    mock.timers.tick(f.OPERATION_REVEAL_MS);
+    assert.equal(f.splash.visible, true);
+    slow();
+    assert.equal(f.splash.visible, false);
+    assert.equal(f.app.inert, false);
+  } finally { mock.timers.reset(); }
 });

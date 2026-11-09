@@ -43,9 +43,14 @@ try {
   check(live.play.mode, "free", "sessão fixa a forma de jogar");
   check(live.me.joined, true, "usuário novo chegou à mesa");
 
-  // Modo livre não exige turno; rolagem às cegas e privada não vazam.
-  await newbie(`/api/sessions/${session.id}/rolls`, "POST", { spec: { count: 1, sides: 20, modifier: 9 }, label: "Furtividade", visibility: "blind" });
-  await newbie(`/api/sessions/${session.id}/rolls`, "POST", { formula: "1d20+4", label: "Intuição", visibility: "master" });
+  // Modo livre não exige turno; rolagem às cegas e privada não vazam. Só o mestre define a visibilidade das rolagens dos jogadores.
+  const rollBase = (await master(`/api/sessions/${session.id}/table-settings`)).settings;
+  const playerRolls = (v) => master(`/api/sessions/${session.id}/table-settings`, "PUT", { settings: { ...rollBase, playerRollVisibility: v }, scope: "session" }, 204);
+  await playerRolls("blind");
+  await newbie(`/api/sessions/${session.id}/rolls`, "POST", { spec: { count: 1, sides: 20, modifier: 9 }, label: "Furtividade", visibility: "table" });
+  await playerRolls("master");
+  await newbie(`/api/sessions/${session.id}/rolls`, "POST", { formula: "1d20+4", label: "Intuição", visibility: "table" });
+  await playerRolls("table");
   const mine = JSON.stringify(await newbie(`/api/sessions/${session.id}/live`));
   ok(!mine.includes("1d20+9"), "quem rola às cegas não recebe o resultado");
   ok(mine.includes("1d20+4"), "rolagem jogador+mestre chega ao autor");
