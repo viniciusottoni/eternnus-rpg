@@ -75,7 +75,7 @@ test("ticket and reply validation matches the server limits", () => {
   assert.match(P.validateTicket({ ...ok, category: "hack" }), /categoria/);
   assert.match(P.validateTicket({ ...ok, body: "curta" }), /descrição/);
   assert.equal(P.validateTicket({ ...ok, body: "linha 1\r\nlinha 2\tok" }), "");
-  assert.match(P.validateTicket({ ...ok, body: "x".repeat(5001) }), /descrição/);
+  assert.match(P.validateTicket({ ...ok, body: "x".repeat(10001) }), /descrição/);
   assert.equal(P.validateReply("ok"), "");
   assert.match(P.validateReply("   "), /mensagem/);
   assert.match(P.validateReply("bell\u0007"), /mensagem/);

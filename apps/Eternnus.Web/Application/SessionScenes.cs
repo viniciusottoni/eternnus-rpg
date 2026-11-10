@@ -244,7 +244,7 @@ public partial class SessionService
     /// <summary>Resumo da sessão (também depois de encerrada). Publicar torna visível aos jogadores no diário da campanha.</summary>
     public async Task RecapAsync(Guid sessionId, RecapInput x, string user, CancellationToken ct)
     {
-        var text = Trim(x.Text, 5000, "O resumo aceita até 5.000 caracteres.", false);
+        var text = Trim(x.Text, 10000, "O resumo aceita até 10.000 caracteres.", false);
         if (x.Publish && text.Length == 0) throw new RuleException(400, "Escreva o resumo antes de publicar.");
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var a = await LockAsync(sessionId, user, ct, requireActive: false); RequireMaster(a);

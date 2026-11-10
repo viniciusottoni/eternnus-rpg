@@ -22,50 +22,69 @@ import { guardAvatars } from "./sheet.js";
 import { renderCampaignLibrary, renderCampaignMaps } from "./campaign-assets.js";
 import { keepMasterPresence } from "./session-presence.js";
 
+// Abas principais [chave, rótulo, só mestre]. Nada aparece ou some da barra ao navegar: subpáginas ficam dentro da aba-mãe.
 const TABS = [
   ["overview", "Visão geral", false],
   ["journal", "Diário", false],
-  ["sessions", "Sessões", true],
   ["prep", "Preparação", true],
   ["players", "Grupo", false],
   ["world", "Mundo e acervo", false],
   ["notes", "Minhas notas", false],
-  ["past", "Antes do Eternnus", false],
-  ["atlas", "Atlas compartilhado", false],
-  ["resources", "Bibliotecas", false],
-  ["maps", "Mapas e cenários", true],
-  ["table", "Configuração da mesa", true],
   ["settings", "Configurações", true],
 ];
+// Subpáginas com submenu sempre visível na aba-mãe: [chave, rótulo, só mestre].
+const SUBPAGES = {
+  world: [["world", "Páginas", false], ["atlas", "Atlas compartilhado", false], ["resources", "Bibliotecas", false], ["maps", "Mapas e cenários", true]],
+  settings: [["settings", "Campanha", true], ["table", "Mesa", true]],
+};
+// Seções do Diário com endereço próprio (links antigos e atalhos): abrem o Diário já na seção.
+const JOURNAL_SECTIONS = { sessions: "cp-sessions", past: "cp-past" };
+/** Aba principal que contém `tab` (ela mesma, a mãe de uma subpágina ou o Diário). */
+export function parentTab(tab) {
+  if (TABS.some(([key]) => key === tab)) return tab;
+  if (JOURNAL_SECTIONS[tab]) return "journal";
+  return Object.entries(SUBPAGES).find(([, items]) => items.some(([key]) => key === tab))?.[0] || null;
+}
+const subpageAllowed = (tab, d) => {
+  const parent = parentTab(tab);
+  const item = SUBPAGES[parent]?.find(([key]) => key === tab);
+  if (item && item[2] && !d.isMaster) return false;
+  if (tab === "sessions") return d.isMaster && !d.isOneShot;
+  return true;
+};
+function subnav(d, parent, tab) {
+  const items = (SUBPAGES[parent] || []).filter(([, , masterOnly]) => !masterOnly || d.isMaster);
+  if (items.length < 2) return "";
+  const label = TABS.find(([key]) => key === parent)?.[1] || "";
+  return `<nav class="sub-tabs" aria-label="Seções de ${esc(label)}">${items.map(([key, text]) => `<a href="#campaign/${esc(d.id)}/${key}" ${key === tab ? 'aria-current="page" class="active"' : ""}>${esc(text)}</a>`).join("")}</nav>`;
+}
 let page = 1,
   lastSessions = [],
   generation = 0,
   currentCampaign = "";
 
 export async function renderCampaignPage(id, tab = "overview") {
-  shell("campaigns");
   const request = ++generation;
   if (currentCampaign !== id) page = 1;
   currentCampaign = id;
-  $("#main").innerHTML =
-    '<p class="loading-line" role="status">Abrindo o grimório da campanha…</p>';
+  // A tela anterior fica sob a camada de carregamento até os dados chegarem: sem página vazia entre as abas.
   const detail = await api("/campaigns/" + id);
   if (request !== generation) return;
+  shell("campaigns");
   state.campaign = detail;
-  // One-shot tem sessão única, aberta na criação: sem aba de sessões nem "iniciar sessão".
-  const visible = TABS.filter(
-    ([key, , masterOnly]) => (!masterOnly || detail.isMaster) && !(detail.isOneShot && key === "sessions"),
-  );
-  if (!visible.some(([key]) => key === tab))
-    tab = detail.isMaster && !detail.isOneShot ? "sessions" : "overview";
+  const visible = TABS.filter(([, , masterOnly]) => !masterOnly || detail.isMaster);
+  let parent = parentTab(tab);
+  if (!parent || !visible.some(([key]) => key === parent) || !subpageAllowed(tab, detail)) { tab = "overview"; parent = "overview"; }
   const online = !!detail.activeSession;
   const masterName = detail.masterName || "o mestre";
   $("#main").innerHTML =
     `${detail.isOneShot ? '<a class="back-link" href="#one-shot">← One-shots</a>' : '<a class="back-link" href="#campaigns">← Minhas campanhas</a>'}
   <section class="campaign-hero metal"><div class="campaign-hero-copy"><span class="eyebrow">${esc(detail.system)}</span><h1>${esc(detail.name)}</h1>${detail.archived ? '<p class="notice-box">Campanha arquivada: conteúdo e histórico preservados, sem novas partidas até ser restaurada.</p>' : ""}<p>${esc(detail.description || "Uma nova história aguarda seu primeiro capítulo.")}</p><div class="hero-meta"><span>♛ <b>Mestre:</b> ${esc(masterName)}</span><span>♙ <b>${detail.members.length}</b> ${detail.members.length === 1 ? "jogador" : "jogadores"}</span>${detail.isMaster && !detail.isOneShot ? `<span>▣ <b>${detail.sessionCount}</b> ${detail.sessionCount === 1 ? "sessão" : "sessões"}</span>` : ""}${online ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>ONLINE</span>' : ""}</div></div>${online ? `<a class="button primary enter-table" href="#table/${esc(id)}">▶ ${detail.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>` : ""}</section>
-  <nav class="page-tabs" aria-label="Seções da campanha">${visible.filter(([key]) => ["overview","journal","world","players","prep","notes"].includes(key) || key === tab).map(([key, label]) => `<a href="#campaign/${esc(id)}/${key}" ${key === tab ? 'aria-current="page" class="active"' : ""}>${label}</a>`).join("")}</nav>
-  <div class="form-actions">${detail.isMaster ? `<a class="button subtle" href="#campaign/${esc(id)}/settings">Configurações</a><a class="button subtle" href="#campaign/${esc(id)}/table">Configuração da mesa</a>` : ""}</div><div class="campaign-page-grid"><section id="campaign-tab" class="campaign-tab" aria-live="polite"></section>${overviewCard(detail)}</div>`;
+  <nav class="page-tabs" aria-label="Seções da campanha">${visible.map(([key, label]) => `<a href="#campaign/${esc(id)}/${key}" ${key === parent ? 'aria-current="page" class="active"' : ""}>${label}</a>`).join("")}</nav>
+  <div class="campaign-page-grid"><section id="campaign-tab" class="campaign-tab" aria-live="polite">${subnav(detail, parent, tab)}<div id="campaign-tab-body" class="campaign-tab-body"></div></section>${overviewCard(detail)}</div>`;
   await renderTab(detail, tab);
+  const anchor = JOURNAL_SECTIONS[tab];
+  if (anchor) document.getElementById(anchor)?.scrollIntoView({ block: "start" });
   guardAvatars($("#main"));
   if (detail.isOneShot) $(".campaign-hero-copy").insertAdjacentHTML("beforeend", `<p class="notice-box">One-shot: se o mestre se desconectar, a mesa espera ${detail.recoveryMinutes || 10} minutos antes de ser removida. Encerrar apaga os dados; converter em campanha preserva tudo. Prazo máximo: ${esc(new Date(detail.expiresAt).toLocaleString("pt-BR"))}.</p>`);
   const releasePresence = keepMasterPresence(detail);
@@ -78,8 +97,8 @@ function overviewCard(d) {
 }
 
 async function renderTab(d, tab) {
-  const target = $("#campaign-tab");
-  if (tab === "sessions") return renderSessions(d, target);
+  const target = $("#campaign-tab-body");
+  if (tab === "journal" || JOURNAL_SECTIONS[tab]) return renderJournalTab(d, target);
   if (tab === "players") {
     target.innerHTML = `<div class="section-title"><h2>Jogadores</h2>${d.isMaster ? "" : button("+ Vincular minha ficha", "cp-link", d.id, "subtle small")}</div>${
       d.members.length
@@ -103,11 +122,10 @@ async function renderTab(d, tab) {
   if (tab === "past") return (await import("./campaign-workspace.js")).renderPast(d, target);
   if (tab === "resources") return renderCampaignLibrary(d, target);
   if (tab === "prep") return (await import("./campaign-prep.js")).renderPrep(d, target);
-  if (tab === "journal") { target.innerHTML = `<div class="form-actions"><a class="button subtle" href="#campaign/${esc(d.id)}/past">Antes do Eternnus</a>${d.isMaster ? `<a class="button subtle" href="#campaign/${esc(d.id)}/sessions">Histórico das sessões</a>` : ""}</div><div id="cp-journal"></div>`; return (await import("./campaign-prep.js")).renderJournal(d, $("#cp-journal")); }
   if (tab === "maps") return renderCampaignMaps(d, target);
   if (tab === "table") return (await import("./fog-editor.js")).renderTableSettingsTab(d, target);
   if (tab === "settings") {
-    target.innerHTML = `<div class="section-title"><h2>Configurações${helpButton("campanhas.config.arquivamento", "Arquivar e restaurar")}</h2></div><div class="settings-list"><article class="metal"><h3>Identidade da campanha</h3><p class="muted small">Nome, sistema, premissa, origem e continuidade.</p>${button("Editar campanha", "cp-edit", d.id, "subtle")}</article>${inviteBox(d)}${d.isOneShot ? `<article class="metal"><h3>Continuar depois</h3><p class="muted small">Converta em campanha persistente para guardar sessão, fichas, mapas e histórico. Usa uma das suas vagas de campanha; jogadores sem vaga podem voltar pelo convite.</p>${button("Converter em campanha", "cp-convert", d.id, "primary")}</article><article class="metal danger-zone"><h3>Encerrar one-shot</h3><p class="muted small">Encerre a sessão na mesa ou pela página One-shot. Todo o conteúdo da mesa é apagado; fichas pessoais são preservadas.</p><a class="button subtle" href="#one-shot">Ir para One-shot</a></article>` : `<article class="metal"><h3>${d.archived ? "Restaurar campanha" : "Arquivar campanha"}</h3><p class="muted small">${d.archived ? "Volta a permitir sessões e preparação. A campanha arquivada já ocupa sua vaga, então restaurar não ultrapassa o limite." : "Guarda conteúdo e histórico e impede novas partidas. A campanha continua contando no limite de campanhas."}</p>${button(d.archived ? "Restaurar" : "Arquivar", d.archived ? "cp-restore" : "cp-archive", d.id, "subtle", d.activeSession ? 'aria-disabled="true" data-tip="Encerre a sessão em andamento antes"' : "")}</article><article class="metal danger-zone"><h3>Excluir campanha</h3><p class="muted small">${d.members.length ? "Indisponível enquanto houver jogadores vinculados." : "Sessões, registros e recursos serão apagados. Fichas pessoais são preservadas."}</p>${button("Excluir campanha", "cp-delete", d.id, "danger", d.members.length ? "disabled" : "")}</article>`}</div>`;
+    target.innerHTML = `<div class="section-title"><h2>Configurações${helpButton("campanhas.config.arquivamento", "Arquivar e restaurar")}</h2></div><div class="settings-list"><article class="metal"><h3>Identidade da campanha</h3><p class="muted small">Nome, sistema, premissa, origem e continuidade.</p>${button("Editar campanha", "cp-edit", d.id, "subtle")}</article><article class="metal"><h3>Convite e jogadores</h3><p class="muted small">O link de convite e a lista de jogadores ficam na aba Grupo.</p><a class="button subtle" href="#campaign/${esc(d.id)}/players">Abrir o grupo</a></article>${d.isOneShot ? `<article class="metal"><h3>Continuar depois</h3><p class="muted small">Converta em campanha persistente para guardar sessão, fichas, mapas e histórico. Usa uma das suas vagas de campanha; jogadores sem vaga podem voltar pelo convite.</p>${button("Converter em campanha", "cp-convert", d.id, "primary")}</article><article class="metal danger-zone"><h3>Encerrar one-shot</h3><p class="muted small">Encerre a sessão na mesa ou pela página One-shot. Todo o conteúdo da mesa é apagado; fichas pessoais são preservadas.</p><a class="button subtle" href="#one-shot">Ir para One-shot</a></article>` : `<article class="metal"><h3>${d.archived ? "Restaurar campanha" : "Arquivar campanha"}</h3><p class="muted small">${d.archived ? "Volta a permitir sessões e preparação. A campanha arquivada já ocupa sua vaga, então restaurar não ultrapassa o limite." : "Guarda conteúdo e histórico e impede novas partidas. A campanha continua contando no limite de campanhas."}</p>${button(d.archived ? "Restaurar" : "Arquivar", d.archived ? "cp-restore" : "cp-archive", d.id, "subtle", d.activeSession ? 'aria-disabled="true" data-tip="Encerre a sessão em andamento antes"' : "")}</article><article class="metal danger-zone"><h3>Excluir campanha</h3><p class="muted small">${d.members.length ? "Indisponível enquanto houver jogadores vinculados." : "Sessões, registros e recursos serão apagados. Fichas pessoais são preservadas."}</p>${button("Excluir campanha", "cp-delete", d.id, "danger", d.members.length ? "disabled" : "")}</article>`}</div>`;
     await templateSettings(d, target);
     return;
   }
@@ -115,7 +133,7 @@ async function renderTab(d, tab) {
     ? `<article class="first-steps metal"><h3>Primeiros passos</h3><ol><li><strong>Convide o grupo</strong> — envie o link abaixo.${inviteLink(d)}</li><li><strong>Ficha</strong> — as fichas nascem com o modelo sugerido pelo sistema. <a href="#campaign/${esc(d.id)}/settings">Trocar ou criar um modelo simples</a>.</li><li><strong>Cenário (opcional)</strong> — <a href="#campaign/${esc(d.id)}/prep">prepare uma cena</a> ou comece direto.</li><li>${button("✦ Iniciar próxima sessão", "cp-start", d.id, "primary small")}</li></ol><p class="form-help">Configurações avançadas (névoa, luz, ordem de turnos) ficam disponíveis quando você precisar.</p></article>`
     : "";
   const next = d.nextSessionAt ? `<article class="metal next-session"><h3>Próxima partida</h3><p><strong>${esc(new Date(d.nextSessionAt).toLocaleString("pt-BR", { weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit" }))}</strong></p><a class="text-button" href="#campaign/${esc(d.id)}/journal">${d.isMaster ? "Ver confirmações" : "Confirmar presença"} →</a></article>` : "";
-  target.innerHTML = `${d.continuity || d.currentArc ? `<article class="metal"><h3>Onde paramos${d.currentArc ? " — " + esc(d.currentArc) : ""}</h3><p class="workspace-prose">${esc(d.continuity || "O resumo ainda será escrito.")}</p></article>` : ""}${firstSteps}${d.isMaster ? "" : `<a class="button primary" href="#character/new/${esc(d.id)}">+ Criar ficha com o modelo da campanha</a>`}${next}<div class="section-title"><h2>Visão geral</h2></div><article class="overview-story metal"><h3>Premissa</h3><p>${esc(d.description || "A premissa desta campanha ainda será escrita.")}</p></article>${
+  target.innerHTML = `${d.continuity || d.currentArc ? `<article class="metal overview-story"><h3>Onde paramos${d.currentArc ? " — " + esc(d.currentArc) : ""}</h3><p class="workspace-prose">${esc(d.continuity || "O resumo ainda será escrito.")}</p></article>` : ""}${firstSteps}${d.isMaster ? "" : `<a class="button primary" href="#character/new/${esc(d.id)}">+ Criar ficha com o modelo da campanha</a>`}${next}<div class="section-title"><h2>Visão geral</h2></div><article class="overview-story metal"><h3>Premissa</h3><p>${esc(d.description || "A premissa desta campanha ainda será escrita.")}</p></article>${
     d.activeSession
       ? `<article class="live-callout metal"><span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>Sessão em andamento</span><h3>${esc(sessionLabel(d.activeSession.number, d.activeSession.title))}</h3><p class="muted small">Iniciada em ${formatDate(d.activeSession.startedAt)}.</p><a class="button primary" href="#table/${esc(d.id)}">▶ ${d.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a></article>`
       : d.isOneShot
@@ -132,14 +150,26 @@ function inviteBox(d) {
   return `<article class="metal invite-box"><h3>Convite${helpButton("campanhas.convite.codigo", "Convite da campanha")}</h3><p class="muted small">Quem abrir o link entra, confirma o e-mail se precisar e escolhe o personagem. Compartilhe só com quem deseja convidar.</p>${inviteLink(d)}<details><summary>Código para digitar</summary><div class="invite-code"><code>${esc(d.inviteCode)}</code>${button("Copiar código", "cp-copy", d.inviteCode, "subtle small")}</div></details></article>`;
 }
 
+/** Diário numa só página, em ordem de leitura: próxima partida, objetivos e pistas, sessões jogadas aqui, resumos e o histórico anterior. */
+async function renderJournalTab(d, target) {
+  const showSessions = d.isMaster && !d.isOneShot;
+  target.innerHTML = `<div id="cp-journal" class="journal-block"></div>${showSessions ? '<section id="cp-sessions" class="journal-block" aria-labelledby="cp-sessions-title"></section>' : ""}<section id="cp-recaps" class="journal-block" aria-labelledby="jr-recaps-title"></section><section id="cp-past" class="journal-block" aria-labelledby="past-title"></section>`;
+  const [prep, workspace] = await Promise.all([import("./campaign-prep.js"), import("./campaign-workspace.js")]);
+  await Promise.all([
+    prep.renderJournal(d, { main: $("#cp-journal"), recaps: $("#cp-recaps") }),
+    showSessions ? renderSessions(d, $("#cp-sessions")) : null,
+    workspace.renderPast(d, $("#cp-past")),
+  ]);
+}
+
 async function renderSessions(d, target) {
   target.innerHTML =
     '<p class="loading-line" role="status">Consultando as crônicas…</p>';
   const result = await api(`/campaigns/${d.id}/sessions?page=${page}`);
   lastSessions = result.items;
-  if ($("#campaign-tab") !== target) return;
+  if (!target.isConnected) return;
   const live = result.items.find((s) => s.active);
-  target.innerHTML = `<div class="section-title"><h2>Histórico de sessões</h2>${live ? `<a class="button primary" href="#table/${esc(d.id)}">▶ Voltar à mesa</a>` : button("✦ Iniciar nova sessão", "cp-start", d.id, "primary start-session")}</div>${
+  target.innerHTML = `<div class="section-title"><h2 id="cp-sessions-title">Sessões no Eternnus</h2>${live ? `<a class="button primary small" href="#table/${esc(d.id)}">▶ Voltar à mesa</a>` : d.archived ? "" : button("✦ Iniciar nova sessão", "cp-start", d.id, "subtle small start-session")}</div><p class="muted small section-lead">Só você vê esta lista. Cada sessão guarda linha do tempo, rolagens e notas; o resumo publicado aparece para o grupo em “Resumos”.</p>${
     result.items.length
       ? `<ol class="session-list">${result.items
           .map((s) => {
@@ -149,15 +179,8 @@ async function renderSessions(d, target) {
             return `<li class="session-row metal ${s.active ? "active" : ""}"><div class="session-thumb ${s.mapKind === "tileset" ? "tileset" : "cartographic"}" aria-hidden="true"></div><div class="session-info"><h3><a href="#session/${esc(s.id)}">${esc(sessionLabel(s.number, s.title))}</a></h3><p>${new Date(s.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })} · ${formatDuration(minutes)} · ${s.eventCount} eventos · ${s.noteCount} ${s.noteCount === 1 ? "nota" : "notas"} · ${s.participantCount} ${s.participantCount === 1 ? "aventureiro" : "aventureiros"}</p></div><div class="session-row-actions">${s.active ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>Em andamento</span>' : '<span class="status-chip">◉ Encerrada</span>'}<a class="button subtle small" href="#session/${esc(s.id)}/timeline">◷ Histórico</a><a class="button subtle small" href="#session/${esc(s.id)}/notes">✎ Notas</a>${button(s.recapPublished ? "Resumo publicado" : "✍ Resumo", "cp-recap", s.id, "subtle small")}</div></li>`;
           })
           .join("")}</ol>${pagination(result)}`
-      : empty(
-          "O primeiro capítulo espera por você.",
-          "Inicie uma sessão para colocar a campanha online. Cada sessão guarda sua própria linha do tempo, rolagens, alterações de fichas e anotações.",
-          "cp-start",
-          "✦ Iniciar primeira sessão",
-        )
+      : '<p class="muted small">Nenhuma sessão jogada aqui ainda. Ao iniciar a primeira, ela aparece nesta lista.</p>'
   }`;
-  const startButton = target.querySelector('[data-action="cp-start"]');
-  if (startButton) startButton.dataset.id = d.id;
 }
 
 function pagination(r) {
@@ -252,7 +275,8 @@ document.addEventListener("click", async (e) => {
     if (action === "cp-start" && d?.isMaster) await startSessionModal(d.id);
     if (action === "cp-page") {
       page = Math.max(1, Number(id));
-      await renderSessions(d, $("#campaign-tab"));
+      const host = $("#cp-sessions");
+      if (host) await renderSessions(d, host);
     }
     if (action === "cp-copy") {
       await navigator.clipboard.writeText(id);
@@ -302,7 +326,7 @@ document.addEventListener("click", async (e) => {
     }
     if (action === "cp-recap" && d?.isMaster) {
       const sess = lastSessions.find((x) => x.id === id);
-      if (sess) (await import("./campaign-prep.js")).recapModal({ id: sess.id, number: sess.number, recap: sess.recap, published: sess.recapPublished }, () => reload("sessions"));
+      if (sess) (await import("./campaign-prep.js")).recapModal({ id: sess.id, number: sess.number, recap: sess.recap, published: sess.recapPublished }, () => reload("journal"));
     }
     if (action === "cp-delete" && d?.isMaster && !d.members.length)
       confirmCampaign({ id: d.id, name: d.name }, false, () =>

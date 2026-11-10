@@ -6,9 +6,9 @@ Entrega de 10/11/2026. Complementa API.md, ARQUITETURA.md e CAMPANHA_ACERVOS.md.
 
 Na criação ou edição da campanha, o mestre escolhe `new` (nova) ou `ongoing` (trazida em andamento). A origem não muda automaticamente com as partidas. O resumo **Onde paramos** e o arco atual são compartilhados com membros; segredos pertencem às páginas privadas. Data original é opcional. O número mínimo da próxima sessão não renumera partidas anteriores. O servidor abre a próxima usando o maior entre esse mínimo e o maior número conhecido + 1, incluindo registros anteriores. Ajustar o mínimo enquanto há sessão ativa retorna conflito.
 
-Exemplo: informar 28 permite iniciar a sessão 28 sem cadastrar as 27 anteriores. Registrar o passado é opcional. Sessões anteriores têm número, título, resumo, data opcional e publicação; não são GameSession, não geram eventos fictícios, presença ou XP. O mesmo bloqueio da campanha protege numeração no registro anterior e abertura da mesa; o índice de uma sessão ativa permanece intacto.
+Exemplo: informar 28 permite iniciar a sessão 28 sem cadastrar as 27 anteriores. Registrar o passado é opcional. Sessões anteriores têm número, título, resumo, data opcional, cenas opcionais (título e texto, até 30, ADR-059) e publicação; não são GameSession, não geram eventos fictícios, presença ou XP. O mesmo bloqueio da campanha protege numeração no registro anterior e abertura da mesa; o índice de uma sessão ativa permanece intacto.
 
-As abas principais são Visão geral, Diário, Mundo e acervo, Grupo, Preparação e Minhas notas. Configurações ficam em atalhos próprios. Diário leva ao histórico técnico (mestre) e a Antes do Eternnus. Mundo leva ao atlas compartilhado, bibliotecas anteriores, mapas e preparação. Os endereços antigos continuam válidos.
+As abas principais são fixas (ADR-059): Visão geral, Diário, Preparação, Grupo, Mundo e acervo, Minhas notas e Configurações. O Diário reúne numa página próxima partida, objetivos, pistas, sessões no Eternnus (mestre), resumos e Antes do Eternnus. Mundo e acervo tem submenu visível (Páginas, Atlas, Bibliotecas, Mapas); Configurações tem Campanha e Mesa. Os endereços antigos continuam válidos.
 
 ## Páginas e livros
 

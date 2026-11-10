@@ -139,7 +139,7 @@ public class SupportService(GameDb db, AuditService audit, TimeProvider clock)
     public async Task<object> CreateAsync(string user, TicketCreateInput x, CancellationToken ct)
     {
         var subject = SupportRules.Text(x.Subject, 3, 120, false, "O assunto deve ter de 3 a 120 caracteres.");
-        var body = SupportRules.Text(x.Body, 10, 5000, true, "A descrição deve ter de 10 a 5.000 caracteres.");
+        var body = SupportRules.Text(x.Body, 10, 10000, true, "A descrição deve ter de 10 a 10.000 caracteres.");
         var category = x.Category is { } c && TicketCategories.All.Contains(c) ? c : throw new RuleException(400, "Escolha uma categoria válida.");
         for (var attempt = 1; ; attempt++)
         {
@@ -241,7 +241,7 @@ public class SupportService(GameDb db, AuditService audit, TimeProvider clock)
 
     public async Task ReplyAsync(string user, Guid id, TicketReplyInput x, CancellationToken ct)
     {
-        var body = SupportRules.Text(x.Body, 1, 5000, true, "A mensagem deve ter de 1 a 5.000 caracteres.");
+        var body = SupportRules.Text(x.Body, 1, 10000, true, "A mensagem deve ter de 1 a 10.000 caracteres.");
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var t = await LockOwnAsync(user, id, ct);
         if (t.Status == TicketStatuses.Closed) throw new RuleException(409, "Este chamado está fechado. Reabra-o para responder.");
@@ -413,7 +413,7 @@ public class SupportService(GameDb db, AuditService audit, TimeProvider clock)
     public async Task StaffMessageAsync(string admin, Guid id, StaffTicketMessageInput x, CancellationToken ct)
     {
         await RequireAdminAsync(admin, ct);
-        var body = SupportRules.Text(x.Body, 1, 5000, true, "A mensagem deve ter de 1 a 5.000 caracteres.");
+        var body = SupportRules.Text(x.Body, 1, 10000, true, "A mensagem deve ter de 1 a 10.000 caracteres.");
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var t = await LockAsync(id, ct);
         await EnsureRoomAsync(t.Id, ct);

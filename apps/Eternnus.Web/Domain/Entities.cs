@@ -62,7 +62,7 @@ public class CharacterVersion
 public class Campaign
 {
     [MaxLength(12)] public string Origin { get; set; } = "new";
-    [MaxLength(5000)] public string Continuity { get; set; } = "";
+    [MaxLength(10000)] public string Continuity { get; set; } = "";
     [MaxLength(120)] public string CurrentArc { get; set; } = "";
     public int FirstSessionNumber { get; set; } = 1;
     public DateOnly? OriginalStartDate { get; set; }
@@ -79,7 +79,7 @@ public class Campaign
     public Guid Id { get; set; } = Guid.NewGuid();
     [MaxLength(450)] public string OwnerId { get; set; } = "";
     [MaxLength(100)] public string Name { get; set; } = "";
-    [MaxLength(5000)] public string Description { get; set; } = "";
+    [MaxLength(10000)] public string Description { get; set; } = "";
     /// <summary>Nome do sistema (cópia legível de <see cref="RpgSystemId"/>, mantida pelo serviço).</summary>
     [MaxLength(80)] public string System { get; set; } = "Sistema livre";
     public Guid RpgSystemId { get; set; } = RpgSystem.FreeSystemId;
@@ -140,7 +140,7 @@ public class GameSession
     [MaxLength(80)] public string? SceneName { get; set; }
     [MaxLength(2000)] public string? SceneText { get; set; }
     /// <summary>Resumo do mestre; jogadores leem somente depois de publicado.</summary>
-    [MaxLength(5000)] public string Recap { get; set; } = "";
+    [MaxLength(10000)] public string Recap { get; set; } = "";
     public DateTime? RecapPublishedAt { get; set; }
     /// <summary>Incrementa em toda alteração visível da mesa; o cliente ao vivo aguarda uma revisão maior que a conhecida.</summary>
     public int Revision { get; set; } = 1;

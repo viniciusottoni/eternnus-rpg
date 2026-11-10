@@ -3,7 +3,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
 
 public record WorkspaceInput(string Title, string Content, string Kind = "text", string Visibility = "self", string Secrets = "", string Collection = "", string Tags = "", string Status = "open", Guid? ParentId = null, Guid? NpcId = null, Guid? MapId = null, int Order = 0, int Revision = 0, string[]? Recipients = null, Guid[]? Related = null, bool Pinned = false);
-public record PastSessionInput(int Number, string Title, string Summary, DateOnly? Date = null, bool Published = false, int Revision = 0);
+public record PastSessionInput(int Number, string Title, string Summary, DateOnly? Date = null, bool Published = false, int Revision = 0, List<PastSceneInput>? Scenes = null);
+/// <summary>Cena opcional do registro anterior. Título vazio vira "Cena N".</summary>
+public record PastSceneInput(string? Title, string? Text);
 public sealed partial class WorkspaceService(GameDb db)
 {
     static readonly string[] Kinds = ["text", "note", "place", "faction", "book", "chapter", "item", "event", "npc", "objective", "clue"];
@@ -110,16 +112,28 @@ public sealed partial class WorkspaceService(GameDb db)
         var q = db.Set<PastSession>().Where(s => s.CampaignId == campaign && (c.OwnerId == user || s.Published));
         return new { items = await q.OrderByDescending(s => s.Number).Skip((page - 1) * 20).Take(20).ToListAsync(ct), total = await q.CountAsync(ct), page, pageSize = 20 };
     }
+    public const int MaxPastScenes = 30, MaxPastSceneText = 10000, MaxPastScenesTotal = 60000;
+    /// <summary>Cenas opcionais: ignora linhas totalmente vazias; cada cena precisa de texto. Limites protegem a listagem paginada.</summary>
+    public static List<PastSessionScene> PastScenes(List<PastSceneInput>? input)
+    {
+        var list = (input ?? []).Select(s => (Title: (s?.Title ?? "").Trim(), Text: (s?.Text ?? "").Trim())).Where(s => s.Title.Length > 0 || s.Text.Length > 0).ToList();
+        if (list.Count > MaxPastScenes) throw new RuleException(400, $"Registre até {MaxPastScenes} cenas por sessão.");
+        if (list.Any(s => s.Title.Length > 120 || s.Text.Length > MaxPastSceneText)) throw new RuleException(400, "Cada cena aceita título de até 120 e texto de até 10.000 caracteres.");
+        if (list.Any(s => s.Text.Length == 0)) throw new RuleException(400, "Escreva o que aconteceu em cada cena ou remova a cena vazia.");
+        if (list.Sum(s => s.Text.Length) > MaxPastScenesTotal) throw new RuleException(400, "As cenas de uma sessão somam até 60.000 caracteres.");
+        return list.Select((s, i) => new PastSessionScene { Title = s.Title.Length > 0 ? s.Title : $"Cena {i + 1}", Text = s.Text }).ToList();
+    }
     public async Task<PastSession> SavePast(Guid campaign, Guid? id, string user, PastSessionInput x, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct); var c = await Lock(campaign, user, ct);
         if (c.OwnerId != user) throw new RuleException(403, "Somente o mestre registra sessões anteriores.");
-        if (x.Number is < 1 or > 1000000 || string.IsNullOrWhiteSpace(x.Title) || x.Title.Length > 120 || x.Summary == null || x.Summary.Length > 5000 || x.Date > DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1))) throw new RuleException(400, "Confira número, título, data e resumo.");
+        if (x.Number is < 1 or > 1000000 || string.IsNullOrWhiteSpace(x.Title) || x.Title.Length > 120 || x.Summary == null || x.Summary.Length > 10000 || x.Date > DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1))) throw new RuleException(400, "Confira número, título, data e resumo.");
         if (await db.Sessions.AnyAsync(s => s.CampaignId == campaign && s.Number == x.Number, ct) || await db.Set<PastSession>().AnyAsync(s => s.CampaignId == campaign && s.Number == x.Number && s.Id != id, ct)) throw new RuleException(409, "Já existe uma sessão com este número.");
         var p = id == null ? new PastSession { CampaignId = campaign } : await db.Set<PastSession>().SingleOrDefaultAsync(p => p.CampaignId == campaign && p.Id == id, ct) ?? throw Missing();
         if (id != null && p.Revision != x.Revision) throw new RuleException(409, "O resumo mudou. Reabra antes de salvar.");
         if (id == null && await db.Set<PastSession>().CountAsync(p => p.CampaignId == campaign, ct) >= 1000) throw new RuleException(409, "Limite de 1.000 sessões anteriores.");
-        p.Number = x.Number; p.Title = x.Title.Trim(); p.Summary = x.Summary; p.Date = x.Date; p.Published = x.Published;
+        var scenes = PastScenes(x.Scenes);
+        p.Number = x.Number; p.Title = x.Title.Trim(); p.Summary = x.Summary; p.Date = x.Date; p.Published = x.Published; p.Scenes = scenes;
         if (id == null) db.Add(p); else p.Revision++;
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return p;
     }

@@ -50,6 +50,7 @@ public static class PlayEndpoints
         campaign.MapGet("/npc-templates", (Guid campaignId, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.NpcTemplatesAsync(campaignId, Id(u), ct));
         campaign.MapGet("/npcs/{npcId:guid}/sheet", (Guid campaignId, Guid npcId, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.NpcSheetAsync(campaignId, npcId, Id(u), ct));
         campaign.MapPut("/npcs/{npcId:guid}/sheet", (Guid campaignId, Guid npcId, NpcSheetInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveNpcSheetAsync(campaignId, npcId, x, Id(u), ct));
+        campaign.MapPut("/npcs/{npcId:guid}/image", (Guid campaignId, Guid npcId, NpcImageInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveNpcImageAsync(campaignId, npcId, x, Id(u), ct));
         campaign.MapPost("/npcs/{npcId:guid}/copy", (Guid campaignId, Guid npcId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.CopyNpcAsync(campaignId, npcId, Id(u), ct));
         campaign.MapDelete("/npcs/{npcId:guid}", async (Guid campaignId, Guid npcId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => { await p.DeleteNpcAsync(campaignId, npcId, Id(u), ct); return Ok(); });
         campaign.MapGet("/journal", (Guid campaignId, int? page, string? search, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.JournalAsync(campaignId, Id(u), ct, page ?? 1, search));

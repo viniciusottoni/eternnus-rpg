@@ -79,7 +79,7 @@ Nesta etapa, `lastActivityAt` representa atualização de **gestão da campanha*
 
 ### Escritas e exclusão
 
-- Nome obrigatório até 100 caracteres; sistema obrigatório até 80; descrição até 5.000.
+- Nome obrigatório até 100 caracteres; sistema obrigatório até 80; descrição até 10.000.
 - O criador pode editar mesmo com jogadores vinculados. Uma edição concorrente com revisão antiga recebe `409`.
 - Exclusão com jogadores recebe `409`, inclusive se a UI estava desatualizada. A transação bloqueia a campanha junto das operações de entrada/saída.
 - Excluir remove sessões, recursos, mensagens e vínculos da campanha. Não remove fichas pessoais.
@@ -272,7 +272,7 @@ Todas as rotas exigem `Verified`, exceto `/api/invites/pending`, que exige só a
 | GET `/tokens/{tid}/portrait` | Mestre; jogador da sessão | Imagem do acervo do NPC (`private, no-store`, `nosniff`). Jogador só recebe se o marcador estiver visível para ele e não apenas percebido; senão 404. |
 | POST `/recap` | Mestre | `{text, publish}` → 204 (também após o encerramento). |
 
-`GET /live` acrescenta `play = {mode, modeLabel, paused, playerRollVisibility, turnOrder, activeTurnKey, myTurn, scene, masterAway, recoverUntil, recoveryMinutes, rollRequests, npcs, recap, recapPublished}`. `npcs[]` traz `{tokenId, id, name, kind, image, hasSheet, sheet:{resources, stats}, resources, revision}`. Marcadores trazem `image` (link https ou `/api/sessions/{id}/tokens/{tid}/portrait`) só quando visíveis; o mestre recebe também `masterCharacterId`. `me.character.formulaFields` (jogador) e `me.formulaFields` (mestre: atributos das fichas na mesa) listam `{name, label}` para o autocompletar de fórmulas. `npcs` e `recap` vêm só para o mestre; `scene.description`/`privateNotes` vêm vazios para jogadores. Também acrescenta `me.character.{resources, stats, conditions, shortcuts, classic}` e `participants[].summary` (nulo para ficha privada alheia). `GET /campaigns/{id}/table` acrescenta `incompatible[]`, `template`, `paused` e `campaign.archived`.
+`GET /live` acrescenta `play = {mode, modeLabel, paused, playerRollVisibility, turnOrder, activeTurnKey, myTurn, scene, masterAway, recoverUntil, recoveryMinutes, rollRequests, npcs, recap, recapPublished}`. `npcs[]` traz `{tokenId, id, name, kind, image, hasSheet, sheet:{resources, stats}, resources, revision}`. Marcadores trazem `image` (link https ou `/api/sessions/{id}/tokens/{tid}/portrait?v={versão}`, versão derivada da imagem escolhida) só quando visíveis; o cliente desenha a imagem recortada no círculo do marcador (sem imagem ou com falha de carga, as iniciais); o mestre recebe também `masterCharacterId`. `me.character.formulaFields` (jogador) e `me.formulaFields` (mestre: atributos das fichas na mesa) listam `{name, label}` para o autocompletar de fórmulas. `npcs` e `recap` vêm só para o mestre; `scene.description`/`privateNotes` vêm vazios para jogadores. Também acrescenta `me.character.{resources, stats, conditions, shortcuts, classic}` e `participants[].summary` (nulo para ficha privada alheia). `GET /campaigns/{id}/table` acrescenta `incompatible[]`, `template`, `paused` e `campaign.archived`.
 
 ### Campanha (`/api/campaigns/{id}`)
 
@@ -284,7 +284,8 @@ Todas as rotas exigem `Verified`, exceto `/api/invites/pending`, que exige só a
 | GET/POST `/scenes`, PUT/DELETE `/scenes/{sid}`, POST `/scenes/{sid}/duplicate` | Mestre | `{name, description, kind: map|image|text, mapKind, mapKey, sharedText, privateNotes, visionMode: all|manual|character|null, order, revision}`. |
 | GET/POST `/npcs`, PUT/DELETE `/npcs/{nid}`, POST `/npcs/{nid}/copy` | Mestre | `{name, summary, notes, side, resources:[{label, value, max}], revision, kind?: npc|creature, imageUrl?}`. `imageUrl`: `https://…` (sem credenciais, ≤ 500) ou `asset:{id}` de imagem do acervo desta campanha; vazio remove. A lista devolve também `kind`, `imageUrl`, `templateName`. |
 | GET `/npc-templates` | Mestre | Modelos aceitos pela campanha (sistema da campanha, privados dela e o Sistema livre) → `{items:[{id, name, campaign, playerDefault}]}`. |
-| GET/PUT `/npcs/{nid}/sheet` | Mestre | PUT `{templateId|null, values?:{campo: texto}, revision}`. Trocar o modelo recomeça os valores; campo inexistente 400; revisão antiga 409. Com sessão ativa, grava evento privado e atualiza a mesa. → `{id, name, kind, revision, imageUrl, template, fields, values, resources, stats}`. |
+| GET/PUT `/npcs/{nid}/sheet` | Mestre | PUT `{templateId|null, values?:{campo: texto}, revision}`. Trocar o modelo recomeça os valores; campo inexistente 400; revisão antiga 409. Com sessão ativa, grava evento privado e atualiza a mesa. → `{id, name, kind, revision, imageUrl, imagePreview, template, fields, values, resources, stats}`. `imagePreview` (só mestre): `/api/campaigns/{id}/assets/maps/{mapId}/image` para imagem do acervo ou o próprio link https. |
+| PUT `/npcs/{nid}/image` | Mestre | `{imageUrl|null, revision}` → mesma resposta de `/sheet`. `asset:{id}` desta campanha ou `https://…` (≤ 500); nulo remove. Revisão antiga 409; campanha arquivada 409. Com sessão ativa segue o fluxo da mesa (sessão → personagem bloqueados, evento privado, `Revision++`, sinal após o commit): o retrato do marcador muda para todos que o enxergam. |
 | GET `/journal` | Membro | `{nextSession, myAttendance, attendance, pending, recaps, entries}` (jogador: só publicados). |
 | PUT `/schedule` | Mestre | `{at: ISO com fuso | null, note}` → 204. |
 | POST `/attendance` | Jogador | `{status: yes|maybe|no}` → 204; sem data 409. |
@@ -349,7 +350,7 @@ Erros: 400 campos/formulário; 403 sem papel Admin; 404 sem vínculo ou faixa in
 
 Contrato completo e limites: [CAMPANHAS_CONTINUIDADE.md](CAMPANHAS_CONTINUIDADE.md). Todas as rotas abaixo exigem Verified; escritas usam antiforgery comum.
 
-POST/PUT `/api/campaigns[/{id}]` acrescentam campos opcionais `origin: new|ongoing`, `continuity` (5.000), `currentArc` (120), `firstSessionNumber` (1–1.000.000), `originalStartDate` (yyyy-MM-dd|null). GET da campanha e lista retornam os mesmos campos. Ao enviar origin na edição, data nula limpa a data original. O resumo é compartilhado com o grupo. Alterar o mínimo com sessão ativa retorna 409. Não renumera registros.
+POST/PUT `/api/campaigns[/{id}]` acrescentam campos opcionais `origin: new|ongoing`, `continuity` (10.000), `currentArc` (120), `firstSessionNumber` (1–1.000.000), `originalStartDate` (yyyy-MM-dd|null). GET da campanha e lista retornam os mesmos campos. Ao enviar origin na edição, data nula limpa a data original. O resumo é compartilhado com o grupo. Alterar o mínimo com sessão ativa retorna 409. Não renumera registros.
 
 Prefixo `/api/campaigns/{campaign}/workspace`:
 
@@ -363,8 +364,8 @@ Prefixo `/api/campaigns/{campaign}/workspace`:
 | GET `/pages/{id}/attachments` | Leitor: metadados de até dez anexos, sem bytes. |
 | POST `/pages/{id}/attachments` | Editor: multipart com um arquivo em file, sem campos adicionais. Exceção explícita de corpo até 25 MiB + 256 KiB. Scanner comum, limitador upload. |
 | GET/DELETE `/pages/{id}/attachments/{file}` | GET leitor atual: download privado; DELETE editor: exclusão definitiva, 204. |
-| GET `/past-sessions?page=` | Mestre vê todos; membro só publicados. Vinte por página. |
-| POST `/past-sessions`, PUT `/past-sessions/{id}` | Mestre: `{number,title,summary,date?,published?,revision?}`. Número exclusivo entre registros anteriores e sessões da plataforma sob bloqueio da campanha; não gera XP. |
+| GET `/past-sessions?page=` | Mestre vê todos; membro só publicados. Vinte por página; cada item traz `scenes:[{title,text}]` na ordem registrada. |
+| POST `/past-sessions`, PUT `/past-sessions/{id}` | Mestre: `{number,title,summary,date?,published?,revision?,scenes?:[{title?,text}]}`. `summary` até 10.000. Cenas opcionais: até 30, título ≤ 120 (vazio vira “Cena N”), texto obrigatório ≤ 10.000, soma ≤ 60.000; linhas totalmente vazias são ignoradas; enviar lista vazia remove as cenas. Mesma visibilidade do registro. Número exclusivo entre registros anteriores e sessões da plataforma sob bloqueio da campanha; não gera XP. |
 | GET `/atlas?page=` | Membro: publicações paginadas sem bytes. Mestre recebe também até cinquenta candidatos. |
 | POST/DELETE `/atlas/{sourceMapId}` | Mestre: publica/atualiza cópia da imagem inteira, ou recolhe. 204. |
 | GET `/atlas/{publicationId}/image` | Membro: cópia JPEG normalizada, private/no-store. |

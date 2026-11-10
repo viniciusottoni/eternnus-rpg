@@ -3079,3 +3079,76 @@ dialog.scene-editor-modal #modal-body { flex: 1; min-height: 0; height: auto; ov
 }
 /* Legendas do mapa não capturam os dedos destinados à câmera. */
 .stage-hint, .stage-chip { pointer-events: none; }
+
+/* ---------- Página da campanha: abas fixas, submenus visíveis e blocos alinhados (ADR-059) ---------- */
+.campaign-tab { min-width: 0; }
+.campaign-tab-body { min-width: 0; }
+.campaign-tab-body > :is(.empty, .member-list, .invite-box, .first-steps, .overview-story, .live-callout, .overview-party, .next-session, .button.primary) { margin-top: 0; margin-bottom: 14px; }
+.campaign-tab-body > .button.primary { display: inline-flex; }
+/* Submenu da aba: mesma linguagem das abas, menor e em pílulas; sempre visível, nunca some ao navegar. */
+.sub-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 18px; padding: 4px; border: 1px solid var(--table-line, #c6a46333); border-radius: 8px; background: #0b100f99; width: fit-content; max-width: 100%; }
+.sub-tabs a { display: inline-flex; align-items: center; min-height: 36px; padding: 6px 14px; border-radius: 5px; color: var(--muted); font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap; transition: color var(--motion-fast), background var(--motion-fast); }
+.sub-tabs a:hover { color: var(--bright); background: #c6a46314; }
+.sub-tabs a.active { color: #20160b; background: linear-gradient(115deg, #b9893d, #edc876 48%, #ba8a41); }
+/* Seções do Diário: cada bloco com o mesmo respiro e título alinhado à mesma borda. */
+.journal-block + .journal-block { margin-top: 28px; padding-top: 22px; border-top: 1px solid #c6a4631f; }
+.journal-block .section-title { gap: 12px; }
+.section-lead { margin: -6px 0 14px; max-width: 72ch; }
+.journal-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 22px; margin-top: 22px; }
+.journal-columns > section { min-width: 0; }
+.journal-block .session-list { margin-top: 0; }
+/* Busca: campo(s) e botão na mesma linha, base alinhada; opções extras abaixo. */
+.search-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px 12px; margin: 0 0 18px; }
+.search-bar.with-filter { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; }
+.search-bar .field { margin: 0; }
+.search-bar > button { min-height: 44px; }
+.search-bar .search-extra { grid-column: 1 / -1; margin: 0; }
+/* Motivo de botão indisponível na paginação: continua acessível, mas não empurra o layout. */
+.pagination .help-disabled-reason { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.invite-box details { margin-top: 10px; }
+.invite-box summary { cursor: pointer; display: list-item; padding: 6px 0; color: var(--text); font-size: 12px; }
+.invite-box details .invite-code { margin-top: 8px; }
+@media (max-width: 760px) {
+  .journal-columns { grid-template-columns: 1fr; }
+  .search-bar, .search-bar.with-filter { grid-template-columns: 1fr; }
+  .search-bar > button { justify-self: start; }
+  .sub-tabs { flex-wrap: nowrap; overflow-x: auto; width: 100%; }
+  .sub-tabs a { min-height: 44px; }
+}
+/* Ficha do elemento: retrato do NPC/criatura (o mesmo que aparece no marcador do mapa). */
+.npc-image-editor { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 18px; align-items: start; padding: 0 0 18px; margin: 0 0 18px; border-bottom: 1px solid #c6a4631f; }
+.npc-image-preview { display: grid; justify-items: center; gap: 6px; text-align: center; }
+.npc-avatar { display: grid; place-items: center; width: 96px; height: 96px; padding: 0; border-radius: 50%; overflow: hidden; border: 2px solid #a07b3a; background: radial-gradient(circle at 35% 30%, #4a3a26, #1a140d); color: #f6ead0; font: 600 28px var(--serif); box-shadow: 0 4px 14px #0008; }
+.npc-avatar img { width: 100%; height: 100%; object-fit: cover; }
+a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3px; }
+.npc-image-fields fieldset { margin: 0; }
+.npc-image-fields .form-actions { margin-top: 10px; }
+@media (max-width: 560px) { .npc-image-editor { grid-template-columns: 1fr; } }
+/* Configurações da campanha: a ficha-modelo segue o mesmo cartão dos demais itens da lista. */
+.campaign-tab-body .cs-template-settings { padding: 18px 20px; margin: 0 0 14px; }
+.campaign-tab-body .cs-template-settings > h3 { margin: 0 0 6px; color: #ead6a8; font: normal 18px var(--serif); }
+.campaign-tab-body .cs-template-settings > p:first-of-type { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+.campaign-tab-body .cs-template-settings > h4 { margin: 20px 0 6px; padding-top: 16px; border-top: 1px solid #c6a4631f; color: #ead6a8; font: normal 16px var(--serif); }
+.campaign-tab-body .cs-template-settings form .primary { margin-top: 4px; }
+/* Antes do Eternnus: registros com resumo geral e cenas opcionais. */
+.past-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.past-entry { padding: 16px 20px; }
+.past-entry-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.past-entry-head h3 { margin: 0; color: #ead6a8; font: normal 18px var(--serif); }
+.past-entry > p.muted { margin: 4px 0 10px; }
+.past-entry .workspace-prose { margin: 0; }
+.past-scenes { margin-top: 12px; }
+.past-scenes summary { cursor: pointer; display: list-item; padding: 6px 0; color: var(--gold); font-size: 12px; font-weight: 600; }
+.past-scenes ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 12px; }
+.past-scenes h4 { margin: 0 0 4px; color: #ead6a8; font: normal 15px var(--serif); }
+.past-scenes-fieldset { display: grid; gap: 10px; }
+.past-scenes-fieldset > .form-help { margin: 0; }
+.past-scene-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.past-scene-edit { padding: 12px 14px; }
+.past-scene-edit .field:last-child { margin-bottom: 0; }
+.past-scene-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: #ead6a8; }
+.past-scene-tools { display: inline-flex; align-items: center; gap: 6px; }
+.past-scene-tools .icon-button { min-width: 36px; min-height: 36px; padding: 0 10px; }
+@media (pointer: coarse) { .past-scene-tools .icon-button { min-width: 44px; min-height: 44px; } }
+#past-scenes > button { justify-self: start; }
+#past-scenes { display: grid; gap: 10px; }
