@@ -88,6 +88,7 @@ public class GameDb(DbContextOptions<GameDb> options) : IdentityDbContext<AppUse
         PlatformModel(b);
         CampaignAssetsModel.Configure(b);
         WorkspaceModel.Configure(b);
+        ChapterModel.Configure(b);
         PreparationModel.Configure(b);
         MusicModel.Configure(b);
     }

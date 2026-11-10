@@ -125,8 +125,8 @@ Todas as rotas exigem sessão **e** conta verificada. O servidor identifica o us
 
 | Método e caminho | Quem | Entrada | Resultado |
 | --- | --- | --- | --- |
-| `GET /campaigns/{id}/sessions?page=` | Mestre | — | `200 { campaign, items, total, page, pageSize: 20, lastActivityAt }`. Itens: `id, number, title, objective, startedAt, endedAt, mapKind, mapKey, active, eventCount, noteCount, participantCount`, do mais recente ao mais antigo. Jogador recebe `403`: ele não vê a lista de sessões. |
-| `POST /campaigns/{id}/sessions` | Mestre | `{ title, objective, mapKind, mapKey }` | `200 { id, number }`. Abre a sessão e coloca a campanha online. `409` se já houver sessão em andamento ou se a campanha for one-shot (sessão única aberta na criação). |
+| `GET /campaigns/{id}/sessions?page=` | Mestre | — | `200 { campaign, items, total, page, pageSize: 20, lastActivityAt }`. Itens: `id, number, title, objective, startedAt, endedAt, mapKind, mapKey, active, eventCount, noteCount, participantCount, chapterId, chapterTitle` (nulos = sessão avulsa), do mais recente ao mais antigo. Jogador recebe `403`: ele não vê a lista de sessões. |
+| `POST /campaigns/{id}/sessions` | Mestre | `{ title, objective, mapKind, mapKey, chapterId? }` (capítulo de outra campanha: `400`) | `200 { id, number }`. Abre a sessão e coloca a campanha online. `409` se já houver sessão em andamento ou se a campanha for one-shot (sessão única aberta na criação). |
 | `GET /campaigns/{id}/table` | Mestre/jogador | — | `200 { campaign, isMaster, online, session, joinedCharacterId, characters }`. Ponto de entrada da mesa; `characters` lista as fichas do próprio jogador (vinculadas primeiro). |
 | `GET /campaigns/{id}/maps` | Mestre | — | `200 { items }` com mapas oficiais (`valley`, `crypt`, `forest`, `tavern`, `bridge`, `courtyard`, `harbor`, `sanctuary`) e recursos `mapa` da campanha (`resource:{id}`), com `rows` para tilesets. |
 
@@ -271,6 +271,7 @@ Todas as rotas exigem `Verified`, exceto `/api/invites/pending`, que exige só a
 | POST `/tokens` | Mestre | `{label, side, x, y, hidden, light?, templateId?, imageUrl?}` → `{id, masterCharacterId}`. Com `templateId` (modelo permitido à campanha) ou `imageUrl`, cria uma criatura do mestre ligada ao marcador. |
 | GET `/tokens/{tid}/portrait` | Mestre; jogador da sessão | Imagem do acervo do NPC (`private, no-store`, `nosniff`). Jogador só recebe se o marcador estiver visível para ele e não apenas percebido; senão 404. |
 | POST `/recap` | Mestre | `{text, publish}` → 204 (também após o encerramento). |
+| POST `/chapter` | Mestre | `{chapterId}` → 204 (também após o encerramento). `null` deixa a sessão avulsa; capítulo de outra campanha `400`. Bloqueia a sessão, incrementa a revisão e sinaliza; não grava evento. |
 
 `GET /live` acrescenta `play = {mode, modeLabel, paused, playerRollVisibility, turnOrder, activeTurnKey, myTurn, scene, masterAway, recoverUntil, recoveryMinutes, rollRequests, npcs, recap, recapPublished}`. `npcs[]` traz `{tokenId, id, name, kind, image, hasSheet, sheet:{resources, stats}, resources, revision}`. Marcadores trazem `image` (link https ou `/api/sessions/{id}/tokens/{tid}/portrait?v={versão}`, versão derivada da imagem escolhida) só quando visíveis; o cliente desenha a imagem recortada no círculo do marcador (sem imagem ou com falha de carga, as iniciais); o mestre recebe também `masterCharacterId`. `me.character.formulaFields` (jogador) e `me.formulaFields` (mestre: atributos das fichas na mesa) listam `{name, label}` para o autocompletar de fórmulas. `npcs` e `recap` vêm só para o mestre; `scene.description`/`privateNotes` vêm vazios para jogadores. Também acrescenta `me.character.{resources, stats, conditions, shortcuts, classic}` e `participants[].summary` (nulo para ficha privada alheia). `GET /campaigns/{id}/table` acrescenta `incompatible[]`, `template`, `paused` e `campaign.archived`.
 
@@ -366,6 +367,7 @@ Prefixo `/api/campaigns/{campaign}/workspace`:
 | GET/DELETE `/pages/{id}/attachments/{file}` | GET leitor atual: download privado; DELETE editor: exclusão definitiva, 204. |
 | GET `/past-sessions?page=` | Mestre vê todos; membro só publicados. Vinte por página; cada item traz `scenes:[{title,text}]` na ordem registrada. |
 | POST `/past-sessions`, PUT `/past-sessions/{id}` | Mestre: `{number,title,summary,date?,published?,revision?,scenes?:[{title?,text}]}`. `summary` até 10.000. Cenas opcionais: até 30, título ≤ 120 (vazio vira “Cena N”), texto obrigatório ≤ 10.000, soma ≤ 60.000; linhas totalmente vazias são ignoradas; enviar lista vazia remove as cenas. Mesma visibilidade do registro. Número exclusivo entre registros anteriores e sessões da plataforma sob bloqueio da campanha; não gera XP. |
+| (capítulo) | `chapterId?` no corpo de `/past-sessions` vincula o registro a um capítulo da campanha (outra campanha: `400`); nulo = avulso. |
 | GET `/atlas?page=` | Membro: publicações paginadas sem bytes. Mestre recebe também até cinquenta candidatos. |
 | POST/DELETE `/atlas/{sourceMapId}` | Mestre: publica/atualiza cópia da imagem inteira, ou recolhe. 204. |
 | GET `/atlas/{publicationId}/image` | Membro: cópia JPEG normalizada, private/no-store. |
@@ -381,3 +383,15 @@ Não altera endpoints, DTOs, autorização, presença, turnos ou revisão. `GET 
 
 
 ADR-057: pan/zoom/pinça e recolhimento de propriedades são apenas apresentação local. Contratos de preparação, movimento e névoa permanecem iguais; pinça não envia movimento, pintura ou mudança de grade. Seleção e arraste com zoom continuam convertendo as coordenadas pela mesma grade do servidor.
+
+
+## Capítulos, atos e arcos (`/api/campaigns/{id}/chapters`) — ADR-060
+
+Somente o mestre (`Verified`); jogador recebe `403`, quem não participa `404`. Escritas usam o bloqueio da campanha e a proteção antiforgery comum; campanha arquivada responde `409`.
+
+| Rota | Contrato |
+| --- | --- |
+| GET (raiz) | `{items:[{id,kind,title,summary,order,revision,sessionCount,pastCount,firstNumber,lastNumber}], looseSessions, max:200}` na ordem definida pelo mestre. `looseSessions` soma sessões do Eternnus e anteriores sem capítulo. |
+| POST (raiz), PUT `/{id}` | `{title, kind?: chapter/act/arc, summary?, revision?}` → capítulo. Título 1–120, resumo ≤ 2.000; `kind` é rótulo (sem hierarquia). Até 200 por campanha (`409`). PUT exige `revision` atual (`409`). |
+| POST `/{id}/move` | `{direction: -1 ou 1, revision}` → 204. Troca com o vizinho e renumera a ordem. |
+| DELETE `/{id}?revision=` | 204. Exclui só o capítulo; sessões vinculadas ficam avulsas (FK `SET NULL`). |

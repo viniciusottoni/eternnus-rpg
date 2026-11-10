@@ -254,4 +254,15 @@ public partial class SessionService
         if (x.Publish && !wasPublished) Event(a.Session, user, await NameAsync(user, ct), EventKinds.Note, "Resumo da sessão publicado no diário da campanha", new { recap = true, shared = true });
         await CommitAsync(tx, a.Session, ct);
     }
+
+    /// <summary>Move a sessão (também encerrada) para um capítulo da campanha, ou a deixa avulsa. Organização do mestre; não gera evento.</summary>
+    public async Task ChapterAsync(Guid sessionId, SessionChapterInput x, string user, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var a = await LockAsync(sessionId, user, ct, requireActive: false); RequireMaster(a);
+        var chapterId = await WorkspaceService.ChapterOf(db, a.Session.CampaignId, x.ChapterId, ct);
+        if (a.Session.ChapterId == chapterId) { await tx.RollbackAsync(ct); return; }
+        a.Session.ChapterId = chapterId;
+        await CommitAsync(tx, a.Session, ct);
+    }
 }

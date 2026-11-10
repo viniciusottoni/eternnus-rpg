@@ -2,7 +2,8 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
 
-public record StartSessionInput(string Title, string Objective, string MapKind, string MapKey);
+public record StartSessionInput(string Title, string Objective, string MapKind, string MapKey, Guid? ChapterId = null);
+public record SessionChapterInput(Guid? ChapterId);
 public record JoinSessionInput(Guid? CharacterId);
 public record SessionTextInput(string Content);
 public record SessionNoteInput(string Content, bool Shared);
@@ -149,6 +150,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         var items = await query.OrderByDescending(s => s.Number).Skip((page - 1) * PageSize).Take(PageSize).Select(s => new
         {
             s.Id, s.Number, s.Title, s.Objective, s.StartedAt, s.EndedAt, s.MapKind, s.MapKey, s.Recap, recapPublished = s.RecapPublishedAt != null,
+            s.ChapterId, chapterTitle = db.Set<StoryChapter>().Where(c => c.Id == s.ChapterId).Select(c => c.Title).FirstOrDefault(),
             active = s.EndedAt == null,
             eventCount = db.Events.Count(e => e.SessionId == s.Id && !e.IsRecipientCopy),
             noteCount = db.Events.Count(e => e.SessionId == s.Id && e.Kind == EventKinds.Note),
@@ -176,13 +178,14 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         if (campaign.ArchivedAt != null) throw new RuleException(409, "Esta campanha está arquivada. Restaure-a antes de iniciar uma sessão.");
         if (await db.Sessions.AnyAsync(s => s.CampaignId == campaignId && s.EndedAt == null, ct)) throw new RuleException(409, "Já existe uma sessão em andamento nesta campanha.");
         var map = await ResolveMapAsync(campaignId, x.MapKind, x.MapKey, ct);
+        var chapterId = await WorkspaceService.ChapterOf(db, campaignId, x.ChapterId, ct);
         var liveMax = await db.Sessions.Where(s => s.CampaignId == campaignId).MaxAsync(s => (int?)s.Number, ct) ?? 0;
         var pastMax = await db.Set<PastSession>().Where(s => s.CampaignId == campaignId).MaxAsync(s => (int?)s.Number, ct) ?? 0;
         var first = await db.Campaigns.Where(c => c.Id == campaignId).Select(c => c.FirstSessionNumber).SingleAsync(ct);
         var number = Math.Max(first, Math.Max(liveMax, pastMax) + 1);
         // A forma de condução fica fixa na sessão: mudar a campanha depois não altera regras de uma partida em andamento.
         var playMode = (await Fog.CampaignSettingsAsync(campaign, ct)).PlayMode;
-        var session = new GameSession { CampaignId = campaignId, Number = number, Title = title, Objective = objective, StartedAt = Now, MapKind = map.Kind, MapKey = map.Key, PlayMode = playMode };
+        var session = new GameSession { CampaignId = campaignId, Number = number, Title = title, Objective = objective, StartedAt = Now, MapKind = map.Kind, MapKey = map.Key, PlayMode = playMode, ChapterId = chapterId };
         db.Sessions.Add(session);
         db.SessionParticipants.Add(new() { SessionId = session.Id, UserId = user, IsMaster = true, JoinedAt = Now, LastSeenAt = Now });
         var author = await NameAsync(user, ct);

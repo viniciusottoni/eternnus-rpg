@@ -39,6 +39,7 @@ export const STATIC_PATHS = Object.freeze([
     "filled-pdf",
     "campaign-page",
     "campaign-workspace",
+    "campaign-chapters",
     "session-history",
     "table",
     "table-viewport",

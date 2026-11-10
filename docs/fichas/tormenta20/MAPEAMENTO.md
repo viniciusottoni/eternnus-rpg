@@ -1,5 +1,9 @@
 # Ficha-modelo Tormenta20 — mapeamento do PDF oficial
 
+**Publicada em produção em 10/11/2026** — rpg.eternnus.com, sistema Tormenta20:
+"Ficha oficial Tormenta20" (modelo `bbd5e2c3-a4a1-4dad-8706-8118bc380af2`, v1 `3276877e-c1ab-4175-9eb7-a87c602abd97`),
+**padrão do sistema** para novas fichas. Para ajustar: crie um novo rascunho no editor (versões publicadas são imutáveis).
+
 Sistema: **Tormenta20** · PDF de fundo: `T20 - Ficha em Branco.pdf` (2 páginas, 581,1 × 779,53 pt)
 Versão gerada: `tormenta20-ficha-v1.json` — corpo idêntico ao que o editor envia em
 `PUT /api/sheet-templates/{id}/versions/{versionId}` (mesmo `compactDoc`, coordenadas normalizadas com 5 casas).

@@ -554,3 +554,16 @@ Pedido: tudo alinhado e fluido na página da campanha, sem abas que surgem ao cl
 **Retrato do marcador:** marcador de NPC/criatura com imagem é desenhado com a imagem recortada no círculo (iniciais quando não há imagem ou a carga falha). A URL protegida do retrato ganha `?v=` derivado da imagem escolhida para trocar no navegador quando muda. “Ficha do elemento” mostra a prévia (link para tamanho real) e permite trocar ou remover a imagem por `PUT /npcs/{id}/image`, só mestre, com o fluxo transacional da mesa. Endereços de imagem passam por `safeImageUrl` (`play-policy.js`): https validado, retrato da sessão ou imagem do acervo da campanha. Jogadores continuam recebendo a imagem só de marcadores que enxergam.
 
 Cache v35. Limitação: link https externo pode mudar de conteúdo ou ficar indisponível; o acervo continua recomendado.
+
+
+## ADR-060 — Capítulos, atos e arcos das sessões e premissa com parágrafos (10/11/2026)
+
+Pedido: a premissa aparecia como texto corrido; o topo da campanha deve mostrar um trecho com "mais" abrindo o texto formatado; sessões podem ser avulsas, mas o ideal é criar capítulos/atos/arcos antes e associar cada sessão a um deles.
+
+**Premissa:** o texto já era gravado com as quebras de linha; só a exibição as descartava. A Visão geral usa `.workspace-prose` (`pre-wrap`). O topo mostra até três linhas/260 caracteres com `white-space: pre-line` e o botão "mais" (`aria-haspopup=dialog`), que abre o texto completo no modal comum. Nenhuma mudança de dados.
+
+**Capítulos:** nova entidade `StoryChapter` (campanha, rótulo `chapter|act|arc`, título, resumo, ordem, revisão). Lista plana: o rótulo não cria hierarquia, para não exigir árvore de arcos/atos/capítulos sem uso concreto. `GameSession.ChapterId` e `PastSession.ChapterId` são opcionais (sessão avulsa) com FK `SET NULL`; excluir um capítulo nunca apaga sessões. As páginas `chapter` do acervo não foram reutilizadas: são textos de lore com visibilidade própria; o capítulo de sessões é organização privada do mestre, como a lista de sessões.
+
+**Fluxo:** o Diário do mestre ganha o bloco "Capítulos, atos e arcos" antes de "Sessões no Eternnus". Ao iniciar sessão ou registrar uma anterior, o seletor sugere o capítulo da sessão mais recente; sem capítulos, sugere criar o primeiro no mesmo envio (criado uma única vez, mesmo se a abertura falhar), e "Sessão avulsa" continua disponível. Mover sessão de capítulo passa por `SessionService` (bloqueio, revisão, `Pulse`), sem evento na linha do tempo. Ordenar e excluir capítulos usa o bloqueio da campanha.
+
+**Consequências:** migração aditiva `StoryChapters` (tabela nova, duas colunas nulas, índices e FKs); bancos existentes preservados e sessões existentes ficam avulsas. Jogadores não veem capítulos nesta entrega; resumos e registros publicados continuam como antes. Cache v36 acrescenta `js/campaign-chapters.js`.

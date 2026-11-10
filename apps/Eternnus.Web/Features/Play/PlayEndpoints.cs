@@ -83,5 +83,6 @@ public static class PlayEndpoints
         });
         session.MapPost("/npcs/{npcId:guid}/resource", async (Guid sessionId, Guid npcId, NpcResourceInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.AdjustNpcResourceAsync(sessionId, npcId, x, Id(u), ct); return Ok(); });
         session.MapPost("/recap", async (Guid sessionId, RecapInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.RecapAsync(sessionId, x, Id(u), ct); return Ok(); });
+        session.MapPost("/chapter", async (Guid sessionId, SessionChapterInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.ChapterAsync(sessionId, x, Id(u), ct); return Ok(); });
     }
 }

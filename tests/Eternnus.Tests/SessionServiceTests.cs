@@ -238,4 +238,25 @@ public sealed class SessionServiceTests : IAsyncLifetime
         public override DateTimeOffset GetUtcNow() => now;
         public void Advance(TimeSpan by) => now += by;
     }
+
+    [Fact]
+    public async Task Sessions_can_start_in_a_chapter_move_between_chapters_or_stay_loose()
+    {
+        var workspace = new WorkspaceService(db);
+        var arc = await workspace.SaveChapter(campaign.Id, null, Master, new("A Tormenta", "arc"), default);
+        var other = new Campaign { OwnerId = Master, Name = "Outra" }; db.Add(other); await db.SaveChangesAsync();
+        var foreign = await workspace.SaveChapter(other.Id, null, Master, new("Alheio"), default);
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => service.StartAsync(campaign.Id, new("X", "", MapKinds.Tileset, "crypt", foreign.Id), Master, default))).Status);
+        var started = await service.StartAsync(campaign.Id, new("Sessão", "", MapKinds.Tileset, "crypt", arc.Id), Master, default);
+        var id = Prop<Guid>(started, "Id");
+        Assert.Equal(arc.Id, (await db.Sessions.AsNoTracking().SingleAsync(s => s.Id == id)).ChapterId);
+        Assert.Equal(403, (await Assert.ThrowsAsync<RuleException>(() => service.ChapterAsync(id, new(null), Player, default))).Status);
+        var revision = (await db.Sessions.AsNoTracking().SingleAsync(s => s.Id == id)).Revision;
+        await service.ChapterAsync(id, new(null), Master, default);
+        var loose = await db.Sessions.AsNoTracking().SingleAsync(s => s.Id == id);
+        Assert.Null(loose.ChapterId); Assert.Equal(revision + 1, loose.Revision);
+        await service.ChapterAsync(id, new(arc.Id), Master, default);
+        await workspace.DeleteChapter(campaign.Id, arc.Id, Master, arc.Revision, default);
+        Assert.Null((await db.Sessions.AsNoTracking().SingleAsync(s => s.Id == id)).ChapterId);
+    }
 }

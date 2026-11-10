@@ -121,5 +121,29 @@ public sealed class WorkspaceTests : IAsyncLifetime
         Assert.Equal(409,(await Assert.ThrowsAsync<RuleException>(()=>service.SavePast(campaign.Id,null,"master",new(1,"x","x"),default))).Status);
     }
 
+    [Fact]
+    public async Task Chapters_are_master_only_ordered_and_group_past_sessions()
+    {
+        Assert.Equal(403,(await Assert.ThrowsAsync<RuleException>(()=>service.SaveChapter(campaign.Id,null,"player",new("Ato I"),default))).Status);
+        Assert.Equal(403,(await Assert.ThrowsAsync<RuleException>(()=>service.ChapterList(campaign.Id,"player",default))).Status);
+        Assert.Equal(400,(await Assert.ThrowsAsync<RuleException>(()=>service.SaveChapter(campaign.Id,null,"master",new("Ato I","livro"),default))).Status);
+        Assert.Equal(400,(await Assert.ThrowsAsync<RuleException>(()=>service.SaveChapter(campaign.Id,null,"master",new("  "),default))).Status);
+        var one=await service.SaveChapter(campaign.Id,null,"master",new(" Ato I ","act","Chegada a Valkaria"),default);
+        var two=await service.SaveChapter(campaign.Id,null,"master",new("Ato II","act"),default);
+        Assert.Equal("Ato I",one.Title); Assert.Equal(0,one.Order); Assert.Equal(1,two.Order);
+        await service.MoveChapter(campaign.Id,two.Id,"master",new(-1,two.Revision),default);
+        var past=await service.SavePast(campaign.Id,null,"master",new(5,"A ponte","",ChapterId:one.Id),default);
+        await service.SavePast(campaign.Id,null,"master",new(6,"Avulsa",""),default);
+        var list=Json(await service.ChapterList(campaign.Id,"master",default));
+        var items=list.GetProperty("items");
+        Assert.Equal("Ato II",items[0].GetProperty("Title").GetString());
+        Assert.Equal(1,items[1].GetProperty("pastCount").GetInt32()); Assert.Equal(5,items[1].GetProperty("firstNumber").GetInt32());
+        Assert.Equal(1,list.GetProperty("looseSessions").GetInt32());
+        Assert.Equal(409,(await Assert.ThrowsAsync<RuleException>(()=>service.SaveChapter(campaign.Id,one.Id,"master",new("Ato I",Revision:one.Revision-1),default))).Status);
+        var current=await db.Set<StoryChapter>().AsNoTracking().SingleAsync(c=>c.Id==one.Id);
+        await service.DeleteChapter(campaign.Id,one.Id,"master",current.Revision,default);
+        Assert.Null((await db.Set<PastSession>().AsNoTracking().SingleAsync(p=>p.Id==past.Id)).ChapterId);
+    }
+
 }
 
