@@ -45,7 +45,29 @@ public static class WorkspaceEndpoints
         api.MapPut("/past-sessions/{id:guid}", (Guid campaign, Guid id, PastSessionInput x, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.SavePast(campaign, id, User(u), x, ct));
         // Capítulos/atos/arcos: organização privada do mestre para agrupar sessões.
         var chapters = app.MapGroup("/api/campaigns/{campaign:guid}/chapters").RequireAuthorization("Verified");
-        chapters.MapGet("", (Guid campaign, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.ChapterList(campaign, User(u), ct));
+        chapters.MapGet("", (Guid campaign, int? page, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.ChapterList(campaign, User(u), ct, page));
+        // Tabela única de sessões (Eternnus + anteriores) e busca geral: mestre e jogadores, com filtragem por papel no serviço.
+        var campaignApi = app.MapGroup("/api/campaigns/{campaign:guid}").RequireAuthorization("Verified");
+        campaignApi.MapGet("/session-log", (Guid campaign, string? search, string? chapter, string? source, int? page, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.Log(campaign, User(u), search, chapter, source, page ?? 1, ct));
+        campaignApi.MapGet("/session-log/{key}", (Guid campaign, string key, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.LogEntry(campaign, key, User(u), ct));
+        campaignApi.MapGet("/search", (Guid campaign, string? q, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.Search(campaign, User(u), q, ct));
+        // Importação em lote: modelo estático e envio multipart (prévia sem gravar; confirm=true grava tudo ou nada).
+        app.MapGet("/api/session-import/template", () => Results.File(SessionImportFormat.Template(), "text/csv; charset=utf-8", SessionImportFormat.FileName)).RequireAuthorization("Verified");
+        campaignApi.MapPost("/session-import", async (Guid campaign, bool? confirm, HttpRequest request, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            if (!request.HasFormContentType) throw new RuleException(400, "Envie o arquivo pelo formulário.");
+            IFormCollection form;
+            try { form = await request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = SessionImportFormat.MaxBytes, ValueCountLimit = 1, ValueLengthLimit = 64 }, ct); }
+            catch (InvalidDataException) { throw new RuleException(413, "Formulário inválido ou arquivo acima de 1 MB."); }
+            if (form.Files.Count != 1 || form.Files[0].Name != "file" || form.Keys.Count != 0) throw new RuleException(400, "Envie um único arquivo.");
+            var file = form.Files[0];
+            var extension = Path.GetExtension(file.FileName ?? "").ToLowerInvariant();
+            if (extension is not (".csv" or ".txt")) throw new RuleException(400, "Envie o modelo salvo como .csv.");
+            if (file.Length is <= 0 or > SessionImportFormat.MaxBytes) throw new RuleException(file.Length <= 0 ? 400 : 413, file.Length <= 0 ? "O arquivo está vazio." : "O arquivo aceita até 1 MB.");
+            using var buffer = new MemoryStream((int)file.Length);
+            await file.CopyToAsync(buffer, ct);
+            return Results.Ok(await s.ImportSessions(campaign, User(u), buffer.ToArray(), confirm == true, ct));
+        }).RequireRateLimiting("upload");
         chapters.MapPost("", (Guid campaign, ChapterInput x, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveChapter(campaign, null, User(u), x, ct));
         chapters.MapPut("/{id:guid}", (Guid campaign, Guid id, ChapterInput x, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveChapter(campaign, id, User(u), x, ct));
         chapters.MapPost("/{id:guid}/move", async (Guid campaign, Guid id, ChapterMoveInput x, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => { await s.MoveChapter(campaign, id, User(u), x, ct); return Results.NoContent(); });

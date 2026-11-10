@@ -16,10 +16,10 @@ export function campaignRoute(c) {
 }
 
 export function parseRoute(hash) {
-  const [view = "overview", id = "", tab = ""] = String(hash || "")
+  const [view = "overview", id = "", tab = "", item = ""] = String(hash || "")
     .replace(/^#/, "")
     .split("/");
-  return { view: view || "overview", id, tab };
+  return { view: view || "overview", id, tab, item };
 }
 
 export const isGuid = (value) =>

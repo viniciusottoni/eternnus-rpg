@@ -459,3 +459,13 @@ O ensaio usa emulação, não aparelho físico: toque real em Android/iOS, Safar
 - `node tests/campaign-chapters.mjs`: PostgreSQL isolado com a migração `StoryChapters` + Chromium/Playwright em desktop e 390 px. Permissões (jogador 403), vínculo na abertura com criação no mesmo envio, mudança de capítulo, exclusão com sessões avulsas, premissa com parágrafos no popup e na Visão geral, sem overflow móvel e sem erros de console.
 
 Sem aparelho físico, Safari/iOS ou publicação.
+
+
+## Tabela de sessões, busca e importação — 10/11/2026 (ADR-061)
+
+- `dotnet test Eternnus.sln -v q`: **718 aprovados**, zero falhas. Novos em `SessionLogTests` (SQLite): união e visibilidade por papel, filtros, busca em resumos e cenas sem vazar objetivo/rascunho, busca geral por fonte, leitor CSV (aspas, quebras, numeração de linhas, limites), decodificação (binário, controles, bidi, Windows-1252, tamanho), importação prévia/gravação atômica com fórmula e HTML como texto, NPCs conhecidos.
+- `node --test` em cada `tests/*.test.mjs`: todos aprovados (contrato de `parseRoute` com `item`).
+- `node tests/campaign-sessions.mjs`: PostgreSQL isolado + Chromium/Playwright. ILIKE sem diferenciar maiúsculas, busca dentro das cenas JSON, UNION paginado, 403/404 por papel, modelo e importação (extensão, 413, exemplos recusados, confirmação, repetição recusada), NPCs compartilhados, busca geral com navegação até NPC e sessão, importação pela interface com título HTML exibido como texto, filtro por capítulo pela rota, celular de 390 px sem rolagem lateral, sem erros de console.
+- `node tests/campaign-chapters.mjs` e `node tests/campaign-workspace.mjs`: aprovados após ajuste dos seletores ao novo Diário.
+
+Sem aparelho físico, Safari/iOS, carga medida ou publicação.

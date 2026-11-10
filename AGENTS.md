@@ -36,7 +36,7 @@ Antes de alterar uma funcionalidade, leia `docs/ARQUITETURA.md`, `docs/GUIA_VISU
 - Uma sessão ativa por campanha (índice filtrado + bloqueio da campanha). Não remover essa invariante para "abrir outra rapidamente".
 - Toda escrita da mesa passa por `SessionService`: bloqueia a sessão, confere papel/turno/ficha no banco, grava o evento na mesma transação, incrementa `Revision` e chama `SessionSignals.Pulse` após o commit.
 - `GET …/live` é somente leitura. Presença e qualquer outra alteração usam `POST`. Não criar estado autoritativo em memória: o sinal em processo é apenas otimização.
-- Jogador não recebe notas privadas, objetivo do mestre, lista de sessões nem histórico alheio. Fichas compartilhadas são legíveis pelos membros da mesa; fichas privadas e histórico de alterações são restritos ao dono/mestre autorizado. Não expor e-mail de participantes.
+- Jogador não recebe notas privadas, objetivo do mestre, sessões sem resumo publicado, registros anteriores não publicados nem histórico alheio (ADR-061: a tabela de sessões mostra ao jogador só o que foi publicado). Fichas compartilhadas são legíveis pelos membros da mesa; fichas privadas e histórico de alterações são restritos ao dono/mestre autorizado. Não expor e-mail de participantes.
 - Tilesets oficiais vivem em `Domain/BattleMaps.cs` e são validados por teste; o cliente desenha a mesma grade. Animações da mesa respeitam `prefers-reduced-motion` e pausam em aba oculta.
 - Telas com recursos contínuos (consulta, heartbeat, animação) devolvem uma função de descarte ao roteador.
 

@@ -37,13 +37,13 @@ try {
   await page.getByRole('button', { name: 'Fechar', exact: true }).first().click();
 
   // Diário: sem capítulos, a abertura sugere criar o primeiro, mas aceita sessão avulsa.
-  await go(page, `campaign/${c.id}/journal`, 'Sessões no Eternnus');
+  await go(page, `campaign/${c.id}/journal`, 'Buscar nas sessões');
   await page.getByText('Nenhum capítulo criado.', { exact: false }).waitFor();
   await page.getByRole('button', { name: '+ Novo capítulo', exact: true }).click();
   await page.locator('#ch-title').fill('A Chegada a Valkaria'); await page.locator('#ch-kind').selectOption('act');
   await page.locator('#ch-summary').fill('Os heróis chegam à capital.\nPrimeiros ganchos.');
   await page.getByRole('button', { name: 'Criar capítulo', exact: true }).click();
-  await page.getByRole('heading', { name: 'A Chegada a Valkaria', exact: true }).waitFor();
+  await page.getByRole('link', { name: 'A Chegada a Valkaria', exact: true }).waitFor();
   await page.getByRole('button', { name: '✦ Iniciar nova sessão', exact: true }).first().click();
   await page.locator('#f-chapter-select').waitFor();
   const chapters = await master(path + '/chapters');
@@ -74,18 +74,19 @@ try {
   await master(`${path}/chapters/${moved.id}?revision=${moved.revision}`, 'DELETE', undefined, 204);
   check((await master(path + '/workspace/past-sessions')).items[0].chapterId, null);
 
-  await go(page, `campaign/${c.id}/journal`, 'Sessões no Eternnus');
-  await page.getByRole('heading', { name: 'A Chegada a Valkaria', exact: true }).waitFor();
+  await go(page, `campaign/${c.id}/journal`, 'Buscar nas sessões');
+  await page.getByRole('link', { name: 'A Chegada a Valkaria', exact: true }).waitFor();
   await page.screenshot({ path: `${out}/journal-desktop.png`, fullPage: true, animations: 'disabled' });
-  await page.getByRole('button', { name: /^Mudar o capítulo de/ }).first().click();
+  await page.getByRole('button', { name: 'O portão', exact: true }).click();
+  await page.getByRole('button', { name: '❖ Capítulo', exact: true }).click();
   await page.locator('#sc-select').selectOption('');
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await page.locator('#modal').waitFor({ state: 'hidden' });
-  await page.locator('.session-row .session-chapter .status-chip.quiet').first().waitFor();
+  await page.locator('.log-table tr', { hasText: 'O portão' }).getByText('Avulsa', { exact: true }).waitFor();
   check((await master(path + '/sessions')).items[0].chapterTitle, null);
 
   const mobile = await ui(master, true);
-  await go(mobile, `campaign/${c.id}/journal`, 'Sessões no Eternnus');
+  await go(mobile, `campaign/${c.id}/journal`, 'Buscar nas sessões');
   ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Sem overflow móvel');
   await mobile.screenshot({ path: `${out}/journal-mobile.png`, fullPage: true, animations: 'disabled' });
   await go(mobile, `campaign/${c.id}`, 'Premissa');

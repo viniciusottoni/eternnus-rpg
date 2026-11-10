@@ -65,33 +65,39 @@ function range(c) {
 }
 
 /** Bloco do Diário (mestre): lista ordenada com criar, editar, mover e excluir. */
-export async function renderChapters(d, target, onChange) {
-  // Outros blocos do Diário (registro anterior) avisam por evento quando mudam contagens ou criam capítulo.
+export async function renderChapters(d, target, onChange, page = 1) {
+  // Outros blocos do Diário (registro anterior, importação) avisam por evento quando mudam contagens ou criam capítulo.
   if (!target.dataset.listening) { target.dataset.listening = "1"; target.addEventListener("chapters-changed", () => target.onchapterschanged()); }
-  target.onchapterschanged = () => renderChapters(d, target, onChange);
+  target.onchapterschanged = () => renderChapters(d, target, onChange, page);
   target.innerHTML = '<p class="loading-line" role="status">Consultando capítulos…</p>';
   let result;
-  try { result = await loadChapters(d.id); }
+  try { result = await api(`/campaigns/${d.id}/chapters?page=${page}`); }
   catch (error) {
     if (!target.isConnected) return;
     target.innerHTML = `<p role="alert">${esc(error.message)}</p>${button("Tentar novamente", "ch-retry", "", "subtle small")}`;
-    target.onclick = (e) => { if (e.target.closest("[data-action='ch-retry']")) renderChapters(d, target, onChange); };
+    target.onclick = (e) => { if (e.target.closest("[data-action='ch-retry']")) renderChapters(d, target, onChange, page); };
     return;
   }
   if (!target.isConnected) return;
   const items = result.items;
   const editable = !d.archived;
-  const full = items.length >= result.max;
-  target.innerHTML = `<div class="section-title"><h2 id="cp-chapters-title">Capítulos, atos e arcos${helpButton("campanhas.capitulos.organizacao", "Capítulos, atos e arcos")}</h2>${editable ? button("+ Novo capítulo", "ch-new", "", "subtle small", full ? `disabled aria-describedby="ch-full"` : "") : ""}</div><p class="muted small section-lead">Só você vê. Organize a história antes de abrir as sessões e escolha o capítulo ao iniciar cada uma; sessões avulsas continuam permitidas.${full ? ` <span id="ch-full">Limite de ${result.max} capítulos atingido.</span>` : ""}</p>${
+  const full = result.total >= result.max;
+  const pages = Math.max(1, Math.ceil(result.total / result.pageSize));
+  const row = (c, i) => {
+    const n = result.offset + i;
+    return `<tr><td class="num" data-label="Ordem">${n + 1}</td><td data-label="Tipo">${esc(chapterKindLabel(c.kind))}</td><td data-label="Título"><a href="#campaign/${esc(d.id)}/sessions/chapter-${esc(c.id)}" class="chapter-link">${esc(c.title)}</a>${c.summary ? `<p class="log-excerpt chapter-summary">${esc(c.summary)}</p>` : ""}</td><td data-label="Sessões">${esc(range(c))}</td>${editable ? `<td data-label="Ações"><div class="chapter-tools">${button("↑", "ch-up", c.id, "subtle small icon-button", `aria-label="Subir ${esc(c.title)}"${n === 0 ? " disabled" : ""}`)}${button("↓", "ch-down", c.id, "subtle small icon-button", `aria-label="Descer ${esc(c.title)}"${n === result.total - 1 ? " disabled" : ""}`)}${button("Editar", "ch-edit", c.id, "subtle small", `aria-label="Editar ${esc(c.title)}"`)}${button("Excluir", "ch-delete", c.id, "text-button small", `aria-label="Excluir ${esc(c.title)}"`)}</div></td>` : ""}</tr>`;
+  };
+  target.innerHTML = `<div class="section-title"><h2 id="cp-chapters-title">Capítulos, atos e arcos${helpButton("campanhas.capitulos.organizacao", "Capítulos, atos e arcos")}</h2>${editable ? button("+ Novo capítulo", "ch-new", "", "subtle small", full ? `disabled aria-describedby="ch-full"` : "") : ""}</div><p class="muted small section-lead">Só você vê. Organize a história antes de abrir as sessões e escolha o capítulo ao iniciar cada uma; sessões avulsas continuam permitidas. Abra um capítulo para ver suas sessões.${full ? ` <span id="ch-full">Limite de ${result.max} capítulos atingido.</span>` : ""}</p>${
     items.length
-      ? `<ol class="chapter-list">${items.map((c, i) => `<li class="chapter-row metal"><div class="chapter-info"><span class="eyebrow">${esc(chapterKindLabel(c.kind))} ${i + 1}</span><h3>${esc(c.title)}</h3><p class="muted small">${esc(range(c))}</p>${c.summary ? `<p class="workspace-prose chapter-summary">${esc(c.summary)}</p>` : ""}</div>${editable ? `<div class="chapter-tools">${button("↑", "ch-up", c.id, "subtle small icon-button", `aria-label="Subir ${esc(c.title)}"${i === 0 ? " disabled" : ""}`)}${button("↓", "ch-down", c.id, "subtle small icon-button", `aria-label="Descer ${esc(c.title)}"${i === items.length - 1 ? " disabled" : ""}`)}${button("Editar", "ch-edit", c.id, "subtle small")}${button("Excluir", "ch-delete", c.id, "text-button small", `aria-label="Excluir ${esc(c.title)}"`)}</div>` : ""}</li>`).join("")}</ol>${result.looseSessions ? `<p class="muted small">${result.looseSessions} ${result.looseSessions === 1 ? "sessão avulsa" : "sessões avulsas"}, sem capítulo.</p>` : ""}`
-      : `<p class="muted small">Nenhum capítulo criado.${editable ? " Crie o primeiro antes de abrir a próxima sessão — por exemplo, “Ato I — A Chegada”." : ""}</p>`
+      ? `<div class="data-table-wrap"><table class="data-table chapter-table"><caption class="sr-only">Capítulos da campanha, página ${result.page} de ${pages}</caption><thead><tr><th scope="col">Ordem</th><th scope="col">Tipo</th><th scope="col">Título</th><th scope="col">Sessões</th>${editable ? '<th scope="col">Ações</th>' : ""}</tr></thead><tbody>${items.map(row).join("")}</tbody></table></div>${result.looseSessions ? `<p class="muted small table-note">${result.looseSessions} ${result.looseSessions === 1 ? "sessão avulsa" : "sessões avulsas"}, sem capítulo. <a href="#campaign/${esc(d.id)}/sessions/chapter-none">Ver avulsas</a></p>` : ""}${pages > 1 ? `<div class="pagination">${button("← Anterior", "ch-page", page - 1, "subtle", page <= 1 ? "disabled" : "")}<span>Página ${page} de ${pages} · ${result.total} capítulos</span>${button("Próxima →", "ch-page", page + 1, "subtle", page >= pages ? "disabled" : "")}</div>` : ""}`
+      : `<p class="muted small">Nenhum capítulo criado.${editable ? " Crie o primeiro antes de abrir a próxima sessão — por exemplo, “Ato I — A Chegada” — ou importe vários de uma vez pela tabela de sessões." : ""}</p>`
   }`;
   target.onclick = async (e) => {
     const b = e.target.closest("[data-action^='ch-']");
     if (!b || b.disabled || b.getAttribute("aria-disabled") === "true") return;
     const chapter = items.find((c) => c.id === b.dataset.id);
     try {
+      if (b.dataset.action === "ch-page") return renderChapters(d, target, onChange, Number(b.dataset.id));
       if (b.dataset.action === "ch-new") chapterEditor(d, null, onChange);
       if (b.dataset.action === "ch-edit" && chapter) chapterEditor(d, chapter, onChange);
       if ((b.dataset.action === "ch-up" || b.dataset.action === "ch-down") && chapter) {

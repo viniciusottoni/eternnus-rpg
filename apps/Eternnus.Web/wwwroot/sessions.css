@@ -3158,15 +3158,66 @@ a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3
 @media (pointer: coarse) { .campaign-hero .hero-more { display: inline-block; min-height: 44px; padding: 0 8px; } }
 .premise-full { max-width: none; max-height: 65vh; overflow-y: auto; padding-right: 6px; }
 /* Capítulos, atos e arcos (Diário do mestre). */
-.chapter-list { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 10px; }
-.chapter-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 14px 18px; }
-.chapter-info { min-width: 0; flex: 1; }
-.chapter-info h3 { margin: 2px 0 2px; color: #ead6a8; font: normal 18px var(--serif); overflow-wrap: anywhere; }
-.chapter-info > p.muted { margin: 0; }
-.chapter-summary { margin: 8px 0 0; font-size: 13px; }
-.chapter-tools { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
-.chapter-tools .icon-button { min-width: 36px; min-height: 36px; padding: 0 10px; }
-@media (pointer: coarse) { .chapter-tools .icon-button, .chapter-tools .button, .chapter-tools button { min-width: 44px; min-height: 44px; } }
-@media (max-width: 640px) { .chapter-row { flex-direction: column; } .chapter-tools { justify-content: flex-start; } }
 .session-chapter { margin: 0 0 4px; }
 .session-chapter .status-chip { font-size: 11px; }
+/* Tabelas de capítulos e sessões (ADR-061): tabela no desktop, cartões empilhados até 720 px, sem rolagem lateral da página. */
+.section-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.search-bar.log-filters { grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1fr) auto; }
+.log-table td, .chapter-table td { vertical-align: top; }
+.log-table td:first-child, .chapter-table td:first-child { width: 4.5em; }
+.log-open { min-height: 32px; padding: 2px 0; font: normal 16px var(--serif); color: #efdcb1; text-align: left; white-space: normal; }
+.log-excerpt { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.chapter-summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.chapter-link { color: #efdcb1; font: normal 16px var(--serif); }
+.chapter-tools { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; }
+.chapter-table td[data-label="Ações"] { width: 1%; white-space: nowrap; }
+.chapter-tools .icon-button { min-width: 36px; min-height: 36px; padding: 0 10px; }
+@media (pointer: coarse) { .chapter-tools .icon-button, .chapter-tools button, .log-open { min-width: 44px; min-height: 44px; } }
+.table-note { margin: 8px 0 0; }
+@media (max-width: 720px) {
+  .search-bar.log-filters { grid-template-columns: 1fr 1fr; }
+  .search-bar.log-filters .field:first-child, .search-bar.log-filters > button, .search-bar.log-filters .search-extra { grid-column: 1 / -1; }
+  .log-table thead, .chapter-table thead, .import-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .log-table, .log-table tbody, .log-table tr, .log-table td,
+  .chapter-table, .chapter-table tbody, .chapter-table tr, .chapter-table td,
+  .import-table, .import-table tbody, .import-table tr, .import-table td { display: block; width: auto; }
+  .log-table tr, .chapter-table tr, .import-table tr { padding: 10px 12px; border-bottom: 1px solid #49433780; }
+  .log-table td, .chapter-table td, .import-table td, .log-table td.num, .chapter-table td.num, .import-table td.num { padding: 3px 0; border: 0; text-align: left; }
+  .chapter-table td[data-label="Ações"] { width: auto; white-space: normal; }
+  .chapter-tools { flex-wrap: wrap; }
+  .log-table td:first-child, .chapter-table td:first-child { width: auto; }
+  .log-table td[data-label]::before, .chapter-table td[data-label]::before, .import-table td[data-label]::before { content: attr(data-label) ": "; color: var(--gold); font-size: 11px; font-weight: 600; }
+  .log-table td[data-label="Sessão"]::before, .chapter-table td[data-label="Título"]::before { content: none; }
+}
+/* Leitura de uma sessão. */
+.entry-meta { margin: 0 0 12px; }
+.entry-heading { margin: 16px 0 6px; color: #ead6a8; font: normal 17px var(--serif); }
+.entry-text { max-width: none; }
+.entry-scenes { margin: 0; padding-left: 20px; display: grid; gap: 12px; }
+.entry-scenes h4 { margin: 0 0 4px; color: #ead6a8; font: normal 15px var(--serif); }
+.entry-private { margin: 0 0 8px; }
+.entry-private summary { cursor: pointer; color: var(--gold); font-size: 12px; font-weight: 600; padding: 6px 0; }
+.entry-actions { flex-wrap: wrap; }
+/* Importação em lote. */
+.import-steps { margin: 0 0 14px; padding-left: 20px; display: grid; gap: 8px; }
+.import-steps .button { margin-left: 6px; }
+.import-title { margin: 18px 0 8px; color: #ead6a8; font: normal 17px var(--serif); }
+.import-errors { margin: 0 0 12px; padding: 10px 14px; border: 1px solid #e2a18c99; border-radius: var(--radius); }
+.import-errors h4 { margin: 0 0 6px; color: var(--danger); font-size: 13px; }
+.import-errors ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 12px; max-height: 40vh; overflow-y: auto; }
+/* Busca geral da campanha (Visão geral). */
+.campaign-search { padding: 16px 20px; margin-bottom: 14px; }
+.campaign-search .small-heading { margin: 0 0 10px; color: #ead6a8; font: normal 18px var(--serif); }
+.campaign-search .search-bar { margin: 0; }
+.search-results { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+.search-results li { padding: 10px 0; border-top: 1px solid #c6a4631f; }
+.search-results a { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 32px; color: #efdcb1; }
+.search-results p { margin: 4px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+/* NPCs conhecidos. */
+.known-npcs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.known-npc { display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; }
+.known-npc.is-target { outline: 2px solid var(--gold); outline-offset: 2px; }
+.known-npc img, .known-npc-initial { flex: none; width: 64px; height: 64px; border-radius: 50%; border: 2px solid #a07b3a; object-fit: cover; }
+.known-npc-initial { display: grid; place-items: center; color: #ead6a8; font: normal 26px var(--serif); background: #c6a46314; }
+.known-npc h3 { margin: 0 0 4px; color: #ead6a8; font: normal 17px var(--serif); overflow-wrap: anywhere; }
+.known-npc p { margin: 8px 0 0; }

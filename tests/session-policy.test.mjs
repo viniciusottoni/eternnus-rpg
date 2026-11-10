@@ -65,8 +65,10 @@ test("routes are parsed into view, identifier and tab, and identifiers are valid
     view: "session",
     id,
     tab: "notes",
+    item: "",
   });
-  assert.deepEqual(p.parseRoute(""), { view: "overview", id: "", tab: "" });
+  assert.deepEqual(p.parseRoute(""), { view: "overview", id: "", tab: "", item: "" });
+  assert.deepEqual(p.parseRoute("#campaign/" + id + "/sessions/live-" + id), { view: "campaign", id, tab: "sessions", item: "live-" + id });
   assert.equal(p.isGuid(id), true);
   for (const bad of ["", "../campaigns", id + "x", "javascript:alert(1)"])
     assert.equal(p.isGuid(bad), false);

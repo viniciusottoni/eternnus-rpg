@@ -1283,6 +1283,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("integer");
 
+                    b.Property<bool>("SharedWithPlayers")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Side")
                         .IsRequired()
                         .HasMaxLength(10)

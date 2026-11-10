@@ -8,6 +8,9 @@ public static class UploadLimits
     public const long DocumentBytes = 25L * 1024 * 1024;
     public const long DocumentRequestBytes = DocumentBytes + 256 * 1024;
 
+    /// <summary>Importação em lote de sessões: CSV até 1 MiB + margem para multipart.</summary>
+    public const long SessionImportRequestBytes = SessionImportFormat.MaxBytes + 64 * 1024;
+
     public static long? For(HttpRequest request)
     {
         var path = request.Path.Value ?? "";
@@ -18,6 +21,7 @@ public static class UploadLimits
             && Guid.TryParse(mapParts[3], out _) && mapParts[4] == "assets" && mapParts[5] == "maps") return CampaignAssetsService.MaxImageRequestBytes;
         if (HttpMethods.IsPost(request.Method) && mapParts.Length == 8 && mapParts[1] == "api" && mapParts[2] == "campaigns" && Guid.TryParse(mapParts[3], out _) && mapParts[4] == "workspace" && mapParts[5] == "pages" && Guid.TryParse(mapParts[6], out _) && mapParts[7] == "attachments") return DocumentRequestBytes;
         if (HttpMethods.IsPost(request.Method) && path == "/api/admin/music") return MusicLimits.MaxRequestBytes;
+        if (HttpMethods.IsPost(request.Method) && mapParts.Length == 5 && mapParts[1] == "api" && mapParts[2] == "campaigns" && Guid.TryParse(mapParts[3], out _) && mapParts[4] == "session-import") return SessionImportRequestBytes;
         if (!HttpMethods.IsPut(request.Method)) return null;
         var parts = path.Split('/');
         if (parts.Length == 5 && parts[1] == "api" && parts[2] == "library" && Guid.TryParse(parts[3], out _) && parts[4] == "file")
