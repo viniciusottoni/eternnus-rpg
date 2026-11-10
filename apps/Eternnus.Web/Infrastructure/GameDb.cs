@@ -87,6 +87,7 @@ public class GameDb(DbContextOptions<GameDb> options) : IdentityDbContext<AppUse
         b.Entity<SessionToken>().HasOne<Character>().WithMany().HasForeignKey(x => x.CharacterId).OnDelete(DeleteBehavior.Cascade);
         PlatformModel(b);
         CampaignAssetsModel.Configure(b);
+        WorkspaceModel.Configure(b);
         PreparationModel.Configure(b);
         MusicModel.Configure(b);
     }

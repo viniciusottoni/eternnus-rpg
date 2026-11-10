@@ -161,6 +161,39 @@ public sealed class ProfileTests
         else Assert.Equal(status, (await Assert.ThrowsAsync<RuleException>(() => safety.ScanAsync([1,2,3], default))).Status);
         await server;
     }
+    static ClamAvDocumentScanner DocumentScanner(string? host, int port = 3310) =>
+        new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
+            ["Uploads:ClamAv:Host"] = host, ["Uploads:ClamAv:Port"] = port.ToString(),
+        }).Build(), Microsoft.Extensions.Logging.Abstractions.NullLogger<ClamAvDocumentScanner>.Instance);
+    [Theory]
+    [InlineData("stream: OK\0", 0)]
+    [InlineData("stream: Test-Signature FOUND\0", 422)]
+    [InlineData("stream: scanner ERROR\0", 0)]
+    public async Task Document_scanner_rejects_detections_and_accepts_when_the_scanner_fails(string reply, int status)
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
+        var server = Task.Run(async () => {
+            using var client = await listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+            var command = new byte[10]; await stream.ReadExactlyAsync(command);
+            var size = new byte[4]; await stream.ReadExactlyAsync(size);
+            await stream.ReadExactlyAsync(new byte[BinaryPrimitives.ReadInt32BigEndian(size)]);
+            await stream.ReadExactlyAsync(size);
+            await stream.WriteAsync(System.Text.Encoding.ASCII.GetBytes(reply));
+        });
+        var scanner = DocumentScanner("127.0.0.1", ((IPEndPoint)listener.LocalEndpoint).Port);
+        if (status == 0) await scanner.ScanAsync([1, 2, 3], default);
+        else Assert.Equal(status, (await Assert.ThrowsAsync<RuleException>(() => scanner.ScanAsync([1, 2, 3], default))).Status);
+        await server;
+    }
+    [Fact]
+    public async Task Document_scanner_accepts_when_clamav_is_missing_or_unreachable()
+    {
+        await DocumentScanner(null).ScanAsync([1, 2, 3], default);
+        using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
+        var closedPort = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
+        await DocumentScanner("127.0.0.1", closedPort).ScanAsync([1, 2, 3], default);
+    }
     sealed class ModerationHttp(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, false);

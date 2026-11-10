@@ -16,6 +16,7 @@ public static class UploadLimits
         var mapParts = path.Split('/');
         if (HttpMethods.IsPost(request.Method) && mapParts.Length == 6 && mapParts[1] == "api" && mapParts[2] == "campaigns"
             && Guid.TryParse(mapParts[3], out _) && mapParts[4] == "assets" && mapParts[5] == "maps") return CampaignAssetsService.MaxImageRequestBytes;
+        if (HttpMethods.IsPost(request.Method) && mapParts.Length == 8 && mapParts[1] == "api" && mapParts[2] == "campaigns" && Guid.TryParse(mapParts[3], out _) && mapParts[4] == "workspace" && mapParts[5] == "pages" && Guid.TryParse(mapParts[6], out _) && mapParts[7] == "attachments") return DocumentRequestBytes;
         if (HttpMethods.IsPost(request.Method) && path == "/api/admin/music") return MusicLimits.MaxRequestBytes;
         if (!HttpMethods.IsPut(request.Method)) return null;
         var parts = path.Split('/');

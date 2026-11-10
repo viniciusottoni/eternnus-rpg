@@ -38,11 +38,16 @@ export function validHelpEntry(entry) {
 
 // Índice pequeno, sem parágrafos. Catálogos longos são importados ao abrir um ⓘ.
 export const HELP_KEYS = Object.freeze({
+  "mesa.tela.horizontal": "all",
+  "mesa.mapa.camera": "all",
   "conta.acesso.persistencia": "all",
   "conta.acesso.social": "all",
   "conta.acesso.autenticador": "all",
   "conta.perfil.avatar": "all",
   "conta.app.instalacao": "all",
+  "campanhas.continuidade.origem": "all",
+  "campanhas.acervo.cadernos": "all",
+  "campanhas.continuidade.historico": "all",
   "campanhas.lista.papeis": "all",
   "campanhas.conta.limites": "all",
   "campanhas.config.forma-de-jogar": "all",

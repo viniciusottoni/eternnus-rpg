@@ -52,7 +52,7 @@ public static class PlayEndpoints
         campaign.MapPut("/npcs/{npcId:guid}/sheet", (Guid campaignId, Guid npcId, NpcSheetInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveNpcSheetAsync(campaignId, npcId, x, Id(u), ct));
         campaign.MapPost("/npcs/{npcId:guid}/copy", (Guid campaignId, Guid npcId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.CopyNpcAsync(campaignId, npcId, Id(u), ct));
         campaign.MapDelete("/npcs/{npcId:guid}", async (Guid campaignId, Guid npcId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => { await p.DeleteNpcAsync(campaignId, npcId, Id(u), ct); return Ok(); });
-        campaign.MapGet("/journal", (Guid campaignId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.JournalAsync(campaignId, Id(u), ct));
+        campaign.MapGet("/journal", (Guid campaignId, int? page, string? search, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.JournalAsync(campaignId, Id(u), ct, page ?? 1, search));
         campaign.MapPut("/schedule", async (Guid campaignId, ScheduleInput x, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => { await p.ScheduleAsync(campaignId, x, Id(u), ct); return Ok(); });
         campaign.MapPost("/attendance", async (Guid campaignId, AttendanceInput x, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => { await p.AttendanceAsync(campaignId, x, Id(u), ct); return Ok(); });
         campaign.MapGet("/private-templates", (Guid campaignId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.PrivateTemplatesAsync(campaignId, Id(u), ct));

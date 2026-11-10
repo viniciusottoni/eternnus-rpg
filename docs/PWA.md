@@ -88,3 +88,11 @@ O GitHub Actions produz `app_offline.htm` autossuficiente com o splash oficial. 
 
 
 Cache público v22 (ADR-046): acrescenta `play-policy.js`, `table-tools.js`, `campaign-prep.js` e `invite.js` à lista permitida. `table.js`, `campaign-page.js`, `campaigns.js`, `layout.js`, `app.js`, `policy.js`, `one-shots.js`, `fog-policy.js`, `table-settings.js`, `styles.css` e `sessions.css` mudaram. Início (`/api/home`), convite, diário, cenas e pedidos de teste são dados autenticados de `/api` e nunca entram no cache. Sem `skipWaiting` nem recarga de sessão ativa.
+
+Atualização de continuidade/acervo: shell público v32 inclui campaign-workspace.js sob demanda. Dados, notas, anexos e imagens do atlas continuam via API autenticada/no-store, fora do cache. Atualização sem skipWaiting nem recarga forçada.
+
+
+Cache público v33 (ADR-056): acrescenta somente `/js/table-viewport.js`; atualiza sessions.css, table.js e catálogo/índice de ajuda. Lista permitida revisada; nenhum dado de sessão ou API é cacheado. Mantém a atualização após fechar abas antigas, sem skipWaiting ou recarga forçada. Manifest continua sem orientação global obrigatória: o requisito horizontal pertence apenas à mesa, inclusive em standalone. Fullscreen e bloqueio têm fallback manual.
+
+
+Shell v34 (ADR-057): acrescenta somente o módulo público map-gestures.js; atualiza estilos, câmera, mesa, editor, grade e ajuda. API/imagens privadas continuam fora da lista. Não usa skipWaiting nem recarrega sessões abertas.

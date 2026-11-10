@@ -59,7 +59,7 @@ Novos módulos são carregados sob demanda e reutilizam shell, api.js, ui.js e l
 
 A migração PlatformFoundation é aplicada depois de LiveSessions e CampaignWorkspace acrescenta esta evolução. Preservar banco, backups, e-mails locais e chaves; nunca recriar um volume para migrar. O primeiro admin usa segredo privado Platform:InitialAdmin:Password e autenticador obrigatório; ver [CONTAS_MESAS_LIVRES.md](CONTAS_MESAS_LIVRES.md). A lista operacional Platform:BootstrapAdmins continua compatível e também exige MFA no acesso. O runtime não depende de Node/Python.
 
-Documentos exigem clamd privado com assinaturas atualizadas e StreamMaxLength compatível com 25 MiB. UploadLimits contém a lista restrita de rotas acima dos 64 KiB; IIS/proxy devem ter limites coerentes. Uploads:AllowUnscanned funciona somente em Development, exclusivamente para fixtures isolados; não é mecanismo de produção nem libera o avatar. Avatar continua exigindo antivírus e moderação externa e falha fechado sem eles.
+Documentos usam clamd privado quando disponível (melhor esforço, ADR-058), recomendado com assinaturas atualizadas e StreamMaxLength compatível com 25 MiB. UploadLimits contém a lista restrita de rotas acima dos 64 KiB; IIS/proxy devem ter limites coerentes. Uploads:AllowUnscanned ficou sem efeito: sem scanner o documento é aceito com aviso no log. Isso não libera o avatar. Avatar continua exigindo antivírus e moderação externa e falha fechado sem eles.
 
 Registro de atividade de conta usa POST /api/auth/activity com CSRF e intervalo mínimo de atualização de cinco minutos; GET /auth/me permanece somente leitura. Cache PWA v11 contém somente shell/arquivos públicos explícitos. Sessões ativas não são recarregadas nem atualizadas por skipWaiting.
 

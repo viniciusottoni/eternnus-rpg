@@ -461,3 +461,42 @@ Evidência final: compilação sem avisos/erros; 675 testes .NET; 128 testes fro
 Todos os 65 conceitos planejados possuem ponto de acesso e entrada validada. Nenhum item conceitual ficou sem implementação. Controles com instruções suficientes conservaram o texto visível; não receberam popup redundante. A ajuda longa já visível no editor de cenas continua visível. O inventário foi atualizado para os módulos da implementação paralela, incluindo table-scenes.js; alterações posteriores devem seguir o checklist.
 
 Desvios de escopo: seis conceitos de mapas/cenas foram acrescentados por orientação explícita do usuário. O cache final integrado é v25, pois a implementação paralela também versionou o shell. Nenhuma mudança no modelo de três níveis ou no contrato HTTP desta entrega. Catálogos são precacheados como texto público, mas importados/avaliados só na primeira abertura. Leitor de tela real, aparelho físico, teclado virtual, Safari/iOS, instalação real e carga não foram validados por este trabalho. Evoluções futuras continuam sem implementação.
+
+## Continuidade e acervo — classificação
+
+| Elemento | Nível | Chave ou justificativa |
+| --- | --- | --- |
+| Origem e numeração | ⓘ | campanhas.continuidade.origem |
+| Acervo/caderno e acesso | ⓘ | campanhas.acervo.cadernos |
+| Registro anterior | ⓘ | campanhas.continuidade.historico |
+| Título, conteúdo, coleção, etiquetas, capítulo, ordem, estado, relações e fixar | Visível | Labels, limites e instruções no editor; sem popup redundante |
+| Importar, exportar, versões e lixeira | Visível | Texto do comando e limites adjacentes |
+| Anexos | Visível | Tipos, tamanho e escopo de leitores no formulário |
+| Atlas | Visível | Publicação integral e confirmação explícita; cópia independente |
+| Salvamento | Visível | Estado acessível no editor; falha preserva texto e oferece baixar rascunho |
+
+Catálogo campanhas e índice help-policy incluem as três novas chaves. Público estático, sem conteúdo da campanha.
+
+
+## Mesa horizontal — classificação (ADR-056)
+
+| Elemento | Nível | Chave ou justificativa |
+| --- | --- | --- |
+| Orientação e tela cheia | ⓘ | `mesa.tela.horizontal`, catálogo mesa e índice; limites do navegador e painéis |
+| Vire o celular | Visível | Requisito permanente na superfície de rotação; título recebe foco |
+| Entrar em tela cheia | Visível | Botão rotulado, instrução/erro em `rotate-status` associado por aria-describedby; ocupado/desabilitado durante a tentativa; ausente sem suporte |
+| Tela cheia / Sair da tela cheia | Visível | Rótulo e aria-pressed refletem o estado; sem ícone isolado |
+| Voltar à campanha | Visível | Link explícito disponível também em retrato |
+| Ações indisponíveis do mestre | Visível | Uma orientação compartilhada em `t-master-why`; todos os botões afetados a referenciam, evitando repetição |
+
+As abas Mapa/Grupo/Ficha/Conversa e suas permissões são as existentes; agora abrem painéis laterais no layout compacto.
+
+
+## Câmera e preparação — ADR-057
+
+- `mesa.mapa.camera`: conceito compartilhado da câmera, catálogo mesa; acesso Visão ⓘ na mesa e no editor. Explica zoom limitado, pan, interação e privacidade.
+- Arrastar mapa: texto e aria-pressed; orientação visível associada por aria-describedby com ID único por instância.
+- Mapa inteiro/Ampliar mapa: rótulo visível e estado. ±: nomes acessíveis/tooltip gerado pelo helper compartilhado; disabled no limite.
+- Propriedades: rótulo visível e aria-expanded, mostra/recolhe painel no editor compacto.
+- Prévia de grade: orientação visível para pinça, intervalo 1–4× e botões rotulados; zoom não muda valores da grade.
+- Círculo: dimensões protegidas no componente compartilhado; o alvo touch permanece 44 px sem esticar a borda.

@@ -99,6 +99,7 @@ public partial class SessionService
         access.Session.EndedAt = Now;
         await AwardSessionXpAsync(access, ct);
         // A campanha veio de consulta no-tracking: anexar para aplicar cascade no mesmo commit da sessão.
+        await db.Set<WorkspacePage>().Where(p => p.CampaignId == access.Campaign.Id && p.Kind != "note").ExecuteDeleteAsync(ct);
         db.Campaigns.Remove(db.Campaigns.Local.FirstOrDefault(c => c.Id == access.Campaign.Id) ?? access.Campaign);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);

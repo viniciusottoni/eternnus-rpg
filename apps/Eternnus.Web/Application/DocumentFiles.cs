@@ -89,24 +89,28 @@ public interface IDocumentScanner
     Task ScanAsync(byte[] content, CancellationToken ct);
 }
 
-/// <summary>Antivírus de documentos via ClamAV (Uploads:ClamAv:Host/Port, com fallback para Avatar:ClamAv:*).
-/// Sem ClamAV configurado, o envio é recusado (503) — exceto em Development com Uploads:AllowUnscanned=true (testes locais).</summary>
-public sealed class ClamAvDocumentScanner(IConfiguration config, IWebHostEnvironment env, ILogger<ClamAvDocumentScanner> logger) : IDocumentScanner
+/// <summary>Antivírus de documentos via ClamAV (Uploads:ClamAv:Host/Port, com fallback para Avatar:ClamAv:*), em modo
+/// "melhor esforço" (ADR-058): sempre tenta verificar; arquivo detectado é recusado (422), mas scanner ausente,
+/// inacessível ou com resposta inesperada não bloqueia o envio — o documento é aceito e um aviso vai para o log.</summary>
+public sealed class ClamAvDocumentScanner(IConfiguration config, ILogger<ClamAvDocumentScanner> logger) : IDocumentScanner
 {
-    public static RuleException Unavailable() => new(503, "A verificação de segurança de arquivos está indisponível. Tente novamente mais tarde.");
+    sealed class ScannerUnavailable() : RuleException(503, "A verificação de segurança de arquivos está indisponível.");
     public async Task ScanAsync(byte[] content, CancellationToken ct)
     {
         var host = config["Uploads:ClamAv:Host"] ?? config["Avatar:ClamAv:Host"];
         var port = config.GetValue<int?>("Uploads:ClamAv:Port") ?? config.GetValue("Avatar:ClamAv:Port", 3310);
         if (string.IsNullOrWhiteSpace(host))
         {
-            if (env.IsDevelopment() && config.GetValue("Uploads:AllowUnscanned", false))
-            {
-                logger.LogWarning("Document accepted without antivirus scan (Development, Uploads:AllowUnscanned).");
-                return;
-            }
-            throw Unavailable();
+            logger.LogWarning("Document accepted without antivirus scan: ClamAV not configured.");
+            return;
         }
-        await ClamAvClient.ScanAsync(host, port, content, "O arquivo foi recusado pela verificação de segurança.", Unavailable, ct);
+        try
+        {
+            await ClamAvClient.ScanAsync(host, port, content, "O arquivo foi recusado pela verificação de segurança.", () => new ScannerUnavailable(), ct);
+        }
+        catch (ScannerUnavailable)
+        {
+            logger.LogWarning("Document accepted without antivirus scan: ClamAV unavailable or returned an unexpected reply.");
+        }
     }
 }

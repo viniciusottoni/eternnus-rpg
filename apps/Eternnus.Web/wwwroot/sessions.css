@@ -2910,3 +2910,172 @@ dialog.scene-editor-modal #modal-body { flex: 1; min-height: 0; height: auto; ov
 .roll-recipients { margin-top: 8px; }
 .roll-recipients[hidden] { display: none; }
 
+/* Mesa móvel horizontal: áreas explícitas, sem barra sobreposta ao tabuleiro (ADR-056). */
+.table-rotate[hidden] { display: none; }
+.table-rotate { min-height: 100dvh; display: grid; place-items: center; padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); background: var(--bg); }
+.table-rotate > div { max-width: 480px; padding: 28px 24px; text-align: center; }
+.table-rotate h1 { font: normal 28px/1.3 var(--serif); color: var(--bright); }
+.table-rotate p { color: var(--muted); line-height: 1.6; }
+.table-rotate :is(.button, button.primary) { display: flex; justify-content: center; align-items: center; width: 100%; min-height: 44px; margin-top: 12px; }
+.rotate-phone { display: block; color: var(--gold); font-size: 48px; }
+.table-needs-rotation .table-shell { display: none; }
+@media (max-width: 900px), (max-width: 1200px) and (pointer: coarse) {
+  .table-shell:not([inert]) {
+    height: 100dvh; min-height: 0; overflow: hidden;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 54px minmax(0, 1fr) auto;
+    grid-template-areas: "top" "stage" "turn";
+    gap: 4px;
+    padding: env(safe-area-inset-top, 0px) max(6px, env(safe-area-inset-right, 0px)) 0 max(6px, env(safe-area-inset-left, 0px));
+  }
+  .table-shell .table-top { flex-wrap: nowrap; gap: 6px; min-width: 0; padding: 2px 0; }
+  .table-shell .table-brand { display: none; }
+  .table-shell .table-title { flex: 0 1 170px; }
+  .table-shell .table-title h1 { font-size: 16px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .table-shell .table-title .online-badge { display: none; }
+  .table-shell .table-title p { white-space: nowrap; font-size: 11px; }
+  .table-shell #t-fullscreen { flex: 0 0 auto; min-height: 44px; font-size: 12px; padding: 6px; }
+  .table-shell .table-top-actions { flex: 1 1 0; min-width: 0; width: auto; order: 0; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: thin; align-items: center; }
+  .table-shell .table-top-actions > * { flex: 0 0 auto; }
+  .table-shell .table-top-actions :is(button, a.button) { min-height: 44px; white-space: nowrap; font-size: 12px; padding: 6px 10px; }
+  .table-shell .interface-toggle { flex-wrap: nowrap; }
+  .table-shell .interface-option span { min-height: 44px; }
+  .table-shell .session-audio-host { flex: 0 1 145px; }
+  .table-shell .session-audio-host:has([data-status="blocked"]) { flex-basis: 240px; min-width: 240px; }
+  .table-shell .session-audio { width: 100%; }
+  .table-shell .session-audio .sa-open { flex: 1; }
+  .table-shell .session-audio .sa-unlock { flex: 0 1 145px; min-width: 0; padding: 4px 6px; font-size: 12px; white-space: normal; }
+  .table-shell .party, .table-shell .side-panel { display: none; min-width: 0; min-height: 0; max-height: none; }
+  .table-shell[data-view] #main.stage { display: block; height: auto; min-height: 0; }
+  .table-shell[data-view="map"] { grid-template-areas: "top" "stage" "turn"; }
+  .table-shell:is([data-view="chat"], [data-view="sheet"], [data-view="party"]) {
+    grid-template-columns: minmax(0, 1fr) clamp(240px, 36vw, 340px);
+    grid-template-areas: "top top" "stage panel" "turn turn";
+  }
+  .table-shell:is([data-view="chat"], [data-view="sheet"]) .side-panel { display: flex; min-height: 0; }
+  .table-shell[data-view="party"] .party { display: flex; grid-area: panel; overflow: auto; }
+  .table-shell[data-view="party"] .party-list { grid-auto-flow: row; grid-auto-columns: auto; overflow: visible; }
+  .table-shell .party-caption { display: none; }
+  .table-shell .table-bottom { display: grid; grid-template-columns: minmax(0, 1fr) clamp(180px, 26vw, 240px); gap: 4px; grid-area: turn; position: static; margin: 0; min-width: 0; padding-bottom: max(2px, env(safe-area-inset-bottom, 0px)); background: var(--panel); }
+  .table-shell[data-view] .table-bottom > .turn-bar { display: grid; position: static; grid-template-columns: minmax(100px, 130px) minmax(0, 1fr); align-items: center; gap: 2px 8px; padding: 4px 6px; margin: 0; min-width: 0; max-height: 32dvh; overflow-y: auto; border-radius: var(--radius); }
+  .table-shell .table-bottom > .turn-bar { grid-area: auto; grid-column: 1; grid-row: 1; }
+  .table-shell[data-view] .turn-bar .turn-who { display: flex; min-width: 0; }
+  .table-shell .turn-who :is(.avatar, .turn-crest), .table-shell .turn-chip { display: none; }
+  .table-shell .turn-who > div { min-width: 0; }
+  .table-shell .turn-who strong, .table-shell .turn-who small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .table-shell .turn-who strong { font-size: 14px; }
+  .table-shell[data-view] .turn-bar .turn-actions { display: flex; min-width: 0; flex-wrap: nowrap; overflow-x: auto; align-items: center; justify-content: flex-start; scrollbar-width: thin; padding-inline: 4px; }
+  .table-shell .turn-actions > * { flex: 0 0 auto; }
+  .table-shell .turn-actions button:not(.help-button) { min-height: 44px; font-size: 12px; padding: 6px 10px; }
+  .table-shell .turn-actions .help-button { margin-inline: 10px; }
+  .table-shell .turn-actions .help-disabled-reason { max-width: 240px; margin: 0; font-size: 11px; }
+  .table-shell[data-view] .turn-bar .turn-why { display: block; grid-column: 1 / -1; margin: 0; font-size: 11px; line-height: 1.3; }
+  .table-shell .request-cards { grid-column: 1 / -1; flex-wrap: nowrap; overflow-x: auto; }
+  .table-shell .request-card { flex: 0 0 auto; padding: 4px 8px; }
+  .table-shell .request-card button { min-height: 44px; }
+  .table-shell .table-view-switch { display: flex; align-items: center; gap: 4px; padding: 0; border-top: 0; background: var(--panel); }
+  .table-shell .table-bottom > .table-view-switch { grid-column: 2; grid-row: 1; }
+  .table-shell .table-view-switch button { flex: 1; min-height: 44px; padding: 4px 10px; font-size: 12px; }
+  .table-shell .table-view-switch button.active { border-color: var(--gold); color: var(--bright); }
+  .table-shell .stage-tools { flex-direction: row; align-items: center; top: 4px; left: 4px; right: 4px; gap: 4px; max-height: 52px; overflow-x: auto; }
+  .table-shell .stage-tools.labeled-tools { width: auto; max-height: 52px; flex-direction: row; flex-wrap: nowrap; align-items: center; overflow-x: auto; }
+  .table-shell .stage-tools .tool { flex: 0 0 auto; min-width: 44px; min-height: 44px; }
+  .table-shell .stage-tools.labeled-tools .tool.labeled { width: auto; max-width: none; }
+  .table-shell .stage-tools.labeled-tools .tool-group { display: flex; flex: 0 0 auto; max-width: none; gap: 4px; padding: 0 0 0 4px; border-top: 0; border-left: 1px solid var(--line); align-items: center; }
+  .table-shell .stage-tools .tool-group-title { display: none; }
+  .table-shell .stage-tools .help-disabled-reason, .table-shell .stage-tools.labeled-tools .help-disabled-reason { flex: 0 0 auto; max-width: 220px; margin: 0; white-space: normal; font-size: 11px; }
+  .table-shell .stage .board { left: 0; top: 56px; }
+  .table-shell .stage .fog-palette { left: 4px; right: 4px; top: 54px; max-width: none; max-height: 45%; overflow-y: auto; }
+  .table-shell .stage.fog-open .board { top: var(--fog-h, 120px); }
+  .table-shell .stage .stage-chip { left: 4px; right: auto; max-width: calc(100% - 8px); top: auto; bottom: 4px; padding: 3px 8px; font-size: 11px; }
+  .table-shell .stage-hint { bottom: 28px; font-size: 11px; padding: 4px 8px; }
+  .table-shell .play-banner { top: 56px; padding: 4px 8px; font-size: 12px; }
+  .table-shell .pending-banner { left: 4px; right: 4px; bottom: 30px; font-size: 11px; }
+  .table-shell .pending-detail { display: none; }
+  .table-shell .panel-tabs button, .table-shell .chat-form button { min-height: 44px; }
+  .table-shell .panel-body { padding: 8px; }
+}
+
+/* Câmera compartilhada: amplia sem deformar a grade; bordas acessíveis por rolagem. */
+.board-surface { width: 100%; height: 100%; position: relative; }
+.board-viewport { overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.board-viewport.camera-pan { cursor: grab; touch-action: none; }
+.board-viewport.camera-pan .board-canvas { cursor: grab; }
+.board-viewport.camera-pan:active, .board-viewport.camera-pan:active .board-canvas { cursor: grabbing; }
+.map-camera-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
+.map-camera-controls button { min-height: 44px; white-space: nowrap; }
+.map-camera-controls button[aria-pressed="true"] { border-color: var(--gold); color: var(--bright); }
+.map-camera-controls > span { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.map-camera-controls .camera-help { display: inline-flex; align-items: center; padding-right: 14px; }
+.table-top-scroll { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; overflow-x: auto; scrollbar-width: thin; }
+.table-top-scroll > * { flex: 0 0 auto; }
+.table-top-scroll .table-top-actions { flex-wrap: nowrap; }
+.table-shell .table-title { min-width: 120px; }
+@media (max-width: 900px), (max-width: 1200px) and (pointer: coarse) {
+  .table-shell .table-title { flex: 0 0 135px; }
+  .table-shell .table-top-scroll { align-self: stretch; gap: 6px; padding: 0 2px; }
+  .table-shell .table-top-scroll .table-top-actions { display: contents; }
+  .table-shell .table-top-scroll > *, .table-shell .table-top-scroll .session-audio-host { flex: 0 0 auto; }
+  .table-shell .table-top-scroll :is(button, a.button):not(.help-button) { min-height: 44px; white-space: nowrap; padding: 6px 10px; font-size: 12px; }
+  .table-shell .table-top-scroll .session-audio-host { max-width: 340px; }
+  .table-shell .table-top-scroll .session-audio-host:has([data-status="blocked"]) { max-width: 430px; }
+  .table-shell .table-top-scroll .session-audio .sa-unlock { flex: none; }
+  .table-shell[data-view] .table-bottom > .turn-bar { display: flex; flex-direction: row; flex-wrap: nowrap; max-height: none; overflow-x: auto; overflow-y: hidden; gap: 8px; padding: 2px 6px; }
+  .table-shell[data-view] .turn-bar .turn-who { flex: 0 0 115px; }
+  .table-shell[data-view] .turn-bar .turn-actions { display: contents; }
+  .table-shell[data-view] .turn-bar .turn-actions > * { flex: 0 0 auto; }
+  .table-shell[data-view] .turn-bar .turn-why { flex: 0 0 240px; font-size: 11px; }
+  .table-shell .request-cards { flex: 0 0 auto; }
+  .table-shell .table-bottom { grid-template-columns: minmax(0, 1fr) 180px; }
+  .table-shell .table-view-switch button { padding: 4px 6px; }
+}
+/* Preparação reutiliza a identidade da mesa, com propriedades recolhíveis. */
+.se-properties-toggle { display: none; }
+@media (max-width: 900px), (max-width: 1200px) and (pointer: coarse) {
+  dialog.scene-editor-modal { width: 100vw; height: 100dvh; margin: 0; padding: 4px max(6px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left)); border-radius: 0; }
+  dialog.scene-editor-modal .modal-head { margin-bottom: 4px; padding-bottom: 4px; min-height: 36px; }
+  dialog.scene-editor-modal .modal-head h2 { font-size: 16px; }
+  .scene-editor { gap: 4px; }
+  .scene-editor .se-top { display: grid; grid-template-columns: 160px minmax(0, 1fr); grid-template-areas: "name controls" "status status"; gap: 2px 8px; }
+  .scene-editor .se-controls { min-width: 0; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: thin; padding: 0; gap: 6px; align-self: center; }
+  .scene-editor .se-controls > * { flex: 0 0 auto; }
+  .scene-editor .se-actions { display: contents; }
+  .scene-editor .se-controls :is(button, .button):not(.help-button) { min-height: 44px; white-space: nowrap; font-size: 12px; padding: 4px 8px; }
+  .scene-editor .se-properties-toggle { display: inline-flex; align-items: center; }
+  .scene-editor .se-status { flex-wrap: nowrap; overflow-x: auto; }
+  .scene-editor .se-chip { flex: none; min-height: 22px; font-size: 11px; padding: 1px 6px; }
+  .scene-editor .se-name input { min-height: 44px; height: 44px; }
+  .scene-editor .se-name .form-help { display: none; }
+  .scene-editor .se-body { display: grid; min-height: 0; overflow: hidden; grid-template-columns: minmax(0, 1fr); grid-template-rows: 48px minmax(0, 1fr); grid-template-areas: "tools" "map"; gap: 4px; }
+  .scene-editor .se-tools { grid-area: tools; min-width: 0; flex-direction: row; flex-wrap: nowrap; overflow-x: auto; align-items: center; gap: 4px; padding: 0 4px; }
+  .scene-editor .se-tool-group, .scene-editor .se-more { display: flex; flex: 0 0 auto; flex-wrap: nowrap; align-items: center; gap: 4px; }
+  .scene-editor .se-more { border-top: 0; padding: 0; }
+  .scene-editor .se-tool-group h3 { display: none; }
+  .scene-editor .se-more .se-tool-group { display: none; }
+  .scene-editor .se-more .se-tool-group.current { display: flex; }
+  .scene-editor .se-category { display: inline-flex; gap: 4px; align-items: center; }
+  .scene-editor .se-category select { width: auto; min-height: 44px; }
+  .scene-editor .se-tool { flex: none; width: auto; min-height: 44px; padding: 4px 8px; white-space: nowrap; }
+  .scene-editor .se-stage { grid-area: map; height: auto; min-height: 0; }
+  .scene-editor .se-side { display: none; min-height: 0; overflow-y: auto; }
+  .scene-editor[data-side="open"] .se-body { grid-template-columns: minmax(0, 1fr) clamp(230px, 34vw, 320px); grid-template-areas: "tools tools" "map side"; }
+  .scene-editor[data-side="open"] .se-side { display: block; grid-area: side; }
+  .scene-editor .se-panel { padding: 10px; }
+}
+@media (max-width: 600px) and (orientation: portrait) {
+  .scene-editor .se-top { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "controls" "status"; }
+  .scene-editor[data-side="open"] .se-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: 48px minmax(100px, 1fr) minmax(0, 1fr); grid-template-areas: "tools" "map" "side"; }
+}
+.board-viewport { touch-action: none; }
+.grid-preview { display: block; min-width: 0; max-height: 45dvh; overflow: auto; overscroll-behavior: contain; touch-action: none; }
+.grid-preview canvas { max-width: none; display: block; }
+.grid-zoom-controls { display: flex; align-items: center; gap: 6px; overflow-x: auto; }
+.grid-zoom-controls button { flex: none; min-width: 44px; min-height: 44px; }
+.grid-zoom-controls small { color: var(--muted); }
+.table-top-scroll .music-panel { position: fixed; top: calc(58px + env(safe-area-inset-top, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); }
+@media (max-width: 900px), (max-width: 1200px) and (pointer: coarse) {
+  /* Evita autozoom ao focar campos do editor no navegador móvel. */
+  .scene-editor :is(input, select, textarea) { font-size: 16px; }
+}
+/* Legendas do mapa não capturam os dedos destinados à câmera. */
+.stage-hint, .stage-chip { pointer-events: none; }

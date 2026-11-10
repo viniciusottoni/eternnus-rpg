@@ -3,6 +3,8 @@
 // Névoa: o servidor envia as máscaras (visível/explorado); aqui só se desenha. O mestre vê um véu translúcido e as marcas.
 import { initials } from "./session-policy.js";
 import { decodeBits, MARK_KINDS } from "./fog-policy.js";
+import { helpButton } from "./help.js";
+import { mountMapGestures } from "./map-gestures.js";
 
 const reduceMotion = () =>
   matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -592,8 +594,11 @@ function drawToken(g, token, s, opts, t) {
   g.restore();
 }
 
+let boardSequence = 0;
 export function createBoard(host, handlers = {}) {
-  host.innerHTML = `<canvas class="board-canvas" tabindex="0" role="application" aria-roledescription="tabuleiro" aria-label="Mapa tático. Use as setas para escolher uma casa e Enter para confirmar."></canvas><img class="board-image" alt="" hidden referrerpolicy="no-referrer"><p class="sr-only" aria-live="polite" data-board-status></p>`;
+  const instructionId = `camera-instruction-${++boardSequence}`;
+  host.innerHTML = `<div class="board-surface"><canvas class="board-canvas" tabindex="0" role="application" aria-roledescription="tabuleiro" aria-label="Mapa tático. Use as setas para escolher uma casa e Enter para confirmar."></canvas><img class="board-image" alt="" hidden referrerpolicy="no-referrer"></div><p class="sr-only" aria-live="polite" data-board-status></p>`;
+  const surface = host.querySelector(".board-surface");
   const canvas = host.querySelector("canvas"),
     image = host.querySelector("img"),
     status = host.querySelector("[data-board-status]");
@@ -615,6 +620,36 @@ export function createBoard(host, handlers = {}) {
   const tileset = () => state?.map?.kind === "tileset" && rows().length > 0;
 
   const uploaded = () => Number(state?.map?.gridPixels) >= 8;
+  const compact = matchMedia("(max-width: 900px), (max-width: 1200px) and (pointer: coarse)");
+  let enlarged = !!handlers.camera && compact.matches, panning = enlarged, cameraDrag = null;
+  let zoomLevel = null, currentZoom = 1, maxZoom = 3;
+  let centerX = .5, centerY = .5, previousWidth = 0, previousHeight = 0, resetCamera = true;
+  const camera = handlers.camera ? document.createElement("div") : null;
+  if (camera) {
+    host.classList.add("board-viewport");
+    camera.className = "map-camera-controls";
+    camera.innerHTML = `<button type="button" class="subtle" data-camera="out" aria-label="Afastar mapa">−</button><button type="button" class="subtle" data-camera="in" aria-label="Aproximar mapa">+</button><button type="button" class="subtle" data-camera="size">Mapa inteiro</button><button type="button" class="subtle" data-camera="pan" aria-pressed="true" aria-describedby="${instructionId}">Arrastar mapa</button><span id="${instructionId}">Arraste para explorar</span><span class="camera-help">Visão${helpButton("mesa.mapa.camera", "Ampliar e percorrer o mapa")}</span>`;
+    handlers.camera.append(camera);
+    camera.addEventListener("click", (e) => {
+      const action = e.target.closest("[data-camera]")?.dataset.camera;
+      if (action === "size") { enlarged = !enlarged; zoomLevel = null; panning = enlarged; resetCamera = true; layout(); draw(); }
+      if (action === "in" || action === "out") zoomAt(currentZoom * (action === "in" ? 1.25 : .8));
+      if (action === "pan") panning = !panning;
+      updateCamera();
+    });
+  }
+  function updateCamera() {
+    if (!camera) return;
+    camera.querySelector('[data-camera="size"]').textContent = enlarged ? "Mapa inteiro" : "Ampliar mapa";
+    camera.querySelector('[data-camera="size"]').setAttribute("aria-pressed", String(enlarged));
+    camera.querySelector('[data-camera="pan"]').setAttribute("aria-pressed", String(panning));
+    camera.querySelector(`#${instructionId}`).textContent = panning ? "Arraste ou use dois dedos" : "Toque para interagir · pinça para zoom";
+    host.classList.toggle("camera-pan", panning);
+    canvas.style.touchAction = "none";
+    host.dataset.zoom = currentZoom.toFixed(3);
+    camera.querySelector('[data-camera="out"]').disabled = currentZoom <= 1.001;
+    camera.querySelector('[data-camera="in"]').disabled = currentZoom >= maxZoom - .001;
+  }
   // Fundo do mapa enviado em buffer duplo: a nova versão (mais casas exploradas) só substitui a atual depois de carregar.
   let background = null, pendingSrc = "";
   function loadBackground(src) {
@@ -627,19 +662,45 @@ export function createBoard(host, handlers = {}) {
     next.src = src;
   }
   image.onerror = () => { status.textContent = "Não foi possível carregar o mapa. Tente atualizar a mesa."; };
+  image.onload = () => { layout(); };
 
   function layout() {
     const rect = host.getBoundingClientRect();
-    dpr = Math.min(2, window.devicePixelRatio || 1);
-    canvas.width = Math.max(1, Math.round(rect.width * dpr));
-    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    if (rect.width < 1 || rect.height < 1) return;
+    if (!resetCamera && previousWidth && previousHeight) {
+      centerX = (host.scrollLeft + previousWidth / 2) / Math.max(1, surface.offsetWidth);
+      centerY = (host.scrollTop + previousHeight / 2) / Math.max(1, surface.offsetHeight);
+    }
+    const ratio = tileset() ? rows()[0].length / rows().length : image.naturalWidth / image.naturalHeight;
+    let width = host.clientWidth, height = host.clientHeight;
+    if (Number.isFinite(ratio) && ratio > 0) {
+      const fitWidth = Math.min(width, height * ratio), fitHeight = fitWidth / ratio;
+      const cover = Math.max(width / fitWidth, height / fitHeight);
+      maxZoom = Math.max(3, cover * 3);
+      currentZoom = Math.max(1, Math.min(maxZoom, zoomLevel ?? (enlarged ? cover : 1)));
+      width = Math.max(width, fitWidth * currentZoom);
+      height = Math.max(height, fitHeight * currentZoom);
+    }
+    surface.style.width = `${width}px`;
+    surface.style.height = `${height}px`;
+    dpr = Math.min(2, window.devicePixelRatio || 1, 4096 / Math.max(width, height));
+    canvas.width = Math.max(1, Math.round(width * dpr));
+    canvas.height = Math.max(1, Math.round(height * dpr));
+    if (resetCamera) {
+      const mine = (state?.tokens || []).find(t => t.characterId && t.characterId === state?.me?.characterId);
+      centerX = mine && tileset() ? (mine.x + .5) / rows()[0].length : .5;
+      centerY = mine && tileset() ? (mine.y + .5) / rows().length : .5;
+      resetCamera = false;
+    }
+    host.scrollLeft = centerX * width - host.clientWidth / 2;
+    host.scrollTop = centerY * height - host.clientHeight / 2;
+    previousWidth = host.clientWidth; previousHeight = host.clientHeight;
+    updateCamera();
     if (!tileset()) return;
     const r = rows();
     cell = Math.max(
       1,
-      Math.floor(
-        Math.min(canvas.width / r[0].length, canvas.height / r.length),
-      ),
+      Math.min(canvas.width / r[0].length, canvas.height / r.length),
     );
     ox = Math.floor((canvas.width - cell * r[0].length) / 2);
     oy = Math.floor((canvas.height - cell * r.length) / 2);
@@ -650,8 +711,22 @@ export function createBoard(host, handlers = {}) {
       layerKey = key;
     }
   }
+  function zoomAt(value, clientX, clientY) {
+    if (!camera) return;
+    const rect = host.getBoundingClientRect();
+    const x = clientX == null ? host.clientWidth / 2 : clientX - rect.left;
+    const y = clientY == null ? host.clientHeight / 2 : clientY - rect.top;
+    const anchorX = (host.scrollLeft + x) / Math.max(1, surface.offsetWidth);
+    const anchorY = (host.scrollTop + y) / Math.max(1, surface.offsetHeight);
+    zoomLevel = Math.max(1, Math.min(maxZoom, value));
+    enlarged = zoomLevel > 1.001;
+    layout();
+    host.scrollLeft = anchorX * surface.offsetWidth - x;
+    host.scrollTop = anchorY * surface.offsetHeight - y;
+    draw(); updateCamera();
+  }
   function draw(t = performance.now()) {
-    if (!tileset()) return;
+    if (!tileset() || (!uploaded() && !layer) || host.clientHeight < 1) return;
     const animate = !reduceMotion();
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.fillStyle = "#0b0a08";
@@ -796,13 +871,29 @@ export function createBoard(host, handlers = {}) {
     if (token) handlers.onToken?.(token, c);
     else handlers.onCell?.(c);
   }
+  // A câmera só desloca a visão local; nunca move marcadores nem pinta névoa.
+  host.addEventListener("pointerdown", (e) => {
+    if (!panning || e.button !== 0) return;
+    e.preventDefault();
+    cameraDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, left: host.scrollLeft, top: host.scrollTop };
+    host.setPointerCapture(e.pointerId);
+  });
+  host.addEventListener("pointermove", (e) => {
+    if (!cameraDrag || e.pointerId !== cameraDrag.id) return;
+    host.scrollLeft = cameraDrag.left + cameraDrag.x - e.clientX;
+    host.scrollTop = cameraDrag.top + cameraDrag.y - e.clientY;
+  });
+  const endCameraDrag = () => { cameraDrag = null; };
+  host.addEventListener("pointerup", endCameraDrag);
+  host.addEventListener("pointercancel", endCameraDrag);
   // Arrastar marcador: o jogador arrasta o próprio boneco no turno; o mestre arrasta qualquer marcador.
   const boardPoint = (e) => {
     const rect = canvas.getBoundingClientRect();
     return { px: (e.clientX - rect.left) * dpr - ox, py: (e.clientY - rect.top) * dpr - oy };
   };
   canvas.addEventListener("pointerdown", (e) => {
-    if (view.mode === "paint" || !view.draggable || !tileset()) return;
+    suppressClick = false;
+    if (panning || view.mode === "paint" || !view.draggable || !tileset()) return;
     const c = cellAt(e.clientX, e.clientY);
     const token = c && (state.tokens || []).find((t) => t.x === c.x && t.y === c.y);
     if (!token || (view.draggable !== "*" && view.draggable !== token.id)) return;
@@ -835,7 +926,7 @@ export function createBoard(host, handlers = {}) {
   // Pintura por arraste (mestre): junta as casas e envia uma única escrita ao soltar.
   let stroke = null;
   canvas.addEventListener("pointerdown", (e) => {
-    if (view.mode !== "paint" || !tileset()) return;
+    if (panning || view.mode !== "paint" || !tileset()) return;
     const c = cellAt(e.clientX, e.clientY);
     if (!c) return;
     e.preventDefault();
@@ -852,6 +943,10 @@ export function createBoard(host, handlers = {}) {
     view = { ...view, paint: [...stroke.values()] };
     draw();
   });
+  const disposeGestures = camera ? mountMapGestures(host, {
+    scale: () => currentZoom, zoom: zoomAt,
+    cancel: () => { drag = null; stroke = null; cameraDrag = null; suppressClick = true; view = { ...view, paint: [] }; draw(); },
+  }) : () => {};
   const finishStroke = () => {
     if (!stroke) return;
     const cells = [...stroke.values()];
@@ -864,7 +959,7 @@ export function createBoard(host, handlers = {}) {
   canvas.addEventListener("pointercancel", () => { stroke = null; view = { ...view, paint: [] }; draw(); });
   canvas.addEventListener("click", (e) => {
     if (suppressClick) { suppressClick = false; return; }
-    if (view.mode === "paint") return;
+    if (panning || view.mode === "paint") return;
     activate(cellAt(e.clientX, e.clientY));
   });
   canvas.addEventListener("keydown", (e) => {
@@ -890,6 +985,10 @@ export function createBoard(host, handlers = {}) {
         (t) => t.x === cursor.x && t.y === cursor.y,
       );
       status.textContent = `Coluna ${cursor.x + 1}, linha ${cursor.y + 1}${token ? ": " + token.label : ""}`;
+      if (enlarged) {
+        host.scrollLeft = (ox + (cursor.x + .5) * cell) / dpr - host.clientWidth / 2;
+        host.scrollTop = (oy + (cursor.y + .5) * cell) / dpr - host.clientHeight / 2;
+      }
       draw();
     } else if ((e.key === "Enter" || e.key === " ") && cursor) {
       e.preventDefault();
@@ -913,7 +1012,7 @@ export function createBoard(host, handlers = {}) {
   return {
     update(next, nextView = view) {
       const previousKey = state?.map?.key;
-      if (previousKey !== next.map.key) moves.clear();
+      if (previousKey !== next.map.key) { moves.clear(); resetCamera = true; }
       else if (!reduceMotion()) {
         const previous = new Map((state?.tokens || []).map(token => [token.id, token]));
         const now = performance.now();
@@ -934,6 +1033,7 @@ export function createBoard(host, handlers = {}) {
       else if (src && image.getAttribute("src") !== src) image.src = src;
       image.alt = "Mapa: " + state.map.name;
       canvas.style.touchAction = view.mode === "paint" ? "none" : "";
+      updateCamera();
       if (!isTile) cancelAnimationFrame(frame);
       layout();
       if (uploaded()) draw();
@@ -945,10 +1045,13 @@ export function createBoard(host, handlers = {}) {
       restart();
     },
     setView(nextView) {
+      if (camera) panning = false;
       view = { ...view, ...nextView };
       canvas.style.touchAction = view.mode === "paint" ? "none" : "";
+      updateCamera();
       draw();
     },
+    interact() { panning = false; updateCamera(); },
     focus() {
       canvas.focus();
     },
@@ -957,6 +1060,8 @@ export function createBoard(host, handlers = {}) {
       cancelAnimationFrame(frame);
       pendingSrc = "";
       image.onload = null; image.onerror = null;
+      disposeGestures();
+      camera?.remove();
       observer.disconnect();
       motion.removeEventListener?.("change", restart);
       document.removeEventListener("visibilitychange", restart);

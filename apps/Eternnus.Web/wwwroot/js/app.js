@@ -69,6 +69,7 @@ async function renderRoute() {
     renderHome();
     return;
   }
+  if (view === "notebook") { await (await import("./campaign-workspace.js")).renderNotebook(); return; }
   if (view === "campaigns") {
     await renderCampaigns();
     return;
