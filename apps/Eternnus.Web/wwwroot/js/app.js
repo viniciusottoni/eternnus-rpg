@@ -113,6 +113,7 @@ async function renderRoute() {
     const cleanup = await module[feature[1]](
       target.id,
       target.tab || undefined,
+      target.item || undefined,
     );
     if (current !== routeVersion) cleanup?.();
     else if (typeof cleanup === "function") dispose = cleanup;

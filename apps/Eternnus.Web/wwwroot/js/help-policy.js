@@ -49,6 +49,8 @@ export const HELP_KEYS = Object.freeze({
   "campanhas.acervo.cadernos": "all",
   "campanhas.continuidade.historico": "all",
   "campanhas.capitulos.organizacao": "master",
+  "campanhas.sessoes.tabela": "all",
+  "campanhas.busca.geral": "all",
   "campanhas.lista.papeis": "all",
   "campanhas.conta.limites": "all",
   "campanhas.config.forma-de-jogar": "all",

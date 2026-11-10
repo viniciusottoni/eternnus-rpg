@@ -45,6 +45,14 @@ public static class PlayEndpoints
         campaign.MapPost("/scenes/{sceneId:guid}/duplicate", (Guid campaignId, Guid sceneId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.DuplicateSceneAsync(campaignId, sceneId, Id(u), ct));
         campaign.MapDelete("/scenes/{sceneId:guid}", async (Guid campaignId, Guid sceneId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => { await p.DeleteSceneAsync(campaignId, sceneId, Id(u), ct); return Ok(); });
         campaign.MapGet("/npcs", (Guid campaignId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.NpcsAsync(campaignId, Id(u), ct));
+        campaign.MapGet("/known-npcs", (Guid campaignId, int? page, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.KnownNpcsAsync(campaignId, Id(u), page ?? 1, ct));
+        campaign.MapGet("/known-npcs/{npcId:guid}/portrait", async (Guid campaignId, Guid npcId, HttpContext http, PreparationService p, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            var bytes = await p.KnownPortraitAsync(campaignId, npcId, Id(u), ct);
+            http.Response.Headers.CacheControl = "private, no-store";
+            http.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            return Results.File(bytes, DocumentKinds.Jpeg, enableRangeProcessing: false);
+        });
         campaign.MapPost("/npcs", (Guid campaignId, NpcInput x, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.SaveNpcAsync(campaignId, null, x, Id(u), ct));
         campaign.MapPut("/npcs/{npcId:guid}", (Guid campaignId, Guid npcId, NpcInput x, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.SaveNpcAsync(campaignId, npcId, x, Id(u), ct));
         campaign.MapGet("/npc-templates", (Guid campaignId, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.NpcTemplatesAsync(campaignId, Id(u), ct));

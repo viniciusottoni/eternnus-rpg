@@ -87,6 +87,8 @@ public class MasterCharacter
     [MaxLength(100000)] public string Values { get; set; } = "{}";
     /// <summary>Imagem mostrada aos jogadores quando o marcador está visível: https://… ou asset:{id} (imagem do acervo da campanha).</summary>
     [MaxLength(500)] public string? ImageUrl { get; set; }
+    /// <summary>Visível aos membros em "NPCs conhecidos": nome, tipo, resumo curto e imagem. Notas, lado, recursos e ficha continuam do mestre.</summary>
+    public bool SharedWithPlayers { get; set; }
 }
 
 public static class NpcKinds

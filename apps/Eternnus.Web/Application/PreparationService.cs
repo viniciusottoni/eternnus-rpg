@@ -6,7 +6,7 @@ namespace Eternnus.Web;
 
 /// <summary>Preparação da cena. <c>Prepared</c> nulo mantém o arranjo; <c>LayerMode</c> nulo mantém o alcance da preparação do mapa.</summary>
 public record SceneInput(string Name, string? Description, string Kind, string? MapKind, string? MapKey, string? SharedText, string? PrivateNotes, string? VisionMode, int Order = 0, int Revision = 0, List<SceneTokenInput>? Prepared = null, string? LayerMode = null);
-public record NpcInput(string Name, string? Summary, string? Notes, string? Side, List<NpcResource>? Resources, int Revision = 0, string? Kind = null, string? ImageUrl = null);
+public record NpcInput(string Name, string? Summary, string? Notes, string? Side, List<NpcResource>? Resources, int Revision = 0, string? Kind = null, string? ImageUrl = null, bool? SharedWithPlayers = null);
 public record ScheduleInput(DateTimeOffset? At, string? Note);
 public record AttendanceInput(string Status);
 public record InviteCodeInput(string Code);
@@ -201,7 +201,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         {
             items = items.Select(m => new
             {
-                m.Id, m.Name, m.Summary, m.Notes, m.Side, m.Resources, m.SourceId, m.Revision, copy = m.SourceId != null, m.Kind, m.ImageUrl,
+                m.Id, m.Name, m.Summary, m.Notes, m.Side, m.Resources, m.SourceId, m.Revision, copy = m.SourceId != null, m.Kind, m.ImageUrl, m.SharedWithPlayers,
                 templateName = m.TemplateVersionId is { } v && templates.TryGetValue(v, out var name) ? name : null,
             })
         };
@@ -232,8 +232,43 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         npc.ImageUrl = await ValidImageAsync(campaignId, x.ImageUrl, db, ct);
         npc.Summary = Text(x.Summary, 500, "O resumo aceita até 500 caracteres.");
         npc.Notes = Text(x.Notes, 4000, "As notas aceitam até 4.000 caracteres.");
+        if (x.SharedWithPlayers is { } shared) npc.SharedWithPlayers = shared;
         try { await db.SaveChangesAsync(ct); } catch (DbUpdateConcurrencyException) { throw new RuleException(409, "O personagem mudou em outra tela. Recarregue antes de salvar."); }
         return new { npc.Id, npc.Revision };
+    }
+
+    /// <summary>NPCs que o mestre compartilhou: só nome, tipo, resumo e imagem; paginado em vinte.</summary>
+    public async Task<object> KnownNpcsAsync(Guid campaignId, string user, int page, CancellationToken ct)
+    {
+        await AccessAsync(campaignId, user, false, false, ct);
+        page = Math.Clamp(page, 1, 100000);
+        var query = db.MasterCharacters.AsNoTracking().Where(m => m.CampaignId == campaignId && m.SharedWithPlayers);
+        var total = await query.CountAsync(ct);
+        var rows = await query.OrderBy(m => m.Name).ThenBy(m => m.Id).Skip((page - 1) * 20).Take(20).Select(m => new { m.Id, m.Name, m.Kind, m.Summary, m.ImageUrl }).ToListAsync(ct);
+        return new
+        {
+            items = rows.Select(m => new { m.Id, m.Name, m.Kind, m.Summary, image = KnownPortraitUrl(campaignId, m.Id, m.ImageUrl) }),
+            total, page, pageSize = 20,
+        };
+    }
+
+    /// <summary>Link https direto ou rota protegida da imagem do acervo, com versão derivada da imagem escolhida.</summary>
+    public static string? KnownPortraitUrl(Guid campaignId, Guid npcId, string? image)
+    {
+        var url = NpcImages.Normalize(image, out var asset);
+        if (url == null) return null;
+        return asset is { } id ? $"/api/campaigns/{campaignId}/known-npcs/{npcId}/portrait?v={id.ToString("N")[..8]}" : url;
+    }
+
+    /// <summary>Imagem do acervo de um NPC compartilhado. NPC não compartilhado responde 404, como se não existisse.</summary>
+    public async Task<byte[]> KnownPortraitAsync(Guid campaignId, Guid npcId, string user, CancellationToken ct)
+    {
+        await AccessAsync(campaignId, user, false, false, ct);
+        var image = await db.MasterCharacters.AsNoTracking().Where(m => m.Id == npcId && m.CampaignId == campaignId && m.SharedWithPlayers).Select(m => m.ImageUrl).SingleOrDefaultAsync(ct);
+        NpcImages.Normalize(image, out var asset);
+        if (asset is not { } assetId) throw new RuleException(404, "Imagem não encontrada.");
+        return await db.Set<CampaignMap>().AsNoTracking().Where(m => m.Id == assetId && m.CampaignId == campaignId).Select(m => m.Content).SingleOrDefaultAsync(ct)
+            ?? throw new RuleException(404, "Imagem não encontrada.");
     }
 
     /// <summary>Imagem do NPC: link https ou imagem do acervo desta campanha.</summary>

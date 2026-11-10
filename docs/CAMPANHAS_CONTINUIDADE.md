@@ -50,3 +50,12 @@ A exclusão comum, administrativa e de one-shot remove páginas de lore e anexos
 ## Capítulos, atos e arcos (ADR-060)
 
 O mestre cria capítulos, atos ou arcos no Diário (até 200 por campanha), define a ordem e escolhe um ao iniciar cada sessão ou registrar uma sessão anterior. O tipo é só rótulo. Sessões sem capítulo são permitidas e aparecem como "Avulsa"; o capítulo de uma sessão pode mudar depois, inclusive encerrada. Excluir um capítulo mantém as sessões, que ficam avulsas. Somente o mestre vê os capítulos. A premissa preserva parágrafos na Visão geral; o topo mostra um trecho e "mais" abre o texto completo.
+
+
+## Tabela de sessões, busca e importação (ADR-061)
+
+O Diário mostra uma única tabela de sessões, paginada em vinte, com as colunas Nº, Sessão, Capítulo, Origem (No Eternnus / Antes do Eternnus), Data e — para o mestre — Estado. Mestre e jogadores buscam por título, resumo e cenas e filtram por capítulo (ou avulsas) e origem; o jogador vê apenas o que foi publicado. Abrir uma sessão mostra o texto completo e, para o mestre, as ações. Capítulos aparecem em tabela paginada; o título leva às sessões do capítulo.
+
+A importação em lote usa o modelo CSV baixado no site: uma linha por sessão anterior, capítulo opcional por nome (reutilizado se já existir; criado na ordem do arquivo), linhas com só o capítulo criam capítulos vazios. A prévia lista o que será criado e os erros por linha; nada é gravado antes da confirmação, e a confirmação grava tudo ou nada.
+
+A Visão geral tem a busca na campanha, que leva ao local de cada resultado. Em Mundo e acervo, "NPCs conhecidos" lista os personagens que o mestre marcou como visíveis.

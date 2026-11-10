@@ -139,3 +139,11 @@ A visibilidade é decidida no servidor. Jogadores não recebem marcadores fora d
 ## Cadernos e acervo
 
 Ver CAMPANHAS_CONTINUIDADE.md. Autorização por página, sem herdar poderes do mestre sobre notas pessoais. Filtrar também relacionados, filhos, referências inversas, anexos, versões, busca e exportação. Arquivos reutilizam assinatura/antivírus e são downloads privados. Atlas inteiro exige publicação explícita e mantém cópia independente. Cotas e bloqueio da campanha limitam gravações concorrentes. Nenhum conteúdo autenticado entra no cache público v32. Recuperação pessoal fora da campanha é textual; anexos exigem vínculo atual.
+
+
+## Busca e importação em lote (ADR-061)
+
+- Buscas usam o termo como parâmetro em ILIKE/LIKE com `\`, `%` e `_` escapados; 2 a 100 caracteres, sem caracteres de controle. Cada fonte aplica a visibilidade da sua tela; segredos de páginas, notas de NPC e objetivo inicial não entram na busca do jogador.
+- Importação CSV: só mestre, rota com limite de corpo próprio (1 MiB + 64 KiB), limitador `upload`, antiforgery comum, um único arquivo `.csv`/`.txt`. Decodificação UTF-8 estrita com recuo para Windows-1252; recusa bytes nulos, caracteres de controle e controles bidirecionais. Leitor RFC 4180 sem avaliar conteúdo, até 1.000 linhas e 100 colunas. Prévia não grava; confirmação grava numa transação sob o bloqueio da campanha. Mensagens de erro citam linha e regra, nunca o conteúdo bruto do arquivo nem exceções.
+- Fórmulas de planilha ficam como texto e a interface sempre escapa o conteúdo. Não há exportação para planilha; se for criada, neutralizar células iniciadas por `= + - @`.
+- Retrato de NPC compartilhado: rota própria confere vínculo e compartilhamento; `private, no-store` e `nosniff`.

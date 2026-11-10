@@ -16,11 +16,15 @@ public sealed partial class WorkspaceService
         return c;
     }
 
-    public async Task<object> ChapterList(Guid campaign, string user, CancellationToken ct)
+    /// <summary>Sem <paramref name="page"/>: todos (até 200, para seletores). Com página: vinte por vez, para a tabela.</summary>
+    public async Task<object> ChapterList(Guid campaign, string user, CancellationToken ct, int? page = null)
     {
         var c = await Access(campaign, user, false, ct);
         if (c.OwnerId != user) throw new RuleException(403, "Somente o mestre organiza capítulos.");
-        var items = await Chapters.AsNoTracking().Where(x => x.CampaignId == campaign).OrderBy(x => x.Order).ThenBy(x => x.CreatedAt).Take(ChapterModel.MaxPerCampaign)
+        var ordered = Chapters.AsNoTracking().Where(x => x.CampaignId == campaign).OrderBy(x => x.Order).ThenBy(x => x.CreatedAt);
+        var total = await ordered.CountAsync(ct);
+        var current = Math.Clamp(page ?? 1, 1, 100000);
+        var items = await (page == null ? ordered.Take(ChapterModel.MaxPerCampaign) : ordered.Skip((current - 1) * LogPageSize).Take(LogPageSize))
             .Select(x => new
             {
                 x.Id, x.Kind, x.Title, x.Summary, x.Order, x.Revision,
@@ -30,7 +34,7 @@ public sealed partial class WorkspaceService
                 lastNumber = db.Sessions.Where(s => s.ChapterId == x.Id).Select(s => (int?)s.Number).Concat(db.Set<PastSession>().Where(s => s.ChapterId == x.Id).Select(s => (int?)s.Number)).Max(),
             }).ToListAsync(ct);
         var loose = await db.Sessions.CountAsync(s => s.CampaignId == campaign && s.ChapterId == null, ct) + await db.Set<PastSession>().CountAsync(s => s.CampaignId == campaign && s.ChapterId == null, ct);
-        return new { items, looseSessions = loose, max = ChapterModel.MaxPerCampaign };
+        return new { items, looseSessions = loose, max = ChapterModel.MaxPerCampaign, total, page = current, pageSize = page == null ? ChapterModel.MaxPerCampaign : LogPageSize, offset = page == null ? 0 : (current - 1) * LogPageSize };
     }
 
     static (string Title, string Kind, string Summary) ChapterFields(ChapterInput x)

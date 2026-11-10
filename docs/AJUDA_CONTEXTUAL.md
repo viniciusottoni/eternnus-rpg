@@ -525,3 +525,16 @@ As abas Mapa/Grupo/Ficha/Conversa e suas permissões são as existentes; agora a
 | Chip de capítulo/Avulsa nas sessões | `campaign-page.js`, `campaign-workspace.js` | Texto visível | — |
 
 Catálogo campanhas e índice help-policy incluem a nova chave.
+
+
+### Classificação — tabela de sessões, busca e importação (ADR-061, 10/11/2026)
+
+| Elemento | Arquivo | Nível | Chave |
+| --- | --- | --- | --- |
+| Tabela de sessões (origem, visibilidade, busca, importação) | `campaign-sessions.js` | ⓘ no título + texto visível sob o título conforme o papel | `campanhas.sessoes.tabela` |
+| Filtros (busca, capítulo, origem) | `campaign-sessions.js` | Labels visíveis; contagem de resultados em `role=status`; "Limpar filtros" | — |
+| Importar em lote | `campaign-sessions.js` | Passos visíveis no modal, auxiliar do arquivo (limites, formato de data e publicado), prévia com erros por linha em `role=alert` | — |
+| Busca na campanha (Visão geral) | `campaign-search.js` | ⓘ no título + auxiliar com as fontes buscadas conforme o papel | `campanhas.busca.geral` |
+| NPCs conhecidos | `campaign-search.js` | Texto visível sob o título (o que o grupo vê) | — |
+| "Visível para os jogadores" (NPC) | `campaign-prep.js` | Auxiliar visível com os campos compartilhados | — |
+| Registro anterior | `campaign-workspace.js` | ⓘ movido para o texto de abertura do formulário | `campanhas.continuidade.historico` |

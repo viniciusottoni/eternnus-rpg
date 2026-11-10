@@ -1,6 +1,6 @@
 import { STATIC_PATHS, cacheablePath } from "./js/pwa-policy.js";
 // Increment this version whenever the public shell/assets change. Never force an update mid-session.
-const CACHE = "eternnus-public-shell-v36";
+const CACHE = "eternnus-public-shell-v37";
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {

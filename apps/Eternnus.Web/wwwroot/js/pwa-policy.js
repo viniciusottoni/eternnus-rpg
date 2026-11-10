@@ -40,6 +40,8 @@ export const STATIC_PATHS = Object.freeze([
     "campaign-page",
     "campaign-workspace",
     "campaign-chapters",
+    "campaign-sessions",
+    "campaign-search",
     "session-history",
     "table",
     "table-viewport",
