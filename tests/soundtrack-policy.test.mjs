@@ -117,6 +117,8 @@ test("new public modules are in the explicit shell list and no audio or API path
     assert.ok(STATIC_PATHS.includes(`/js/${name}.js`), name);
   assert.ok(STATIC_PATHS.every((path) => !path.startsWith("/api/") && !/\.(mp3|m4a|ogg|opus)$/.test(path)));
   const worker = await readFile(new URL("../apps/Eternnus.Web/wwwroot/service-worker.js", import.meta.url), "utf8");
-  assert.match(worker, /eternnus-public-shell-v31/);
+  // A versão só cresce; os módulos da trilha entraram até a v31.
+  const version = Number(worker.match(/eternnus-public-shell-v(\d+)/)?.[1]);
+  assert.ok(version >= 31, `cache v${version}`);
   assert.doesNotMatch(worker, /skipWaiting/);
 });
