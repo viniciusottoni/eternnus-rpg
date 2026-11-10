@@ -125,7 +125,7 @@ public sealed class WorkspaceTests : IAsyncLifetime
     public async Task Chapters_are_master_only_ordered_and_group_past_sessions()
     {
         Assert.Equal(403,(await Assert.ThrowsAsync<RuleException>(()=>service.SaveChapter(campaign.Id,null,"player",new("Ato I"),default))).Status);
-        Assert.Equal(403,(await Assert.ThrowsAsync<RuleException>(()=>service.ChapterList(campaign.Id,"player",default))).Status);
+        Assert.Equal(0,Json(await service.ChapterList(campaign.Id,"player",default)).GetProperty("total").GetInt32());
         Assert.Equal(400,(await Assert.ThrowsAsync<RuleException>(()=>service.SaveChapter(campaign.Id,null,"master",new("Ato I","livro"),default))).Status);
         Assert.Equal(400,(await Assert.ThrowsAsync<RuleException>(()=>service.SaveChapter(campaign.Id,null,"master",new("  "),default))).Status);
         var one=await service.SaveChapter(campaign.Id,null,"master",new(" Ato I ","act","Chegada a Valkaria"),default);

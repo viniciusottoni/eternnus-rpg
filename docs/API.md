@@ -367,6 +367,7 @@ Prefixo `/api/campaigns/{campaign}/workspace`:
 | GET/DELETE `/pages/{id}/attachments/{file}` | GET leitor atual: download privado; DELETE editor: exclusão definitiva, 204. |
 | GET `/past-sessions?page=` | Mestre vê todos; membro só publicados. Vinte por página; cada item traz `scenes:[{title,text}]` na ordem registrada. |
 | POST `/past-sessions`, PUT `/past-sessions/{id}` | Mestre: `{number,title,summary,date?,published?,revision?,scenes?:[{title?,text}]}`. `summary` até 10.000. Cenas opcionais: até 30, título ≤ 120 (vazio vira “Cena N”), texto obrigatório ≤ 10.000, soma ≤ 60.000; linhas totalmente vazias são ignoradas; enviar lista vazia remove as cenas. Mesma visibilidade do registro. Número exclusivo entre registros anteriores e sessões da plataforma sob bloqueio da campanha; não gera XP. |
+| DELETE `/past-sessions/{id}?revision=` | Mestre: exclui definitivamente o registro anterior (resumo e cenas) sob bloqueio da campanha; `204`. Jogador `403`, não membro ou outra campanha `404`, revisão desatualizada `409`. O número fica livre. Sessões jogadas no Eternnus não são excluídas por esta rota. |
 | (capítulo) | `chapterId?` no corpo de `/past-sessions` vincula o registro a um capítulo da campanha (outra campanha: `400`); nulo = avulso. |
 | GET `/atlas?page=` | Membro: publicações paginadas sem bytes. Mestre recebe também até cinquenta candidatos. |
 | POST/DELETE `/atlas/{sourceMapId}` | Mestre: publica/atualiza cópia da imagem inteira, ou recolhe. 204. |
@@ -385,14 +386,14 @@ Não altera endpoints, DTOs, autorização, presença, turnos ou revisão. `GET 
 ADR-057: pan/zoom/pinça e recolhimento de propriedades são apenas apresentação local. Contratos de preparação, movimento e névoa permanecem iguais; pinça não envia movimento, pintura ou mudança de grade. Seleção e arraste com zoom continuam convertendo as coordenadas pela mesma grade do servidor.
 
 
-## Capítulos, atos e arcos (`/api/campaigns/{id}/chapters`) — ADR-060
+## Capítulos, atos e arcos (`/api/campaigns/{id}/chapters`) — ADR-060, ADR-062
 
-Somente o mestre (`Verified`); jogador recebe `403`, quem não participa `404`. Escritas usam o bloqueio da campanha e a proteção antiforgery comum; campanha arquivada responde `409`.
+Escritas: somente o mestre (`Verified`); jogador recebe `403`, quem não participa `404`. Leitura (GET): mestre vê todos; jogador vê só os capítulos com `published = true`, e as contagens dele consideram apenas sessões publicadas. Escritas usam o bloqueio da campanha e a proteção antiforgery comum; campanha arquivada responde `409`.
 
 | Rota | Contrato |
 | --- | --- |
-| GET (raiz) | `{items:[{id,kind,title,summary,order,revision,sessionCount,pastCount,firstNumber,lastNumber}], looseSessions, max:200}` na ordem definida pelo mestre. `looseSessions` soma sessões do Eternnus e anteriores sem capítulo. |
-| POST (raiz), PUT `/{id}` | `{title, kind?: chapter/act/arc, summary?, revision?}` → capítulo. Título 1–120, resumo ≤ 2.000; `kind` é rótulo (sem hierarquia). Até 200 por campanha (`409`). PUT exige `revision` atual (`409`). |
+| GET (raiz) | `{items:[{id,kind,title,summary,order,published,revision,sessionCount,pastCount,firstNumber,lastNumber}], looseSessions, max:200, isMaster}` na ordem definida pelo mestre. `looseSessions` soma sessões do Eternnus e anteriores sem capítulo; para o jogador inclui as de capítulos ocultos. Para o jogador `revision` vem `0`. |
+| POST (raiz), PUT `/{id}` | `{title, kind?: chapter/act/arc, summary?, published?, revision?}` → capítulo. `published` torna o capítulo visível ao grupo; omitido mantém o valor atual (novo capítulo: oculto). Título 1–120, resumo ≤ 2.000; `kind` é rótulo (sem hierarquia). Até 200 por campanha (`409`). PUT exige `revision` atual (`409`). |
 | POST `/{id}/move` | `{direction: -1 ou 1, revision}` → 204. Troca com o vizinho e renumera a ordem. |
 | DELETE `/{id}?revision=` | 204. Exclui só o capítulo; sessões vinculadas ficam avulsas (FK `SET NULL`). |
 
@@ -408,7 +409,7 @@ Todas as rotas exigem `Verified` e vínculo com a campanha (quem não participa 
 | GET `/campaigns/{id}/search?q=` | Membro | `{q, perKind: 8, items:[{kind, title, excerpt, route}]}`. Fontes: premissa e "onde paramos", sessões (mesma regra da tabela), páginas do acervo e notas legíveis (sem segredos), objetivos/pistas/textos da biblioteca (jogador só publicados), NPCs (jogador só compartilhados, sem notas); mestre também capítulos e cenas preparadas. `route` é o hash da tela de origem (`campaign/{id}/sessions/{key}`, `…/world/{pageId}`, `…/notes/{pageId}`, `…/npcs/{npcId}`, `…/sessions/chapter-{id}`, `…/journal`, `…/resources`, `…/prep`, `…/overview/premise`). |
 | GET `/campaigns/{id}/known-npcs?page=` | Membro | NPCs com `sharedWithPlayers`: `{items:[{id, name, kind, summary, image}], total, page, pageSize: 20}`. `image`: link https ou `/api/campaigns/{id}/known-npcs/{npcId}/portrait?v=`. Lado, recursos, ficha e notas nunca saem. |
 | GET `/campaigns/{id}/known-npcs/{npcId}/portrait` | Membro | Imagem do acervo de um NPC compartilhado; não compartilhado ou sem imagem do acervo `404`. `private, no-store`, `nosniff`. |
-| GET `/campaigns/{id}/chapters?page=` | Mestre | Com `page`: vinte por vez e `{total, page, pageSize, offset}`; sem `page`: todos (até 200), para seletores. |
+| GET `/campaigns/{id}/chapters?page=` | Membro (jogador: só capítulos visíveis) | Com `page`: vinte por vez e `{total, page, pageSize, offset}`; sem `page`: todos (até 200), para seletores. |
 | POST/PUT `/campaigns/{id}/npcs` | Mestre | Aceita `sharedWithPlayers?: bool` (omitido mantém o valor). |
 | GET `/session-import/template` | Verificado | CSV estático (UTF-8 com BOM, `;`) `modelo-sessoes-eternnus.csv`. Colunas: `tipo_capitulo, capitulo, resumo_capitulo, numero, titulo, data, publicado, resumo, cena_N_titulo, cena_N_texto` (até 30 cenas). Linhas de exemplo começam com "(exemplo)" e são recusadas até serem apagadas. |
 | POST `/campaigns/{id}/session-import?confirm=` | Mestre | Multipart com um único campo `file` (.csv/.txt, até 1 MiB, até 1.000 linhas; corpo até 1 MiB + 64 KiB; limitador `upload`; antiforgery comum). Sem `confirm`: prévia `{chapters[], sessions[], errors:[{line, message}], ready, newChapters, imported:false}`, nada gravado. `confirm=true`: grava capítulos novos e sessões anteriores numa transação sob o bloqueio da campanha, ou responde `400` se houver erros. Número já usado (Eternnus ou anterior) ou repetido no arquivo, data inválida/futura, `publicado` diferente de sim/não, colunas desconhecidas/repetidas, limites de texto/cenas, limite de 200 capítulos ou 1.000 sessões anteriores: erro por linha. UTF-8 estrito com recuo para Windows-1252; bytes nulos (planilha binária), caracteres de controle e controles bidirecionais: `400`. Capítulo com o mesmo título (sem diferenciar maiúsculas) é reutilizado; sessões existentes nunca são alteradas. |

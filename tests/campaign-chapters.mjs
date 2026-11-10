@@ -12,7 +12,7 @@ try {
   const path = `/api/campaigns/${c.id}`;
   check((await master(path)).description, premise);
   await player('/api/campaigns/join', 'POST', { code: (await master(path)).inviteCode });
-  await player(path + '/chapters', 'GET', undefined, 403);
+  check((await player(path + '/chapters')).total, 0);
   await player(path + '/chapters', 'POST', { title: 'Ato do jogador' }, 403);
   await master(path + '/chapters', 'POST', { title: 'x', kind: 'livro' }, 400);
 
@@ -84,6 +84,23 @@ try {
   await page.locator('#modal').waitFor({ state: 'hidden' });
   await page.locator('.log-table tr', { hasText: 'O portão' }).getByText('Avulsa', { exact: true }).waitFor();
   check((await master(path + '/sessions')).items[0].chapterTitle, null);
+
+  // Visibilidade (ADR-062): novos capítulos ficam ocultos; o mestre revela o ato pela interface e o jogador lê só ele.
+  await master(path + '/chapters', 'POST', { title: 'Segredo do arco', kind: 'arc', summary: 'O rei trai.' });
+  check((await player(path + '/chapters')).total, 0);
+  await page.getByRole('button', { name: 'Editar A Chegada a Valkaria', exact: true }).click();
+  await page.locator('#chapter-form input[name=published]').check();
+  await page.getByRole('button', { name: 'Salvar capítulo', exact: true }).click();
+  await page.locator('#modal').waitFor({ state: 'hidden' });
+  await page.locator('.chapter-table tr', { hasText: 'A Chegada a Valkaria' }).getByText('visível ao grupo', { exact: true }).waitFor();
+  const shown = await player(path + '/chapters');
+  check(shown.items.map(x => [x.title, x.summary, x.revision]), [['A Chegada a Valkaria', 'Os heróis chegam à capital.\nPrimeiros ganchos.', 0]]);
+  const reader = await ui(player);
+  await go(reader, `campaign/${c.id}/journal`, 'Buscar nas sessões');
+  await reader.getByRole('link', { name: 'A Chegada a Valkaria', exact: true }).waitFor();
+  check(await reader.getByText('Segredo do arco').count(), 0);
+  check(await reader.locator('#cp-chapters [data-action^="ch-"]').count(), 0);
+  await reader.screenshot({ path: `${out}/journal-player.png`, fullPage: true, animations: 'disabled' });
 
   const mobile = await ui(master, true);
   await go(mobile, `campaign/${c.id}/journal`, 'Buscar nas sessões');

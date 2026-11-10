@@ -46,13 +46,71 @@ public sealed class SessionLogTests : IAsyncLifetime
         Assert.Equal("past", master.GetProperty("items")[3].GetProperty("source").GetString());
         var player = Json(await service.Log(campaign.Id, "player", null, null, null, 1, default));
         Assert.Equal([3, 1], player.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("number").GetInt32()));
-        Assert.Single(player.GetProperty("chapters").EnumerateArray());
+        Assert.Empty(player.GetProperty("chapters").EnumerateArray()); // capítulo oculto (ADR-062)
         await Assert.ThrowsAsync<RuleException>(() => service.Log(campaign.Id, "outsider", null, null, null, 1, default));
         // Filtros por capítulo, avulsas e origem.
         Assert.Equal(2, Json(await service.Log(campaign.Id, "master", null, act.Id.ToString(), null, 1, default)).GetProperty("total").GetInt32());
         Assert.Equal(2, Json(await service.Log(campaign.Id, "master", null, "none", null, 1, default)).GetProperty("total").GetInt32());
         Assert.Equal(2, Json(await service.Log(campaign.Id, "master", null, null, "past", 1, default)).GetProperty("total").GetInt32());
         Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => service.Log(campaign.Id, "master", null, null, "outra", 1, default))).Status);
+    }
+
+    [Fact]
+    public async Task Players_only_see_chapters_the_master_made_visible()
+    {
+        var act = await Seed();
+        var hidden = await service.SaveChapter(campaign.Id, null, "master", new("Segredo", "arc", "O rei trai."), default);
+        await service.SavePast(campaign.Id, null, "master", new(7, "No arco oculto", "Publicada.", Published: true, ChapterId: hidden.Id), default);
+        Assert.False(act.Published);
+        // Tudo oculto: o jogador não vê capítulos e as sessões vão sem capítulo.
+        Assert.Equal(0, Json(await service.ChapterList(campaign.Id, "player", default)).GetProperty("total").GetInt32());
+        var log = Json(await service.Log(campaign.Id, "player", null, null, null, 1, default));
+        Assert.Empty(log.GetProperty("chapters").EnumerateArray());
+        Assert.All(log.GetProperty("items").EnumerateArray(), i => { Assert.Equal(JsonValueKind.Null, i.GetProperty("chapterTitle").ValueKind); Assert.Equal(JsonValueKind.Null, i.GetProperty("chapterId").ValueKind); });
+        Assert.Equal(0, Json(await service.Log(campaign.Id, "player", null, act.Id.ToString(), null, 1, default)).GetProperty("total").GetInt32());
+        Assert.Equal(3, Json(await service.Log(campaign.Id, "player", null, "none", null, 1, default)).GetProperty("total").GetInt32());
+        Assert.DoesNotContain(Json(await service.Search(campaign.Id, "player", "Trevas", default)).GetProperty("items").EnumerateArray(), i => i.GetProperty("kind").GetString() == "chapter");
+
+        // Mestre revela o ato; o arco continua oculto. Publicar não muda nada sem o campo (nulo mantém).
+        act = await service.SaveChapter(campaign.Id, act.Id, "master", new("Trevas", "act", "Começo sombrio.", act.Revision, Published: true), default);
+        act = await service.SaveChapter(campaign.Id, act.Id, "master", new("Trevas", "act", "Começo sombrio.", act.Revision), default);
+        Assert.True(act.Published);
+        var list = Json(await service.ChapterList(campaign.Id, "player", default));
+        var item = Assert.Single(list.GetProperty("items").EnumerateArray());
+        Assert.Equal("Trevas", item.GetProperty("title").GetString());
+        Assert.Equal("Começo sombrio.", item.GetProperty("summary").GetString());
+        Assert.Equal(1, item.GetProperty("sessionCount").GetInt32());
+        Assert.Equal(1, item.GetProperty("pastCount").GetInt32());
+        Assert.Equal(1, list.GetProperty("looseSessions").GetInt32()); // sessão 7 no arco oculto
+        log = Json(await service.Log(campaign.Id, "player", null, null, null, 1, default));
+        Assert.Equal(["Trevas"], log.GetProperty("chapters").EnumerateArray().Select(c => c.GetProperty("title").GetString()));
+        var rows = log.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("number").GetInt32());
+        Assert.Equal("Trevas", rows[3].GetProperty("chapterTitle").GetString());
+        Assert.Equal(JsonValueKind.Null, rows[7].GetProperty("chapterTitle").ValueKind);
+        Assert.Equal(0, Json(await service.Log(campaign.Id, "player", null, hidden.Id.ToString(), null, 1, default)).GetProperty("total").GetInt32());
+        var entry = Json(await service.LogEntry(campaign.Id, rows[7].GetProperty("key").GetString()!, "player", default));
+        Assert.Equal(JsonValueKind.Null, entry.GetProperty("chapterTitle").ValueKind);
+        Assert.Equal(JsonValueKind.Null, entry.GetProperty("chapterId").ValueKind);
+        Assert.Equal("Segredo", Json(await service.LogEntry(campaign.Id, rows[7].GetProperty("key").GetString()!, "master", default)).GetProperty("chapterTitle").GetString());
+        Assert.Contains(Json(await service.Search(campaign.Id, "player", "sombrio", default)).GetProperty("items").EnumerateArray(), i => i.GetProperty("kind").GetString() == "chapter");
+        Assert.DoesNotContain(Json(await service.Search(campaign.Id, "player", "rei trai", default)).GetProperty("items").EnumerateArray(), i => i.GetProperty("kind").GetString() == "chapter");
+        Assert.Equal(2, Json(await service.ChapterList(campaign.Id, "master", default)).GetProperty("total").GetInt32());
+    }
+
+    [Fact]
+    public async Task Only_master_deletes_past_record_with_current_revision_and_number_is_freed()
+    {
+        await Seed();
+        var past = await db.Set<PastSession>().AsNoTracking().SingleAsync(p => p.Number == 1);
+        Assert.Equal(403, (await Assert.ThrowsAsync<RuleException>(() => service.DeletePast(campaign.Id, past.Id, "player", past.Revision, default))).Status);
+        Assert.Equal(404, (await Assert.ThrowsAsync<RuleException>(() => service.DeletePast(campaign.Id, past.Id, "outsider", past.Revision, default))).Status);
+        Assert.Equal(409, (await Assert.ThrowsAsync<RuleException>(() => service.DeletePast(campaign.Id, past.Id, "master", past.Revision + 1, default))).Status);
+        Assert.Equal(404, (await Assert.ThrowsAsync<RuleException>(() => service.DeletePast(campaign.Id, Guid.NewGuid(), "master", 0, default))).Status);
+        await service.DeletePast(campaign.Id, past.Id, "master", past.Revision, default);
+        db.ChangeTracker.Clear();
+        Assert.False(await db.Set<PastSession>().AnyAsync(p => p.Id == past.Id));
+        Assert.Equal(3, Json(await service.Log(campaign.Id, "master", null, null, null, 1, default)).GetProperty("total").GetInt32());
+        await service.SavePast(campaign.Id, null, "master", new(1, "Blackstones de novo", "Recriada."), default);
     }
 
     [Fact]

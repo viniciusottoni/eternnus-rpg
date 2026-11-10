@@ -1,4 +1,4 @@
-// Capítulos, atos e arcos da campanha: organização privada do mestre para agrupar sessões (Eternnus e anteriores).
+// Capítulos, atos e arcos da campanha: o mestre organiza e escolhe quais o grupo vê; jogadores leem só os visíveis.
 import { api } from "./api.js";
 import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
 import { helpButton } from "./help.js";
@@ -12,7 +12,7 @@ export function loadChapters(campaignId) {
   return api(`/campaigns/${campaignId}/chapters`);
 }
 export function createChapter(campaignId, data) {
-  return api(`/campaigns/${campaignId}/chapters`, "POST", { title: data.title, kind: data.kind, summary: data.summary || "" });
+  return api(`/campaigns/${campaignId}/chapters`, "POST", { title: data.title, kind: data.kind, summary: data.summary || "", published: data.published === "on" });
 }
 
 const kindOptions = (selected) => CHAPTER_KINDS.map(([k, label]) => `<option value="${k}" ${k === selected ? "selected" : ""}>${label}</option>`).join("");
@@ -64,7 +64,7 @@ function range(c) {
   return `${span} · ${total} ${total === 1 ? "sessão" : "sessões"}`;
 }
 
-/** Bloco do Diário (mestre): lista ordenada com criar, editar, mover e excluir. */
+/** Bloco do Diário. Mestre: lista ordenada com criar, editar, mover e excluir. Jogador: só leitura dos capítulos visíveis (bloco some se não houver). */
 export async function renderChapters(d, target, onChange, page = 1) {
   // Outros blocos do Diário (registro anterior, importação) avisam por evento quando mudam contagens ou criam capítulo.
   if (!target.dataset.listening) { target.dataset.listening = "1"; target.addEventListener("chapters-changed", () => target.onchapterschanged()); }
@@ -80,16 +80,19 @@ export async function renderChapters(d, target, onChange, page = 1) {
   }
   if (!target.isConnected) return;
   const items = result.items;
-  const editable = !d.archived;
+  const master = Boolean(result.isMaster);
+  target.hidden = !master && !result.total;
+  if (target.hidden) { target.innerHTML = ""; return; }
+  const editable = master && !d.archived;
   const full = result.total >= result.max;
   const pages = Math.max(1, Math.ceil(result.total / result.pageSize));
   const row = (c, i) => {
     const n = result.offset + i;
-    return `<tr><td class="num" data-label="Ordem">${n + 1}</td><td data-label="Tipo">${esc(chapterKindLabel(c.kind))}</td><td data-label="Título"><a href="#campaign/${esc(d.id)}/sessions/chapter-${esc(c.id)}" class="chapter-link">${esc(c.title)}</a>${c.summary ? `<p class="log-excerpt chapter-summary">${esc(c.summary)}</p>` : ""}</td><td data-label="Sessões">${esc(range(c))}</td>${editable ? `<td data-label="Ações"><div class="chapter-tools">${button("↑", "ch-up", c.id, "subtle small icon-button", `aria-label="Subir ${esc(c.title)}"${n === 0 ? " disabled" : ""}`)}${button("↓", "ch-down", c.id, "subtle small icon-button", `aria-label="Descer ${esc(c.title)}"${n === result.total - 1 ? " disabled" : ""}`)}${button("Editar", "ch-edit", c.id, "subtle small", `aria-label="Editar ${esc(c.title)}"`)}${button("Excluir", "ch-delete", c.id, "text-button small", `aria-label="Excluir ${esc(c.title)}"`)}</div></td>` : ""}</tr>`;
+    return `<tr><td class="num" data-label="Ordem">${n + 1}</td><td data-label="Tipo">${esc(chapterKindLabel(c.kind))}</td><td data-label="Título"><a href="#campaign/${esc(d.id)}/sessions/chapter-${esc(c.id)}" class="chapter-link">${esc(c.title)}</a>${master ? (c.published ? ' <span class="status-chip">visível ao grupo</span>' : ' <span class="chip">oculto</span>') : ""}${c.summary ? `<p class="log-excerpt chapter-summary">${esc(c.summary)}</p>` : ""}</td><td data-label="Sessões">${esc(range(c))}</td>${editable ? `<td data-label="Ações"><div class="chapter-tools">${button("↑", "ch-up", c.id, "subtle small icon-button", `aria-label="Subir ${esc(c.title)}"${n === 0 ? " disabled" : ""}`)}${button("↓", "ch-down", c.id, "subtle small icon-button", `aria-label="Descer ${esc(c.title)}"${n === result.total - 1 ? " disabled" : ""}`)}${button("Editar", "ch-edit", c.id, "subtle small", `aria-label="Editar ${esc(c.title)}"`)}${button("Excluir", "ch-delete", c.id, "text-button small", `aria-label="Excluir ${esc(c.title)}"`)}</div></td>` : ""}</tr>`;
   };
-  target.innerHTML = `<div class="section-title"><h2 id="cp-chapters-title">Capítulos, atos e arcos${helpButton("campanhas.capitulos.organizacao", "Capítulos, atos e arcos")}</h2>${editable ? button("+ Novo capítulo", "ch-new", "", "subtle small", full ? `disabled aria-describedby="ch-full"` : "") : ""}</div><p class="muted small section-lead">Só você vê. Organize a história antes de abrir as sessões e escolha o capítulo ao iniciar cada uma; sessões avulsas continuam permitidas. Abra um capítulo para ver suas sessões.${full ? ` <span id="ch-full">Limite de ${result.max} capítulos atingido.</span>` : ""}</p>${
+  target.innerHTML = `<div class="section-title"><h2 id="cp-chapters-title">Capítulos, atos e arcos${helpButton("campanhas.capitulos.organizacao", "Capítulos, atos e arcos")}</h2>${editable ? button("+ Novo capítulo", "ch-new", "", "subtle small", full ? `disabled aria-describedby="ch-full"` : "") : ""}</div><p class="muted small section-lead">${master ? "Organize a história antes de abrir as sessões e escolha o capítulo ao iniciar cada uma; sessões avulsas continuam permitidas. Novos capítulos ficam ocultos: marque “Visível para os jogadores” ao editar para revelá-los ao grupo." : "Partes da história que o mestre já revelou. Abra uma para ver suas sessões publicadas."}${full ? ` <span id="ch-full">Limite de ${result.max} capítulos atingido.</span>` : ""}</p>${
     items.length
-      ? `<div class="data-table-wrap"><table class="data-table chapter-table"><caption class="sr-only">Capítulos da campanha, página ${result.page} de ${pages}</caption><thead><tr><th scope="col">Ordem</th><th scope="col">Tipo</th><th scope="col">Título</th><th scope="col">Sessões</th>${editable ? '<th scope="col">Ações</th>' : ""}</tr></thead><tbody>${items.map(row).join("")}</tbody></table></div>${result.looseSessions ? `<p class="muted small table-note">${result.looseSessions} ${result.looseSessions === 1 ? "sessão avulsa" : "sessões avulsas"}, sem capítulo. <a href="#campaign/${esc(d.id)}/sessions/chapter-none">Ver avulsas</a></p>` : ""}${pages > 1 ? `<div class="pagination">${button("← Anterior", "ch-page", page - 1, "subtle", page <= 1 ? "disabled" : "")}<span>Página ${page} de ${pages} · ${result.total} capítulos</span>${button("Próxima →", "ch-page", page + 1, "subtle", page >= pages ? "disabled" : "")}</div>` : ""}`
+      ? `<div class="data-table-wrap"><table class="data-table chapter-table"><caption class="sr-only">Capítulos da campanha, página ${result.page} de ${pages}</caption><thead><tr><th scope="col">Ordem</th><th scope="col">Tipo</th><th scope="col">Título</th><th scope="col">Sessões</th>${editable ? '<th scope="col">Ações</th>' : ""}</tr></thead><tbody>${items.map(row).join("")}</tbody></table></div>${result.looseSessions ? `<p class="muted small table-note">${result.looseSessions} ${result.looseSessions === 1 ? "sessão" : "sessões"} sem capítulo${master ? " (avulsas)" : ""}. <a href="#campaign/${esc(d.id)}/sessions/chapter-none">${master ? "Ver avulsas" : "Ver sessões"}</a></p>` : ""}${pages > 1 ? `<div class="pagination">${button("← Anterior", "ch-page", page - 1, "subtle", page <= 1 ? "disabled" : "")}<span>Página ${page} de ${pages} · ${result.total} capítulos</span>${button("Próxima →", "ch-page", page + 1, "subtle", page >= pages ? "disabled" : "")}</div>` : ""}`
       : `<p class="muted small">Nenhum capítulo criado.${editable ? " Crie o primeiro antes de abrir a próxima sessão — por exemplo, “Ato I — A Chegada” — ou importe vários de uma vez pela tabela de sessões." : ""}</p>`
   }`;
   target.onclick = async (e) => {
@@ -110,12 +113,12 @@ export async function renderChapters(d, target, onChange, page = 1) {
 }
 
 function chapterEditor(d, c, onChange) {
-  modal(c ? "Editar capítulo" : "Novo capítulo, ato ou arco", `<form id="chapter-form"><div class="form-grid two"><div class="field"><label for="ch-title">Título</label><input id="ch-title" name="title" required maxlength="120" value="${esc(c?.title || "")}" placeholder="A Chegada a Valkaria"></div><div class="field"><label for="ch-kind">Tipo</label><select id="ch-kind" name="kind">${kindOptions(c?.kind || "chapter")}</select></div></div><div class="field"><label for="ch-summary">Resumo (opcional)</label><textarea id="ch-summary" name="summary" maxlength="2000" rows="4" aria-describedby="ch-summary-hint">${esc(c?.summary || "")}</textarea><small id="ch-summary-hint" class="form-help">Propósito ou ganchos do capítulo. Só você vê.</small></div>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button class="primary" type="submit">${c ? "Salvar capítulo" : "Criar capítulo"}</button></div></form>`);
+  modal(c ? "Editar capítulo" : "Novo capítulo, ato ou arco", `<form id="chapter-form"><div class="form-grid two"><div class="field"><label for="ch-title">Título</label><input id="ch-title" name="title" required maxlength="120" value="${esc(c?.title || "")}" placeholder="A Chegada a Valkaria"></div><div class="field"><label for="ch-kind">Tipo</label><select id="ch-kind" name="kind">${kindOptions(c?.kind || "chapter")}</select></div></div><div class="field"><label for="ch-summary">Resumo (opcional)</label><textarea id="ch-summary" name="summary" maxlength="2000" rows="4" aria-describedby="ch-summary-hint">${esc(c?.summary || "")}</textarea><small id="ch-summary-hint" class="form-help">Propósito ou ganchos do capítulo. Se o capítulo ficar visível, o grupo também lê este resumo.</small></div><label class="check"><input type="checkbox" name="published" ${c?.published ? "checked" : ""} aria-describedby="ch-published-hint"> Visível para os jogadores</label><small id="ch-published-hint" class="form-help">O grupo vê tipo, título, resumo e as sessões já publicadas deste capítulo. Desmarque para ocultar de novo.</small>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button class="primary" type="submit">${c ? "Salvar capítulo" : "Criar capítulo"}</button></div></form>`);
   $("#ch-title").focus();
   $("#chapter-form").onsubmit = (e) => {
     e.preventDefault();
     submitForm(e.currentTarget, async (data) => {
-      if (c) await api(`/campaigns/${d.id}/chapters/${c.id}`, "PUT", { ...data, revision: c.revision });
+      if (c) await api(`/campaigns/${d.id}/chapters/${c.id}`, "PUT", { title: data.title, kind: data.kind, summary: data.summary || "", published: data.published === "on", revision: c.revision });
       else await createChapter(d.id, data);
       $("#modal").close();
       toast(c ? "Capítulo atualizado." : "Capítulo criado.");

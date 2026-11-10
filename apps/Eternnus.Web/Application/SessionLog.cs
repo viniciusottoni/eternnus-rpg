@@ -56,8 +56,14 @@ public sealed partial class WorkspaceService
         var past = db.Set<PastSession>().AsNoTracking().Where(s => s.CampaignId == campaign && (master || s.Published));
         if (source == SessionLogSources.Eternnus) past = past.Where(_ => false);
         if (source == SessionLogSources.Past) live = live.Where(_ => false);
-        if (chapter is { } id) { live = live.Where(s => s.ChapterId == id); past = past.Where(s => s.ChapterId == id); }
-        if (loose) { live = live.Where(s => s.ChapterId == null); past = past.Where(s => s.ChapterId == null); }
+        // Para o jogador, capítulo oculto não existe: filtrar por ele não traz nada e suas sessões contam como avulsas.
+        var shown = ShownChapters(campaign);
+        if (chapter is { } id) { live = live.Where(s => s.ChapterId == id && (master || shown.Contains(id))); past = past.Where(s => s.ChapterId == id && (master || shown.Contains(id))); }
+        if (loose)
+        {
+            live = live.Where(s => s.ChapterId == null || !master && !shown.Contains(s.ChapterId.Value));
+            past = past.Where(s => s.ChapterId == null || !master && !shown.Contains(s.ChapterId.Value));
+        }
         if (term != null)
         {
             var pattern = TextSearch.Pattern(term);
@@ -85,11 +91,10 @@ public sealed partial class WorkspaceService
         var total = await live.CountAsync(ct) + await past.CountAsync(ct);
         var rows = await union.OrderByDescending(r => r.Number).ThenBy(r => r.Source).Skip((page - 1) * LogPageSize).Take(LogPageSize).ToListAsync(ct);
         var chapterIds = rows.Where(r => r.ChapterId != null).Select(r => r.ChapterId!.Value).Distinct().ToList();
-        var names = await Chapters.AsNoTracking().Where(x => chapterIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => new { x.Title, x.Kind }, ct);
+        // Jogador só recebe nome e id de capítulos visíveis; nos demais a linha vai sem capítulo.
+        var names = await Chapters.AsNoTracking().Where(x => chapterIds.Contains(x.Id) && (master || x.Published)).ToDictionaryAsync(x => x.Id, x => new { x.Title, x.Kind }, ct);
         var excerpts = term == null ? [] : await LogExcerpts(rows, term, master, ct);
-        // Filtro por capítulo: mestre vê todos; jogador, só os que têm alguma sessão visível para ele.
-        var chapters = await Chapters.AsNoTracking().Where(x => x.CampaignId == campaign && (master
-                || db.Sessions.Any(s => s.ChapterId == x.Id && s.RecapPublishedAt != null) || db.Set<PastSession>().Any(s => s.ChapterId == x.Id && s.Published)))
+        var chapters = await Chapters.AsNoTracking().Where(x => x.CampaignId == campaign && (master || x.Published))
             .OrderBy(x => x.Order).ThenBy(x => x.CreatedAt).Take(ChapterModel.MaxPerCampaign).Select(x => new { x.Id, x.Title, x.Kind }).ToListAsync(ct);
         return new
         {
@@ -97,7 +102,8 @@ public sealed partial class WorkspaceService
             {
                 key = SessionLogSources.Key(r.Source, r.Id), source = r.Source, id = r.Id, number = r.Number, title = r.Title,
                 startedAt = r.StartedAt is { } at ? DateTime.SpecifyKind(at, DateTimeKind.Utc) : (DateTime?)null, date = r.Date, active = r.Active,
-                chapterId = r.ChapterId, chapterTitle = r.ChapterId is { } id && names.TryGetValue(id, out var n) ? n.Title : null,
+                chapterId = r.ChapterId is { } cid && names.ContainsKey(cid) ? cid : (Guid?)null,
+                chapterTitle = r.ChapterId is { } id && names.TryGetValue(id, out var n) ? n.Title : null,
                 chapterKind = r.ChapterId is { } kid && names.TryGetValue(kid, out var k) ? k.Kind : null,
                 published = r.Published, hasText = r.HasText,
                 excerpt = excerpts.TryGetValue(SessionLogSources.Key(r.Source, r.Id), out var e) ? e : null,
@@ -125,23 +131,30 @@ public sealed partial class WorkspaceService
         var c = await Access(campaign, user, false, ct);
         var master = c.OwnerId == user;
         var (source, id) = SessionLogSources.Parse(key);
-        Task<string?> ChapterTitle(Guid? chapterId) => Chapters.AsNoTracking().Where(x => chapterId != null && x.Id == chapterId).Select(x => (string?)x.Title).FirstOrDefaultAsync(ct);
+        // Capítulo oculto: o jogador recebe a sessão sem capítulo (id e título nulos).
+        async Task<(Guid? Id, string? Title)> ChapterOfEntry(Guid? chapterId)
+        {
+            var found = await Chapters.AsNoTracking().Where(x => chapterId != null && x.Id == chapterId && (master || x.Published)).Select(x => new { x.Id, x.Title }).FirstOrDefaultAsync(ct);
+            return found == null ? (null, null) : (found.Id, found.Title);
+        }
         if (source == SessionLogSources.Eternnus)
         {
             var s = await db.Sessions.AsNoTracking().Where(s => s.Id == id && s.CampaignId == campaign && (master || s.RecapPublishedAt != null))
                 .Select(s => new { s.Id, s.Number, s.Title, s.Recap, s.Objective, s.StartedAt, s.EndedAt, s.ChapterId, s.RecapPublishedAt }).SingleOrDefaultAsync(ct) ?? throw new RuleException(404, "Sessão não encontrada.");
+            var liveChapter = await ChapterOfEntry(s.ChapterId);
             return new
             {
                 key, source, s.Id, s.Number, s.Title, text = s.Recap, objective = master ? s.Objective : null,
                 startedAt = DateTime.SpecifyKind(s.StartedAt, DateTimeKind.Utc), endedAt = s.EndedAt is { } e ? DateTime.SpecifyKind(e, DateTimeKind.Utc) : (DateTime?)null,
-                active = s.EndedAt == null, published = s.RecapPublishedAt != null, s.ChapterId, chapterTitle = await ChapterTitle(s.ChapterId), scenes = Array.Empty<object>(), date = (DateOnly?)null, revision = 0,
+                active = s.EndedAt == null, published = s.RecapPublishedAt != null, chapterId = liveChapter.Id, chapterTitle = liveChapter.Title, scenes = Array.Empty<object>(), date = (DateOnly?)null, revision = 0,
             };
         }
         var p = await db.Set<PastSession>().AsNoTracking().SingleOrDefaultAsync(s => s.Id == id && s.CampaignId == campaign && (master || s.Published), ct) ?? throw new RuleException(404, "Sessão não encontrada.");
+        var pastChapter = await ChapterOfEntry(p.ChapterId);
         return new
         {
             key, source, p.Id, p.Number, p.Title, text = p.Summary, objective = (string?)null, startedAt = (DateTime?)null, endedAt = (DateTime?)null,
-            active = false, published = p.Published, p.ChapterId, chapterTitle = await ChapterTitle(p.ChapterId), scenes = p.Scenes.Select(x => new { x.Title, x.Text }), p.Date, p.Revision,
+            active = false, published = p.Published, chapterId = pastChapter.Id, chapterTitle = pastChapter.Title, scenes = p.Scenes.Select(x => new { x.Title, x.Text }), p.Date, p.Revision,
         };
     }
 }

@@ -1,13 +1,19 @@
 using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
 
-public record ChapterInput(string Title, string? Kind = null, string? Summary = null, int Revision = 0);
+/// <param name="Published">Visível para os jogadores; nulo mantém o valor atual (novo capítulo: oculto).</param>
+public record ChapterInput(string Title, string? Kind = null, string? Summary = null, int Revision = 0, bool? Published = null);
 public record ChapterMoveInput(int Direction, int Revision);
 
-/// <summary>Capítulos/atos/arcos da campanha: organização privada do mestre para agrupar sessões. Escritas sob o bloqueio da campanha.</summary>
+/// <summary>
+/// Capítulos/atos/arcos da campanha: o mestre organiza; jogadores leem só os capítulos visíveis, com contagens das sessões que já podem ler.
+/// Escritas sob o bloqueio da campanha.
+/// </summary>
 public sealed partial class WorkspaceService
 {
     IQueryable<StoryChapter> Chapters => db.Set<StoryChapter>();
+    /// <summary>Ids dos capítulos que o jogador pode ver (subconsulta, não materializa).</summary>
+    IQueryable<Guid> ShownChapters(Guid campaign) => Chapters.Where(x => x.CampaignId == campaign && x.Published).Select(x => x.Id);
 
     async Task<Campaign> MasterLock(Guid campaign, string user, CancellationToken ct)
     {
@@ -16,25 +22,32 @@ public sealed partial class WorkspaceService
         return c;
     }
 
-    /// <summary>Sem <paramref name="page"/>: todos (até 200, para seletores). Com página: vinte por vez, para a tabela.</summary>
+    /// <summary>
+    /// Sem <paramref name="page"/>: todos (até 200, para seletores). Com página: vinte por vez, para a tabela.
+    /// Jogador: só capítulos visíveis, e as contagens consideram apenas sessões publicadas; sessões em capítulo oculto contam como avulsas.
+    /// </summary>
     public async Task<object> ChapterList(Guid campaign, string user, CancellationToken ct, int? page = null)
     {
         var c = await Access(campaign, user, false, ct);
-        if (c.OwnerId != user) throw new RuleException(403, "Somente o mestre organiza capítulos.");
-        var ordered = Chapters.AsNoTracking().Where(x => x.CampaignId == campaign).OrderBy(x => x.Order).ThenBy(x => x.CreatedAt);
+        var master = c.OwnerId == user;
+        var ordered = Chapters.AsNoTracking().Where(x => x.CampaignId == campaign && (master || x.Published)).OrderBy(x => x.Order).ThenBy(x => x.CreatedAt);
         var total = await ordered.CountAsync(ct);
         var current = Math.Clamp(page ?? 1, 1, 100000);
+        var live = db.Sessions.Where(s => master || s.RecapPublishedAt != null);
+        var past = db.Set<PastSession>().Where(s => master || s.Published);
         var items = await (page == null ? ordered.Take(ChapterModel.MaxPerCampaign) : ordered.Skip((current - 1) * LogPageSize).Take(LogPageSize))
             .Select(x => new
             {
-                x.Id, x.Kind, x.Title, x.Summary, x.Order, x.Revision,
-                sessionCount = db.Sessions.Count(s => s.ChapterId == x.Id),
-                pastCount = db.Set<PastSession>().Count(s => s.ChapterId == x.Id),
-                firstNumber = db.Sessions.Where(s => s.ChapterId == x.Id).Select(s => (int?)s.Number).Concat(db.Set<PastSession>().Where(s => s.ChapterId == x.Id).Select(s => (int?)s.Number)).Min(),
-                lastNumber = db.Sessions.Where(s => s.ChapterId == x.Id).Select(s => (int?)s.Number).Concat(db.Set<PastSession>().Where(s => s.ChapterId == x.Id).Select(s => (int?)s.Number)).Max(),
+                x.Id, x.Kind, x.Title, x.Summary, x.Order, x.Published, revision = master ? x.Revision : 0,
+                sessionCount = live.Count(s => s.ChapterId == x.Id),
+                pastCount = past.Count(s => s.ChapterId == x.Id),
+                firstNumber = live.Where(s => s.ChapterId == x.Id).Select(s => (int?)s.Number).Concat(past.Where(s => s.ChapterId == x.Id).Select(s => (int?)s.Number)).Min(),
+                lastNumber = live.Where(s => s.ChapterId == x.Id).Select(s => (int?)s.Number).Concat(past.Where(s => s.ChapterId == x.Id).Select(s => (int?)s.Number)).Max(),
             }).ToListAsync(ct);
-        var loose = await db.Sessions.CountAsync(s => s.CampaignId == campaign && s.ChapterId == null, ct) + await db.Set<PastSession>().CountAsync(s => s.CampaignId == campaign && s.ChapterId == null, ct);
-        return new { items, looseSessions = loose, max = ChapterModel.MaxPerCampaign, total, page = current, pageSize = page == null ? ChapterModel.MaxPerCampaign : LogPageSize, offset = page == null ? 0 : (current - 1) * LogPageSize };
+        var shown = ShownChapters(campaign);
+        var loose = await live.CountAsync(s => s.CampaignId == campaign && (s.ChapterId == null || !master && !shown.Contains(s.ChapterId.Value)), ct)
+            + await past.CountAsync(s => s.CampaignId == campaign && (s.ChapterId == null || !master && !shown.Contains(s.ChapterId.Value)), ct);
+        return new { items, looseSessions = loose, max = ChapterModel.MaxPerCampaign, total, page = current, pageSize = page == null ? ChapterModel.MaxPerCampaign : LogPageSize, offset = page == null ? 0 : (current - 1) * LogPageSize, isMaster = master };
     }
 
     static (string Title, string Kind, string Summary) ChapterFields(ChapterInput x)
@@ -68,6 +81,7 @@ public sealed partial class WorkspaceService
             chapter.Revision++;
         }
         chapter.Title = title; chapter.Kind = kind; chapter.Summary = summary;
+        if (x.Published is { } published) chapter.Published = published;
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
         return chapter;
     }

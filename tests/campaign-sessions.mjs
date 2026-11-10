@@ -10,7 +10,7 @@ try {
   const c = await master('/api/campaigns', 'POST', { name: 'O Livro de Eternnus', description: 'No princípio havia três entidades eternas.', rpgSystemId: '00000000-0000-4000-8000-000000000001' });
   const path = `/api/campaigns/${c.id}`, ws = path + '/workspace';
   await player('/api/campaigns/join', 'POST', { code: (await master(path)).inviteCode });
-  const act = await master(path + '/chapters', 'POST', { title: 'Trevas', kind: 'act' });
+  const act = await master(path + '/chapters', 'POST', { title: 'Trevas', kind: 'act', published: true });
   await master(ws + '/past-sessions', 'POST', { number: 1, title: 'Blackstones', summary: 'Chegada à vila.', published: true, chapterId: act.id, scenes: [{ title: 'Batalha na Floresta', text: 'Encontram 2 goblins arqueiros e uma lasca de pedra negra.' }] });
   await master(ws + '/past-sessions', 'POST', { number: 2, title: 'Rosered', summary: 'Segredo: o rei trai.', published: false });
   const live = await master(path + '/sessions', 'POST', { title: 'O portão', objective: 'Objetivo secreto do mestre', mapKind: 'tileset', mapKey: 'crypt', chapterId: act.id });
@@ -84,6 +84,8 @@ try {
   await p.keyboard.press('Escape');
   // Busca geral leva à tela de origem.
   await go(p, `campaign/${c.id}`, 'Premissa');
+  const [qBox, qButton] = [await p.locator('#cs-q').boundingBox(), await p.locator('#cs-form button[type=submit]').boundingBox()];
+  ok(Math.abs(qBox.y - qButton.y) <= 2 && Math.abs(qBox.height - qButton.height) <= 2, 'Botão Buscar alinhado ao campo');
   await p.locator('#cs-q').fill('goblin'); await p.locator('#cs-form button[type=submit]').click();
   await p.locator('.search-results a', { hasText: 'Grak' }).waitFor();
   await p.screenshot({ path: `${out}/global-search.png`, fullPage: true, animations: 'disabled' });
@@ -113,6 +115,18 @@ try {
   check((await master(path + '/session-log')).total, 7);
   await go(m, `campaign/${c.id}/sessions/chapter-${act.id}`, 'Buscar nas sessões');
   check(await m.locator('#lg-chapter').inputValue(), act.id);
+  // Exclusão de registro anterior pela leitura da sessão; sessões do Eternnus não oferecem a ação.
+  await go(m, `campaign/${c.id}/journal`, 'Buscar nas sessões');
+  await m.getByRole('button', { name: 'O portão', exact: true }).click();
+  await m.getByRole('button', { name: '❖ Capítulo', exact: true }).waitFor();
+  check(await m.getByRole('button', { name: 'Excluir registro', exact: true }).count(), 0);
+  await m.keyboard.press('Escape'); await m.locator('#modal').waitFor({ state: 'hidden' });
+  await m.getByRole('button', { name: 'Rosered II', exact: true }).click();
+  await m.getByRole('button', { name: 'Excluir registro', exact: true }).click();
+  await m.getByRole('button', { name: 'Excluir sessão', exact: true }).click();
+  await m.locator('#modal').waitFor({ state: 'hidden' });
+  await m.getByRole('button', { name: 'Rosered II', exact: true }).waitFor({ state: 'detached' });
+  check((await master(path + '/session-log')).total, 6);
 
   const mobile = await ui(player, true);
   await go(mobile, `campaign/${c.id}/journal`, 'Buscar nas sessões');

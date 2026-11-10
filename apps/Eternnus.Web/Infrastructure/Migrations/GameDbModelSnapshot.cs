@@ -1935,6 +1935,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<int>("Order")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("Published")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("Revision")
                         .IsConcurrencyToken()
                         .HasColumnType("integer");

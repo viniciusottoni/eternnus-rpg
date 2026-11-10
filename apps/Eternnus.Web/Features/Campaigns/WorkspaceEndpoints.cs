@@ -43,6 +43,7 @@ public static class WorkspaceEndpoints
         api.MapGet("/past-sessions", (Guid campaign, int? page, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.Past(campaign, User(u), page ?? 1, ct));
         api.MapPost("/past-sessions", (Guid campaign, PastSessionInput x, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.SavePast(campaign, null, User(u), x, ct));
         api.MapPut("/past-sessions/{id:guid}", (Guid campaign, Guid id, PastSessionInput x, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.SavePast(campaign, id, User(u), x, ct));
+        api.MapDelete("/past-sessions/{id:guid}", async (Guid campaign, Guid id, int revision, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeletePast(campaign, id, User(u), revision, ct); return Results.NoContent(); });
         // Capítulos/atos/arcos: organização privada do mestre para agrupar sessões.
         var chapters = app.MapGroup("/api/campaigns/{campaign:guid}/chapters").RequireAuthorization("Verified");
         chapters.MapGet("", (Guid campaign, int? page, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.ChapterList(campaign, User(u), ct, page));

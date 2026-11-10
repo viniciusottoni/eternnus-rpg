@@ -48,7 +48,7 @@ export const HELP_KEYS = Object.freeze({
   "campanhas.continuidade.origem": "all",
   "campanhas.acervo.cadernos": "all",
   "campanhas.continuidade.historico": "all",
-  "campanhas.capitulos.organizacao": "master",
+  "campanhas.capitulos.organizacao": "all",
   "campanhas.sessoes.tabela": "all",
   "campanhas.busca.geral": "all",
   "campanhas.lista.papeis": "all",
