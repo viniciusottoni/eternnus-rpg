@@ -172,3 +172,15 @@ CharacterSheetService centraliza origem, validação, colunas espelhadas, histó
 - `Infrastructure/MusicStorage.cs`: diretório privado `Music:Directory` (fora de wwwroot, validado em `ValidateEternnusConfiguration`) e `MusicStorageSweeper` para órfãos. Metadados no PostgreSQL; bytes no disco.
 - Cliente: `js/soundtrack-policy.js` (puro: posição, correção, ordem de estados, limites, textos), `js/soundtrack-api.js` (HTTP via `api.js`: busca no catálogo, gestão Admin e comandos), `js/session-audio.js` (elemento de áudio, sincronização, autoplay, preferência pessoal), `js/table-soundtrack.js` (selo e aba ♪ Trilha da mesa), `js/admin-music.js` (Painel admin → Músicas, sob demanda). `js/music.js` expõe `suspendMusic`/`resumeMusic` para a trilha global.
 - Ver [TRILHA_SONORA.md](TRILHA_SONORA.md).
+
+## Continuidade e acervo (ADR-055)
+
+Ver [CAMPANHAS_CONTINUIDADE.md](CAMPANHAS_CONTINUIDADE.md). Domain/Workspace.cs, Application/WorkspaceService.cs e parciais WorkspaceFiles/WorkspaceAtlas, Features/Campaigns/WorkspaceEndpoints.cs. Módulo frontend campaign-workspace.js sob demanda reutiliza api/ui/layout/help. CampaignService guarda origem/continuidade; SessionService considera numeração anterior sob bloqueio existente. Nenhuma escrita de mesa migra de serviço. Migrações preservam dados; cadernos mantêm autor após remoção de campanha.
+
+
+## Viewport da mesa (ADR-056)
+
+`table-viewport.js`, carregado por `table.js`, centraliza orientação, tela cheia, foco e descarte. COMPACT_TABLE mantém o mesmo breakpoint do CSS para abertura dos painéis. Nenhum estado de jogo ou escrita HTTP é introduzido. A orientação é restrita à mesa montada, com liberação ao sair. A tela cheia abrange documentElement para preservar o modal e a ajuda compartilhados.
+
+
+Câmera compartilhada (ADR-057): table-map.js recebe um host de controles via handlers.camera, mantém escala/pan transitórios por instância e descarta controles/gestos no destroy. map-gestures.js encapsula reconhecimento da pinça e interceptação antes de ações do mapa; grid-adjust.js reutiliza o mesmo módulo para a prévia da grade. Editor de cenas e preparação compartilhada usam o mesmo createBoard. Sem novas escritas HTTP.

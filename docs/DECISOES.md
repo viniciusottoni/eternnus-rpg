@@ -500,3 +500,38 @@ Consequências: foco, Esc, hover persistente, viewport e descarte precisam de te
 
 **Consequências:** link externo expõe o IP de quem abre ao site da imagem e pode mudar de conteúdo; o formulário avisa e recomenda o acervo. Fichas de NPC não têm histórico por campo nem PDF.
 
+
+## ADR-055 — Continuidade e acervo da campanha (10/11/2026)
+
+Decisão: registrar origem nova/trazida, numeração mínima e resumo compartilhado sem exigir reconstruir o passado. Registros anteriores são PastSession e não sessões ao vivo nem fontes de XP. A numeração de ambas usa bloqueio comum da campanha, preservando a única sessão ativa.
+
+Páginas do mundo e notas usam WorkspacePage, mantendo caderno pessoal com autorização distinta das fichas: self exclui mestre; compartilhamento concede leitura. Segredos/versões só para editor. SET NULL no vínculo da campanha preserva notas do autor. Leitura do caderno próprio oferece recuperação textual fora da campanha; arquivos exigem vínculo.
+
+Arquivos reutilizam DocumentFiles e CSRF; atlas publica cópia explícita da imagem inteira, sem sincronizar mudanças futuras do preparo. Limites, preservação, alternativas e lacunas documentados em CAMPANHAS_CONTINUIDADE.md. Coleções são texto simples, capítulos têm um nível, relações têm limite vinte; importadores por plataforma e pacote integral ficam fora desta entrega.
+
+
+## ADR-056 — Mesa horizontal no celular (10/11/2026)
+
+Pedido: exigir a visão deitada e aproximar a organização da mesa web. A mesa em dispositivo de toque até 1200 px exige orientação horizontal; em retrato mostra instrução acessível e retorno à campanha, deixando o shell inerte. `table-viewport.js` tenta `screen.orientation.lock("landscape")` ao montar. O botão Tela cheia solicita fullscreen do documento (mantendo os modais globais) e tenta novamente com gesto do usuário. Falta de suporte/recusa exige rotação manual, sem alegar que o site controla o sistema. Somente a mesa é afetada; manifest e demais páginas conservam orientação livre. Sair remove listeners, libera o bloqueio adquirido e sai da tela cheia que o módulo abriu.
+
+Layout compacto até 900 px ou toque até 1200 px: altura do viewport, topo em faixa rolável, mapa central e painéis de grupo/ficha/conversa à direita sob demanda. Mapa recolhe os painéis para ampliar o cenário. Rodapé em linha própria do grid com ações roláveis e navegação inferior, sem sobrepor o mapa; motivos iguais de indisponibilidade do mestre compartilham texto com aria-describedby. Ferramentas não encolhem nem se sobrepõem. Desktop conserva as três colunas. Cache v33, sem skipWaiting/recarga de mesa ativa.
+
+Limitação: fullscreen/lock dependem do navegador e do aparelho. A validação automatizada de viewport não comprova rotação física, teclado virtual, área segura real ou instalação iOS/Android.
+
+
+## ADR-057 — Câmera e controles compartilhados de mapas (10/11/2026)
+
+Pedido: ajuda sempre circular, barras horizontais roláveis, mapa maior e mesma experiência na preparação; pinça restrita ao mapa em telas touch. O componente help-button fixa 18×18 px independentemente das regras de botões, preservando o alvo ampliado por pseudo-elemento. Mesa reúne comandos superiores numa faixa; rodapé também rola sem quebrar em colunas.
+
+createBoard compartilha câmera local com mesa e editor único de cenas/mapas: inicia preenchendo o viewport compacto, preserva proporção da grade, permite arrastar, Mapa inteiro, Ampliar e botões −/+. Zoom mínimo ajusta o mapa inteiro; máximo equivale a três vezes a escala que preenche o viewport. Superfícies rolam até as bordas; canvas limita seu buffer a 4096 px por lado ajustando DPR. Desktop inicia com mapa inteiro. A câmera não modifica coordenadas de jogo, máscaras ou permissões.
+
+map-gestures.js captura pinça só na superfície; dois dedos cancelam arraste de marcador/pintura pendentes antes de soltar. Ajuste de grade reutiliza o gesto com limite 1–4× e sem alterar tamanho/alinhamento salvos. Nenhum preventDefault/touch-action global impede zoom do navegador fora dessas superfícies. Editor compacto tem comandos e ferramentas roláveis, prévia central e propriedades recolhíveis; em retrato mantém prévia e propriedades empilhadas. Preparação continua privada até os comandos explícitos existentes.
+
+
+## ADR-058 — Antivírus de documentos em melhor esforço (10/11/2026)
+
+**Contexto:** a hospedagem compartilhada não oferece `clamd` (ADR-051). Com o ClamAV obrigatório, todo envio de PDF/imagem que passa por `DocumentFiles` (biblioteca, PDFs de fichas-modelo, mapas e imagens do acervo, anexos do caderno) respondia `503`.
+
+**Decisão:** `ClamAvDocumentScanner` sempre tenta verificar quando há host configurado (`Uploads:ClamAv:*`, com fallback para `Avatar:ClamAv:*`). Resposta `FOUND` continua recusando com `422`. Scanner não configurado, recusa/timeout de conexão (5 s para conectar, 30 s no total) ou resposta inesperada não bloqueiam mais: o documento é aceito e um aviso sem conteúdo do arquivo vai para o log. `Uploads:AllowUnscanned` deixa de ser necessário. Continuam valendo assinatura/tipo real, limite de 25 MiB, nome saneado, SHA-256, armazenamento fora de `wwwroot`, pdf.js sem scripting e entrega com CSP sandbox. O avatar não muda: continua exigindo antivírus e moderação e falha fechado.
+
+**Consequências:** enquanto não houver `clamd`, documentos são publicados sem varredura e um arquivo malicioso não seria detectado; a proteção depende da validação estrutural, do visualizador sem scripts e do isolamento na entrega. Os avisos no log indicam quantos envios ficaram sem verificação.

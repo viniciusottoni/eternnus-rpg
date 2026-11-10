@@ -194,7 +194,7 @@ Ver [PLATAFORMA.md](PLATAFORMA.md) para regras de acesso, versão de fichas, ope
 | `/api/admin` | GET overview, users, users/{id}, campaigns, campaigns/{id}, audit, rpg-systems. Admin altera papel via PUT users/{id}/role; suspende/reativa por POST suspend/unsuspend com motivo; gerencia sistemas com POST/PUT/DELETE rpg-systems; exclui campanha pela rota administrativa com motivo. |
 | `/api/support` | GET lista própria e /{id}; POST cria; POST /{id}/messages responde; POST close/reopen altera o estado dentro das regras de prazo. |
 | `/api/admin/tickets` | Admin: GET fila/detalhe/assignees, POST /{id}/messages (resposta pública ou nota interna), PUT /{id} (status, prioridade, responsável, revisão). |
-| `/api/library` | GET lista/detalhe/arquivo; POST /{id}/downloaded registra download. Staff: POST multipart para publicar, PUT metadados ou /{id}/file para substituir, DELETE para retirada. Admin pode restaurar/reverter versões. Formato permitido: PDF, PNG, JPEG, WebP; até 25 MiB e antivírus obrigatório em produção. |
+| `/api/library` | GET lista/detalhe/arquivo; POST /{id}/downloaded registra download. Staff: POST multipart para publicar, PUT metadados ou /{id}/file para substituir, DELETE para retirada. Admin pode restaurar/reverter versões. Formato permitido: PDF, PNG, JPEG, WebP; até 25 MiB; antivírus em melhor esforço (ADR-058). |
 | `/api/sheet-templates` | GET lista publicada (systemId opcional), /{id}, /{id}/versions/{versionId}, /pdf autenticado. Staff: GET manage; POST cria modelo/versão; PUT metadados/rascunho; PUT /pdf com arquivo pdf, pages JSON e revision; DELETE rascunho/PDF; POST publish. Admin: POST republish. Erros estruturados de validação: `{ message, errors: [{ field, action, message }] }`. |
 | `/api/guild` | GET categorias, tópicos e posts; criação/resposta com POST; edição do próprio post com PUT e revisão; marcação útil e denúncia por POST. Moderação exige Staff; categorias exigem Admin. |
 | `/api/progress` | GET jornada, ranking e users/{id} público sem e-mail. Ajustes administrativos usam POST com motivo e auditoria. XP/permissões enviados pelo cliente não são aceitos como autoridade. |
@@ -220,7 +220,7 @@ Ver [PLATAFORMA.md](PLATAFORMA.md) para regras de acesso, versão de fichas, ope
 
 Na mesa, GET /sessions/{id}/characters/{characterId} inclui sheet conforme a visibilidade da ficha e o vínculo na sessão. Live inclui canView e retira nível/vida/arquétipo de fichas privadas para os demais jogadores. O estado pessoal inclui ações do modelo e pessoais. POST de ações usa o identificador retornado; as fórmulas são roladas somente no servidor. O PDF preenchido é gerado no cliente a partir da rota privada de PDF e da ficha salva; não há GET mutável para exportação.
 
-Documentos: as únicas exceções de corpo grande são POST `/api/library`, PUT `/api/library/{guid}/file` e PUT `/api/sheet-templates/{guid}/versions/{guid}/pdf`: arquivo até 25 MiB, requisição até 25 MiB + 256 KiB. Tipo/assinatura/tamanho real e antivírus continuam obrigatórios. Falha no scanner retorna 503 e não publica; arquivo recusado retorna 422. GET de bytes usa private/no-store e sandbox. O limite geral das outras rotas permanece 64 KiB.
+Documentos: as únicas exceções de corpo grande são POST `/api/library`, PUT `/api/library/{guid}/file` e PUT `/api/sheet-templates/{guid}/versions/{guid}/pdf`: arquivo até 25 MiB, requisição até 25 MiB + 256 KiB. Tipo/assinatura/tamanho real continuam obrigatórios. O ClamAV é sempre tentado: arquivo detectado retorna 422; scanner ausente ou indisponível não bloqueia o envio (ADR-058). GET de bytes usa private/no-store e sandbox. O limite geral das outras rotas permanece 64 KiB.
 
 Campos da ficha: número aceita vírgula decimal e min/max; papéis numéricos exigem inteiros e os limites da mesa. Texto/textarea têm MaxLength e teto de 2.000/10.000; checkbox aceita true/false; select exige opção conhecida. Nome é obrigatório e tem até 100 caracteres. O conjunto Values é limitado a 100.000 caracteres; computados e nomes desconhecidos são ignorados. Alterações preservam snapshots e histórico por campo com fontes edit, migration ou master. Fichas antigas são convertidas na primeira escrita, sem alterar dados em GET.
 
@@ -344,3 +344,39 @@ Bytes: HTTP Range (`206`/`416`), ETag, tipo validado no envio (`audio/mpeg`, `au
 `GET …/live` acrescenta `music = {trackId, title, durationMs, contentType, playing, positionMs, referenceAt, loop, version, audioUrl}` (sem faixa: `trackId`/`audioUrl` nulos, `playing` falso), igual para mestre e jogadores. `serverTime` passa a ser lido ao fim da montagem da resposta. Novo tipo de evento `music`, sempre `masterOnly`.
 
 Erros: 400 campos/formulário; 403 sem papel Admin; 404 sem vínculo ou faixa indisponível; 409 versão, revisão, quota, duplicidade, faixa em uso ou estado; 413 tamanho; 415 formato; 429 limite. Áudio não passa por antivírus (ADR-051). Upload não é repetido automaticamente.
+
+## Continuidade, mundo e cadernos (ADR-055)
+
+Contrato completo e limites: [CAMPANHAS_CONTINUIDADE.md](CAMPANHAS_CONTINUIDADE.md). Todas as rotas abaixo exigem Verified; escritas usam antiforgery comum.
+
+POST/PUT `/api/campaigns[/{id}]` acrescentam campos opcionais `origin: new|ongoing`, `continuity` (5.000), `currentArc` (120), `firstSessionNumber` (1–1.000.000), `originalStartDate` (yyyy-MM-dd|null). GET da campanha e lista retornam os mesmos campos. Ao enviar origin na edição, data nula limpa a data original. O resumo é compartilhado com o grupo. Alterar o mínimo com sessão ativa retorna 409. Não renumera registros.
+
+Prefixo `/api/campaigns/{campaign}/workspace`:
+
+| Método / caminho | Contrato |
+| --- | --- |
+| GET `/pages?search=&kind=&page=&trash=&mine=` | Membro: páginas autorizadas, projeção sem conteúdo/segredos, vinte por página. `{items,total,page,pageSize}`. Trash só mostra itens editáveis; mine restringe ao autor atual. |
+| GET `/pages/{id}` | Página autorizada, conteúdo, segredos somente para editor, parent/children/related/backlinks filtrados, canEdit, revision e recipients somente para editor. |
+| POST `/pages`, PUT `/pages/{id}` | `{title,content,kind,visibility,secrets?,collection?,tags?,status?,parentId?,npcId?,mapId?,order?,revision?,recipients?:userId[],related?:guid[],pinned?}`. Mestre: mundo; qualquer membro: notas próprias. Related até vinte, mesma campanha e acessível. Npc/map devem pertencer à campanha; referências são privadas. PUT exige revisão atual. Retorna registro salvo ao editor. |
+| POST `/pages/{id}/trash` | Editor: `{revision,restore?:bool}`; lixeira ou restauração. 204. |
+| GET `/pages/{id}/versions` | Editor: até cinquenta `{Number,At,Snapshot}`; JSON do texto anterior, nunca para leitores compartilhados. |
+| GET `/pages/{id}/attachments` | Leitor: metadados de até dez anexos, sem bytes. |
+| POST `/pages/{id}/attachments` | Editor: multipart com um arquivo em file, sem campos adicionais. Exceção explícita de corpo até 25 MiB + 256 KiB. Scanner comum, limitador upload. |
+| GET/DELETE `/pages/{id}/attachments/{file}` | GET leitor atual: download privado; DELETE editor: exclusão definitiva, 204. |
+| GET `/past-sessions?page=` | Mestre vê todos; membro só publicados. Vinte por página. |
+| POST `/past-sessions`, PUT `/past-sessions/{id}` | Mestre: `{number,title,summary,date?,published?,revision?}`. Número exclusivo entre registros anteriores e sessões da plataforma sob bloqueio da campanha; não gera XP. |
+| GET `/atlas?page=` | Membro: publicações paginadas sem bytes. Mestre recebe também até cinquenta candidatos. |
+| POST/DELETE `/atlas/{sourceMapId}` | Mestre: publica/atualiza cópia da imagem inteira, ou recolhe. 204. |
+| GET `/atlas/{publicationId}/image` | Membro: cópia JPEG normalizada, private/no-store. |
+
+GET `/api/notebook?page=` e GET `/api/notebook/{pageId}`: somente notas do autor autenticado, mesmo após saída/exclusão da campanha; conteúdo/segredos apenas no detalhe. Leitura textual; acesso aos anexos continua exigindo vínculo à campanha.
+
+GET `/api/campaigns/{id}/journal` aceita `page` e `search` até 100 caracteres, retornando `recapTotal`, `page` e `pageSize:20`; mantém agenda/presença/entradas. Resumos continuam filtrados pela publicação. Erros novos seguem 400 validação, 403 papel, 404 acesso/recurso, 409 revisão/limite/estado, 413 tamanho, 415 formato e falhas do scanner existentes.
+
+
+## Apresentação horizontal da mesa (ADR-056)
+
+Não altera endpoints, DTOs, autorização, presença, turnos ou revisão. `GET …/live` permanece somente leitura; orientação/tela cheia são estado local transitório. A instrução de rotação em retrato não encerra nem pausa a sessão. Voltar à campanha usa o roteador e descarta os recursos locais normalmente.
+
+
+ADR-057: pan/zoom/pinça e recolhimento de propriedades são apenas apresentação local. Contratos de preparação, movimento e névoa permanecem iguais; pinça não envia movimento, pintura ou mudança de grade. Seleção e arraste com zoom continuam convertendo as coordenadas pela mesma grade do servidor.

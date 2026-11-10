@@ -4,7 +4,7 @@ const entries = {
     "title": "Arquivos da Biblioteca",
     "summary": "A equipe publica materiais após validação no servidor.",
     "body": [
-      "PDF, PNG, JPEG e WebP têm limite de 25 MiB. O servidor confere tamanho, tipo, assinatura e antivírus antes de publicar.",
+      "PDF, PNG, JPEG e WebP têm limite de 25 MiB. O servidor confere tamanho, tipo e assinatura antes de publicar e, quando disponível, passa o arquivo no antivírus.",
       "A verificação não garante ausência de toda ameaça. Os documentos exigem autenticação e não entram no cache offline."
     ],
     "audience": "all"

@@ -9,11 +9,15 @@ public sealed partial class PreparationService
 {
     // ---------- Diário da campanha ----------
     /// <summary>Visão compartilhada: resumos publicados, objetivos/pistas publicados, próxima partida e presença. Notas privadas nunca entram.</summary>
-    public async Task<object> JournalAsync(Guid campaignId, string user, CancellationToken ct)
+    public async Task<object> JournalAsync(Guid campaignId, string user, CancellationToken ct, int page = 1, string? search = null)
     {
+        page = Math.Clamp(page, 1, 100000);
+        if (search?.Length > 100) throw new RuleException(400, "Busca aceita até 100 caracteres.");
         var (c, master) = await AccessAsync(campaignId, user, false, false, ct);
-        var recaps = await db.Sessions.AsNoTracking().Where(s => s.CampaignId == campaignId && (master ? s.Recap != "" : s.RecapPublishedAt != null))
-            .OrderByDescending(s => s.Number).Take(10)
+        var recapQuery = db.Sessions.AsNoTracking().Where(s => s.CampaignId == campaignId && (master ? s.Recap != "" : s.RecapPublishedAt != null));
+        if (!string.IsNullOrWhiteSpace(search)) recapQuery = recapQuery.Where(s => s.Title.Contains(search) || s.Recap.Contains(search));
+        var recapTotal = await recapQuery.CountAsync(ct);
+        var recaps = await recapQuery.OrderByDescending(s => s.Number).Skip((page - 1) * 20).Take(20)
             .Select(s => new { s.Id, s.Number, s.Title, s.Recap, s.RecapPublishedAt, s.StartedAt, s.EndedAt, published = s.RecapPublishedAt != null }).ToListAsync(ct);
         var entries = await db.Set<CampaignLibraryEntry>().AsNoTracking().Where(e => e.CampaignId == campaignId && (e.Kind == "objective" || e.Kind == "clue") && (master || e.Published))
             .OrderBy(e => e.Kind).ThenByDescending(e => e.UpdatedAt).Take(100)
@@ -30,7 +34,7 @@ public sealed partial class PreparationService
             myAttendance = attendance.FirstOrDefault(a => a.UserId == user)?.Status,
             attendance = attendance.Select(a => new { a.name, a.Status, isMe = a.UserId == user }),
             pending = Math.Max(0, members - attendance.Count),
-            recaps, entries,
+            recaps, entries, recapTotal, page, pageSize = 20,
         };
     }
 

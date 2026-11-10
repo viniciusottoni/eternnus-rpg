@@ -1,3 +1,4 @@
+import { mountMapGestures } from "./map-gestures.js";
 import { helpButton } from "./help.js";
 // Ajuste visual da grade de uma imagem: tamanho do quadrado e alinhamento com prévia imediata.
 // A conta das casas é a mesma do servidor (gridFor ↔ CampaignMapView.Grid). Números precisos aparecem na interface Completa.
@@ -8,7 +9,7 @@ import { gridFor } from "./scene-policy.js";
 export function gridAdjustHtml(prefix, values, { complete = false } = {}) {
   const v = { gridPixels: 64, gridOffsetX: 0, gridOffsetY: 0, scaleMeters: 1.5, ...values };
   const slider = (key, label, min, max, help) => `<div class="field grid-slider"><label for="${prefix}-${key}">${label}</label><div class="grid-slider-row"><button type="button" class="subtle small" data-grid-step="${key}|-1" aria-label="Diminuir ${esc(label.toLowerCase())}">−</button><input id="${prefix}-${key}" type="range" name="${key}" min="${min}" max="${max}" step="1" value="${Number(v[key])}" aria-describedby="${prefix}-${key}-help"><button type="button" class="subtle small" data-grid-step="${key}|1" aria-label="Aumentar ${esc(label.toLowerCase())}">+</button>${complete ? `<input type="number" class="grid-number" data-grid-number="${key}" min="${min}" max="${max}" step="1" value="${Number(v[key])}" aria-label="${esc(label)} em pixels">` : `<output data-grid-out="${key}">${Number(v[key])} px</output>`}</div><small class="form-help" id="${prefix}-${key}-help">${help}</small></div>`;
-  return `<div class="grid-adjust" data-grid-adjust><div class="grid-preview"><canvas data-grid-canvas aria-hidden="true"></canvas><p class="grid-summary" data-grid-summary role="status"></p></div>
+  return `<div class="grid-adjust" data-grid-adjust><div class="grid-zoom-controls"><button type="button" class="subtle" data-grid-zoom="out" aria-label="Afastar prévia">−</button><button type="button" class="subtle" data-grid-zoom="in" aria-label="Aproximar prévia">+</button><button type="button" class="subtle" data-grid-zoom="fit">Imagem inteira</button><small>Use dois dedos para aproximar ou afastar (1–4×).</small></div><div class="grid-preview"><canvas data-grid-canvas aria-hidden="true"></canvas><p class="grid-summary" data-grid-summary role="status"></p></div>
     ${slider("gridPixels", "Tamanho do quadrado", 8, 256, "Arraste até cada quadrado da grade dourada cobrir um quadrado do desenho.")}
     ${slider("gridOffsetX", "Alinhamento horizontal", 0, Math.max(0, Number(v.gridPixels) - 1), "Move a grade para a direita até as linhas coincidirem com o desenho.")}
     ${slider("gridOffsetY", "Alinhamento vertical", 0, Math.max(0, Number(v.gridPixels) - 1), "Move a grade para baixo até as linhas coincidirem com o desenho.")}
@@ -26,7 +27,32 @@ export function mountGridAdjust(root, src, { onChange } = {}) {
   const input = (key) => box.querySelector(`input[type=range][name="${key}"]`);
   const image = new Image();
   image.referrerPolicy = "no-referrer";
-  let ready = false;
+  let ready = false, zoom = 1;
+  const preview = box.querySelector('.grid-preview');
+  let drag = null;
+  function zoomAt(value, clientX, clientY) {
+    const rect = preview.getBoundingClientRect();
+    const x = clientX == null ? preview.clientWidth / 2 : clientX - rect.left;
+    const y = clientY == null ? preview.clientHeight / 2 : clientY - rect.top;
+    const ax = (preview.scrollLeft + x) / Math.max(1, canvas.offsetWidth);
+    const ay = (preview.scrollTop + y) / Math.max(1, canvas.offsetHeight);
+    zoom = Math.max(1, Math.min(4, value));
+    const width = Math.max(1, preview.clientWidth) * zoom;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${width * canvas.height / Math.max(1, canvas.width)}px`;
+    preview.scrollLeft = ax * canvas.offsetWidth - x;
+    preview.scrollTop = ay * canvas.offsetHeight - y;
+    preview.dataset.zoom = String(zoom);
+    box.querySelector('[data-grid-zoom="out"]').disabled = zoom <= 1;
+    box.querySelector('[data-grid-zoom="in"]').disabled = zoom >= 4;
+  }
+  const disposeGestures = mountMapGestures(preview, { scale: () => zoom, zoom: zoomAt, cancel: () => { drag = null; } });
+  const down = e => { if (e.button !== 0) return; drag = { id:e.pointerId, x:e.clientX, y:e.clientY, left:preview.scrollLeft, top:preview.scrollTop }; preview.setPointerCapture(e.pointerId); };
+  const move = e => { if (!drag || drag.id !== e.pointerId) return; preview.scrollLeft=drag.left+drag.x-e.clientX; preview.scrollTop=drag.top+drag.y-e.clientY; };
+  const up = () => { drag=null; };
+  preview.addEventListener('pointerdown',down); preview.addEventListener('pointermove',move); preview.addEventListener('pointerup',up); preview.addEventListener('pointercancel',up);
+  const resize = new ResizeObserver(() => zoomAt(zoom));
+  resize.observe(preview);
   const values = () => ({ gridPixels: Number(input("gridPixels").value), gridOffsetX: Number(input("gridOffsetX").value), gridOffsetY: Number(input("gridOffsetY").value) });
   function draw() {
     const v = values();
@@ -67,6 +93,8 @@ export function mountGridAdjust(root, src, { onChange } = {}) {
     draw();
   };
   const onClick = (e) => {
+    const zoomAction = e.target.closest('[data-grid-zoom]')?.dataset.gridZoom;
+    if (zoomAction) { zoomAt(zoomAction === 'fit' ? 1 : zoom * (zoomAction === 'in' ? 1.25 : .8)); return; }
     const b = e.target.closest("[data-grid-step]");
     if (!b) return;
     const [key, delta] = b.dataset.gridStep.split("|");
@@ -79,10 +107,10 @@ export function mountGridAdjust(root, src, { onChange } = {}) {
     ready = true;
     input("gridPixels").max = String(Math.max(8, Math.min(1024, image.naturalWidth, image.naturalHeight)));
     box.querySelector('[data-grid-number="gridPixels"]')?.setAttribute("max", input("gridPixels").max);
-    draw();
+    draw(); zoomAt(zoom);
   };
   image.onerror = () => { summary.textContent = "Não foi possível abrir a imagem para a prévia. Os números continuam valendo."; };
   image.src = src;
   draw();
-  return { values, dispose() { box.removeEventListener("input", onInput); box.removeEventListener("click", onClick); image.onload = image.onerror = null; } };
+  return { values, dispose() { disposeGestures(); resize.disconnect(); preview.removeEventListener('pointerdown',down); preview.removeEventListener('pointermove',move); preview.removeEventListener('pointerup',up); preview.removeEventListener('pointercancel',up); box.removeEventListener("input", onInput); box.removeEventListener("click", onClick); image.onload = image.onerror = null; } };
 }

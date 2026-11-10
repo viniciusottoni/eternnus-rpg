@@ -166,3 +166,8 @@ Trocar o alcance exige salvar antes de editar a camada. É recusado com a cena e
 - Mapas com a grade ajustada depois de preparados: paredes e névoa seguem as casas (`TableFog.Fit`). Marcadores fora da nova grade saem da preparação.
 - A preferência de interface é por conta, não por dispositivo.
 - Sem medição de carga nem teste em aparelho físico.
+
+
+## Câmera e identidade móvel (ADR-057)
+
+Editor de cenas e preparação de mapas/cenários compartilham câmera com a mesa: mapa ampliado em telas compactas, arraste local, pinça de dois dedos limitada e Mapa inteiro. Topo/ferramentas rolam na horizontal; Propriedades abre/recolhe a lateral sem desmontar o formulário. Toque duplo simultâneo cancela traço/arraste pendente, sem salvar ou apresentar. Ajuste de grade tem zoom de prévia 1–4×. Valores e operações de salvar/aplicar continuam nos contratos existentes.

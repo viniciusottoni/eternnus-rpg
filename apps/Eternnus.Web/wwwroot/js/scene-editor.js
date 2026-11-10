@@ -61,7 +61,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     <header class="se-top">
       <div class="field se-name">${mapOnly ? `<p class="se-map-title"><strong id="se-map-name"></strong><small>Preparação compartilhada do mapa</small></p>` : `<div class="field-label"><label for="se-name">Nome da cena</label>${helpButton("campanhas.cenas.preparacao", "Preparar e apresentar")}</div><input id="se-name" maxlength="80" required autocomplete="off" placeholder="Ex.: Ponte da travessia">`}</div>
       <div class="se-status" id="se-status" role="status" aria-live="polite"></div>
-      <div class="se-controls">${interfaceToggle("se-interface")}
+      <div class="se-controls"><button type="button" class="subtle se-properties-toggle" data-action="se-properties" aria-expanded="false">Propriedades</button>${interfaceToggle("se-interface")}
         <div class="se-actions">${button("👁 Ver como jogador", "se-preview", "", "subtle", 'aria-pressed="false"')}${button("Salvar preparação", "se-save", "", "primary")}<span id="se-apply-slot"></span></div></div>
     </header>
     <div class="se-body">
@@ -73,8 +73,10 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   const dialog = $("#modal");
   dialog.classList.add("wide", "scene-editor-modal");
   const root = dialog.querySelector(".scene-editor");
+  root.dataset.side = "closed";
   if (!mapOnly) $("#se-name").value = draft.name;
   const board = createBoard($("#se-board"), {
+    camera: $(".se-controls"),
     onToken: (t) => onToken(t),
     onCell: (c) => onCell(c),
     onPaint: (cells) => onPaint(cells),
@@ -286,7 +288,12 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     return `<form class="se-panel" data-apply-form><h3>Aplicar à cena atual${helpButton("campanhas.cenas.aplicar", "Aplicar à cena atual")}</h3><p>Escolha o que da preparação salva passa a valer na mesa agora. Os jogadores veem o resultado.</p><fieldset><legend>Aplicar</legend>${parts.map(([k, l]) => `<label class="check"><input type="checkbox" name="${k}" ${k !== "vision" ? "checked" : ""}> ${esc(l)}</label>`).join("")}${tokens ? `<label class="check"><input type="checkbox" name="tokens"> ${esc(APPLY_TOKENS.label)}</label><p class="form-help">${esc(APPLY_TOKENS.help)}</p>` : ""}</fieldset><p class="form-help">${esc(APPLY_PRESERVES)}</p>${live.mapPending ? `<div class="notice-box"><p>O cenário mudou na preparação. Trocar de cenário recomeça a exploração, então usa “Reiniciar cena”.</p>${button("Reiniciar cena com o novo cenário…", "se-restart-ask", "", "subtle")}</div>` : ""}<div class="form-actions">${button("Cancelar", "se-dismiss", "", "subtle")}<button type="submit" class="primary" ${parts.length || tokens ? "" : "disabled"}>Aplicar à mesa</button></div></form>`;
   }
 
+  function setSide(open) {
+    root.dataset.side = open ? "open" : "closed";
+    root.querySelector('[data-action="se-properties"]').setAttribute("aria-expanded", String(open));
+  }
   function renderSide() {
+    if (panel !== "overview" || applying || conflict || error || tool === "add" || tool === "npc") setSide(true);
     disposePicker(); disposePicker = () => {};
     disposeGrid?.dispose(); disposeGrid = null;
     const side = $("#se-side");
@@ -411,7 +418,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (!b || b.disabled || !root.contains(b)) return;
     const id = b.dataset.id;
     switch (b.dataset.action) {
+      case "se-properties": return setSide(root.dataset.side !== "open");
       case "se-tool": {
+        board.interact();
         if (id === "gridToggle") { grid = !grid; renderTools(); return redraw(); }
         const panels = ["scenery", "visibility", "text", "notes", "sceneSettings", "fogState", "resetExploration", "gridAdjust"];
         if (panels.includes(id)) { panel = id; pick = null; selected = null; }

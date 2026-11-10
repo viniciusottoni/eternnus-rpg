@@ -3,7 +3,7 @@ namespace Eternnus.Web;
 
 public class RuleException(int status, string message) : Exception(message) { public int Status { get; } = status; }
 /// <summary><see cref="RpgSystemId"/> é a escolha preferida; <see cref="System"/> (texto) é aceito por compatibilidade e casado pelo nome.</summary>
-public record CampaignInput(string Name, string Description, string? System = null, int Revision = 0, Guid? RpgSystemId = null, bool IsOneShot = false, string? PlayMode = null);
+public record CampaignInput(string Name, string Description, string? System = null, int Revision = 0, Guid? RpgSystemId = null, bool IsOneShot = false, string? PlayMode = null, string? Origin = null, string? Continuity = null, string? CurrentArc = null, int? FirstSessionNumber = null, DateOnly? OriginalStartDate = null);
 public record JoinInput(string Code);
 
 public class CampaignService(GameDb db, ProgressionService progression, AuditService audit)
@@ -12,6 +12,7 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
     public const int FreeCampaignsPerMaster = 3;
     static void Validate(CampaignInput x)
     {
+        if (x.Origin is not (null or "new" or "ongoing") || x.Continuity?.Length > 5000 || x.CurrentArc?.Length > 120 || x.FirstSessionNumber is < 1 or > 1000000) throw new RuleException(400, "Confira origem, resumo e número da próxima sessão.");
         if (string.IsNullOrWhiteSpace(x.Name) || x.Name.Length > 100 || x.System?.Length > 80 || x.Description == null || x.Description.Length > 5000)
             throw new RuleException(400, "Confira nome, sistema e descrição da campanha.");
     }
@@ -37,7 +38,7 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
             c.Name,
             c.System,
             c.RpgSystemId,
-            c.Description,
+            c.Description, c.Origin, c.Continuity, c.CurrentArc, c.FirstSessionNumber, c.OriginalStartDate,
             c.Revision,
             c.LastActivityAt,
             c.IsOneShot,
@@ -51,6 +52,12 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
         }).ToListAsync(ct);
         var account = await db.Users.AsNoTracking().SingleAsync(u => u.Id == user, ct);
         return new { items, total, page, pageSize = 20, limits = await AccountLimits.SummaryAsync(db, account, ct) };
+    }
+    static void ApplyContinuity(Campaign c, CampaignInput x)
+    {
+        c.Origin = x.Origin ?? c.Origin; c.Continuity = x.Continuity?.Trim() ?? c.Continuity;
+        c.CurrentArc = x.CurrentArc?.Trim() ?? c.CurrentArc; c.FirstSessionNumber = x.FirstSessionNumber ?? c.FirstSessionNumber;
+        if (x.Origin != null) c.OriginalStartDate = x.OriginalStartDate;
     }
     public async Task<Guid> CreateAsync(CampaignInput x, string user, CancellationToken ct)
     {
@@ -66,6 +73,7 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
         var suggested = TableSettings.Parse(await db.RpgSystems.Where(s => s.Id == system.Id).Select(s => s.TableSettings).SingleOrDefaultAsync(ct));
         if (x.PlayMode != null && x.PlayMode != suggested.PlayMode) c.TableSettings = (suggested with { PlayMode = x.PlayMode }).Serialize();
         await AccountLimits.ReserveAsync(db, account, c, ct);
+        ApplyContinuity(c, x);
         db.Campaigns.Add(c);
         await progression.AwardAsync(user, XpReasons.CampaignCreated, $"campaign_created:{c.Id}", ct);
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return c.Id;
@@ -78,6 +86,8 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
         // Um sistema que ficou inativo pode ser mantido pela campanha que já o usa.
         var system = await RpgSystemService.ResolveForCampaignAsync(db, x.RpgSystemId, x.System, c.RpgSystemId, ct);
         if (c.RpgSystemId != system.Id) c.SheetTemplateId = null;
+        if (x.FirstSessionNumber != null && x.FirstSessionNumber != c.FirstSessionNumber && await db.Sessions.AnyAsync(s => s.CampaignId == id && s.EndedAt == null, ct)) throw new RuleException(409, "Encerre a sessão antes de ajustar a numeração.");
+        ApplyContinuity(c, x);
         c.Name = x.Name.Trim(); c.RpgSystemId = system.Id; c.System = system.Name; c.Description = x.Description.Trim(); c.Revision++; c.LastActivityAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
@@ -105,6 +115,7 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
         if (await db.Sessions.AnyAsync(s => s.CampaignId == id && s.EndedAt == null, ct))
             throw new RuleException(409, "Encerre a sessão em andamento antes de excluir a campanha.");
         if (await db.Members.AnyAsync(x => x.CampaignId == id, ct)) throw new RuleException(409, "Não é possível excluir uma campanha com jogadores vinculados.");
+        await db.Set<WorkspacePage>().Where(p => p.CampaignId == id && p.Kind != "note").ExecuteDeleteAsync(ct);
         db.Campaigns.Remove(c); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
     /// <summary>Exclusão administrativa (moderação): ignora jogadores vinculados, mas nunca derruba uma sessão em andamento.
@@ -120,6 +131,7 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
         var sessions = await db.Sessions.CountAsync(s => s.CampaignId == id, ct);
         audit.Record(actor, "campaign.delete", "campaign", id.ToString(), $"Excluiu a campanha {c.Name}: {reason}",
             new { reason, before = new { c.Name, c.OwnerId, c.System, c.RpgSystemId, c.CreatedAt, c.LastActivityAt, members, sessions } });
+        await db.Set<WorkspacePage>().Where(p => p.CampaignId == id && p.Kind != "note").ExecuteDeleteAsync(ct);
         db.Campaigns.Remove(c); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
     public async Task<Guid> JoinAsync(string code, string user, CancellationToken ct)

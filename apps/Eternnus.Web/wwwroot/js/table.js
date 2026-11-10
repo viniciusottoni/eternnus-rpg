@@ -1,4 +1,5 @@
 import { helpButton } from "./help.js";
+import { mountTableViewport, COMPACT_TABLE } from "./table-viewport.js";
 // Mesa ao vivo (Telas 07 e 08): grupo à esquerda, mapa central, painel de registros e barra de turno.
 // Leitura por long-poll somente GET; todas as escritas passam por api.js (CSRF). O servidor decide turnos e permissões.
 import { api } from "./api.js";
@@ -155,14 +156,16 @@ function mountTable(campaignId, sessionId, isMaster) {
 
   $("#app").className = "table-app";
   $("#app").innerHTML = `<div class="table-shell">
-    <header class="table-top"><a class="table-brand" href="#campaign/${esc(campaignId)}" aria-label="Voltar à campanha"><img src="/assets/eternnus-logo.webp" alt="Eternnus RPG"></a><div class="table-title"><h1><span id="t-campaign">Mesa</span> <span class="online-badge" data-tip="A sessão está ativa; presenças aparecem no grupo." id="t-online"><i aria-hidden="true"></i>ONLINE</span></h1><p id="t-sub">Conectando à sessão…</p></div><div class="table-top-actions" id="t-top"></div><div class="session-audio-host" id="t-audio" hidden></div><div class="music-dock"></div></header>
-    <aside class="party" aria-labelledby="party-title"><h2 id="party-title"><span aria-hidden="true">⚔</span> Aventureiros <span class="count-chip" id="t-count">0 online</span></h2><ul id="t-party" class="party-list"></ul><p class="party-caption">Avatares conectados e estado atual${helpButton("mesa.mapa.legenda", "Marcadores, vida e presença")}</p></aside>
+    <header class="table-top"><a class="table-brand" href="#campaign/${esc(campaignId)}" aria-label="Voltar à campanha"><img src="/assets/eternnus-logo.webp" alt="Eternnus RPG"></a><div class="table-title"><h1><span id="t-campaign">Mesa</span> <span class="online-badge" data-tip="A sessão está ativa; presenças aparecem no grupo." id="t-online"><i aria-hidden="true"></i>ONLINE</span></h1><p id="t-sub">Conectando à sessão…</p></div><div class="table-top-scroll" role="group" aria-label="Comandos da sessão — deslize para ver mais"><button type="button" id="t-fullscreen" class="subtle" hidden>Tela cheia</button><div class="table-top-actions" id="t-top"></div><div class="session-audio-host" id="t-audio" hidden></div><div class="music-dock"></div></div></header>
+    <aside class="party" aria-labelledby="party-title" tabindex="-1"><h2 id="party-title"><span aria-hidden="true">⚔</span> Aventureiros <span class="count-chip" id="t-count">0 online</span></h2><ul id="t-party" class="party-list"></ul><p class="party-caption">Avatares conectados e estado atual${helpButton("mesa.mapa.legenda", "Marcadores, vida e presença")}</p></aside>
     <main class="stage" id="main" tabindex="-1" aria-label="Mapa da sessão"><div class="stage-chip" id="t-chip"></div><div class="stage-tools" id="t-tools" role="toolbar" aria-label="Ferramentas do mapa" aria-orientation="vertical"></div><div class="fog-palette" id="t-fog" role="toolbar" aria-label="Névoa e luz" hidden></div><div class="play-banner" id="t-banner" role="status" hidden></div><div class="pending-banner" id="t-pending" role="status" hidden></div><div class="board" id="t-board"></div><div class="turn-herald" id="t-herald" aria-hidden="true"><span></span></div><p class="stage-hint" id="t-hint" role="status"></p></main>
     <section class="side-panel" aria-label="Registros da mesa"><div class="panel-tabs" role="tablist" id="t-tabs"></div><div class="panel-body" id="t-panel" role="tabpanel" tabindex="0"></div><form id="t-chat" class="chat-form" autocomplete="off"><div class="field-label"><label class="sr-only" for="t-message">Mensagem para a mesa</label>${helpButton("mesa.chat.comandos", "Conversa e dados")}</div><input id="t-message" name="content" maxlength="2000" placeholder="Escrever mensagem… (/r 1d20+3 para rolar)" required><button type="submit" class="primary icon-send" aria-label="Enviar">➤</button></form></section>
     <div class="table-bottom"><footer class="turn-bar" id="t-turn" aria-live="polite"></footer><nav class="table-view-switch" id="t-views" aria-label="Alternar entre mapa, ficha e conversa"></nav></div>
     <div class="ended-veil" id="t-ended" hidden></div>
   </div>`;
+  const disposeViewport = mountTableViewport($("#app"), campaignId);
   const board = createBoard($("#t-board"), {
+    camera: $(".table-top-scroll"),
     onToken: (token) => onToken(token),
     onCell: (cell) => onCell(cell),
     onPaint: (cells) => onPaint(cells),
@@ -253,6 +256,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     clearInterval(beat);
     document.removeEventListener("visibilitychange", onVisible);
     board.destroy();
+    disposeViewport();
     temporaryImages.dispose();
     soundtrack.dispose();
     stopInterface();
@@ -312,7 +316,7 @@ function mountTable(campaignId, sessionId, isMaster) {
       ? `${interfaceToggle("t-interface")}${button(play.paused ? "▶ Retomar partida" : "⏸ Pausar", "t-pause", "", "subtle")}<span class="top-separator" aria-hidden="true"></span>${button("↩ Sair da tela", "t-exit", "", "subtle")}${button(live.campaign.isOneShot ? "■ Encerrar e apagar" : "■ Encerrar sessão", "t-end", "", "danger")}`
       : `${button("▣ Minha ficha", "t-my-sheet", "", "subtle")}${button("Sair da mesa", "t-exit", "", "subtle")}`;
     // Só redesenha quando muda: preserva o foco no controle de interface entre atualizações ao vivo.
-    if (top !== topHtml) { topHtml = top; $("#t-top").innerHTML = top; }
+    if (top !== topHtml) { topHtml = top; $("#t-top").innerHTML = `<a class="button subtle" href="#campaign/${esc(campaignId)}/notes" target="_blank" rel="noopener">Meu caderno</a>` + top; }
   }
 
   function renderParty(first) {
@@ -725,10 +729,10 @@ function mountTable(campaignId, sessionId, isMaster) {
     if (live.me.isMaster) {
       const people = onlinePlayers(live).length;
       const turn = turnMode
-        ? `${button("◉ Ordem", "t-order", "", "subtle")}${button("⌛ Dar a vez", "t-set-turn", "", "subtle", people ? "" : 'aria-disabled="true" data-tip="Aguarde um Jogador conectado com ficha na mesa."')}${button("➤ Próxima vez", "t-next", "", "primary", (people || play.turnOrder?.length) && !s.endedAt ? "" : 'aria-disabled="true" data-tip="Defina a ordem e aguarde um Jogador conectado em uma sessão ativa."')}`
+        ? `${button("◉ Ordem", "t-order", "", "subtle")}${button("⌛ Dar a vez", "t-set-turn", "", "subtle", people ? "" : 'aria-disabled="true" aria-describedby="t-master-why"')}${button("➤ Próxima vez", "t-next", "", "primary", (people || play.turnOrder?.length) && !s.endedAt ? "" : 'aria-disabled="true" aria-describedby="t-master-why"')}`
         : "";
       $("#t-turn").innerHTML =
-        `<div class="turn-who">${active ? `<img class="avatar" src="${esc(active.avatarUrl)}" alt="">` : '<span class="turn-crest" aria-hidden="true">♛</span>'}<div><strong>${turnMode ? (activeLabel ? "Vez de " + esc(activeLabel) : "Narrativa do mestre") : "Condução livre"}</strong><small>${esc(modeLabel(play.mode))}${turnMode ? ` · turno ${s.turnNumber || "—"}` : ""}${play.scene ? ` · cena: ${esc(play.scene.name)}` : ""}</small></div></div><div class="turn-actions">${helpButton("mesa.turnos.ordem", "Ordem e vez")}${button("▤ Cenas", "t-scenes", "", "subtle")}${button("✦ Pedir teste", "t-request", "", "subtle", people ? "" : 'aria-disabled="true" data-tip="Aguarde um Jogador conectado com ficha na mesa."')}${button("⬡ Rolar", "t-roll-builder", "", "subtle")}${button("✎ Nota", "t-note", "", "subtle")}${ui === "complete" ? button("♙ Ficha", "t-open-sheet", "", "subtle", people ? "" : 'aria-disabled="true" data-tip="Aguarde um Jogador conectado com ficha na mesa."') : ""}${turn}</div>`;
+        `<div class="turn-who">${active ? `<img class="avatar" src="${esc(active.avatarUrl)}" alt="">` : '<span class="turn-crest" aria-hidden="true">♛</span>'}<div><strong>${turnMode ? (activeLabel ? "Vez de " + esc(activeLabel) : "Narrativa do mestre") : "Condução livre"}</strong><small>${esc(modeLabel(play.mode))}${turnMode ? ` · turno ${s.turnNumber || "—"}` : ""}${play.scene ? ` · cena: ${esc(play.scene.name)}` : ""}</small></div></div><div class="turn-actions">${helpButton("mesa.turnos.ordem", "Ordem e vez")}${button("▤ Cenas", "t-scenes", "", "subtle")}${button("✦ Pedir teste", "t-request", "", "subtle", people ? "" : 'aria-disabled="true" aria-describedby="t-master-why"')}${button("⬡ Rolar", "t-roll-builder", "", "subtle")}${button("✎ Nota", "t-note", "", "subtle")}${ui === "complete" ? button("♙ Ficha", "t-open-sheet", "", "subtle", people ? "" : 'aria-disabled="true" aria-describedby="t-master-why"') : ""}${turn}</div>${!people || s.endedAt ? `<p class="turn-why" id="t-master-why">${s.endedAt ? "A sessão foi encerrada." : "Aguarde um jogador conectado com ficha. Para avançar, também é possível preparar a ordem."}</p>` : ""}`;
       return;
     }
     const me = live.participants.find((p) => p.isMe);
@@ -1089,7 +1093,7 @@ function mountTable(campaignId, sessionId, isMaster) {
   function openSoundtrackTab() {
     if (!live) return;
     tab = "soundtrack";
-    if (mobileView === "map" && matchMedia("(max-width: 900px)").matches) mobileView = "chat";
+    if (mobileView === "map" && matchMedia(COMPACT_TABLE).matches) mobileView = "chat";
     renderTabs(); renderPanel(); renderViews();
     $("#tab-soundtrack")?.focus();
   }
@@ -1098,7 +1102,7 @@ function mountTable(campaignId, sessionId, isMaster) {
   async function openScenesTab(then) {
     const reopened = tab === "scenes";
     tab = "scenes";
-    if (mobileView === "map" && matchMedia("(max-width: 900px)").matches) mobileView = "chat";
+    if (mobileView === "map" && matchMedia(COMPACT_TABLE).matches) mobileView = "chat";
     renderTabs(); renderPanel(); renderViews();
     $("#tab-scenes")?.focus();
     if (reopened && scenesPanel?.host) scenesPanel.ctl.reload().catch(() => {});

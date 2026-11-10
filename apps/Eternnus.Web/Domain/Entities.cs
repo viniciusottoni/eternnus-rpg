@@ -61,6 +61,11 @@ public class CharacterVersion
 }
 public class Campaign
 {
+    [MaxLength(12)] public string Origin { get; set; } = "new";
+    [MaxLength(5000)] public string Continuity { get; set; } = "";
+    [MaxLength(120)] public string CurrentArc { get; set; } = "";
+    public int FirstSessionNumber { get; set; } = 1;
+    public DateOnly? OriginalStartDate { get; set; }
     public bool IsOneShot { get; set; }
     public DateTime? ExpiresAt { get; set; }
     public DateTime? MasterLastSeenAt { get; set; }

@@ -104,6 +104,7 @@ public static class ServiceRegistration
         builder.Services.AddHostedService<MailWorker>();
         builder.Services.AddSingleton<TemporaryImageRelay>();
         builder.Services.AddScoped<CampaignAssetsService>();
+        builder.Services.AddScoped<WorkspaceService>();
         builder.Services.AddSingleton(_ => MusicStorage.FromConfiguration(builder.Configuration, builder.Environment)); builder.Services.AddScoped<MusicCatalogService>();
         builder.Services.AddHostedService<MusicStorageSweeper>();
         builder.Services.AddScoped<OneShotLifecycleService>();

@@ -43,6 +43,7 @@ public sealed class OneShotLifecycleService(GameDb db, SessionSignals signals, T
                 await db.Entry(campaign).ReloadAsync(ct);
                 if (Expired(campaign, now))
                 {
+                    await db.Set<WorkspacePage>().Where(p => p.CampaignId == campaign.Id && p.Kind != "note").ExecuteDeleteAsync(ct);
                     db.Campaigns.Remove(campaign);
                     await db.SaveChangesAsync(ct);
                     removed++;

@@ -2739,7 +2739,9 @@ dialog::backdrop { background: #060c0bd1; backdrop-filter: blur(5px); }
 .field-label > label, .field-label > span { flex: 0 1 auto; margin: 0; }
 .field-label > label.check { margin: 0; }
 /* ⓘ discreto: 18 px visíveis; a área de toque cresce por pseudo-elemento sem empurrar o layout. */
-button.help-button, .help-button { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; width: 18px; height: 18px; min-width: 18px; min-height: 18px; padding: 0; margin: 0 0 0 .4em; vertical-align: .12em; color: var(--gold); background: transparent; border: 1px solid #c6a46399; border-radius: 50%; box-shadow: none; cursor: pointer; transform: none; transition: color var(--motion-fast), border-color var(--motion-fast), background var(--motion-fast); }
+/* Invariante do componente: regras de botões/formulários não podem esticar o círculo.
+   O alvo de toque de 44 px continua no ::before, independente do círculo visível. */
+button.help-button, .help-button { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 18px !important; box-sizing: border-box; width: 18px !important; height: 18px !important; min-width: 18px !important; min-height: 18px !important; max-width: 18px !important; max-height: 18px !important; aspect-ratio: 1; padding: 0 !important; align-self: center; margin: 0 0 0 .4em; vertical-align: .12em; color: var(--gold); background: transparent; border: 1px solid #c6a46399; border-radius: 50%; box-shadow: none; cursor: pointer; transform: none; transition: color var(--motion-fast), border-color var(--motion-fast), background var(--motion-fast); }
 .help-button::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; }
 .help-button span { font: italic 600 11px/1 var(--serif); letter-spacing: 0; }
 button.help-button:hover, button.help-button[aria-expanded="true"] { color: var(--bright); border-color: var(--bright); background: #c6a4631f; transform: none; box-shadow: none; }
@@ -2921,3 +2923,14 @@ html:has(#splash:popover-open) dialog, html:has(#splash:popover-open) dialog::ba
   background: #c6a46326;
   color: var(--bright);
 }
+
+/* Acervo e cadernos: leitura longa com os tokens e superfícies compartilhados. */
+.workspace-prose { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; max-width: 75ch; }
+.workspace-list { display: grid; gap: 1rem; }
+.workspace-list > li { padding: 1rem; }
+.atlas-image { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; margin-block: 1rem; }
+
+.workspace-pagination { flex-wrap: wrap; }
+.workspace-pagination > * { flex-shrink: 0; }
+
+.workspace-entry { padding: 1rem; margin-block: 1rem; }

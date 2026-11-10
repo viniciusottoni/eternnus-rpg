@@ -66,11 +66,12 @@ try {
       // Ao lado de um controle (ex.: Instalar app), mede a partir da borda do controle, não do texto dentro dele.
       const prev = b.previousElementSibling, control = prev && prev.matches('button, a, input, select') && prev.nextSibling === b ? prev.getBoundingClientRect() : null;
       const last = control || [...range.getClientRects()].filter((x) => x.width > 0 && x.height > 0).at(-1);
-      return { key: b.dataset.help, size: Math.round(r.width), gap: last ? Math.round(r.left - last.right) : null, dy: last ? Math.round(r.top + r.height / 2 - (last.top + last.height / 2)) : null };
+      return { key: b.dataset.help, size: Math.round(r.width), w: +r.width.toFixed(1), h: +r.height.toFixed(1), radius: getComputedStyle(b).borderRadius, gap: last ? Math.round(r.left - last.right) : null, dy: last ? Math.round(r.top + r.height / 2 - (last.top + last.height / 2)) : null };
     }));
     check(items.length > 0, name+' tem ⓘ');
     for (const i of items) {
       check(i.size <= 20, `${name} ${i.key} discreto (${i.size}px)`);
+      check(Math.abs(i.w - i.h) <= 0.5 && i.radius === '50%', `${name} ${i.key} circular (${i.w}x${i.h}, ${i.radius})`);
       if (i.gap !== null) check(i.gap >= 0 && i.gap <= 16 && Math.abs(i.dy) <= 10, `${name} ${i.key} ao lado do texto (gap ${i.gap}, dy ${i.dy})`);
     }
   }

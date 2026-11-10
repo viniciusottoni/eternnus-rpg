@@ -176,7 +176,10 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         if (campaign.ArchivedAt != null) throw new RuleException(409, "Esta campanha está arquivada. Restaure-a antes de iniciar uma sessão.");
         if (await db.Sessions.AnyAsync(s => s.CampaignId == campaignId && s.EndedAt == null, ct)) throw new RuleException(409, "Já existe uma sessão em andamento nesta campanha.");
         var map = await ResolveMapAsync(campaignId, x.MapKind, x.MapKey, ct);
-        var number = (await db.Sessions.Where(s => s.CampaignId == campaignId).MaxAsync(s => (int?)s.Number, ct) ?? 0) + 1;
+        var liveMax = await db.Sessions.Where(s => s.CampaignId == campaignId).MaxAsync(s => (int?)s.Number, ct) ?? 0;
+        var pastMax = await db.Set<PastSession>().Where(s => s.CampaignId == campaignId).MaxAsync(s => (int?)s.Number, ct) ?? 0;
+        var first = await db.Campaigns.Where(c => c.Id == campaignId).Select(c => c.FirstSessionNumber).SingleAsync(ct);
+        var number = Math.Max(first, Math.Max(liveMax, pastMax) + 1);
         // A forma de condução fica fixa na sessão: mudar a campanha depois não altera regras de uma partida em andamento.
         var playMode = (await Fog.CampaignSettingsAsync(campaign, ct)).PlayMode;
         var session = new GameSession { CampaignId = campaignId, Number = number, Title = title, Objective = objective, StartedAt = Now, MapKind = map.Kind, MapKey = map.Key, PlayMode = playMode };

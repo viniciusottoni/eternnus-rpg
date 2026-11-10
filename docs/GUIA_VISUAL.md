@@ -137,7 +137,7 @@ No desktop (acima de 760 px), a barra lateral ocupa ao menos a altura da tela e,
 
 No shell móvel (até 760 px), a faixa da marca tem 78 px mais a área segura superior. Logo e subtítulo ficam centralizados, com espaçamento vertical compacto. Avatar, nome, status, nível e “Sair da conta” ficam no painel “Mais”; os mesmos elementos retornam à barra lateral ao ampliar a tela, sem duplicação. O painel rola em telas baixas, mantém alvos de 44 px e devolve o foco ao botão “Mais” quando fechado com Esc.
 
-Mesa no celular (≤ 900 px): topo com ações em linha própria; grupo em faixa horizontal com rolagem por cartão; mapa com altura proporcional à largura; painel abaixo; barra de turno fixa no rodapé com comandos roláveis horizontalmente e alvos de 44 px, somando `safe-area-inset-bottom`. A mesa não exibe a navegação inferior geral (ADR-019).
+Mesa no celular (ADR-056): orientação horizontal obrigatória em toque até 1200 px, com instrução de rotação e saída acessível em retrato. Layout compacto até 900 px ou toque até 1200 px: topo de uma linha com ações roláveis, mapa central, painéis de grupo/ficha/conversa à direita sob demanda; Mapa recolhe os painéis. Rodapé em área reservada do grid (sem sobreposição), comandos horizontais e navegação inferior de 44 px, com áreas seguras. Altura usa 100dvh e painéis rolam internamente. Tela cheia tenta fixar a orientação; recusa/suporte ausente mantém rotação manual. A mesa não exibe a navegação inferior geral (ADR-019).
 
 Um novo componente precisa ser descrito aqui com finalidade, estados e comportamento móvel antes de virar padrão para outras telas.
 
@@ -203,7 +203,7 @@ Estados obrigatórios da ajuda: catálogo carregando, falha curta com nova tenta
 | Estado da preparação | Chips de texto: "Prévia privada — somente você vê.", "Em apresentação — os jogadores estão vendo esta cena.", "Alterações não salvas", "Alterações não aplicadas à mesa.". |
 | Paleta ao vivo | Título do grupo, "Ao vivo: os jogadores veem as mudanças." e "Concluir". Ajuda curta e honesta sobre "Cobrir área". |
 | Ações destrutivas | "Reiniciar cena…", "Remover da cena" e "Excluir cena" ficam em "Mais opções" ou no fim do painel, como links de texto; "Encerrar sessão" fica isolado no topo. |
-| Celular (< 900 px) | Editor em tela cheia, ferramentas numa faixa horizontal com "Categoria" (uma por vez), prévia antes das propriedades; na mesa, vista Mapa com o tabuleiro logo após o topo (grupo do mestre na aba Grupo), aviso de pendência numa linha e trilho horizontal sobre o mapa; alvos de 44 px. |
+| Celular (< 900 px) | Editor em tela cheia, ferramentas numa faixa horizontal com "Categoria" (uma por vez), prévia antes das propriedades; na mesa, aplicar a composição horizontal da ADR-056 (mapa central, painéis laterais sob demanda e rodapé reservado); alvos de 44 px. |
 
 Cartões de cena (campanha e mesa) usam miniaturas reais de `mapThumbnail` e o estado em texto (Preparada, Já visitada, Em apresentação). Regras completas em [CENAS_EDITOR.md](CENAS_EDITOR.md).
 
@@ -230,3 +230,14 @@ Celular (≤ 900 px): o selo ocupa linha própria no topo; alvos de 44 px no sel
 - **Foco em áreas com rolagem** (corpo do modal, colunas do editor, abas, tabelas): contorno interno com faixa escura, para manter contraste no dourado. O tabuleiro usa contorno interno.
 - **Verificação automática:** `tests/forms-ui.mjs` (páginas) e `tests/modals-ui.mjs` (modais) aplicam `tests/support/form-alignment.mjs`. Controles na mesma linha precisam ter topo e base iguais (±1,5 px), e nenhum anel de foco pode ser cortado na borda do conteúdo rolável.
 
+
+## Acervo e continuidade
+
+CAMPANHAS_CONTINUIDADE.md descreve abas principais, coleções, leitura longa (.workspace-prose), capítulos e atlas. Reutiliza superfícies metal, tokens, modais, fields, feedback e navegação móvel. Segredos em details; instruções essenciais de compartilhamento e publicação de imagem inteira sempre visíveis. Rascunhos privados sinalizam salvando/salvo/falha; alterações compartilhadas exigem gravação explícita.
+
+
+## Câmera e barras de mapa (ADR-057)
+
+Ajuda visual fixa em círculo de 18×18 px em todas as telas, inclusive dentro de botões/legendas com altura mínima de 44 px. A área de toque da ajuda continua independente. Mesa: topo e rodapé têm faixas laterais roláveis, sem quebra de botões; o mapa compacto abre preenchendo a área útil com proporção preservada. Arrastar mapa percorre a visão local; Mapa inteiro reencaixa o cenário, ± e pinça alteram escala limitada. Partes fora da janela são acessíveis por rolagem/pan.
+
+Preparação de cenas e de mapas/cenários reutiliza a mesma câmera, comandos com rolagem e propriedades recolhíveis. O mapa ocupa o espaço restante do modal em paisagem; em retrato propriedades abertas ficam abaixo da prévia. Ajuste de grade oferece pinça e ± de 1–4× só na imagem. Todo gesto preserva dimensões da grade e dados.

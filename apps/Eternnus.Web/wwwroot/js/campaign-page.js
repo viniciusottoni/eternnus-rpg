@@ -26,8 +26,12 @@ const TABS = [
   ["overview", "Visão geral", false],
   ["journal", "Diário", false],
   ["sessions", "Sessões", true],
-  ["prep", "Cenas e personagens", true],
-  ["players", "Jogadores", false],
+  ["prep", "Preparação", true],
+  ["players", "Grupo", false],
+  ["world", "Mundo e acervo", false],
+  ["notes", "Minhas notas", false],
+  ["past", "Antes do Eternnus", false],
+  ["atlas", "Atlas compartilhado", false],
   ["resources", "Bibliotecas", false],
   ["maps", "Mapas e cenários", true],
   ["table", "Configuração da mesa", true],
@@ -59,8 +63,8 @@ export async function renderCampaignPage(id, tab = "overview") {
   $("#main").innerHTML =
     `${detail.isOneShot ? '<a class="back-link" href="#one-shot">← One-shots</a>' : '<a class="back-link" href="#campaigns">← Minhas campanhas</a>'}
   <section class="campaign-hero metal"><div class="campaign-hero-copy"><span class="eyebrow">${esc(detail.system)}</span><h1>${esc(detail.name)}</h1>${detail.archived ? '<p class="notice-box">Campanha arquivada: conteúdo e histórico preservados, sem novas partidas até ser restaurada.</p>' : ""}<p>${esc(detail.description || "Uma nova história aguarda seu primeiro capítulo.")}</p><div class="hero-meta"><span>♛ <b>Mestre:</b> ${esc(masterName)}</span><span>♙ <b>${detail.members.length}</b> ${detail.members.length === 1 ? "jogador" : "jogadores"}</span>${detail.isMaster && !detail.isOneShot ? `<span>▣ <b>${detail.sessionCount}</b> ${detail.sessionCount === 1 ? "sessão" : "sessões"}</span>` : ""}${online ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>ONLINE</span>' : ""}</div></div>${online ? `<a class="button primary enter-table" href="#table/${esc(id)}">▶ ${detail.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>` : ""}</section>
-  <nav class="page-tabs" aria-label="Seções da campanha">${visible.map(([key, label]) => `<a href="#campaign/${esc(id)}/${key}" ${key === tab ? 'aria-current="page" class="active"' : ""}>${label}</a>`).join("")}</nav>
-  <div class="campaign-page-grid"><section id="campaign-tab" class="campaign-tab" aria-live="polite"></section>${overviewCard(detail)}</div>`;
+  <nav class="page-tabs" aria-label="Seções da campanha">${visible.filter(([key]) => ["overview","journal","world","players","prep","notes"].includes(key) || key === tab).map(([key, label]) => `<a href="#campaign/${esc(id)}/${key}" ${key === tab ? 'aria-current="page" class="active"' : ""}>${label}</a>`).join("")}</nav>
+  <div class="form-actions">${detail.isMaster ? `<a class="button subtle" href="#campaign/${esc(id)}/settings">Configurações</a><a class="button subtle" href="#campaign/${esc(id)}/table">Configuração da mesa</a>` : ""}</div><div class="campaign-page-grid"><section id="campaign-tab" class="campaign-tab" aria-live="polite"></section>${overviewCard(detail)}</div>`;
   await renderTab(detail, tab);
   guardAvatars($("#main"));
   if (detail.isOneShot) $(".campaign-hero-copy").insertAdjacentHTML("beforeend", `<p class="notice-box">One-shot: se o mestre se desconectar, a mesa espera ${detail.recoveryMinutes || 10} minutos antes de ser removida. Encerrar apaga os dados; converter em campanha preserva tudo. Prazo máximo: ${esc(new Date(detail.expiresAt).toLocaleString("pt-BR"))}.</p>`);
@@ -94,21 +98,24 @@ async function renderTab(d, tab) {
     }${d.isMaster ? inviteBox(d) : ""}`;
     return;
   }
+  if (tab === "world" || tab === "notes") return (await import("./campaign-workspace.js")).renderWorkspace(d, target, tab === "notes");
+  if (tab === "atlas") return (await import("./campaign-workspace.js")).renderAtlas(d, target);
+  if (tab === "past") return (await import("./campaign-workspace.js")).renderPast(d, target);
   if (tab === "resources") return renderCampaignLibrary(d, target);
   if (tab === "prep") return (await import("./campaign-prep.js")).renderPrep(d, target);
-  if (tab === "journal") return (await import("./campaign-prep.js")).renderJournal(d, target);
+  if (tab === "journal") { target.innerHTML = `<div class="form-actions"><a class="button subtle" href="#campaign/${esc(d.id)}/past">Antes do Eternnus</a>${d.isMaster ? `<a class="button subtle" href="#campaign/${esc(d.id)}/sessions">Histórico das sessões</a>` : ""}</div><div id="cp-journal"></div>`; return (await import("./campaign-prep.js")).renderJournal(d, $("#cp-journal")); }
   if (tab === "maps") return renderCampaignMaps(d, target);
   if (tab === "table") return (await import("./fog-editor.js")).renderTableSettingsTab(d, target);
   if (tab === "settings") {
-    target.innerHTML = `<div class="section-title"><h2>Configurações${helpButton("campanhas.config.arquivamento", "Arquivar e restaurar")}</h2></div><div class="settings-list"><article class="metal"><h3>Identidade da campanha</h3><p class="muted small">Nome, sistema e premissa.</p>${button("Editar campanha", "cp-edit", d.id, "subtle")}</article>${inviteBox(d)}${d.isOneShot ? `<article class="metal"><h3>Continuar depois</h3><p class="muted small">Converta em campanha persistente para guardar sessão, fichas, mapas e histórico. Usa uma das suas vagas de campanha; jogadores sem vaga podem voltar pelo convite.</p>${button("Converter em campanha", "cp-convert", d.id, "primary")}</article><article class="metal danger-zone"><h3>Encerrar one-shot</h3><p class="muted small">Encerre a sessão na mesa ou pela página One-shot. Todo o conteúdo da mesa é apagado; fichas pessoais são preservadas.</p><a class="button subtle" href="#one-shot">Ir para One-shot</a></article>` : `<article class="metal"><h3>${d.archived ? "Restaurar campanha" : "Arquivar campanha"}</h3><p class="muted small">${d.archived ? "Volta a permitir sessões e preparação. A campanha arquivada já ocupa sua vaga, então restaurar não ultrapassa o limite." : "Guarda conteúdo e histórico e impede novas partidas. A campanha continua contando no limite de campanhas."}</p>${button(d.archived ? "Restaurar" : "Arquivar", d.archived ? "cp-restore" : "cp-archive", d.id, "subtle", d.activeSession ? 'aria-disabled="true" data-tip="Encerre a sessão em andamento antes"' : "")}</article><article class="metal danger-zone"><h3>Excluir campanha</h3><p class="muted small">${d.members.length ? "Indisponível enquanto houver jogadores vinculados." : "Sessões, registros e recursos serão apagados. Fichas pessoais são preservadas."}</p>${button("Excluir campanha", "cp-delete", d.id, "danger", d.members.length ? "disabled" : "")}</article>`}</div>`;
+    target.innerHTML = `<div class="section-title"><h2>Configurações${helpButton("campanhas.config.arquivamento", "Arquivar e restaurar")}</h2></div><div class="settings-list"><article class="metal"><h3>Identidade da campanha</h3><p class="muted small">Nome, sistema, premissa, origem e continuidade.</p>${button("Editar campanha", "cp-edit", d.id, "subtle")}</article>${inviteBox(d)}${d.isOneShot ? `<article class="metal"><h3>Continuar depois</h3><p class="muted small">Converta em campanha persistente para guardar sessão, fichas, mapas e histórico. Usa uma das suas vagas de campanha; jogadores sem vaga podem voltar pelo convite.</p>${button("Converter em campanha", "cp-convert", d.id, "primary")}</article><article class="metal danger-zone"><h3>Encerrar one-shot</h3><p class="muted small">Encerre a sessão na mesa ou pela página One-shot. Todo o conteúdo da mesa é apagado; fichas pessoais são preservadas.</p><a class="button subtle" href="#one-shot">Ir para One-shot</a></article>` : `<article class="metal"><h3>${d.archived ? "Restaurar campanha" : "Arquivar campanha"}</h3><p class="muted small">${d.archived ? "Volta a permitir sessões e preparação. A campanha arquivada já ocupa sua vaga, então restaurar não ultrapassa o limite." : "Guarda conteúdo e histórico e impede novas partidas. A campanha continua contando no limite de campanhas."}</p>${button(d.archived ? "Restaurar" : "Arquivar", d.archived ? "cp-restore" : "cp-archive", d.id, "subtle", d.activeSession ? 'aria-disabled="true" data-tip="Encerre a sessão em andamento antes"' : "")}</article><article class="metal danger-zone"><h3>Excluir campanha</h3><p class="muted small">${d.members.length ? "Indisponível enquanto houver jogadores vinculados." : "Sessões, registros e recursos serão apagados. Fichas pessoais são preservadas."}</p>${button("Excluir campanha", "cp-delete", d.id, "danger", d.members.length ? "disabled" : "")}</article>`}</div>`;
     await templateSettings(d, target);
     return;
   }
   const firstSteps = d.isMaster && !d.isOneShot && !d.archived && !d.sessionCount
-    ? `<article class="first-steps metal"><h3>Primeiros passos</h3><ol><li><strong>Convide o grupo</strong> — envie o link abaixo.${inviteLink(d)}</li><li><strong>Ficha</strong> — as fichas nascem com o modelo sugerido pelo sistema. <a href="#campaign/${esc(d.id)}/settings">Trocar ou criar um modelo simples</a>.</li><li><strong>Cenário (opcional)</strong> — <a href="#campaign/${esc(d.id)}/prep">prepare uma cena</a> ou comece direto.</li><li>${button("✦ Iniciar a primeira sessão", "cp-start", d.id, "primary small")}</li></ol><p class="form-help">Configurações avançadas (névoa, luz, ordem de turnos) ficam disponíveis quando você precisar.</p></article>`
+    ? `<article class="first-steps metal"><h3>Primeiros passos</h3><ol><li><strong>Convide o grupo</strong> — envie o link abaixo.${inviteLink(d)}</li><li><strong>Ficha</strong> — as fichas nascem com o modelo sugerido pelo sistema. <a href="#campaign/${esc(d.id)}/settings">Trocar ou criar um modelo simples</a>.</li><li><strong>Cenário (opcional)</strong> — <a href="#campaign/${esc(d.id)}/prep">prepare uma cena</a> ou comece direto.</li><li>${button("✦ Iniciar próxima sessão", "cp-start", d.id, "primary small")}</li></ol><p class="form-help">Configurações avançadas (névoa, luz, ordem de turnos) ficam disponíveis quando você precisar.</p></article>`
     : "";
   const next = d.nextSessionAt ? `<article class="metal next-session"><h3>Próxima partida</h3><p><strong>${esc(new Date(d.nextSessionAt).toLocaleString("pt-BR", { weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit" }))}</strong></p><a class="text-button" href="#campaign/${esc(d.id)}/journal">${d.isMaster ? "Ver confirmações" : "Confirmar presença"} →</a></article>` : "";
-  target.innerHTML = `${firstSteps}${d.isMaster ? "" : `<a class="button primary" href="#character/new/${esc(d.id)}">+ Criar ficha com o modelo da campanha</a>`}${next}<div class="section-title"><h2>Visão geral</h2></div><article class="overview-story metal"><h3>Premissa</h3><p>${esc(d.description || "A premissa desta campanha ainda será escrita.")}</p></article>${
+  target.innerHTML = `${d.continuity || d.currentArc ? `<article class="metal"><h3>Onde paramos${d.currentArc ? " — " + esc(d.currentArc) : ""}</h3><p class="workspace-prose">${esc(d.continuity || "O resumo ainda será escrito.")}</p></article>` : ""}${firstSteps}${d.isMaster ? "" : `<a class="button primary" href="#character/new/${esc(d.id)}">+ Criar ficha com o modelo da campanha</a>`}${next}<div class="section-title"><h2>Visão geral</h2></div><article class="overview-story metal"><h3>Premissa</h3><p>${esc(d.description || "A premissa desta campanha ainda será escrita.")}</p></article>${
     d.activeSession
       ? `<article class="live-callout metal"><span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>Sessão em andamento</span><h3>${esc(sessionLabel(d.activeSession.number, d.activeSession.title))}</h3><p class="muted small">Iniciada em ${formatDate(d.activeSession.startedAt)}.</p><a class="button primary" href="#table/${esc(d.id)}">▶ ${d.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a></article>`
       : d.isOneShot
@@ -164,7 +171,8 @@ async function startSessionModal(campaignId) {
     api(`/campaigns/${campaignId}/maps`),
     api(`/campaigns/${campaignId}/sessions?page=1`),
   ]);
-  const next = (list.items[0]?.number || 0) + 1;
+  const past = await api(`/campaigns/${campaignId}/workspace/past-sessions?page=1`);
+  const next = Math.max(state.campaign?.firstSessionNumber || 1, (list.items[0]?.number || 0) + 1, (past.items[0]?.number || 0) + 1);
   const choices = maps.items;
   const firstTileset = choices.find((m) => m.kind === "tileset") || choices[0];
   modal(

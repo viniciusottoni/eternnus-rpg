@@ -68,7 +68,12 @@ public static class ClamAvClient
         try
         {
             using var client = new TcpClient();
-            await client.ConnectAsync(host, port, timeout.Token);
+            // Conexão recusada/inalcançável deve falhar rápido; a varredura em si mantém o teto de 30 s.
+            using (var connect = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token))
+            {
+                connect.CancelAfter(TimeSpan.FromSeconds(5));
+                await client.ConnectAsync(host, port, connect.Token);
+            }
             await using var stream = client.GetStream();
             await stream.WriteAsync("zINSTREAM\0"u8.ToArray(), timeout.Token);
             var header = new byte[4];

@@ -32,7 +32,7 @@ public static class GameApi
                 c.System,
                 c.RpgSystemId,
                 c.SheetTemplateId,
-                c.Description,
+                c.Description, c.Origin, c.Continuity, c.CurrentArc, c.FirstSessionNumber, c.OriginalStartDate,
                 c.Revision,
                 c.IsOneShot,
                 c.ExpiresAt,

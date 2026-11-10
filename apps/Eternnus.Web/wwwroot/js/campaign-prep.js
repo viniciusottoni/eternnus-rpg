@@ -70,9 +70,9 @@ async function npcModal(d, npc, done) {
 }
 
 // ---------- Diário ----------
-export async function renderJournal(d, target) {
+export async function renderJournal(d, target, page = 1, search = "") {
   target.innerHTML = '<p class="loading-line" role="status">Abrindo o diário…</p>';
-  const j = await api(`/campaigns/${d.id}/journal`);
+  const j = await api(`/campaigns/${d.id}/journal?page=${page}&search=${encodeURIComponent(search)}`);
   if (!target.isConnected) return;
   const master = j.campaign.isMaster;
   const objectives = j.entries.filter((e) => e.kind === "objective");
@@ -83,11 +83,14 @@ export async function renderJournal(d, target) {
   <article class="metal next-session">${j.nextSession ? `<p class="next-date"><strong>${esc(localDateTime(j.nextSession.at))}</strong> <small>(seu horário${browserZone() ? ": " + esc(browserZone()) : ""})</small></p>${j.nextSession.note ? `<p class="small">${esc(j.nextSession.note)}</p>` : ""}${master ? `<p class="small">Confirmações: ${j.attendance.map((a) => `${esc(a.name)} — ${esc(status[a.status] || a.status)}`).join(" · ") || "nenhuma ainda"}${j.pending ? ` · ${j.pending} sem resposta` : ""}</p>` : `<div class="attendance" role="group" aria-label="Confirmar presença">${Object.entries(status).map(([v, l]) => `<button type="button" class="${j.myAttendance === v ? "primary" : "subtle"} small" data-action="jr-attend" data-id="${v}" aria-pressed="${j.myAttendance === v}">${l}</button>`).join("")}</div>${j.attendance.length ? `<p class="small muted">${j.attendance.map((a) => `${esc(a.name)}: ${esc(status[a.status] || a.status)}`).join(" · ")}</p>` : ""}`}` : `<p class="muted small">${master ? "Marque a próxima partida para os jogadores confirmarem presença." : "O mestre ainda não marcou a próxima partida."}</p>`}</article>
   <div class="section-title"><h2>Objetivos</h2>${master ? button("+ Objetivo", "jr-new", "objective", "subtle small", d.archived ? "disabled" : "") : ""}</div>${objectives.length ? `<ul class="journal-list">${objectives.map(entry).join("")}</ul>` : '<p class="muted small">Nenhum objetivo conhecido ainda.</p>'}
   <div class="section-title"><h2>Pistas</h2>${master ? button("+ Pista", "jr-new", "clue", "subtle small", d.archived ? "disabled" : "") : ""}</div>${clues.length ? `<ul class="journal-list">${clues.map(entry).join("")}</ul>` : '<p class="muted small">Nenhuma pista registrada.</p>'}
-  <div class="section-title"><h2>Resumos das sessões</h2></div>${j.recaps.length ? `<ul class="journal-list">${j.recaps.map((r) => `<li class="metal"><strong>Sessão ${String(r.number).padStart(2, "0")} — ${esc(r.title)}</strong>${master && !r.published ? ' <span class="chip">não publicado</span>' : ""}<p class="small recap">${esc(r.recap)}</p>${master ? button("Editar resumo", "jr-recap", r.id, "text-button small") : ""}</li>`).join("")}</ul>` : `<p class="muted small">${master ? "Escreva o resumo pela lista de sessões ou ao encerrar uma partida." : "Os resumos publicados pelo mestre aparecem aqui."}</p>`}`;
+  <div class="section-title"><h2>Resumos das sessões</h2></div><form id="jr-search"><div class="field"><label for="jr-search-text">Buscar nos resumos</label><input id="jr-search-text" name="search" maxlength="100" value="${esc(search)}"></div><button type="submit" class="subtle">Buscar</button></form>${j.recaps.length ? `<ul class="journal-list">${j.recaps.map((r) => `<li class="metal"><strong>Sessão ${String(r.number).padStart(2, "0")} — ${esc(r.title)}</strong>${master && !r.published ? ' <span class="chip">não publicado</span>' : ""}<p class="small recap">${esc(r.recap)}</p>${master ? button("Editar resumo", "jr-recap", r.id, "text-button small") : ""}</li>`).join("")}</ul>` : `<p class="muted small">${master ? "Escreva o resumo pela lista de sessões ou ao encerrar uma partida." : "Os resumos publicados pelo mestre aparecem aqui."}</p>`}`;
+  target.insertAdjacentHTML("beforeend", `<div class="pagination">${button("← Anterior", "jr-page", page - 1, "subtle", page <= 1 ? "disabled" : "")}<span>Página ${page}</span>${button("Próxima →", "jr-page", page + 1, "subtle", page * 20 >= j.recapTotal ? "disabled" : "")}</div>`);
+  $("#jr-search").onsubmit = e => { e.preventDefault(); renderJournal(d, target, 1, new FormData(e.currentTarget).get("search")); };
   target.onclick = async (e) => {
     const b = e.target.closest("[data-action^='jr-']");
     if (!b || b.disabled) return;
     try {
+      if (b.dataset.action === "jr-page") return renderJournal(d, target, Number(b.dataset.id), search);
       if (b.dataset.action === "jr-attend") { await api(`/campaigns/${d.id}/attendance`, "POST", { status: b.dataset.id }); await renderJournal(d, target); }
       if (b.dataset.action === "jr-schedule") scheduleModal(d, j.nextSession, () => renderJournal(d, target));
       if (b.dataset.action === "jr-new") entryModal(d, { kind: b.dataset.id }, () => renderJournal(d, target));

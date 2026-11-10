@@ -1,5 +1,26 @@
 // Texto público estático; catálogos avaliados sob demanda.
 const entries = {
+  "mesa.mapa.camera": {
+    "title": "Ampliar e percorrer o mapa",
+    "summary": "No celular, o mapa ocupa a área disponível sem deformar a grade.",
+    "body": [
+      "O mapa abre ampliado no celular. Arrastar mapa desloca apenas a sua visão; não move personagens nem altera a névoa. Use a rolagem para alcançar as bordas. A pinça de dois dedos aproxima ou afasta só o mapa, do encaixe inteiro até três vezes a escala que preenche a janela.",
+      "Mapa inteiro mostra todo o cenário de uma vez; Ampliar mapa volta a preencher o espaço. Em mapas com outra proporção, partes ficam fora da janela e podem ser alcançadas arrastando.",
+      "Desative Arrastar mapa para tocar nos personagens e casas. Escolher uma ferramenta de movimento ou pintura também volta à interação. As setas percorrem as casas e mantêm o cursor visível; Enter confirma.",
+      "Os botões + e − também ajustam o zoom. Esta câmera é compartilhada com a preparação de cenas e mapas. As barras superior e inferior rolam lateralmente. A câmera é pessoal e não muda o que o servidor permite enxergar."
+    ],
+    "audience": "all"
+  },
+  "mesa.tela.horizontal": {
+    "title": "Mesa na horizontal",
+    "summary": "No celular, vire a tela para usar o mapa e os comandos lado a lado.",
+    "body": [
+      "A mesa aguarda a orientação horizontal. Ative a rotação automática do aparelho se a tela continuar em pé. Voltar à campanha permanece disponível.",
+      "Tela cheia tenta fixar a orientação quando o navegador permite. Nos demais navegadores, vire o aparelho manualmente. Ao sair da mesa, a orientação é liberada.",
+      "Mapa amplia o cenário. Grupo, Ficha e Conversa abrem um painel ao lado dele. As faixas de ferramentas e ações podem ser deslizadas na horizontal."
+    ],
+    "audience": "all"
+  },
   "mesa.config.heranca": {
     "title": "Configuração da mesa",
     "summary": "O Mestre pode ajustar a sessão ou toda a campanha.",
