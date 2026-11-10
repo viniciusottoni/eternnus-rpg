@@ -5,6 +5,7 @@ import { initials } from "./session-policy.js";
 import { decodeBits, MARK_KINDS } from "./fog-policy.js";
 import { helpButton } from "./help.js";
 import { mountMapGestures } from "./map-gestures.js";
+import { safeImageUrl } from "./play-policy.js";
 
 const reduceMotion = () =>
   matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -502,6 +503,43 @@ function drawFog(g, state, view, s, t, animate) {
   }
 }
 
+// Retratos dos marcadores (NPC/criatura com imagem): uma carga por endereço, desenhada recortada no círculo do marcador.
+// Endereços passam por safeImageUrl; falha de carga mantém as iniciais.
+const portraits = new Map();
+function portraitFor(url, onReady) {
+  const src = safeImageUrl(url);
+  if (!src) return null;
+  let entry = portraits.get(src);
+  if (!entry) {
+    const img = new Image();
+    entry = { img, ready: false, failed: false, waiting: new Set() };
+    img.decoding = "async";
+    img.referrerPolicy = "no-referrer";
+    img.onload = () => { entry.ready = true; for (const notify of entry.waiting) notify(); entry.waiting.clear(); };
+    img.onerror = () => { entry.failed = true; entry.waiting.clear(); };
+    img.src = src;
+    portraits.set(src, entry);
+    if (portraits.size > 300) portraits.delete(portraits.keys().next().value);
+  }
+  if (entry.ready) return entry.img;
+  if (!entry.failed && onReady) entry.waiting.add(onReady);
+  return null;
+}
+
+function drawPortrait(g, img, cx, cy, radius) {
+  const width = img.naturalWidth || img.width, height = img.naturalHeight || img.height;
+  if (!width || !height) return false;
+  const scale = Math.max((radius * 2) / width, (radius * 2) / height);
+  const w = width * scale, h = height * scale;
+  g.save();
+  g.beginPath();
+  g.arc(cx, cy, radius, 0, Math.PI * 2);
+  g.clip();
+  g.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+  g.restore();
+  return true;
+}
+
 function drawToken(g, token, s, opts, t) {
   const cx = (token.x + 0.5) * s,
     cy = (token.y + 0.5) * s,
@@ -553,7 +591,10 @@ function drawToken(g, token, s, opts, t) {
   g.beginPath();
   g.arc(cx, cy, radius, 0, Math.PI * 2);
   g.fill();
+  const pictured = !!opts.portrait && drawPortrait(g, opts.portrait, cx, cy, radius);
   g.strokeStyle = SIDE[token.side] || SIDE.neutral;
+  g.beginPath();
+  g.arc(cx, cy, radius, 0, Math.PI * 2);
   g.lineWidth = Math.max(2, s * 0.07);
   // Oculto (mestre) ou percebido por sentido (jogador): contorno tracejado.
   if (token.hidden || token.perceived) g.setLineDash([s * 0.1, s * 0.07]);
@@ -576,10 +617,12 @@ function drawToken(g, token, s, opts, t) {
     g.setLineDash([]);
   }
   g.fillStyle = "#f6ead0";
-  g.font = `600 ${Math.max(9, s * 0.3)}px Georgia, serif`;
   g.textAlign = "center";
   g.textBaseline = "middle";
-  g.fillText(initials(token.label), cx, cy + s * 0.01);
+  if (!pictured) {
+    g.font = `600 ${Math.max(9, s * 0.3)}px Georgia, serif`;
+    g.fillText(initials(token.label), cx, cy + s * 0.01);
+  }
   if (s >= 26) {
     g.font = `600 ${Math.max(9, s * 0.2)}px "Segoe UI", Arial, sans-serif`;
     const label =
@@ -818,6 +861,7 @@ export function createBoard(host, handlers = {}) {
           selected: token.id === view.selected,
           offline: token.characterId && !online.has(token.characterId),
           animate,
+          portrait: portraitFor(token.image, redraw),
         },
         t,
       );
@@ -829,7 +873,7 @@ export function createBoard(host, handlers = {}) {
       if (drag.cell) g.strokeRect(drag.cell.x * cell + 2, drag.cell.y * cell + 2, cell - 4, cell - 4);
       g.save();
       g.globalAlpha = 0.85;
-      drawToken(g, { ...drag.token, x: drag.px / cell - 0.5, y: drag.py / cell - 0.5 }, cell, { mine: true, selected: true, animate: false }, t);
+      drawToken(g, { ...drag.token, x: drag.px / cell - 0.5, y: drag.py / cell - 0.5 }, cell, { mine: true, selected: true, animate: false, portrait: portraitFor(drag.token.image) }, t);
       g.restore();
     }
     if (cursor) {
@@ -843,6 +887,9 @@ export function createBoard(host, handlers = {}) {
       );
     }
   }
+  // Retrato que terminou de carregar: redesenha uma vez.
+  let destroyed = false;
+  function redraw() { if (!destroyed) draw(); }
   function loop(t) {
     if (document.hidden) { frame = 0; return; }
     frame = requestAnimationFrame(loop);
@@ -1056,6 +1103,7 @@ export function createBoard(host, handlers = {}) {
       canvas.focus();
     },
     destroy() {
+      destroyed = true;
       moves.clear();
       cancelAnimationFrame(frame);
       pendingSrc = "";

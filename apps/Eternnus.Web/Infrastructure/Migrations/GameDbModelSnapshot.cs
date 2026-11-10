@@ -244,8 +244,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                     b.Property<string>("Continuity")
                         .IsRequired()
-                        .HasMaxLength(5000)
-                        .HasColumnType("character varying(5000)");
+                        .HasMaxLength(10000)
+                        .HasColumnType("character varying(10000)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -257,8 +257,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                     b.Property<string>("Description")
                         .IsRequired()
-                        .HasMaxLength(5000)
-                        .HasColumnType("character varying(5000)");
+                        .HasMaxLength(10000)
+                        .HasColumnType("character varying(10000)");
 
                     b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
@@ -813,8 +813,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                     b.Property<string>("Recap")
                         .IsRequired()
-                        .HasMaxLength(5000)
-                        .HasColumnType("character varying(5000)");
+                        .HasMaxLength(10000)
+                        .HasColumnType("character varying(10000)");
 
                     b.Property<DateTime?>("RecapPublishedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1453,8 +1453,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                     b.Property<string>("Summary")
                         .IsRequired()
-                        .HasMaxLength(5000)
-                        .HasColumnType("character varying(5000)");
+                        .HasMaxLength(10000)
+                        .HasColumnType("character varying(10000)");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -2045,8 +2045,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                     b.Property<string>("Body")
                         .IsRequired()
-                        .HasMaxLength(5000)
-                        .HasColumnType("character varying(5000)");
+                        .HasMaxLength(10000)
+                        .HasColumnType("character varying(10000)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -2788,6 +2788,35 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasForeignKey("CampaignId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.OwnsMany("Eternnus.Web.PastSessionScene", "Scenes", b1 =>
+                        {
+                            b1.Property<Guid>("PastSessionId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<string>("Text")
+                                .IsRequired()
+                                .HasMaxLength(10000);
+
+                            b1.Property<string>("Title")
+                                .IsRequired()
+                                .HasMaxLength(120);
+
+                            b1.HasKey("PastSessionId", "__synthesizedOrdinal");
+
+                            b1.ToTable("PastSession");
+
+                            b1
+                                .ToJson("Scenes")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("PastSessionId");
+                        });
+
+                    b.Navigation("Scenes");
                 });
 
             modelBuilder.Entity("Eternnus.Web.RollRequest", b =>

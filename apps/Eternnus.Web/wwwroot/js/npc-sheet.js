@@ -4,8 +4,9 @@ import { api } from "./api.js";
 import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
 import { helpButton } from "./help.js";
 
-/** Só endereços que o servidor produz: link https validado ou rota protegida da imagem do acervo. */
-export const safeImageUrl = (url) => (typeof url === "string" && (/^https:\/\/[^\s"'<>]+$/.test(url) || /^\/api\/sessions\/[0-9a-f-]{36}\/tokens\/[0-9a-f-]{36}\/portrait$/.test(url)) ? url : null);
+import { safeImageUrl } from "./play-policy.js";
+import { initials } from "./session-policy.js";
+export { safeImageUrl };
 
 /** Imagens do acervo da campanha (mapas sem ou com grade) que podem servir de retrato. */
 export async function imageChoices(campaignId) {
@@ -69,17 +70,62 @@ function fieldsHtml(sheet) {
   }).join("")}</div></fieldset>`).join("");
 }
 
-/** Ficha de um NPC/criatura: escolher o modelo e acompanhar/editar os valores. `onSaved(sheet)` é opcional. */
+/** Retrato do NPC/criatura no topo da ficha: prévia, troca (acervo ou link https) e remoção. Vira o retrato do marcador no mapa. */
+function imageEditor(sheet, assets) {
+  const preview = safeImageUrl(sheet.imagePreview);
+  return `<form id="npc-image-form" class="npc-image-editor" novalidate><div class="npc-image-preview">${preview
+    ? `<a class="npc-avatar" target="_blank" rel="noopener noreferrer" aria-label="Abrir a imagem de ${esc(sheet.name)} em nova aba"><img alt=""></a><small class="form-help">Clique para abrir em tamanho real.</small>`
+    : `<span class="npc-avatar empty" aria-hidden="true">${esc(initials(sheet.name))}</span><small class="form-help">Sem imagem: o mapa mostra as iniciais.</small>`}</div><div class="npc-image-fields">${imageFields("npc-img", sheet.imageUrl || "", assets)}<p class="form-help">A imagem vira o retrato do marcador no mapa — para você e para os jogadores que enxergam o marcador.</p>${formError()}<div class="form-actions">${sheet.imageUrl ? '<button type="button" class="subtle" data-npc-image="remove">Remover imagem</button>' : ""}<button type="submit" class="subtle">${sheet.imageUrl ? "Trocar imagem" : "Salvar imagem"}</button></div></div></form>`;
+}
+
+/** Ficha de um NPC/criatura: imagem, modelo e valores. `onSaved(sheet)` é opcional. */
 export async function openNpcSheet({ campaignId, npcId, onSaved }) {
-  const [templates, first] = await Promise.all([api(`/campaigns/${campaignId}/npc-templates`), api(`/campaigns/${campaignId}/npcs/${npcId}/sheet`)]);
+  const [templates, first, assets] = await Promise.all([api(`/campaigns/${campaignId}/npc-templates`), api(`/campaigns/${campaignId}/npcs/${npcId}/sheet`), imageChoices(campaignId).catch(() => [])]);
   let sheet = first;
+  const saveImage = async (imageUrl) => {
+    sheet = await api(`/campaigns/${campaignId}/npcs/${npcId}/image`, "PUT", { imageUrl, revision: sheet.revision });
+    onSaved?.(sheet);
+    toast(imageUrl ? `Imagem de ${sheet.name} atualizada.` : `Imagem de ${sheet.name} removida.`);
+    mountImage();
+  };
+  // Só a área da imagem é refeita ao salvar: valores da ficha em edição continuam no formulário.
+  const mountImage = () => {
+    const host = $("#npc-image-host");
+    if (!host) return;
+    host.innerHTML = imageEditor(sheet, assets);
+    const form = $("#npc-image-form");
+    const img = form.querySelector(".npc-avatar img");
+    if (img) {
+      img.closest("a").href = safeImageUrl(sheet.imagePreview);
+      img.referrerPolicy = "no-referrer";
+      img.src = safeImageUrl(sheet.imagePreview);
+      img.alt = `Imagem de ${sheet.name}`;
+      img.onerror = () => { img.closest(".npc-image-preview").querySelector(".form-help").textContent = "Não foi possível carregar a imagem."; };
+    }
+    form.onclick = async (e) => {
+      const action = e.target.closest("[data-npc-image]")?.dataset.npcImage;
+      if (action === "remove") {
+        e.target.disabled = true;
+        try { await saveImage(null); } catch (error) { toast(error.message); if (e.target.isConnected) e.target.disabled = false; }
+      }
+    };
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      submitForm(form, async (data) => {
+        const imageUrl = imageFromForm(data);
+        if (!imageUrl) throw new Error("Escolha uma imagem do acervo ou informe um link https.");
+        await saveImage(imageUrl);
+      });
+    };
+  };
   const render = () => {
     const current = sheet.template?.id || "";
     modal(
       `▣ Ficha de ${sheet.name}`,
-      `<form id="npc-sheet-form"><div class="field"><div class="field-label"><label for="npc-template">Modelo de ficha</label>${helpButton("mesa.npcs.ficha", "Ficha de NPC ou criatura")}</div><select id="npc-template" name="templateId"><option value="">Sem ficha (só recursos simples)</option>${templates.items.map((t) => `<option value="${esc(t.id)}" ${t.id === current ? "selected" : ""}>${esc(t.name)}${t.playerDefault ? " — modelo dos jogadores" : t.campaign ? " — desta campanha" : ""}</option>`).join("")}</select><small class="form-help">Pode ser o mesmo modelo dos jogadores ou outro. Trocar o modelo recomeça os valores.</small></div>${sheet.template ? fieldsHtml(sheet) : '<p class="muted">Escolha um modelo para acompanhar vida, atributos e o estado deste personagem.</p>'}${formError()}<div class="form-actions">${button("Fechar", "modal-close", "", "subtle")}${sheet.template ? '<button type="submit" class="primary">Salvar ficha</button>' : ""}</div></form>`,
+      `<div id="npc-image-host"></div><form id="npc-sheet-form"><div class="field"><div class="field-label"><label for="npc-template">Modelo de ficha</label>${helpButton("mesa.npcs.ficha", "Ficha de NPC ou criatura")}</div><select id="npc-template" name="templateId"><option value="">Sem ficha (só recursos simples)</option>${templates.items.map((t) => `<option value="${esc(t.id)}" ${t.id === current ? "selected" : ""}>${esc(t.name)}${t.playerDefault ? " — modelo dos jogadores" : t.campaign ? " — desta campanha" : ""}</option>`).join("")}</select><small class="form-help">Pode ser o mesmo modelo dos jogadores ou outro. Trocar o modelo recomeça os valores.</small></div>${sheet.template ? fieldsHtml(sheet) : '<p class="muted">Escolha um modelo para acompanhar vida, atributos e o estado deste personagem.</p>'}${formError()}<div class="form-actions">${button("Fechar", "modal-close", "", "subtle")}${sheet.template ? '<button type="submit" class="primary">Salvar ficha</button>' : ""}</div></form>`,
     );
     $("#modal").classList.add("wide");
+    mountImage();
     const form = $("#npc-sheet-form");
     form.elements.templateId.onchange = async (e) => {
       const templateId = e.target.value || null;

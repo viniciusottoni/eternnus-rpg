@@ -59,8 +59,31 @@ function placeAccountControls() {
     sidebar.append(logout);
   }
 }
+// Identidade exibida na moldura; se não mudou, a troca de tela só atualiza menu, trilha e conteúdo (sem piscar a moldura).
+const shellKey = () => JSON.stringify([state.user.id, state.user.name, state.user.avatarUrl, state.user.verified, state.user.level, state.user.role]);
+function updateShell(view) {
+  const app = $("#app");
+  if (!app.classList.contains("app-shell") || app.dataset.shell !== shellKey()) return false;
+  const nav = app.querySelector('.sidebar nav[aria-label="Menu principal"]');
+  const panel = app.querySelector("#nav-more-panel");
+  const breadcrumb = app.querySelector(".topbar .breadcrumb");
+  const main = app.querySelector("#main");
+  if (!nav || !panel || !breadcrumb || !main) return false;
+  nav.innerHTML = navLinks(view);
+  panel.querySelectorAll(".nav-item").forEach((item) => item.remove());
+  panel.querySelector(".nav-caption")?.insertAdjacentHTML("afterend", moreItems(view));
+  breadcrumb.innerHTML = `ETERNNUS <span>/</span> ${esc(navigation.find((n) => n[0] === routeOf(view))?.[2] || "Seu universo")}`;
+  // Novo <main>: conteúdo e manipuladores da tela anterior saem juntos, como na reconstrução completa.
+  const fresh = document.createElement("main");
+  fresh.id = "main";
+  fresh.tabIndex = -1;
+  main.replaceWith(fresh);
+  return true;
+}
 export function shell(view) {
+  if (updateShell(view)) return;
   $("#app").className = "app-shell";
+  $("#app").dataset.shell = shellKey();
   $("#app").innerHTML =
     `<aside class="sidebar"><a class="brand" href="#overview"><img src="/assets/eternnus-logo.webp" alt="Eternnus RPG"><span>FORJE A SUA LENDA</span></a><div class="profile-block"><img class="avatar" src="${esc(state.user.avatarUrl)}" alt="Avatar de ${esc(state.user.name)}" referrerpolicy="no-referrer"><div><strong>${esc(state.user.name)}</strong><small class="${state.user.verified ? "verified" : "pending"}">● ${state.user.verified ? "Conta verificada" : "Confirmação pendente"}</small>${state.user.verified ? `<a class="level-chip" href="#progress" data-tip="Seu nível e conquistas">Nível ${Number(state.user.level) || 1}${isStaff(state.user) ? ` · ${state.user.role === "admin" ? "Admin" : "Embaixador"}` : ""}</a>` : ""}</div></div><span class="nav-caption">SEU UNIVERSO</span>${state.user.verified ? "" : '<p id="account-verify-help" class="form-help">Confirme seu e-mail para acessar os destinos de jogo.</p>'}<nav aria-label="Menu principal">${navLinks(view)}</nav><div id="nav-more-panel" class="nav-more-panel metal" hidden><span class="nav-caption">MAIS CAMINHOS</span>${moreItems(view)}</div><div class="sidebar-quote"><span>✧</span><p>Grandes histórias começam<br>com uma escolha.</p></div>${button("↪ Sair da conta", "auth-signout", "", "logout")}</aside><div class="workspace"><header class="topbar"><div class="breadcrumb">ETERNNUS <span>/</span> ${esc(navigation.find((n) => n[0] === routeOf(view))?.[2] || "Seu universo")}</div>${installButton()}<div class="topbar-end"><span class="world-status"><i></i> O próximo capítulo é seu</span><div class="music-dock"></div></div></header><main id="main" tabindex="-1"></main><footer><span>ETERNNUS RPG</span><span>Escreva histórias. Viva lendas.</span><span>✧</span></footer></div>`;
   placeAccountControls();

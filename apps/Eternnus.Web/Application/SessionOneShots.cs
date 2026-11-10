@@ -13,7 +13,7 @@ public partial class SessionService
     public async Task<object> CreateOneShotAsync(OneShotInput x, string user, CancellationToken ct)
     {
         var name = Trim(x.Name, 100, "Informe o nome da one-shot com até 100 caracteres.");
-        var description = Trim(x.Description, 5000, "A premissa aceita até 5.000 caracteres.", false);
+        var description = Trim(x.Description, 10000, "A premissa aceita até 10.000 caracteres.", false);
         if (x.System?.Length > 80) throw new RuleException(400, "Confira o sistema da one-shot.");
         var system = await RpgSystemService.ResolveForCampaignAsync(db, x.RpgSystemId, x.System, null, ct);
         var map = BattleMaps.All.First(m => m.Kind == MapKinds.Tileset);

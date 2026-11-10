@@ -75,7 +75,7 @@ export async function submitForm(form, task) {
   form.setAttribute("aria-busy", "true");
   const error = form.querySelector("[data-form-error]");
   if (error) error.textContent = "";
-  const finish = beginLoading();
+  const finish = beginLoading({ trigger: button });
   try {
     await task(Object.fromEntries(new FormData(form)));
   } catch (e) {
@@ -96,7 +96,48 @@ export function formatDate(date) {
 export function empty(title, text, action = "", label = "") {
   return `<div class="empty"><span class="empty-sigil" aria-hidden="true">⚑</span><h3>${title}</h3><p>${text}</p>${action ? button(label, action, "", "primary") : ""}</div>`;
 }
+// Contagem de caracteres: todo campo de texto com maxlength dentro de um .field mostra "usados/limite".
+// Textos longos (textarea) mostram sempre; campos de uma linha, ao focar ou perto do limite. A contagem fica no canto
+// da linha do rótulo (sem mudar a altura do campo) e entra na descrição acessível.
+const COUNTED = 'textarea[maxlength], input[maxlength]:is([type="text"], [type="search"], [type="url"], [type="email"], :not([type]))';
+let counterSequence = 0;
+function updateCounter(control) {
+  const counter = control.dataset.counter && document.getElementById(control.dataset.counter);
+  if (!counter) return;
+  const max = Number(control.maxLength) || 0;
+  const used = control.value.length;
+  counter.textContent = `${used.toLocaleString("pt-BR")}/${max.toLocaleString("pt-BR")}`;
+  counter.setAttribute("aria-label", `${used} de ${max} caracteres`);
+  counter.classList.toggle("near", used >= max * 0.9);
+  counter.classList.toggle("full", used >= max);
+}
+function attachCounter(control) {
+  if (control.dataset.counter || control.dataset.noCount !== undefined || !(control.maxLength > 0)) return;
+  const field = control.closest(".field");
+  if (!field || field.querySelector(".char-count")) return;
+  const counter = document.createElement("small");
+  counter.className = `char-count${control.tagName === "TEXTAREA" ? "" : " single"}`;
+  counter.id = `char-count-${++counterSequence}`;
+  control.dataset.counter = counter.id;
+  control.setAttribute("aria-describedby", [control.getAttribute("aria-describedby"), counter.id].filter(Boolean).join(" "));
+  field.classList.add("has-count");
+  field.append(counter);
+  updateCounter(control);
+}
+export function installCharCounters(root = document.body) {
+  const scan = (node) => {
+    if (node.nodeType !== 1) return;
+    if (node.matches(COUNTED)) attachCounter(node);
+    node.querySelectorAll(COUNTED).forEach(attachCounter);
+  };
+  scan(root);
+  new MutationObserver((changes) => { for (const change of changes) change.addedNodes.forEach(scan); }).observe(root, { childList: true, subtree: true });
+  const refresh = (event) => { if (event.target.dataset?.counter) updateCounter(event.target); };
+  document.addEventListener("input", refresh);
+  document.addEventListener("focusin", refresh);
+}
 export function installUi() {
+  installCharCounters();
   const visibility = () => { document.documentElement.classList.toggle("is-background", document.hidden); };
   document.addEventListener("visibilitychange", visibility);
   visibility();

@@ -10,14 +10,17 @@ async function fixture() {
   const protectedNode = { inert: true };
   const focus = { isConnected: true, restored: 0, closest() { return null; }, focus() { this.restored++; } };
   const splash = { dataset: {}, visible: false, setAttribute() {}, matches() { return this.visible; }, showPopover() { this.visible = true; }, hidePopover() { this.visible = false; } };
+  const listeners = {};
   globalThis.document = {
+    listeners,
+    addEventListener(type, fn) { listeners[type] = fn; },
     activeElement: focus,
     querySelector(selector) { return ({ '#app': app, '#modal': modal, '#splash': splash })[selector]; },
     querySelectorAll() { return [app, modal, protectedNode]; },
   };
   const loading = await import('data:text/javascript;base64,' + Buffer.from(source + '\n// fixture ' + sequence++).toString('base64'));
   loading.installLoading();
-  return { ...loading, app, modal, splash, focus, protectedNode };
+  return { ...loading, app, modal, splash, focus, protectedNode, listeners: globalThis.document.listeners };
 }
 
 test('opening ends independently; overlapping foreground work keeps controls locked until the final completion', async () => {
@@ -25,7 +28,7 @@ test('opening ends independently; overlapping foreground work keeps controls loc
   assert.equal(f.splash.visible, true);
   const first = f.beginLoading(), second = f.beginLoading();
   f.endOpening();
-  assert.equal(f.splash.dataset.mode, 'operation');
+  assert.equal(f.splash.dataset.mode, 'action');
   first(); first();
   assert.equal(f.splash.visible, true);
   assert.equal(f.app.inert, true);
@@ -33,8 +36,10 @@ test('opening ends independently; overlapping foreground work keeps controls loc
   f.modal.cancel({ preventDefault() { prevented = true; } });
   assert.equal(prevented, true);
   second();
-  assert.equal(f.splash.visible, false);
+  // A trava sai na hora; a camada que estava visível some após o intervalo de emenda.
   assert.equal(f.app.inert, false);
+  await new Promise((resolve) => setTimeout(resolve, f.SETTLE_MS + 5));
+  assert.equal(f.splash.visible, false);
   assert.equal(f.modal.inert, false);
   assert.equal(f.protectedNode.inert, true);
   assert.equal(f.focus.restored, 1);
@@ -86,7 +91,56 @@ test('quick foreground work locks at once but only reveals the surface after the
     mock.timers.tick(f.OPERATION_REVEAL_MS);
     assert.equal(f.splash.visible, true);
     slow();
-    assert.equal(f.splash.visible, false);
     assert.equal(f.app.inert, false);
+    mock.timers.tick(f.SETTLE_MS);
+    assert.equal(f.splash.visible, false);
+  } finally { mock.timers.reset(); }
+});
+
+test('route work uses the translucent layer; chained calls keep one layer without flashing', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const f = await fixture();
+    f.endOpening();
+    const route = f.beginLoading({ kind: 'route' });
+    assert.equal(f.splash.dataset.mode, 'route');
+    mock.timers.tick(f.OPERATION_REVEAL_MS);
+    assert.equal(f.splash.visible, true);
+    route();
+    assert.equal(f.app.inert, false);
+    // A próxima chamada começa logo em seguida: a camada continua sem apagar.
+    const next = f.beginLoading();
+    assert.equal(f.splash.visible, true);
+    assert.equal(f.app.inert, true);
+    next();
+    mock.timers.tick(f.SETTLE_MS);
+    assert.equal(f.splash.visible, false);
+  } finally { mock.timers.reset(); }
+});
+
+test('the clicked button shows the busy spinner until the whole action settles', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const f = await fixture();
+    f.endOpening();
+    const classes = new Set();
+    const attrs = {};
+    const trigger = { isConnected: true, classList: { add: (c) => classes.add(c), remove: (c) => classes.delete(c) }, setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: (k) => { delete attrs[k]; } };
+    f.listeners.click({ target: { closest: () => trigger } });
+    const first = f.beginLoading();
+    assert.ok(classes.has('is-busy'));
+    assert.equal(attrs['aria-busy'], 'true');
+    assert.equal(f.splash.dataset.trigger, 'button');
+    first();
+    assert.equal(classes.has('is-busy'), false, 'nada visível ainda: encerra na hora');
+    // Um clique antigo não marca outra espera.
+    const later = f.beginLoading();
+    assert.equal(f.splash.dataset.trigger, 'none');
+    later();
+    // Botão explícito (envio de formulário) também gira.
+    const done = f.beginLoading({ trigger });
+    assert.ok(classes.has('is-busy'));
+    done();
+    assert.equal(classes.has('is-busy'), false);
   } finally { mock.timers.reset(); }
 });

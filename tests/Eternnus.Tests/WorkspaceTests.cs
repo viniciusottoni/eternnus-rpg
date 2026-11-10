@@ -63,6 +63,23 @@ public sealed class WorkspaceTests : IAsyncLifetime
         Assert.Equal(409,(await Assert.ThrowsAsync<RuleException>(()=>service.SavePast(campaign.Id,null,"master",new(28,"Duplicada","x"),default))).Status);
     }
     [Fact]
+    public async Task Past_sessions_record_optional_scenes_in_order_with_limits()
+    {
+        var saved=await service.SavePast(campaign.Id,null,"master",new(3,"A cripta","",Published:true,Scenes:[new(" A entrada ","Os heróis abriram o portão."),new("",""),new(null,"O esqueleto despertou.")]),default);
+        Assert.Equal(["A entrada","Cena 2"],saved.Scenes.Select(s=>s.Title));
+        Assert.Equal("O esqueleto despertou.",saved.Scenes[1].Text);
+        db.ChangeTracker.Clear();
+        var listed=Json(await service.Past(campaign.Id,"player",1,default)).GetProperty("items")[0].GetProperty("Scenes");
+        Assert.Equal(2,listed.GetArrayLength());
+        Assert.Equal(400,(await Assert.ThrowsAsync<RuleException>(()=>service.SavePast(campaign.Id,saved.Id,"master",new(3,"A cripta","",Revision:saved.Revision,Scenes:[new("Só título","")]),default))).Status);
+        Assert.Equal(400,(await Assert.ThrowsAsync<RuleException>(()=>service.SavePast(campaign.Id,saved.Id,"master",new(3,"A cripta","",Revision:saved.Revision,Scenes:Enumerable.Range(0,31).Select(i=>new PastSceneInput(null,"x")).ToList()),default))).Status);
+        Assert.Equal(400,(await Assert.ThrowsAsync<RuleException>(()=>service.SavePast(campaign.Id,saved.Id,"master",new(3,"A cripta","",Revision:saved.Revision,Scenes:[new(null,new string('x',10001))]),default))).Status);
+        Assert.Equal(400,(await Assert.ThrowsAsync<RuleException>(()=>service.SavePast(campaign.Id,saved.Id,"master",new(3,"A cripta","",Revision:saved.Revision,Scenes:Enumerable.Range(0,7).Select(i=>new PastSceneInput(null,new string('x',9000))).ToList()),default))).Status);
+        db.ChangeTracker.Clear();
+        var cleared=await service.SavePast(campaign.Id,saved.Id,"master",new(3,"A cripta","Resumo único",Revision:saved.Revision),default);
+        Assert.Empty(cleared.Scenes);
+    }
+    [Fact]
     public async Task Attachments_follow_current_permissions_and_atlas_is_a_snapshot()
     {
         var p=await service.Save(campaign.Id,null,"master",new("Livro","x","book"),default);

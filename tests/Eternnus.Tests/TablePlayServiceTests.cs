@@ -457,6 +457,45 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
         Assert.Contains(master.EnumerateArray(), n => n.GetProperty("kind").GetString() == NpcKinds.Creature && n.GetProperty("hasSheet").GetBoolean());
     }
 
+    [Fact]
+    public async Task Master_changes_creature_image_and_the_board_portrait_follows()
+    {
+        var id = await StartAsync(PlayModes.Free);
+        var first = new CampaignMap { CampaignId = campaign.Id, Name = "Retrato 1", HasGrid = false, Content = [0xFF, 0xD8, 0xFF, 0xD9] };
+        var second = new CampaignMap { CampaignId = campaign.Id, Name = "Retrato 2", HasGrid = false, Content = [0xFF, 0xD8, 0xFF, 0xD9] };
+        var elsewhere = new Campaign { OwnerId = Other, Name = "Outra mesa" };
+        var foreign = new CampaignMap { CampaignId = elsewhere.Id, Name = "Alheio", HasGrid = false, Content = [0xFF, 0xD8, 0xFF, 0xD9] };
+        db.AddRange(first, second, elsewhere, foreign);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var token = JsonSerializer.SerializeToElement(await service.AddTokenAsync(id, new("Lobo", "enemy", 2, 2, ImageUrl: "asset:" + first.Id), Master, default), Web);
+        var tokenId = token.GetProperty("id").GetGuid();
+        var npcId = token.GetProperty("masterCharacterId").GetGuid();
+        db.ChangeTracker.Clear();
+        var sheet = JsonSerializer.SerializeToElement(await service.NpcSheetAsync(campaign.Id, npcId, Master, default), Web);
+        Assert.Equal($"/api/campaigns/{campaign.Id}/assets/maps/{first.Id}/image", sheet.GetProperty("imagePreview").GetString());
+        var before = await StateText(id, Player);
+        var revision = await db.Sessions.AsNoTracking().Where(x => x.Id == id).Select(x => x.Revision).SingleAsync();
+        // Só o mestre altera; imagem de outra campanha e link sem https são recusados; revisão antiga é conflito.
+        Assert.Equal(403, await Status(() => service.SaveNpcImageAsync(campaign.Id, npcId, new("asset:" + second.Id, sheet.GetProperty("revision").GetInt32()), Player, default)));
+        Assert.Equal(400, await Status(() => service.SaveNpcImageAsync(campaign.Id, npcId, new("asset:" + foreign.Id, sheet.GetProperty("revision").GetInt32()), Master, default)));
+        Assert.Equal(400, await Status(() => service.SaveNpcImageAsync(campaign.Id, npcId, new("http://exemplo.com/lobo.png", sheet.GetProperty("revision").GetInt32()), Master, default)));
+        db.ChangeTracker.Clear();
+        Assert.Equal(409, await Status(() => service.SaveNpcImageAsync(campaign.Id, npcId, new("asset:" + second.Id, 99), Master, default)));
+        db.ChangeTracker.Clear();
+        var changed = JsonSerializer.SerializeToElement(await service.SaveNpcImageAsync(campaign.Id, npcId, new("asset:" + second.Id, sheet.GetProperty("revision").GetInt32()), Master, default), Web);
+        Assert.Equal("asset:" + second.Id.ToString("D"), changed.GetProperty("imageUrl").GetString());
+        // A mesa avança a revisão e o retrato do marcador muda de versão para todos que o enxergam.
+        Assert.True(await db.Sessions.AsNoTracking().Where(x => x.Id == id).Select(x => x.Revision).SingleAsync() > revision);
+        var after = await StateText(id, Player);
+        Assert.Contains(tokenId + "/portrait?v=", after);
+        Assert.NotEqual(before, after);
+        db.ChangeTracker.Clear();
+        var removed = JsonSerializer.SerializeToElement(await service.SaveNpcImageAsync(campaign.Id, npcId, new(null, changed.GetProperty("revision").GetInt32()), Master, default), Web);
+        Assert.Equal(JsonValueKind.Null, removed.GetProperty("imageUrl").ValueKind);
+        Assert.DoesNotContain(tokenId + "/portrait", await StateText(id, Player));
+    }
+
     sealed class Clock(DateTimeOffset start) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => start;

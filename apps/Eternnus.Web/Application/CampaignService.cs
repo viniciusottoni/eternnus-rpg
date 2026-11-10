@@ -12,8 +12,8 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
     public const int FreeCampaignsPerMaster = 3;
     static void Validate(CampaignInput x)
     {
-        if (x.Origin is not (null or "new" or "ongoing") || x.Continuity?.Length > 5000 || x.CurrentArc?.Length > 120 || x.FirstSessionNumber is < 1 or > 1000000) throw new RuleException(400, "Confira origem, resumo e número da próxima sessão.");
-        if (string.IsNullOrWhiteSpace(x.Name) || x.Name.Length > 100 || x.System?.Length > 80 || x.Description == null || x.Description.Length > 5000)
+        if (x.Origin is not (null or "new" or "ongoing") || x.Continuity?.Length > 10000 || x.CurrentArc?.Length > 120 || x.FirstSessionNumber is < 1 or > 1000000) throw new RuleException(400, "Confira origem, resumo e número da próxima sessão.");
+        if (string.IsNullOrWhiteSpace(x.Name) || x.Name.Length > 100 || x.System?.Length > 80 || x.Description == null || x.Description.Length > 10000)
             throw new RuleException(400, "Confira nome, sistema e descrição da campanha.");
     }
     async Task<Campaign> LockAsync(Guid id, CancellationToken ct)

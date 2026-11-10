@@ -175,14 +175,16 @@ export function installHelp() {
     for (const group of groups) {
       const controls = [...group.querySelectorAll('input:not([type=hidden]), select, textarea')];
       if (!controls.length) continue;
-      let hints = [...group.querySelectorAll('small:not([aria-hidden=true])')];
+      // A contagem de caracteres (ui.js) é descrição própria do campo, não substitui a dica.
+      let hints = [...group.querySelectorAll('small:not([aria-hidden=true]):not(.char-count)')];
+      const ownDescription = (input) => (input.getAttribute('aria-describedby') || '').split(/\s+/).some((id) => id && !id.startsWith('char-count-'));
       // Filtros e buscas não ganham dica automática: só filtram listas, e a dica desalinha a barra horizontal.
       // Limite sozinho só aparece em texto longo; num campo curto opcional o navegador já impede passar do limite.
-      if (!hints.length && group.matches('.field') && !group.closest('[role=search]') && controls.length === 1 && controls[0].type !== 'search' && !controls[0].hasAttribute('aria-describedby')) {
+      if (!hints.length && group.matches('.field') && !group.closest('[role=search]') && controls.length === 1 && controls[0].type !== 'search' && !ownDescription(controls[0])) {
         const input = controls[0], parts = [];
         if (input.required) parts.push('Campo obrigatório.');
         if (input.hasAttribute('minlength')) parts.push(`Mínimo de ${input.getAttribute('minlength')} caracteres.`);
-        if (input.hasAttribute('maxlength') && (parts.length || input.matches('textarea'))) parts.push(`Até ${input.getAttribute('maxlength')} caracteres.`);
+        // Limite de caracteres: a contagem "usados/limite" já aparece no campo (ui.js).
         if (input.type === 'number') {
           if (input.min && input.max) parts.push(`Use de ${input.min} a ${input.max}.`);
           else if (input.min) parts.push(`Mínimo: ${input.min}.`);

@@ -74,7 +74,7 @@ public sealed class SupportTests : IAsyncLifetime
         Assert.Equal(400, await Status(() => service.CreateAsync(Author, new("Assunto", "hack", "Descrição suficiente"), default)));
         Assert.Equal(400, await Status(() => service.CreateAsync(Author, new("Assunto", null, "Descrição suficiente"), default)));
         Assert.Equal(400, await Status(() => service.CreateAsync(Author, new("Assunto", TicketCategories.Bug, "curta"), default)));
-        Assert.Equal(400, await Status(() => service.CreateAsync(Author, new("Assunto", TicketCategories.Bug, new string('x', 5001)), default)));
+        Assert.Equal(400, await Status(() => service.CreateAsync(Author, new("Assunto", TicketCategories.Bug, new string('x', 10001)), default)));
         Assert.Equal(0, await db.Tickets.CountAsync());
     }
 

@@ -63,7 +63,7 @@ async function load() {
 function createModal() {
   modal(
     "Nova one-shot",
-    `<p class="muted small">Uma mesa rápida para jogar agora.</p><form id="one-shot-form">${field("name", "Nome da one-shot", "", "text", 'required maxlength="100"')}<div class="field"><label for="f-system">Sistema de RPG</label><select id="f-system" name="rpgSystemId" required aria-describedby="system-help"></select><small id="system-help" class="muted small" aria-live="polite"></small></div><div class="field"><label for="description">Premissa</label><textarea id="description" name="description" maxlength="5000" rows="3"></textarea></div><p class="notice-box">${RULES}</p>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">▶ Abrir one-shot</button></div></form>`,
+    `<p class="muted small">Uma mesa rápida para jogar agora.</p><form id="one-shot-form">${field("name", "Nome da one-shot", "", "text", 'required maxlength="100"')}<div class="field"><label for="f-system">Sistema de RPG</label><select id="f-system" name="rpgSystemId" required aria-describedby="system-help"></select><small id="system-help" class="muted small" aria-live="polite"></small></div><div class="field"><label for="description">Premissa</label><textarea id="description" name="description" maxlength="10000" rows="3"></textarea></div><p class="notice-box">${RULES}</p>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">▶ Abrir one-shot</button></div></form>`,
   );
   loadSystems();
   $("#one-shot-form").onsubmit = (e) => {

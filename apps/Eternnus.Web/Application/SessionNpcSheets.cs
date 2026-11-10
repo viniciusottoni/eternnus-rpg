@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
 
 public record NpcSheetInput(Guid? TemplateId, Dictionary<string, string?>? Values, int Revision);
+/// <summary>Imagem do NPC/criatura: <c>asset:{id}</c> do acervo, link https ou vazio para remover.</summary>
+public record NpcImageInput(string? ImageUrl, int Revision);
 
 /// <summary>
 /// Fichas de NPCs e criaturas: o mestre escolhe qualquer modelo permitido às fichas da campanha (o dos jogadores ou outro)
@@ -37,12 +39,12 @@ public partial class SessionService
     object NpcSheetView(MasterCharacter npc, SheetTemplate? template, SheetTemplateVersion? version)
     {
         if (version == null || template == null)
-            return new { npc.Id, npc.Name, npc.Kind, npc.Revision, npc.ImageUrl, template = (object?)null, fields = Array.Empty<object>(), values = new Dictionary<string, string>(), resources = Array.Empty<object>(), stats = Array.Empty<object>() };
+            return new { npc.Id, npc.Name, npc.Kind, npc.Revision, npc.ImageUrl, imagePreview = PreviewUrl(npc), template = (object?)null, fields = Array.Empty<object>(), values = new Dictionary<string, string>(), resources = Array.Empty<object>(), stats = Array.Empty<object>() };
         var all = CharacterSheets.All(version.Fields, CharacterSheets.Complete(version.Fields, CharacterSheets.ParseValues(npc.Values)).Stored);
         var (resources, stats) = SheetSummary.Build(version.Fields, all);
         return new
         {
-            npc.Id, npc.Name, npc.Kind, npc.Revision, npc.ImageUrl,
+            npc.Id, npc.Name, npc.Kind, npc.Revision, npc.ImageUrl, imagePreview = PreviewUrl(npc),
             template = new { template.Id, template.Name, versionId = version.Id },
             fields = version.Fields.Select(f => new { f.Name, f.Label, f.Type, f.Options, f.Min, f.Max, f.Section, f.MaxLength }),
             values = all, resources, stats,
@@ -105,9 +107,57 @@ public partial class SessionService
         return NpcSheetView(npc, template, version);
     }
 
-    /// <summary>Endereço que o cliente usa para a imagem do marcador: o link https ou a rota protegida da imagem do acervo.</summary>
+    /// <summary>
+    /// Endereço que o cliente usa para a imagem do marcador: o link https ou a rota protegida da imagem do acervo.
+    /// A rota leva a versão da imagem escolhida, para o navegador trocar o retrato quando o mestre muda a imagem.
+    /// </summary>
     static string? PortraitUrl(Guid sessionId, Guid tokenId, string? imageUrl) =>
-        imageUrl == null ? null : imageUrl.StartsWith(NpcImages.AssetPrefix, StringComparison.Ordinal) ? $"/api/sessions/{sessionId}/tokens/{tokenId}/portrait" : imageUrl;
+        imageUrl == null ? null : imageUrl.StartsWith(NpcImages.AssetPrefix, StringComparison.Ordinal) ? $"/api/sessions/{sessionId}/tokens/{tokenId}/portrait?v={ImageVersion(imageUrl)}" : imageUrl;
+
+    static string ImageVersion(string imageUrl) =>
+        Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(imageUrl)))[..12];
+
+    /// <summary>Prévia para o mestre (fora da mesa): imagem do acervo da campanha ou o próprio link https.</summary>
+    static string? PreviewUrl(MasterCharacter npc)
+    {
+        if (npc.ImageUrl == null) return null;
+        NpcImages.Normalize(npc.ImageUrl, out var asset);
+        return asset is { } id ? $"/api/campaigns/{npc.CampaignId}/assets/maps/{id}/image" : npc.ImageUrl;
+    }
+
+    /// <summary>
+    /// Troca ou remove a imagem de um NPC/criatura. Só o mestre. Com sessão ativa segue o fluxo da mesa
+    /// (sessão → personagem bloqueados, evento privado, revisão e sinal após o commit): o retrato muda no mapa de todos.
+    /// </summary>
+    public async Task<object> SaveNpcImageAsync(Guid campaignId, Guid npcId, NpcImageInput x, string user, CancellationToken ct)
+    {
+        var (c, master) = await CampaignAccessAsync(campaignId, user, ct);
+        if (!master) throw new RuleException(403, "Somente o mestre altera a imagem de NPCs e criaturas.");
+        if (c.ArchivedAt != null) throw new RuleException(409, "Esta campanha está arquivada. Restaure-a para editar personagens.");
+        var image = await PreparationService.ValidImageAsync(campaignId, x.ImageUrl, db, ct);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var active = db.Database.IsNpgsql()
+            ? await db.Sessions.FromSqlInterpolated($"SELECT * FROM \"Sessions\" WHERE \"CampaignId\" = {campaignId} AND \"EndedAt\" IS NULL FOR UPDATE").SingleOrDefaultAsync(ct)
+            : await db.Sessions.SingleOrDefaultAsync(s => s.CampaignId == campaignId && s.EndedAt == null, ct);
+        var npc = db.Database.IsNpgsql()
+            ? await db.MasterCharacters.FromSqlInterpolated($"SELECT * FROM \"MasterCharacters\" WHERE \"Id\" = {npcId} AND \"CampaignId\" = {campaignId} FOR UPDATE").SingleOrDefaultAsync(ct)
+            : await db.MasterCharacters.SingleOrDefaultAsync(m => m.Id == npcId && m.CampaignId == campaignId, ct);
+        if (npc == null) throw new RuleException(404, "Personagem do mestre não encontrado.");
+        if (npc.Revision != x.Revision) throw new RuleException(409, "O personagem mudou em outra tela. Recarregue antes de salvar.");
+        npc.ImageUrl = image;
+        npc.Revision++; npc.UpdatedAt = Now;
+        if (active != null)
+        {
+            Event(active, user, await NameAsync(user, ct), EventKinds.Sheet, image == null ? $"Mestre removeu a imagem de {npc.Name}" : $"Mestre trocou a imagem de {npc.Name}", new { npcId }, masterOnly: true);
+            await CommitAsync(tx, active, ct);
+        }
+        else
+        {
+            try { await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); }
+            catch (DbUpdateConcurrencyException) { throw new RuleException(409, "O personagem mudou em outra tela. Recarregue antes de salvar."); }
+        }
+        return await NpcSheetAsync(campaignId, npcId, user, ct);
+    }
 
     /// <summary>Imagens dos marcadores de NPC/criatura desta sessão (tokenId → endereço para o cliente).</summary>
     async Task<Dictionary<Guid, string>> PortraitsAsync(Guid sessionId, CancellationToken ct) =>

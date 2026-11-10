@@ -6,8 +6,8 @@ export const MAX_OPEN = 5;
 export const REOPEN_DAYS = 30;
 export const PAGE_SIZE = 20;
 export const SUBJECT_LIMITS = Object.freeze({ min: 3, max: 120 });
-export const BODY_LIMITS = Object.freeze({ min: 10, max: 5000 });
-export const REPLY_LIMITS = Object.freeze({ min: 1, max: 5000 });
+export const BODY_LIMITS = Object.freeze({ min: 10, max: 10000 });
+export const REPLY_LIMITS = Object.freeze({ min: 1, max: 10000 });
 
 const STATUS_LABELS = Object.freeze({
   open: "Aberto",
@@ -95,13 +95,13 @@ export function validateTicket({ subject, category, body } = {}) {
     return "O assunto deve ter de 3 a 120 caracteres.";
   if (!CATEGORIES.includes(category)) return "Escolha uma categoria válida.";
   if (b.length < BODY_LIMITS.min || b.length > BODY_LIMITS.max || hasControl(b, true))
-    return "A descrição deve ter de 10 a 5.000 caracteres.";
+    return "A descrição deve ter de 10 a 10.000 caracteres.";
   return "";
 }
 export function validateReply(body) {
   const b = normalize(body);
   return b.length < REPLY_LIMITS.min || b.length > REPLY_LIMITS.max || hasControl(b, true)
-    ? "A mensagem deve ter de 1 a 5.000 caracteres."
+    ? "A mensagem deve ter de 1 a 10.000 caracteres."
     : "";
 }
 

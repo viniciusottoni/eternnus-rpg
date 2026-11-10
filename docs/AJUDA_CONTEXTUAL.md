@@ -500,3 +500,13 @@ As abas Mapa/Grupo/Ficha/Conversa e suas permissões são as existentes; agora a
 - Propriedades: rótulo visível e aria-expanded, mostra/recolhe painel no editor compacto.
 - Prévia de grade: orientação visível para pinça, intervalo 1–4× e botões rotulados; zoom não muda valores da grade.
 - Círculo: dimensões protegidas no componente compartilhado; o alvo touch permanece 44 px sem esticar a borda.
+
+### Classificação dos elementos da ADR-059 (10/11/2026)
+
+| Elemento | Arquivo | Nível | Chave |
+| --- | --- | --- | --- |
+| Contagem “usados/limite” | `ui.js` | Auxiliar visível ligado por `aria-describedby`; substitui a dica automática “Até N caracteres”. | — |
+| Submenus de Mundo e acervo e Configurações | `campaign-page.js` | Rótulos autoexplicativos; sem ⓘ. | — |
+| Blocos do Diário | `campaign-page.js`, `campaign-prep.js` | Texto visível sob cada título (o que é e quem vê); Antes do Eternnus mantém ⓘ. | `campanhas.continuidade.historico` (corpo cita as cenas) |
+| Cenas da sessão anterior | `campaign-workspace.js` | Auxiliar visível com formato e limite (30 cenas; título vazio vira “Cena N”). | — |
+| Retrato na Ficha do elemento | `npc-sheet.js` | Auxiliar visível + ⓘ existente da imagem. | `mesa.npcs.imagem` (corpo cita trocar/remover) |

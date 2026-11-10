@@ -537,8 +537,41 @@ button[aria-disabled="true"] {
   padding: 0;
 }
 .splash[popover]:not(:popover-open) { display: none; }
-.splash[data-mode="operation"] .splash-content { animation: none; }
-.splash[data-mode="operation"] .opening-progress { visibility: hidden; }
+/* Troca de tela e ações: camada translúcida sobre a tela atual (sem o cenário opaco), que entra em fade curto. */
+.splash:is([data-mode="route"], [data-mode="action"]) {
+  background: #05080a9e;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  cursor: progress;
+  animation: busy-layer-in 180ms ease both;
+}
+.splash:is([data-mode="route"], [data-mode="action"])::before { display: none; }
+.splash:is([data-mode="route"], [data-mode="action"]) :is(.splash-topline, .splash-caption, .splash-logo, .ornament, .opening-progress) { display: none; }
+.splash:is([data-mode="route"], [data-mode="action"]) .splash-content { animation: none; margin-top: 0; }
+/* Ação: só escurece e trava. Com botão identificado, o círculo gira nele; sem botão, um anel menor no centro. */
+.splash[data-mode="action"] { background: #05080a5c; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.splash[data-mode="action"] .splash-content :is(h1, p) { display: none; }
+.splash[data-mode="action"] .rune-loader { transform: scale(0.62); margin: 0 auto; }
+.splash[data-mode="action"][data-trigger="button"] .splash-content { display: none; }
+@keyframes busy-layer-in { from { opacity: 0; } to { opacity: 1; } }
+/* Botão que iniciou a ação: mantém a largura, troca o rótulo por um círculo girando até a resposta. */
+.is-busy { position: relative; color: transparent !important; text-shadow: none !important; cursor: progress; }
+.is-busy > * { visibility: hidden; }
+.is-busy:disabled, .is-busy[aria-disabled="true"] { opacity: 1; }
+.is-busy::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 16px;
+  height: 16px;
+  margin: auto;
+  border: 2px solid #e8c77a4d;
+  border-top-color: #f6e2b0;
+  border-radius: 50%;
+  animation: busy-spin 0.7s linear infinite;
+}
+:is(.primary, .button.primary).is-busy::after { border-color: #20160b40; border-top-color: #20160b; }
+@keyframes busy-spin { to { transform: rotate(360deg); } }
 /* Screen 2: a focused panel and readable controls over the official landscape. */
 .auth-screen {
   min-height: 100svh;
@@ -2934,3 +2967,11 @@ html:has(#splash:popover-open) dialog, html:has(#splash:popover-open) dialog::ba
 .workspace-pagination > * { flex-shrink: 0; }
 
 .workspace-entry { padding: 1rem; margin-block: 1rem; }
+
+/* Contagem de caracteres (ui.js): no canto da linha do rótulo, sem alterar a altura do campo. */
+.field.has-count { position: relative; }
+.field.has-count > :is(label, .field-label):first-child { padding-right: 76px; }
+.char-count { position: absolute; top: 0; right: 0; font-size: 11px; line-height: 1.4; color: var(--muted); font-variant-numeric: tabular-nums; pointer-events: none; }
+.char-count.near { color: #e2c27a; }
+.char-count.full { color: #f0a08f; font-weight: 600; }
+.field.has-count:not(:focus-within) .char-count.single:not(.near) { visibility: hidden; }

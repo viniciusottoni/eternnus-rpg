@@ -30,7 +30,7 @@ installNavMore();
 const requestedRoute = () => location.hash.slice(1) || "overview";
 function route() {
   if (opening) return Promise.resolve();
-  return withLoading(renderRoute);
+  return withLoading(renderRoute, { kind: "route" });
 }
 async function renderRoute() {
   if (opening) return;

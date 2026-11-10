@@ -44,10 +44,18 @@ public class PastSession
     public Guid CampaignId { get; set; }
     public int Number { get; set; }
     [MaxLength(120)] public string Title { get; set; } = "";
-    [MaxLength(5000)] public string Summary { get; set; } = "";
+    [MaxLength(10000)] public string Summary { get; set; } = "";
     public DateOnly? Date { get; set; }
     public bool Published { get; set; }
     public int Revision { get; set; } = 1;
+    /// <summary>Cenas registradas uma a uma (opcional), na ordem em que aconteceram. Mesma visibilidade do registro.</summary>
+    public List<PastSessionScene> Scenes { get; set; } = [];
+}
+/// <summary>Cena de uma sessão anterior: título curto e o texto do que aconteceu.</summary>
+public class PastSessionScene
+{
+    [MaxLength(120)] public string Title { get; set; } = "";
+    [MaxLength(10000)] public string Text { get; set; } = "";
 }
 public class AtlasPublication
 {
@@ -86,5 +94,6 @@ public static class WorkspaceModel
         b.Entity<PastSession>().HasOne<Campaign>().WithMany().HasForeignKey(x => x.CampaignId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<PastSession>().HasIndex(x => new { x.CampaignId, x.Number }).IsUnique();
         b.Entity<PastSession>().Property(x => x.Revision).IsConcurrencyToken();
+        b.Entity<PastSession>().OwnsMany(x => x.Scenes, o => o.ToJson());
     }
 }

@@ -86,7 +86,7 @@ public class TicketMessage
     public long Id { get; set; }
     public Guid TicketId { get; set; }
     [MaxLength(450)] public string AuthorId { get; set; } = "";
-    [MaxLength(5000)] public string Body { get; set; } = "";
+    [MaxLength(10000)] public string Body { get; set; } = "";
     /// <summary>Nota interna da equipe: nunca enviada ao autor do ticket.</summary>
     public bool Internal { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
