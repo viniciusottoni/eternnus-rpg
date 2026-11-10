@@ -79,7 +79,7 @@ export async function renderCampaignPage(id, tab = "overview") {
   const masterName = detail.masterName || "o mestre";
   $("#main").innerHTML =
     `${detail.isOneShot ? '<a class="back-link" href="#one-shot">← One-shots</a>' : '<a class="back-link" href="#campaigns">← Minhas campanhas</a>'}
-  <section class="campaign-hero metal"><div class="campaign-hero-copy"><span class="eyebrow">${esc(detail.system)}</span><h1>${esc(detail.name)}</h1>${detail.archived ? '<p class="notice-box">Campanha arquivada: conteúdo e histórico preservados, sem novas partidas até ser restaurada.</p>' : ""}<p>${esc(detail.description || "Uma nova história aguarda seu primeiro capítulo.")}</p><div class="hero-meta"><span>♛ <b>Mestre:</b> ${esc(masterName)}</span><span>♙ <b>${detail.members.length}</b> ${detail.members.length === 1 ? "jogador" : "jogadores"}</span>${detail.isMaster && !detail.isOneShot ? `<span>▣ <b>${detail.sessionCount}</b> ${detail.sessionCount === 1 ? "sessão" : "sessões"}</span>` : ""}${online ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>ONLINE</span>' : ""}</div></div>${online ? `<a class="button primary enter-table" href="#table/${esc(id)}">▶ ${detail.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>` : ""}</section>
+  <section class="campaign-hero metal"><div class="campaign-hero-copy"><span class="eyebrow">${esc(detail.system)}</span><h1>${esc(detail.name)}</h1>${detail.archived ? '<p class="notice-box">Campanha arquivada: conteúdo e histórico preservados, sem novas partidas até ser restaurada.</p>' : ""}${heroPremise(detail)}<div class="hero-meta"><span>♛ <b>Mestre:</b> ${esc(masterName)}</span><span>♙ <b>${detail.members.length}</b> ${detail.members.length === 1 ? "jogador" : "jogadores"}</span>${detail.isMaster && !detail.isOneShot ? `<span>▣ <b>${detail.sessionCount}</b> ${detail.sessionCount === 1 ? "sessão" : "sessões"}</span>` : ""}${online ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>ONLINE</span>' : ""}</div></div>${online ? `<a class="button primary enter-table" href="#table/${esc(id)}">▶ ${detail.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>` : ""}</section>
   <nav class="page-tabs" aria-label="Seções da campanha">${visible.map(([key, label]) => `<a href="#campaign/${esc(id)}/${key}" ${key === parent ? 'aria-current="page" class="active"' : ""}>${label}</a>`).join("")}</nav>
   <div class="campaign-page-grid"><section id="campaign-tab" class="campaign-tab" aria-live="polite">${subnav(detail, parent, tab)}<div id="campaign-tab-body" class="campaign-tab-body"></div></section>${overviewCard(detail)}</div>`;
   await renderTab(detail, tab);
@@ -89,6 +89,19 @@ export async function renderCampaignPage(id, tab = "overview") {
   if (detail.isOneShot) $(".campaign-hero-copy").insertAdjacentHTML("beforeend", `<p class="notice-box">One-shot: se o mestre se desconectar, a mesa espera ${detail.recoveryMinutes || 10} minutos antes de ser removida. Encerrar apaga os dados; converter em campanha preserva tudo. Prazo máximo: ${esc(new Date(detail.expiresAt).toLocaleString("pt-BR"))}.</p>`);
   const releasePresence = keepMasterPresence(detail);
   return () => { ++generation; releasePresence(); };
+}
+
+/** Premissa no topo: trecho curto com as quebras preservadas; "mais" abre o texto completo num popup. */
+const PREMISE_BRIEF = 260;
+function heroPremise(d) {
+  const text = (d.description || "").trim();
+  if (!text) return '<p class="hero-premise">Uma nova história aguarda seu primeiro capítulo.</p>';
+  const lines = text.split(/\r?\n/);
+  const long = text.length > PREMISE_BRIEF || lines.length > 3;
+  const head = lines.slice(0, 3).join("\n");
+  // Corta no último espaço só quando o trecho interrompe uma palavra.
+  const brief = !long ? text : (head.length > PREMISE_BRIEF ? head.slice(0, PREMISE_BRIEF).replace(/\s+\S*$/, "") : head).trimEnd() + "…";
+  return `<p class="hero-premise">${esc(brief)}${long ? ` ${button("mais", "cp-premise", "", "text-button hero-more", 'aria-label="Ler a premissa completa" aria-haspopup="dialog"')}` : ""}</p>`;
 }
 
 function overviewCard(d) {
@@ -130,10 +143,10 @@ async function renderTab(d, tab) {
     return;
   }
   const firstSteps = d.isMaster && !d.isOneShot && !d.archived && !d.sessionCount
-    ? `<article class="first-steps metal"><h3>Primeiros passos</h3><ol><li><strong>Convide o grupo</strong> — envie o link abaixo.${inviteLink(d)}</li><li><strong>Ficha</strong> — as fichas nascem com o modelo sugerido pelo sistema. <a href="#campaign/${esc(d.id)}/settings">Trocar ou criar um modelo simples</a>.</li><li><strong>Cenário (opcional)</strong> — <a href="#campaign/${esc(d.id)}/prep">prepare uma cena</a> ou comece direto.</li><li>${button("✦ Iniciar próxima sessão", "cp-start", d.id, "primary small")}</li></ol><p class="form-help">Configurações avançadas (névoa, luz, ordem de turnos) ficam disponíveis quando você precisar.</p></article>`
+    ? `<article class="first-steps metal"><h3>Primeiros passos</h3><ol><li><strong>Convide o grupo</strong> — envie o link abaixo.${inviteLink(d)}</li><li><strong>Ficha</strong> — as fichas nascem com o modelo sugerido pelo sistema. <a href="#campaign/${esc(d.id)}/settings">Trocar ou criar um modelo simples</a>.</li><li><strong>Capítulos</strong> — <a href="#campaign/${esc(d.id)}/journal">crie o primeiro capítulo, ato ou arco</a> para agrupar as sessões (opcional).</li><li><strong>Cenário (opcional)</strong> — <a href="#campaign/${esc(d.id)}/prep">prepare uma cena</a> ou comece direto.</li><li>${button("✦ Iniciar próxima sessão", "cp-start", d.id, "primary small")}</li></ol><p class="form-help">Configurações avançadas (névoa, luz, ordem de turnos) ficam disponíveis quando você precisar.</p></article>`
     : "";
   const next = d.nextSessionAt ? `<article class="metal next-session"><h3>Próxima partida</h3><p><strong>${esc(new Date(d.nextSessionAt).toLocaleString("pt-BR", { weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit" }))}</strong></p><a class="text-button" href="#campaign/${esc(d.id)}/journal">${d.isMaster ? "Ver confirmações" : "Confirmar presença"} →</a></article>` : "";
-  target.innerHTML = `${d.continuity || d.currentArc ? `<article class="metal overview-story"><h3>Onde paramos${d.currentArc ? " — " + esc(d.currentArc) : ""}</h3><p class="workspace-prose">${esc(d.continuity || "O resumo ainda será escrito.")}</p></article>` : ""}${firstSteps}${d.isMaster ? "" : `<a class="button primary" href="#character/new/${esc(d.id)}">+ Criar ficha com o modelo da campanha</a>`}${next}<div class="section-title"><h2>Visão geral</h2></div><article class="overview-story metal"><h3>Premissa</h3><p>${esc(d.description || "A premissa desta campanha ainda será escrita.")}</p></article>${
+  target.innerHTML = `${d.continuity || d.currentArc ? `<article class="metal overview-story"><h3>Onde paramos${d.currentArc ? " — " + esc(d.currentArc) : ""}</h3><p class="workspace-prose">${esc(d.continuity || "O resumo ainda será escrito.")}</p></article>` : ""}${firstSteps}${d.isMaster ? "" : `<a class="button primary" href="#character/new/${esc(d.id)}">+ Criar ficha com o modelo da campanha</a>`}${next}<div class="section-title"><h2>Visão geral</h2></div><article class="overview-story metal"><h3>Premissa</h3><p class="workspace-prose">${esc(d.description || "A premissa desta campanha ainda será escrita.")}</p></article>${
     d.activeSession
       ? `<article class="live-callout metal"><span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>Sessão em andamento</span><h3>${esc(sessionLabel(d.activeSession.number, d.activeSession.title))}</h3><p class="muted small">Iniciada em ${formatDate(d.activeSession.startedAt)}.</p><a class="button primary" href="#table/${esc(d.id)}">▶ ${d.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a></article>`
       : d.isOneShot
@@ -153,13 +166,28 @@ function inviteBox(d) {
 /** Diário numa só página, em ordem de leitura: próxima partida, objetivos e pistas, sessões jogadas aqui, resumos e o histórico anterior. */
 async function renderJournalTab(d, target) {
   const showSessions = d.isMaster && !d.isOneShot;
-  target.innerHTML = `<div id="cp-journal" class="journal-block"></div>${showSessions ? '<section id="cp-sessions" class="journal-block" aria-labelledby="cp-sessions-title"></section>' : ""}<section id="cp-recaps" class="journal-block" aria-labelledby="jr-recaps-title"></section><section id="cp-past" class="journal-block" aria-labelledby="past-title"></section>`;
+  target.innerHTML = `<div id="cp-journal" class="journal-block"></div>${showSessions ? '<section id="cp-chapters" class="journal-block" aria-labelledby="cp-chapters-title"></section><section id="cp-sessions" class="journal-block" aria-labelledby="cp-sessions-title"></section>' : ""}<section id="cp-recaps" class="journal-block" aria-labelledby="jr-recaps-title"></section><section id="cp-past" class="journal-block" aria-labelledby="past-title"></section>`;
   const [prep, workspace] = await Promise.all([import("./campaign-prep.js"), import("./campaign-workspace.js")]);
   await Promise.all([
     prep.renderJournal(d, { main: $("#cp-journal"), recaps: $("#cp-recaps") }),
+    showSessions ? renderChapterBlock(d) : null,
     showSessions ? renderSessions(d, $("#cp-sessions")) : null,
     workspace.renderPast(d, $("#cp-past")),
   ]);
+}
+
+/** Capítulos e lista de sessões mudam juntos: contagens e rótulos dependem um do outro. */
+async function refreshChapters(d) {
+  const past = $("#cp-past");
+  await Promise.all([
+    renderChapterBlock(d),
+    $("#cp-sessions") ? renderSessions(d, $("#cp-sessions")) : null,
+    past ? import("./campaign-workspace.js").then((w) => w.renderPast(d, past)) : null,
+  ]);
+}
+async function renderChapterBlock(d) {
+  const host = $("#cp-chapters");
+  if (host) await (await import("./campaign-chapters.js")).renderChapters(d, host, () => refreshChapters(d));
 }
 
 async function renderSessions(d, target) {
@@ -176,7 +204,7 @@ async function renderSessions(d, target) {
             const minutes = s.endedAt
               ? (new Date(s.endedAt) - new Date(s.startedAt)) / 60000
               : (Date.now() - new Date(s.startedAt)) / 60000;
-            return `<li class="session-row metal ${s.active ? "active" : ""}"><div class="session-thumb ${s.mapKind === "tileset" ? "tileset" : "cartographic"}" aria-hidden="true"></div><div class="session-info"><h3><a href="#session/${esc(s.id)}">${esc(sessionLabel(s.number, s.title))}</a></h3><p>${new Date(s.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })} · ${formatDuration(minutes)} · ${s.eventCount} eventos · ${s.noteCount} ${s.noteCount === 1 ? "nota" : "notas"} · ${s.participantCount} ${s.participantCount === 1 ? "aventureiro" : "aventureiros"}</p></div><div class="session-row-actions">${s.active ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>Em andamento</span>' : '<span class="status-chip">◉ Encerrada</span>'}<a class="button subtle small" href="#session/${esc(s.id)}/timeline">◷ Histórico</a><a class="button subtle small" href="#session/${esc(s.id)}/notes">✎ Notas</a>${button(s.recapPublished ? "Resumo publicado" : "✍ Resumo", "cp-recap", s.id, "subtle small")}</div></li>`;
+            return `<li class="session-row metal ${s.active ? "active" : ""}"><div class="session-thumb ${s.mapKind === "tileset" ? "tileset" : "cartographic"}" aria-hidden="true"></div><div class="session-info"><h3><a href="#session/${esc(s.id)}">${esc(sessionLabel(s.number, s.title))}</a></h3><p class="session-chapter">${s.chapterTitle ? `<span class="status-chip">❖ ${esc(s.chapterTitle)}</span>` : '<span class="status-chip quiet">Avulsa</span>'}</p><p>${new Date(s.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })} · ${formatDuration(minutes)} · ${s.eventCount} eventos · ${s.noteCount} ${s.noteCount === 1 ? "nota" : "notas"} · ${s.participantCount} ${s.participantCount === 1 ? "aventureiro" : "aventureiros"}</p></div><div class="session-row-actions">${s.active ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>Em andamento</span>' : '<span class="status-chip">◉ Encerrada</span>'}<a class="button subtle small" href="#session/${esc(s.id)}/timeline">◷ Histórico</a><a class="button subtle small" href="#session/${esc(s.id)}/notes">✎ Notas</a>${button(s.recapPublished ? "Resumo publicado" : "✍ Resumo", "cp-recap", s.id, "subtle small")}${d.archived ? "" : button("❖ Capítulo", "cp-session-chapter", s.id, "subtle small", `aria-label="Mudar o capítulo de ${esc(sessionLabel(s.number, s.title))}"`)}</div></li>`;
           })
           .join("")}</ol>${pagination(result)}`
       : '<p class="muted small">Nenhuma sessão jogada aqui ainda. Ao iniciar a primeira, ela aparece nesta lista.</p>'
@@ -190,20 +218,26 @@ function pagination(r) {
 }
 
 async function startSessionModal(campaignId) {
-  const [maps, list] = await Promise.all([
+  const [maps, list, chapters, chapterUi] = await Promise.all([
     api(`/campaigns/${campaignId}/maps`),
     api(`/campaigns/${campaignId}/sessions?page=1`),
+    api(`/campaigns/${campaignId}/chapters`),
+    import("./campaign-chapters.js"),
   ]);
+  // Sugere o capítulo da sessão mais recente; sem capítulos, sugere criar o primeiro (sessão avulsa continua possível).
+  const lastChapter = list.items[0] ? list.items[0].chapterId || "" : chapters.items.at(-1)?.id;
   const past = await api(`/campaigns/${campaignId}/workspace/past-sessions?page=1`);
   const next = Math.max(state.campaign?.firstSessionNumber || 1, (list.items[0]?.number || 0) + 1, (past.items[0]?.number || 0) + 1);
   const choices = maps.items;
   const firstTileset = choices.find((m) => m.kind === "tileset") || choices[0];
   modal(
     "✦ Iniciar nova sessão",
-    `<p class="modal-lead">A campanha ficará online para os aventureiros convidados.</p><form id="start-session"><div class="field"><div class="field-label"><label for="f-title">Nome da sessão</label>${helpButton("sessoes.abertura.unica", "Uma sessão ativa")}</div><div class="title-field"><span aria-hidden="true">Sessão ${String(next).padStart(2, "0")} —</span><input id="f-title" name="title" required maxlength="120" placeholder="A Cripta dos Antigos" aria-describedby="title-help"></div><small id="title-help" class="form-help">O número da sessão é atribuído automaticamente.</small></div><div class="field"><label for="f-objective">Objetivo / nota inicial do mestre</label><textarea id="f-objective" name="objective" maxlength="2000" rows="3" placeholder="Visível apenas para você no histórico da sessão."></textarea></div>${mapChoices(choices, firstTileset?.key, "Mapa inicial da sessão")}<p class="notice-box">✧ Ao confirmar, a sessão será aberta e a campanha mudará para <strong>ONLINE</strong>. Os jogadores entrarão diretamente na mesa.</p>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">▶ Iniciar sessão</button></div></form>`,
+    `<p class="modal-lead">A campanha ficará online para os aventureiros convidados.</p><form id="start-session"><div class="field"><div class="field-label"><label for="f-title">Nome da sessão</label>${helpButton("sessoes.abertura.unica", "Uma sessão ativa")}</div><div class="title-field"><span aria-hidden="true">Sessão ${String(next).padStart(2, "0")} —</span><input id="f-title" name="title" required maxlength="120" placeholder="A Cripta dos Antigos" aria-describedby="title-help"></div><small id="title-help" class="form-help">O número da sessão é atribuído automaticamente.</small></div><div class="field"><label for="f-objective">Objetivo / nota inicial do mestre</label><textarea id="f-objective" name="objective" maxlength="2000" rows="3" placeholder="Visível apenas para você no histórico da sessão."></textarea></div>${chapterUi.chapterPicker(chapters.items, lastChapter, { allowNew: true, idPrefix: "f-chapter" })}${mapChoices(choices, firstTileset?.key, "Mapa inicial da sessão")}<p class="notice-box">✧ Ao confirmar, a sessão será aberta e a campanha mudará para <strong>ONLINE</strong>. Os jogadores entrarão diretamente na mesa.</p>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">▶ Iniciar sessão</button></div></form>`,
   );
   $("#modal").classList.add("wide");
   mountMapChoices($("#start-session"), choices);
+  chapterUi.mountChapterPicker($("#start-session"));
+  const resolveChapter = chapterUi.chapterResolver(campaignId);
   $("#f-title").focus();
   $("#start-session").onsubmit = (e) => {
     e.preventDefault();
@@ -214,6 +248,7 @@ async function startSessionModal(campaignId) {
         objective: data.objective,
         mapKind,
         mapKey,
+        chapterId: await resolveChapter(data),
       });
       $("#modal").close();
       toast("A campanha está online. Bem-vindo à mesa, mestre.");
@@ -273,6 +308,14 @@ document.addEventListener("click", async (e) => {
   const reload = (tab) => renderCampaignPage(d.id, tab);
   try {
     if (action === "cp-start" && d?.isMaster) await startSessionModal(d.id);
+    if (action === "cp-premise" && d) {
+      modal(`Premissa — ${d.name}`, `<div class="workspace-prose premise-full">${esc(d.description || "")}</div><div class="form-actions">${button("Fechar", "modal-close", "", "subtle")}</div>`);
+      $("#modal").classList.add("wide");
+    }
+    if (action === "cp-session-chapter" && d?.isMaster) {
+      const sess = lastSessions.find((x) => x.id === id);
+      if (sess) await (await import("./campaign-chapters.js")).moveSessionModal(d, { id: sess.id, chapterId: sess.chapterId, label: sessionLabel(sess.number, sess.title) }, () => refreshChapters(d));
+    }
     if (action === "cp-page") {
       page = Math.max(1, Number(id));
       const host = $("#cp-sessions");

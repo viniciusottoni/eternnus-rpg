@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
 
 public record WorkspaceInput(string Title, string Content, string Kind = "text", string Visibility = "self", string Secrets = "", string Collection = "", string Tags = "", string Status = "open", Guid? ParentId = null, Guid? NpcId = null, Guid? MapId = null, int Order = 0, int Revision = 0, string[]? Recipients = null, Guid[]? Related = null, bool Pinned = false);
-public record PastSessionInput(int Number, string Title, string Summary, DateOnly? Date = null, bool Published = false, int Revision = 0, List<PastSceneInput>? Scenes = null);
+public record PastSessionInput(int Number, string Title, string Summary, DateOnly? Date = null, bool Published = false, int Revision = 0, List<PastSceneInput>? Scenes = null, Guid? ChapterId = null);
 /// <summary>Cena opcional do registro anterior. Título vazio vira "Cena N".</summary>
 public record PastSceneInput(string? Title, string? Text);
 public sealed partial class WorkspaceService(GameDb db)
@@ -133,6 +133,7 @@ public sealed partial class WorkspaceService(GameDb db)
         if (id != null && p.Revision != x.Revision) throw new RuleException(409, "O resumo mudou. Reabra antes de salvar.");
         if (id == null && await db.Set<PastSession>().CountAsync(p => p.CampaignId == campaign, ct) >= 1000) throw new RuleException(409, "Limite de 1.000 sessões anteriores.");
         var scenes = PastScenes(x.Scenes);
+        p.ChapterId = await ChapterOf(db, campaign, x.ChapterId, ct);
         p.Number = x.Number; p.Title = x.Title.Trim(); p.Summary = x.Summary; p.Date = x.Date; p.Published = x.Published; p.Scenes = scenes;
         if (id == null) db.Add(p); else p.Revision++;
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return p;

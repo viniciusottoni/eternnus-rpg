@@ -758,6 +758,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<Guid>("CampaignId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ChapterId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime?>("EndedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -867,6 +870,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_Sessions_OneActivePerCampaign")
                         .HasFilter("\"EndedAt\" IS NULL");
+
+                    b.HasIndex("ChapterId");
 
                     b.HasIndex("MusicTrackId");
 
@@ -1438,6 +1443,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<Guid>("CampaignId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ChapterId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateOnly?>("Date")
                         .HasColumnType("date");
 
@@ -1462,6 +1470,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasColumnType("character varying(120)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ChapterId");
 
                     b.HasIndex("CampaignId", "Number")
                         .IsUnique();
@@ -1900,6 +1910,47 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.HasIndex("Sha256");
 
                     b.ToTable("Files");
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoryChapter", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignId", "Order");
+
+                    b.ToTable("StoryChapter");
                 });
 
             modelBuilder.Entity("Eternnus.Web.SupportTicket", b =>
@@ -2620,6 +2671,11 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Eternnus.Web.StoryChapter", null)
+                        .WithMany()
+                        .HasForeignKey("ChapterId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Eternnus.Web.MusicTrack", null)
                         .WithMany()
                         .HasForeignKey("MusicTrackId")
@@ -2788,6 +2844,11 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasForeignKey("CampaignId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Eternnus.Web.StoryChapter", null)
+                        .WithMany()
+                        .HasForeignKey("ChapterId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.OwnsMany("Eternnus.Web.PastSessionScene", "Scenes", b1 =>
                         {
@@ -3167,6 +3228,15 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Navigation("Fields");
 
                     b.Navigation("Pages");
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoryChapter", b =>
+                {
+                    b.HasOne("Eternnus.Web.Campaign", null)
+                        .WithMany()
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Eternnus.Web.SupportTicket", b =>

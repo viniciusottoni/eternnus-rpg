@@ -439,3 +439,23 @@ O Docker estava inicialmente desligado; foi iniciado e o contêiner PostgreSQL d
 Ajustes encontrados na QA: posicionamento explícito dos filhos do rodapé; prioridade das regras para manter ações em painéis abertos; tamanho mínimo dos botões nas ferramentas; atualização da área de névoa por ResizeObserver; ativação de áudio bloqueado no topo. O teste espera a atualização real de dvh após redimensionamento emulado.
 
 Limites: não houve publicação, teste em aparelho físico, Safari/iOS, instalação standalone, rotação física, teclado virtual real ou medição de carga. Sucesso da API de orientação foi simulado apenas para conferir tentativa e liberação; recusa real do Chrome desktop e ausência das APIs também foram testadas. Nenhuma mudança de backend ou migração pertence a esta entrega; alterações preexistentes foram preservadas.
+
+
+## Câmera, ajuda e editores móveis — 10/11/2026 (ADR-057)
+
+- `dotnet build Eternnus.sln --no-restore -v quiet`: aprovado, zero avisos e erros.
+- `dotnet test Eternnus.sln --no-build --filter "FullyQualifiedName~TableRulesTests|FullyQualifiedName~SceneEditorTests" --verbosity quiet`: 38 aprovados.
+- `node --test tests/help-catalog.test.mjs tests/pwa.test.mjs tests/service-worker.test.mjs tests/scene-policy.test.mjs tests/session-policy.test.mjs tests/play-policy.test.mjs`: 41 aprovados.
+- `node tests/table-viewport.mjs`: 122 verificações em Chromium/Playwright com PostgreSQL isolado; mesa, editor de cena, preparação de mapa e prévia de grade. Pinça por eventos de toque do protocolo Chromium verifica aproximação, afastamento, limites, escala da página, cancelamento de pintura sem escrita e preservação dos valores da grade. Confere círculos de ajuda, barras e painéis, áudio, conversa, modal e dimensões móveis; zero erros JavaScript/CSP. Capturas e relatório em `artifacts/qa/mesa-horizontal`.
+- `node --check` nos módulos alterados e `git diff --check`: aprovados.
+
+O ensaio usa emulação, não aparelho físico: toque real em Android/iOS, Safari e teclado virtual ainda precisam de conferência. Não houve publicação nem alterações no banco de produção.
+
+
+## Capítulos e premissa — 10/11/2026 (ADR-060)
+
+- `dotnet test Eternnus.sln -v q`: **711 aprovados**, zero falhas. Novos: `WorkspaceTests.Chapters_are_master_only_ordered_and_group_past_sessions` e `SessionServiceTests.Sessions_can_start_in_a_chapter_move_between_chapters_or_stay_loose` (SQLite).
+- `node --test tests/*.test.mjs`: 143 aprovados.
+- `node tests/campaign-chapters.mjs`: PostgreSQL isolado com a migração `StoryChapters` + Chromium/Playwright em desktop e 390 px. Permissões (jogador 403), vínculo na abertura com criação no mesmo envio, mudança de capítulo, exclusão com sessões avulsas, premissa com parágrafos no popup e na Visão geral, sem overflow móvel e sem erros de console.
+
+Sem aparelho físico, Safari/iOS ou publicação.

@@ -3152,3 +3152,21 @@ a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3
 @media (pointer: coarse) { .past-scene-tools .icon-button { min-width: 44px; min-height: 44px; } }
 #past-scenes > button { justify-self: start; }
 #past-scenes { display: grid; gap: 10px; }
+/* Premissa: quebras de linha do mestre preservadas; no topo, trecho curto com "mais" abrindo o texto completo. */
+.campaign-hero .hero-premise { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.6; }
+.campaign-hero .hero-more { display: inline; min-height: 0; padding: 0 2px; font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+@media (pointer: coarse) { .campaign-hero .hero-more { display: inline-block; min-height: 44px; padding: 0 8px; } }
+.premise-full { max-width: none; max-height: 65vh; overflow-y: auto; padding-right: 6px; }
+/* Capítulos, atos e arcos (Diário do mestre). */
+.chapter-list { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 10px; }
+.chapter-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 14px 18px; }
+.chapter-info { min-width: 0; flex: 1; }
+.chapter-info h3 { margin: 2px 0 2px; color: #ead6a8; font: normal 18px var(--serif); overflow-wrap: anywhere; }
+.chapter-info > p.muted { margin: 0; }
+.chapter-summary { margin: 8px 0 0; font-size: 13px; }
+.chapter-tools { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.chapter-tools .icon-button { min-width: 36px; min-height: 36px; padding: 0 10px; }
+@media (pointer: coarse) { .chapter-tools .icon-button, .chapter-tools .button, .chapter-tools button { min-width: 44px; min-height: 44px; } }
+@media (max-width: 640px) { .chapter-row { flex-direction: column; } .chapter-tools { justify-content: flex-start; } }
+.session-chapter { margin: 0 0 4px; }
+.session-chapter .status-chip { font-size: 11px; }

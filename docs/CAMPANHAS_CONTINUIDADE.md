@@ -45,3 +45,8 @@ Três migrações aditivas: CampaignContinuity, WorkspaceAttachmentsAtlas e Work
 Não se promete importação automática de outras plataformas, coautoria simultânea, backup integral de campanha, recuperação automática de edições não enviadas ou carga medida. A numeração protege disputas dentro da aplicação; inserções diretas fora dos casos de uso não têm unicidade entre as duas tabelas de sessões.
 
 A exclusão comum, administrativa e de one-shot remove páginas de lore e anexos dependentes na mesma transação; cadernos pessoais mantêm o autor. Seletores do editor buscam vinte opções por vez, preservando relações atuais, em vez de carregar todo o acervo. Referências privadas de NPC/mapa só podem ser associadas pelo mestre. A mesa oferece Meu caderno em outra aba para manter a sessão aberta.
+
+
+## Capítulos, atos e arcos (ADR-060)
+
+O mestre cria capítulos, atos ou arcos no Diário (até 200 por campanha), define a ordem e escolhe um ao iniciar cada sessão ou registrar uma sessão anterior. O tipo é só rótulo. Sessões sem capítulo são permitidas e aparecem como "Avulsa"; o capítulo de uma sessão pode mudar depois, inclusive encerrada. Excluir um capítulo mantém as sessões, que ficam avulsas. Somente o mestre vê os capítulos. A premissa preserva parágrafos na Visão geral; o topo mostra um trecho e "mais" abre o texto completo.

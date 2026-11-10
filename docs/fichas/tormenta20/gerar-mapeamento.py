@@ -57,14 +57,14 @@ CENTERS = [46.0, 102.6, 159.2, 216.0, 273.2, 329.4]
 ABBR = {}
 for (key, label, abbr), cx in zip(ATTRS, CENTERS):
     ABBR[abbr] = key
-    add(key, label, "number", 0, cx - 12, 112, 26, 24, 20, default="10", min=0, max=99, align="center")
+    add(key, label, "number", 0, cx - 13, 112, 32, 24, 18, default="10", min=0, max=99, align="center")
 for (key, label, abbr), cx in zip(ATTRS, CENTERS):
-    add(key + "_mod", "Mod. " + label, "computed", 0, cx - 6.5, 140.5, 15, 14.5, 12, formula=f"mod(@{key})", align="center")
+    add(key + "_mod", "Mod. " + label, "computed", 0, cx - 7, 141, 18, 14, 11, formula=f"mod(@{key})", align="center")
 
 # Pontos de vida / mana
-add("pv_max", "PV máximos", "number", 0, 34, 178, 32, 22, 18, role="maxHp", default="10", min=1, max=9999, align="center")
+add("pv_max", "PV máximos", "number", 0, 30, 179, 36, 20, 16, role="maxHp", default="10", min=1, max=9999, align="center")
 add("pv_atual", "PV atuais", "number", 0, 82, 178, 90, 22, 18, role="hp", default="10", min=0, max=9999, align="center")
-add("pm_max", "PM máximos", "number", 0, 205, 178, 32, 22, 18, min=0, max=9999, align="center")
+add("pm_max", "PM máximos", "number", 0, 201, 179, 36, 20, 16, min=0, max=9999, align="center")
 add("pm_atual", "PM atuais", "number", 0, 253, 178, 92, 22, 18, min=0, max=9999, align="center")
 
 # Ataques (5 linhas impressas)
@@ -77,7 +77,7 @@ for i, L in enumerate(ATK_LINES, 1):
         add(f"ataque_{i}_{col}", f"Ataque {i} — {desc}", "text", 0, x, y, w, h, 9, maxLength=ml)
 
 # Defesa = 10 + Des + armadura + escudo + outros
-add("defesa", "Defesa", "computed", 0, 32, 404, 28, 22, 18, role="armor",
+add("defesa", "Defesa", "computed", 0, 30, 404, 32, 22, 18, role="armor",
     formula="10 + @defesa_des + @defesa_armadura + @defesa_escudo + @defesa_outros", align="center")
 y, h = on_line(422.5, 10)
 add("defesa_des", "Defesa — mod. de Destreza", "computed", 0, 97, y, 19, h, 10, formula="@destreza_mod", align="center")
@@ -102,7 +102,7 @@ for i, L in enumerate((406.2, 422.5, 438.0, 453.8), 1):
 
 # Tamanho: categoria no espaço do rótulo; o quadro "/" guarda os modificadores de Furtividade / manobra
 y, h = boxed(487.5, 9)
-add("tamanho", "Tamanho", "select", 0, 265, y, 39, h, 9, default="Médio",
+add("tamanho", "Tamanho", "select", 0, 263, y, 42, h, 9, default="Médio",
     options=["Minúsculo", "Pequeno", "Médio", "Grande", "Enorme", "Colossal"])
 y, h = boxed(487.5, 10)
 add("tamanho_furtividade", "Tamanho — mod. de Furtividade", "number", 0, 310, y, 15, h, 10, default="0", min=-20, max=20, align="center")
@@ -139,8 +139,8 @@ for (key, label, abbr, armor), L in zip(SKILLS, SKILL_LINES):
         total += " + @tamanho_furtividade"
     role = "perception" if key == "percepcao" else None
     add(key, label, "computed", 0, 439.5, y, 17, h, 9, formula=total, role=role, align="center")
-    add(f"{key}_metade_nivel", f"{label} — ½ nível", "computed", 0, 467, y, 14, h, 9, formula="floor(@nivel / 2)", align="center")
-    add(f"{key}_atributo", f"{label} — mod. de {abbr}", "computed", 0, 501.6, y + 0.8, 8.6, h - 1.5, 7.5, formula=f"@{attr}_mod")
+    add(f"{key}_metade_nivel", f"{label} — ½ nível", "computed", 0, 467, y, 15, h, 9, formula="floor(@nivel / 2)", align="center")
+    add(f"{key}_atributo", f"{label} — mod. de {abbr}", "computed", 0, 499.5, y + 0.8, 10.5, h - 1.5, 7.5, formula=f"@{attr}_mod")
     add(f"{key}_treino", f"{label} — treinada", "checkbox", 0, 516.5, L - 10.5, 9.5, 9.5, 9)
     add(f"{key}_outros", f"{label} — outros", "number", 0, 535, y, 22, h, 9, min=-99, max=99, align="center")
     if key.startswith("oficio_"):

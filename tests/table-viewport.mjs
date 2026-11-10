@@ -221,9 +221,7 @@ try {
     await cameraPage.waitForFunction(()=>Number(document.querySelector('#se-board').dataset.zoom)>1);
     await circles(cameraPage,kind);
     const before=await cameraPage.locator('#se-board').getAttribute('data-zoom');
-    console.log('editor-before', await cameraPage.evaluate(()=>({scale:visualViewport.scale,width:innerWidth,height:innerHeight,board:document.querySelector('#se-board').getBoundingClientRect().toJSON(),touch:getComputedStyle(document.querySelector('#se-board')).touchAction,canvas:getComputedStyle(document.querySelector('#se-board canvas')).touchAction})));
     await pinch('#se-board');
-    console.log('editor-after', await cameraPage.evaluate(()=>({scale:visualViewport.scale,width:innerWidth,height:innerHeight,close:document.querySelector('#close-modal').getBoundingClientRect().toJSON()})));
     check(await cameraPage.evaluate(()=>visualViewport.scale)===1,`${kind}: pinça não amplia o diálogo`);
     check(Number(await cameraPage.locator('#se-board').getAttribute('data-zoom'))>Number(before),`${kind}: pinça na preparação`);
     await cameraPage.locator('[data-action="se-properties"]').click();

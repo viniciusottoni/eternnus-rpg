@@ -112,6 +112,8 @@ public class GameSession
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid CampaignId { get; set; }
     public int Number { get; set; }
+    /// <summary>Capítulo/ato/arco da campanha (<see cref="StoryChapter"/>); nulo = sessão avulsa.</summary>
+    public Guid? ChapterId { get; set; }
     [MaxLength(120)] public string Title { get; set; } = "";
     /// <summary>Objetivo/nota inicial do mestre. A coluna preserva até 10.000 caracteres das sessões agendadas anteriores; novas entradas aceitam 2.000.</summary>
     [MaxLength(10000)] public string Objective { get; set; } = "";

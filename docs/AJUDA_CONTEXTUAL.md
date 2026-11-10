@@ -510,3 +510,18 @@ As abas Mapa/Grupo/Ficha/Conversa e suas permissões são as existentes; agora a
 | Blocos do Diário | `campaign-page.js`, `campaign-prep.js` | Texto visível sob cada título (o que é e quem vê); Antes do Eternnus mantém ⓘ. | `campanhas.continuidade.historico` (corpo cita as cenas) |
 | Cenas da sessão anterior | `campaign-workspace.js` | Auxiliar visível com formato e limite (30 cenas; título vazio vira “Cena N”). | — |
 | Retrato na Ficha do elemento | `npc-sheet.js` | Auxiliar visível + ⓘ existente da imagem. | `mesa.npcs.imagem` (corpo cita trocar/remover) |
+
+
+### Classificação — capítulos e premissa (ADR-060, 10/11/2026)
+
+| Elemento | Arquivo | Nível | Chave |
+| --- | --- | --- | --- |
+| Capítulos, atos e arcos (bloco do Diário) | `campaign-chapters.js` | ⓘ no título + texto visível sob o título (quem vê e recomendação de criar antes) | `campanhas.capitulos.organizacao` (mestre) |
+| Seletor de capítulo (iniciar sessão, registro anterior, mover sessão) | `campaign-chapters.js` | Auxiliar visível por `aria-describedby`; sem capítulos, recomenda criar o primeiro e lembra a opção avulsa | — |
+| Título, tipo e resumo do capítulo | `campaign-chapters.js` | Labels, limites e contagem comuns; resumo indica "Só você vê" | — |
+| Subir/descer capítulo | `campaign-chapters.js` | Nome acessível com o título; `disabled` nas pontas | — |
+| Excluir capítulo | `campaign-chapters.js` | Consequência na confirmação (sessões continuam, ficam avulsas) | — |
+| "mais" da premissa | `campaign-page.js` | Nome acessível "Ler a premissa completa"; abre o modal comum | — |
+| Chip de capítulo/Avulsa nas sessões | `campaign-page.js`, `campaign-workspace.js` | Texto visível | — |
+
+Catálogo campanhas e índice help-policy incluem a nova chave.

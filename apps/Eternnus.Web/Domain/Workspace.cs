@@ -43,6 +43,8 @@ public class PastSession
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid CampaignId { get; set; }
     public int Number { get; set; }
+    /// <summary>Capítulo/ato/arco da campanha; nulo = sessão avulsa.</summary>
+    public Guid? ChapterId { get; set; }
     [MaxLength(120)] public string Title { get; set; } = "";
     [MaxLength(10000)] public string Summary { get; set; } = "";
     public DateOnly? Date { get; set; }
