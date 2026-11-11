@@ -31,11 +31,12 @@ public sealed partial class WorkspaceService
         hits.AddRange(liveRows.Select(s => new SearchHit("session", $"Sessão {s.Number:00} — {s.Title}", TextSearch.Excerpt(s.Recap, term) ?? TextSearch.Excerpt(s.Objective, term), $"{root}/sessions/{SessionLogSources.Key(SessionLogSources.Eternnus, s.Id)}")));
         hits.AddRange(pastRows.Select(s => new SearchHit("session", $"Sessão {s.Number:00} — {s.Title}", TextSearch.Excerpt(s.Summary, term) ?? s.Scenes.Select(x => TextSearch.Excerpt(x.Title + ": " + x.Text, term)).FirstOrDefault(x => x != null), $"{root}/sessions/{SessionLogSources.Key(SessionLogSources.Past, s.Id)}")));
 
+        // Capítulos: jogador encontra só os visíveis.
+        var chapters = await Chapters.AsNoTracking().Where(x => x.CampaignId == campaign && (master || x.Published)).Where(TextSearch.AnyField<StoryChapter>(db, pattern, x => x.Title, x => x.Summary))
+            .OrderBy(x => x.Order).Take(SearchPerKind).Select(x => new { x.Id, x.Title, x.Summary }).ToListAsync(ct);
+        hits.AddRange(chapters.Select(x => new SearchHit("chapter", x.Title, TextSearch.Excerpt(x.Summary, term), $"{root}/sessions/chapter-{x.Id:D}")));
         if (master)
         {
-            var chapters = await Chapters.AsNoTracking().Where(x => x.CampaignId == campaign).Where(TextSearch.AnyField<StoryChapter>(db, pattern, x => x.Title, x => x.Summary))
-                .OrderBy(x => x.Order).Take(SearchPerKind).Select(x => new { x.Id, x.Title, x.Summary }).ToListAsync(ct);
-            hits.AddRange(chapters.Select(x => new SearchHit("chapter", x.Title, TextSearch.Excerpt(x.Summary, term), $"{root}/sessions/chapter-{x.Id:D}")));
             var scenes = await db.Scenes.AsNoTracking().Where(x => x.CampaignId == campaign).Where(TextSearch.AnyField<Scene>(db, pattern, x => x.Name, x => x.Description, x => x.SharedText, x => x.PrivateNotes))
                 .OrderBy(x => x.Order).Take(SearchPerKind).Select(x => new { x.Name, x.Description, x.SharedText, x.PrivateNotes }).ToListAsync(ct);
             hits.AddRange(scenes.Select(x => new SearchHit("scene", x.Name, TextSearch.Excerpt(x.SharedText, term) ?? TextSearch.Excerpt(x.Description, term) ?? TextSearch.Excerpt(x.PrivateNotes, term), $"{root}/prep")));

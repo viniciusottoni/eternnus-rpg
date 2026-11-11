@@ -46,8 +46,9 @@ export async function renderSessionLog(d, target, query = {}, { open = "", onCha
   const reload = (next = {}) => renderSessionLog(d, target, { ...q, ...next }, { onChanged });
   const pages = Math.max(1, Math.ceil(r.total / r.pageSize));
   const filtered = q.search || q.chapter || q.source;
-  const chapterOptions = `<option value="">Todos</option><option value="none" ${q.chapter === "none" ? "selected" : ""}>Sem capítulo (avulsas)</option>${r.chapters.map((c) => `<option value="${esc(c.id)}" ${c.id === q.chapter ? "selected" : ""}>${esc(chapterKindLabel(c.kind))} — ${esc(c.title)}</option>`).join("")}`;
-  const row = (s) => `<tr><td class="num" data-label="Nº">${String(s.number).padStart(2, "0")}</td><td data-label="Sessão"><button type="button" class="text-button log-open" data-action="lg-open" data-id="${esc(s.key)}">${esc(s.title)}</button>${s.excerpt ? `<p class="log-excerpt">${esc(s.excerpt)}</p>` : ""}</td><td data-label="Capítulo">${s.chapterTitle ? `<span class="status-chip">❖ ${esc(s.chapterTitle)}</span>` : '<span class="muted">Avulsa</span>'}</td><td data-label="Origem">${sourceLabel(s.source)}</td><td data-label="Data">${esc(rowDate(s))}</td>${master ? `<td data-label="Estado">${rowState(s)}</td>` : ""}</tr>`;
+  // Jogador não distingue sessão avulsa de sessão em capítulo oculto: ambas aparecem "sem capítulo".
+  const chapterOptions = `<option value="">Todos</option><option value="none" ${q.chapter === "none" ? "selected" : ""}>${master ? "Sem capítulo (avulsas)" : "Sem capítulo"}</option>${r.chapters.map((c) => `<option value="${esc(c.id)}" ${c.id === q.chapter ? "selected" : ""}>${esc(chapterKindLabel(c.kind))} — ${esc(c.title)}</option>`).join("")}`;
+  const row = (s) => `<tr><td class="num" data-label="Nº">${String(s.number).padStart(2, "0")}</td><td data-label="Sessão"><button type="button" class="text-button log-open" data-action="lg-open" data-id="${esc(s.key)}">${esc(s.title)}</button>${s.excerpt ? `<p class="log-excerpt">${esc(s.excerpt)}</p>` : ""}</td><td data-label="Capítulo">${s.chapterTitle ? `<span class="status-chip">❖ ${esc(s.chapterTitle)}</span>` : `<span class="muted">${master ? "Avulsa" : "—"}</span>`}</td><td data-label="Origem">${sourceLabel(s.source)}</td><td data-label="Data">${esc(rowDate(s))}</td>${master ? `<td data-label="Estado">${rowState(s)}</td>` : ""}</tr>`;
   target.innerHTML = `<div class="section-title"><h2 id="cp-log-title">Sessões${helpButton("campanhas.sessoes.tabela", "Tabela de sessões")}</h2>${editable ? `<div class="section-actions">${button("+ Sessão anterior", "lg-past", "", "subtle small")}${button("⇪ Importar em lote", "lg-import", "", "subtle small")}${d.activeSession ? "" : button("✦ Iniciar nova sessão", "cp-start", d.id, "subtle small")}</div>` : ""}</div>
   <p class="muted small section-lead">${master ? "Sessões jogadas no Eternnus e as registradas antes da plataforma, numa só lista. Os jogadores veem só resumos e registros publicados." : "O que aconteceu em cada sessão, publicado pelo mestre — no Eternnus ou antes dele. Busque por nomes, lugares ou acontecimentos."}</p>
   <form class="search-bar log-filters" role="search" data-log-filters><div class="field"><label for="lg-search">Buscar nas sessões</label><input id="lg-search" name="search" type="search" minlength="2" maxlength="100" value="${esc(q.search)}" placeholder="Goblins, Rosered, pedra negra…"></div><div class="field"><label for="lg-chapter">Capítulo</label><select id="lg-chapter" name="chapter">${chapterOptions}</select></div><div class="field"><label for="lg-source">Origem</label><select id="lg-source" name="source">${SOURCES.map(([v, l]) => `<option value="${v}" ${v === q.source ? "selected" : ""}>${l}</option>`).join("")}</select></div><button type="submit" class="subtle">Buscar</button>${filtered ? `<p class="search-extra"><span role="status">${r.total} ${r.total === 1 ? "sessão encontrada" : "sessões encontradas"}.</span> ${button("Limpar filtros", "lg-clear", "", "text-button small")}</p>` : ""}</form>
@@ -80,13 +81,13 @@ export async function openEntry(d, key, onChanged) {
   if (!KEY.test(key)) return;
   const s = await api(`/campaigns/${d.id}/session-log/${encodeURIComponent(key)}`);
   const master = d.isMaster;
-  const meta = [sourceLabel(s.source), rowDate(s) === "—" ? "" : rowDate(s), s.chapterTitle ? `Capítulo: ${s.chapterTitle}` : "Avulsa", master ? (s.active ? "Em andamento" : s.published ? "Publicado para o grupo" : "Privado") : ""].filter(Boolean).map(esc).join(" · ");
+  const meta = [sourceLabel(s.source), rowDate(s) === "—" ? "" : rowDate(s), s.chapterTitle ? `Capítulo: ${s.chapterTitle}` : master ? "Avulsa" : "", master ? (s.active ? "Em andamento" : s.published ? "Publicado para o grupo" : "Privado") : ""].filter(Boolean).map(esc).join(" · ");
   const scenes = (s.scenes || []).length ? `<h3 class="entry-heading">Cenas (${s.scenes.length})</h3><ol class="entry-scenes">${s.scenes.map((c) => `<li><h4>${esc(c.title)}</h4><p class="workspace-prose">${esc(c.text)}</p></li>`).join("")}</ol>` : "";
   const live = s.source === "eternnus";
   const actions = master && !d.archived
     ? live
       ? `<a class="button subtle small" href="#session/${esc(s.id)}/timeline">◷ Histórico</a><a class="button subtle small" href="#session/${esc(s.id)}/notes">✎ Notas</a>${button(s.published ? "Resumo publicado" : "✍ Resumo", "le-recap", "", "subtle small")}${button("❖ Capítulo", "le-chapter", "", "subtle small")}`
-      : button("Editar registro", "le-edit", "", "subtle small")
+      : `${button("Editar registro", "le-edit", "", "subtle small")}${button("Excluir registro", "le-delete", "", "danger small")}`
     : "";
   modal(sessionLabel(s.number, s.title), `<p class="muted small entry-meta">${meta}</p>${s.objective ? `<details class="entry-private"><summary>Objetivo inicial (só você vê)</summary><p class="workspace-prose">${esc(s.objective)}</p></details>` : ""}<h3 class="entry-heading">${live ? "Resumo" : "Resumo geral"}</h3>${s.text ? `<div class="workspace-prose entry-text">${esc(s.text)}</div>` : `<p class="muted small">${live ? "O resumo desta sessão ainda não foi escrito." : "Sem resumo geral."}</p>`}${scenes}<div class="form-actions entry-actions">${actions}${button("Fechar", "modal-close", "", "subtle small")}</div>`);
   $("#modal").classList.add("wide");
@@ -99,7 +100,23 @@ export async function openEntry(d, key, onChanged) {
       if (b.dataset.action === "le-recap") (await import("./campaign-prep.js")).recapModal({ id: s.id, number: s.number, recap: s.text, published: s.published }, onChanged);
       if (b.dataset.action === "le-chapter") await (await import("./campaign-chapters.js")).moveSessionModal(d, { id: s.id, chapterId: s.chapterId, label: sessionLabel(s.number, s.title) }, onChanged);
       if (b.dataset.action === "le-edit") await (await import("./campaign-workspace.js")).pastEditor(d, { id: s.id, number: s.number, title: s.title, summary: s.text, date: s.date, published: s.published, revision: s.revision, scenes: s.scenes, chapterId: s.chapterId }, onChanged);
+      if (b.dataset.action === "le-delete") deletePast(d, s, onChanged);
     } catch (error) { toast(error.message); }
+  };
+}
+
+/** Exclusão definitiva de um registro anterior ao Eternnus, com confirmação explícita. */
+function deletePast(d, s, onChanged) {
+  const scenes = (s.scenes || []).length;
+  modal("Excluir sessão anterior?", `<p><strong>${esc(sessionLabel(s.number, s.title))}</strong> será excluída com o resumo${scenes ? ` e ${scenes} ${scenes === 1 ? "cena" : "cenas"}` : ""}. Esta ação não pode ser desfeita. O número ${esc(String(s.number))} fica livre.</p><form id="past-delete">${formError()}<div class="form-actions">${button("Voltar", "modal-close", "", "subtle")}<button class="danger" type="submit">Excluir sessão</button></div></form>`);
+  $("#past-delete").onsubmit = (e) => {
+    e.preventDefault();
+    submitForm(e.currentTarget, async () => {
+      await api(`/campaigns/${d.id}/workspace/past-sessions/${encodeURIComponent(s.id)}?revision=${Number(s.revision) || 0}`, "DELETE");
+      $("#modal").close();
+      toast("Sessão anterior excluída.");
+      await onChanged?.();
+    });
   };
 }
 

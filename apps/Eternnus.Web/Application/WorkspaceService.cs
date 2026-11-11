@@ -138,4 +138,13 @@ public sealed partial class WorkspaceService(GameDb db)
         if (id == null) db.Add(p); else p.Revision++;
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return p;
     }
+    /// <summary>Exclui um registro anterior ao Eternnus (resumo e cenas). Sessões jogadas na plataforma não passam por aqui.</summary>
+    public async Task DeletePast(Guid campaign, Guid id, string user, int revision, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct); var c = await Lock(campaign, user, ct);
+        if (c.OwnerId != user) throw new RuleException(403, "Somente o mestre exclui sessões anteriores.");
+        var p = await db.Set<PastSession>().SingleOrDefaultAsync(p => p.CampaignId == campaign && p.Id == id, ct) ?? throw Missing();
+        if (p.Revision != revision) throw new RuleException(409, "O registro mudou. Reabra antes de excluir.");
+        db.Remove(p); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
+    }
 }

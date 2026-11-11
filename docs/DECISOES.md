@@ -584,3 +584,15 @@ Pedido: capítulos e sessões anteriores em tabelas paginadas; busca nas sessõe
 **Importação:** CSV (não XLSX) para não acrescentar dependência de leitura de planilhas binárias; Excel, LibreOffice e Google Planilhas abrem e salvam o modelo. Fluxo em duas etapas — prévia sem gravar e confirmação com o mesmo arquivo — e gravação tudo-ou-nada sob o bloqueio da campanha. Defesas: limite de corpo dedicado (1 MiB + margem), um único arquivo, extensão .csv/.txt, UTF-8 estrito com recuo para Windows-1252, recusa de bytes nulos, caracteres de controle e controles bidirecionais (Trojan Source), leitor RFC 4180 próprio sem avaliação de conteúdo, limites de linhas/colunas/campos, validação por linha com os mesmos limites dos formulários, números conferidos contra as duas tabelas. O conteúdo é texto puro e sempre escapado na interface. Fórmulas de planilha (`=…`) são guardadas como texto: o site não exporta esses dados para planilhas, então não há reinjeção; se uma exportação surgir, ela deve neutralizar células iniciadas por `= + - @`. Importa só sessões anteriores (não cria sessões da mesa) e não altera registros existentes.
 
 **Consequências:** cache v37 acrescenta `campaign-sessions.js` e `campaign-search.js`. Rotas da campanha aceitam um item opcional (`#campaign/{id}/{aba}/{item}`) para abrir sessão, página, NPC, capítulo ou a premissa a partir da busca.
+
+## ADR-062 — Capítulos, atos e arcos visíveis aos jogadores por escolha do mestre (10/11/2026)
+
+Pedido: os atos/capítulos/arcos devem ficar visíveis também para os jogadores, apenas os que o mestre determinar.
+
+**Decisão:** `StoryChapter.Published` (migração aditiva `PublishedChapters`, padrão falso). Capítulos existentes, importados ou criados pelo seletor da sessão começam ocultos; o mestre marca “Visível para os jogadores” no editor. O jogador lê tipo, título e resumo dos capítulos visíveis no bloco do Diário (só leitura, some quando não há nenhum), no filtro e na coluna Capítulo da tabela de sessões e na busca geral. As contagens dele consideram só sessões publicadas.
+
+**Capítulo oculto não vaza:** para o jogador, `session-log`, `session-log/{key}` e a busca devolvem `chapterId`/`chapterTitle` nulos quando o capítulo está oculto; filtrar por um capítulo oculto não traz linhas, e essas sessões entram em “Sem capítulo”. A regra fica no servidor (`ShownChapters`), não na tela.
+
+**Mudança em relação à ADR-061:** antes o jogador via o título do capítulo de qualquer sessão publicada. Agora só vê capítulos publicados. O resumo do capítulo passa a ser lido pelo grupo quando o capítulo está visível; o editor avisa isso.
+
+**Consequências:** cache v39. Ajuda `campanhas.capitulos.organizacao` passa a ser para todos.

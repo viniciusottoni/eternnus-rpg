@@ -170,7 +170,8 @@ function inviteBox(d) {
 
 /** Diário numa só página, em ordem de leitura: próxima partida, objetivos e pistas, capítulos (mestre) e a tabela única de sessões. */
 async function renderJournalTab(d, target, item = "") {
-  const showChapters = d.isMaster && !d.isOneShot;
+  // Jogador também recebe o bloco: o servidor devolve só os capítulos visíveis e o bloco some quando não há nenhum.
+  const showChapters = !d.isOneShot;
   target.innerHTML = `<div id="cp-journal" class="journal-block"></div>${showChapters ? '<section id="cp-chapters" class="journal-block" aria-labelledby="cp-chapters-title"></section>' : ""}<section id="cp-log" class="journal-block" aria-labelledby="cp-log-title"></section>`;
   const [prep, sessions] = await Promise.all([import("./campaign-prep.js"), import("./campaign-sessions.js")]);
   const { open = "", chapter = "" } = sessions.parseLogItem(item);

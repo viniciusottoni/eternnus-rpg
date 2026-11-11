@@ -516,7 +516,7 @@ As abas Mapa/Grupo/Ficha/Conversa e suas permissões são as existentes; agora a
 
 | Elemento | Arquivo | Nível | Chave |
 | --- | --- | --- | --- |
-| Capítulos, atos e arcos (bloco do Diário) | `campaign-chapters.js` | ⓘ no título + texto visível sob o título (quem vê e recomendação de criar antes) | `campanhas.capitulos.organizacao` (mestre) |
+| Capítulos, atos e arcos (bloco do Diário) | `campaign-chapters.js` | ⓘ no título + texto visível sob o título (quem vê e recomendação de criar antes); no editor, texto sob “Visível para os jogadores” diz o que o grupo passa a ver | `campanhas.capitulos.organizacao` (todos; jogador vê o bloco só com capítulos visíveis) |
 | Seletor de capítulo (iniciar sessão, registro anterior, mover sessão) | `campaign-chapters.js` | Auxiliar visível por `aria-describedby`; sem capítulos, recomenda criar o primeiro e lembra a opção avulsa | — |
 | Título, tipo e resumo do capítulo | `campaign-chapters.js` | Labels, limites e contagem comuns; resumo indica "Só você vê" | — |
 | Subir/descer capítulo | `campaign-chapters.js` | Nome acessível com o título; `disabled` nas pontas | — |

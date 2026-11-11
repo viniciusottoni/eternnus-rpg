@@ -4,7 +4,8 @@ namespace Eternnus.Web;
 
 /// <summary>
 /// Capítulo, ato ou arco da campanha: agrupa sessões jogadas no Eternnus e sessões anteriores, na ordem definida pelo mestre.
-/// Somente o mestre lê e administra. Sessões podem ficar sem capítulo (avulsas); excluir o capítulo as deixa avulsas.
+/// Somente o mestre administra. Jogadores leem título, tipo e resumo apenas dos capítulos que o mestre tornou visíveis
+/// (<see cref="Published"/>). Sessões podem ficar sem capítulo (avulsas); excluir o capítulo as deixa avulsas.
 /// </summary>
 public class StoryChapter
 {
@@ -15,6 +16,8 @@ public class StoryChapter
     [MaxLength(120)] public string Title { get; set; } = "";
     [MaxLength(2000)] public string Summary { get; set; } = "";
     public int Order { get; set; }
+    /// <summary>Visível para os jogadores. Desligado por padrão: o mestre revela cada capítulo quando quiser.</summary>
+    public bool Published { get; set; }
     public int Revision { get; set; } = 1;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

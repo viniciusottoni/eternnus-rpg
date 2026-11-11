@@ -11,7 +11,7 @@ const KINDS = Object.freeze({
 const ROUTE = /^campaign\/[0-9a-f-]{36}(\/[a-z]+(\/[a-z0-9-]{1,48})?)?$/i;
 
 export function searchForm(d) {
-  return `<section class="campaign-search metal" aria-labelledby="cs-title"><h2 id="cs-title" class="small-heading">Buscar na campanha${helpButton("campanhas.busca.geral", "Busca na campanha")}</h2><form id="cs-form" class="search-bar" role="search"><div class="field"><label for="cs-q" class="sr-only">Termo de busca</label><input id="cs-q" name="q" type="search" minlength="2" maxlength="100" required placeholder="Nome, lugar, acontecimento…" aria-describedby="cs-hint"><small id="cs-hint" class="form-help">${d.isMaster ? "Sessões, capítulos, mundo, notas, diário, NPCs e cenas." : "Sessões publicadas, mundo, suas notas, diário e NPCs conhecidos."}</small></div><button type="submit" class="subtle">Buscar</button></form><div id="cs-results" aria-live="polite"></div></section>`;
+  return `<section class="campaign-search metal" aria-labelledby="cs-title"><h2 id="cs-title" class="small-heading">Buscar na campanha${helpButton("campanhas.busca.geral", "Busca na campanha")}</h2><form id="cs-form" class="search-bar" role="search"><div class="field"><label for="cs-q" class="sr-only">Termo de busca</label><input id="cs-q" name="q" type="search" minlength="2" maxlength="100" required placeholder="Nome, lugar, acontecimento…" aria-describedby="cs-hint"></div><button type="submit" class="primary">Buscar</button><small id="cs-hint" class="form-help search-extra">${d.isMaster ? "Sessões, capítulos, mundo, notas, diário, NPCs e cenas." : "Sessões publicadas, mundo, suas notas, diário e NPCs conhecidos."}</small></form><div id="cs-results" aria-live="polite"></div></section>`;
 }
 
 export function mountSearch(d) {

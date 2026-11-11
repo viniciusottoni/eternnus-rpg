@@ -3167,7 +3167,7 @@ a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3
 .log-table td:first-child, .chapter-table td:first-child { width: 4.5em; }
 .log-open { min-height: 32px; padding: 2px 0; font: normal 16px var(--serif); color: #efdcb1; text-align: left; white-space: normal; }
 .log-excerpt { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-.chapter-summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.chapter-summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-line; }
 .chapter-link { color: #efdcb1; font: normal 16px var(--serif); }
 .chapter-tools { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; }
 .chapter-table td[data-label="Ações"] { width: 1%; white-space: nowrap; }

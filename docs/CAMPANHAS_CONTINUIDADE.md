@@ -49,7 +49,7 @@ A exclusão comum, administrativa e de one-shot remove páginas de lore e anexos
 
 ## Capítulos, atos e arcos (ADR-060)
 
-O mestre cria capítulos, atos ou arcos no Diário (até 200 por campanha), define a ordem e escolhe um ao iniciar cada sessão ou registrar uma sessão anterior. O tipo é só rótulo. Sessões sem capítulo são permitidas e aparecem como "Avulsa"; o capítulo de uma sessão pode mudar depois, inclusive encerrada. Excluir um capítulo mantém as sessões, que ficam avulsas. Somente o mestre vê os capítulos. A premissa preserva parágrafos na Visão geral; o topo mostra um trecho e "mais" abre o texto completo.
+O mestre cria capítulos, atos ou arcos no Diário (até 200 por campanha), define a ordem e escolhe um ao iniciar cada sessão ou registrar uma sessão anterior. O tipo é só rótulo. Sessões sem capítulo são permitidas e aparecem como "Avulsa"; o capítulo de uma sessão pode mudar depois, inclusive encerrada. Excluir um capítulo mantém as sessões, que ficam avulsas. Novos capítulos ficam ocultos; o mestre marca “Visível para os jogadores” para revelar tipo, título, resumo e sessões publicadas daquele capítulo ao grupo (ADR-062). Para o jogador, sessões de capítulos ocultos aparecem sem capítulo. A premissa preserva parágrafos na Visão geral; o topo mostra um trecho e "mais" abre o texto completo.
 
 
 ## Tabela de sessões, busca e importação (ADR-061)
