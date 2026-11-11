@@ -75,8 +75,8 @@ test("formas de jogo do cliente coincidem com o servidor", async () => {
 
 test("imagem de NPC/criatura aceita só endereços produzidos pelo servidor", () => {
   const s = "0b6f1f4e-2d0a-4b8c-9a55-7d1e3c2b4a10", t = "9c8b7a65-4321-4fed-8cba-0123456789ab";
-  for (const ok of [`/api/sessions/${s}/tokens/${t}/portrait`, `/api/sessions/${s}/tokens/${t}/portrait?v=1a2b3c4d5e6f`, `/api/campaigns/${s}/assets/maps/${t}/image`, "https://exemplo.test/retrato.png"])
+  for (const ok of [`/api/sessions/${s}/tokens/${t}/portrait`, `/api/sessions/${s}/tokens/${t}/portrait?v=1a2b3c4d5e6f`, `/api/campaigns/${s}/assets/maps/${t}/image`, `/api/campaigns/${s}/known-npcs/${t}/portrait?v=1a2b3c4d`, "https://exemplo.test/retrato.png"])
     assert.equal(p.safeImageUrl(ok), ok);
-  for (const bad of [null, "", "http://exemplo.test/a.png", "javascript:alert(1)", "data:image/png;base64,AAA", `/api/sessions/${s}/tokens/${t}/portrait?v=1&x=2`, `/api/campaigns/${s}/assets/maps/${t}/image?x`, 'https://a.test/x" onerror="y', "/api/users/me"])
+  for (const bad of [null, "", "http://exemplo.test/a.png", "javascript:alert(1)", "data:image/png;base64,AAA", `/api/sessions/${s}/tokens/${t}/portrait?v=1&x=2`, `/api/campaigns/${s}/assets/maps/${t}/image?x`, `/api/campaigns/${s}/known-npcs/${t}/portrait?v=1a2b3c4d&x=1`, `/api/campaigns/${s}/known-npcs/../portrait`,'https://a.test/x" onerror="y', "/api/users/me"])
     assert.equal(p.safeImageUrl(bad), null, String(bad));
 });

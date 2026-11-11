@@ -25,7 +25,7 @@ public static class GuildEndpoints
         api.MapPost("/posts/{id:long}/report", (long id, GuildReportInput x, GuildService guild, ClaimsPrincipal u, CancellationToken ct) => guild.ReportAsync(id, x, Id(u), ct)).RequireRateLimiting("social");
 
         var mod = api.MapGroup("/moderation").RequireAuthorization(PlatformAccess.StaffPolicy);
-        mod.MapGet("/reports", (string? status, int? page, GuildService guild, ClaimsPrincipal u, CancellationToken ct) => guild.ReportsAsync(Id(u), status, page ?? 1, ct));
+        mod.MapGet("/reports", (string? status, int? page, string? q, string? resolution, GuildService guild, ClaimsPrincipal u, CancellationToken ct) => guild.ReportsAsync(Id(u), status, page ?? 1, ct, q, resolution));
         mod.MapPost("/reports/{id:long}/resolve", (long id, GuildResolveInput x, GuildService guild, ClaimsPrincipal u, CancellationToken ct) => guild.ResolveAsync(id, x, Id(u), ct));
         mod.MapPost("/posts/{id:long}/delete", async (long id, GuildReasonInput x, GuildService guild, ClaimsPrincipal u, CancellationToken ct) => { await guild.ModerateDeletePostAsync(id, x, Id(u), ct); return Results.NoContent(); });
         mod.MapPost("/posts/{id:long}/restore", async (long id, GuildReasonInput x, GuildService guild, ClaimsPrincipal u, CancellationToken ct) => { await guild.ModerateRestorePostAsync(id, x, Id(u), ct); return Results.NoContent(); });

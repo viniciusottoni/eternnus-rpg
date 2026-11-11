@@ -36,7 +36,7 @@ public static class SessionLogSources
 /// </summary>
 public sealed partial class WorkspaceService
 {
-    public const int LogPageSize = 20;
+    public const int LogPageSize = 15;
 
     static Expression<Func<PastSession, bool>> ScenesMatch(GameDb db, string pattern)
     {
@@ -76,7 +76,8 @@ public sealed partial class WorkspaceService
         return (live, past);
     }
 
-    public async Task<object> Log(Guid campaign, string user, string? search, string? chapter, string? source, int page, CancellationToken ct)
+    /// <remarks><paramref name="state"/> (só mestre): <c>published</c> ou <c>draft</c>, a coluna "Estado" da tabela.</remarks>
+    public async Task<object> Log(Guid campaign, string user, string? search, string? chapter, string? source, int page, CancellationToken ct, string? state = null)
     {
         var c = await Access(campaign, user, false, ct);
         var master = c.OwnerId == user;
@@ -86,6 +87,13 @@ public sealed partial class WorkspaceService
         Guid? chapterId = null; var loose = chapter == "none";
         if (!loose && !string.IsNullOrEmpty(chapter)) chapterId = Guid.TryParse(chapter, out var parsed) ? parsed : throw new RuleException(400, "Capítulo inválido.");
         var (live, past) = LogQueries(campaign, master, term, chapterId, loose, source);
+        if (master && !string.IsNullOrEmpty(state))
+        {
+            if (state is not ("published" or "draft")) throw new RuleException(400, "Estado inválido.");
+            var published = state == "published";
+            live = live.Where(s => (s.RecapPublishedAt != null) == published);
+            past = past.Where(s => s.Published == published);
+        }
         var union = live.Select(s => new SessionLogRow { Source = SessionLogSources.Eternnus, Id = s.Id, Number = s.Number, Title = s.Title, StartedAt = s.StartedAt, Date = null, Active = s.EndedAt == null, ChapterId = s.ChapterId, Published = s.RecapPublishedAt != null, HasText = s.Recap != "" })
             .Concat(past.Select(s => new SessionLogRow { Source = SessionLogSources.Past, Id = s.Id, Number = s.Number, Title = s.Title, StartedAt = null, Date = s.Date, Active = false, ChapterId = s.ChapterId, Published = s.Published, HasText = s.Summary != "" }));
         var total = await live.CountAsync(ct) + await past.CountAsync(ct);

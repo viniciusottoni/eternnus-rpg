@@ -462,20 +462,38 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
         if (!(await ViewerAsync(userId, ct)).Staff) throw new RuleException(403, "Somente a moderação da Guilda pode fazer isso.");
     }
 
-    public async Task<object> ReportsAsync(string userId, string? status, int page, CancellationToken ct)
+    /// <summary>Denúncias por página (tabela de 15); os tópicos seguem com <see cref="PageSize"/>.</summary>
+    public const int ReportPageSize = 15;
+
+    /// <summary>Fila da moderação. <paramref name="q"/> busca no motivo, na mensagem e no título do tópico;
+    /// <paramref name="resolution"/> (só nas resolvidas) separa arquivadas de removidas.</summary>
+    public async Task<object> ReportsAsync(string userId, string? status, int page, CancellationToken ct, string? q = null, string? resolution = null)
     {
         await RequireStaffAsync(userId, ct);
         var open = status is null or "" or "open";
         if (!open && status != "resolved") throw new RuleException(400, "Filtro de denúncias inválido.");
-        page = Math.Clamp(page, 1, 100000);
         var query = db.GuildReports.AsNoTracking().Where(r => open ? r.ResolvedAt == null : r.ResolvedAt != null);
+        if (TextSearch.Term(q) is { } term)
+        {
+            var pattern = TextSearch.Pattern(term);
+            var posts = db.GuildPosts.Where(TextSearch.AnyField<GuildPost>(db, pattern, p => p.Body)).Select(p => p.Id);
+            var topics = db.GuildTopics.Where(TextSearch.AnyField<GuildTopic>(db, pattern, t => t.Title)).Select(t => t.Id);
+            var topicPosts = db.GuildPosts.Where(p => topics.Contains(p.TopicId)).Select(p => p.Id);
+            query = query.Where(TextSearch.Or(TextSearch.AnyField<GuildReport>(db, pattern, r => r.Reason), r => posts.Contains(r.PostId) || topicPosts.Contains(r.PostId)));
+        }
+        if (!string.IsNullOrWhiteSpace(resolution))
+        {
+            if (open || resolution is not ("dismissed" or "removed")) throw new RuleException(400, "Filtro de resultado inválido.");
+            query = query.Where(r => r.Resolution == resolution);
+        }
         var total = await query.CountAsync(ct);
+        page = Math.Clamp(page, 1, Math.Max(1, (total + ReportPageSize - 1) / ReportPageSize));
         var joined = from r in query
                      join p in db.GuildPosts on r.PostId equals p.Id
                      join t in db.GuildTopics on p.TopicId equals t.Id
                      select new { r, p, t };
         var ordered = open ? joined.OrderBy(x => x.r.CreatedAt).ThenBy(x => x.r.Id) : joined.OrderByDescending(x => x.r.ResolvedAt).ThenByDescending(x => x.r.Id);
-        var items = await ordered.Skip((page - 1) * PageSize).Take(PageSize)
+        var items = await ordered.Skip((page - 1) * ReportPageSize).Take(ReportPageSize)
             .Select(x => new
             {
                 x.r.Id,
@@ -497,7 +515,7 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
                 postReports = db.GuildReports.Count(o => o.PostId == x.r.PostId),
                 openPostReports = db.GuildReports.Count(o => o.PostId == x.r.PostId && o.ResolvedAt == null),
             }).ToListAsync(ct);
-        return new { items, total, page, pageSize = PageSize, status = open ? "open" : "resolved" };
+        return new { items, total, page, pageSize = ReportPageSize, status = open ? "open" : "resolved" };
     }
 
     public async Task<object> ResolveAsync(long reportId, GuildResolveInput input, string userId, CancellationToken ct)

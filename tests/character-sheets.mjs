@@ -128,7 +128,7 @@ try {
 
   // ---------- Histórico por campo ----------
   const history = await player(`/api/characters/${lysara.id}/field-history`);
-  ok(history.total >= 8 && history.items.length <= 20 && history.pageSize === 20, "histórico paginado");
+  ok(history.total >= 8 && history.items.length <= 15 && history.pageSize === 15, "histórico paginado");
   const forcaHistory = await player(`/api/characters/${lysara.id}/field-history?field=forca`);
   check(forcaHistory.items.map((h) => [h.oldValue, h.newValue, h.source, h.label, h.changedBy]), [["14", "20", "edit", "Campo forca", "Lia"]]);
   await player(`/api/characters/${lysara.id}/field-history?field=Robert'); DROP`, "GET", undefined, 400);

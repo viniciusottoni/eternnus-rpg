@@ -242,18 +242,33 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
     }
 
     /// <summary>NPCs que o mestre compartilhou: nome, tipo, resumo, imagem e a página de lore quando quem lê pode abri-la; paginado em vinte.</summary>
-    public async Task<object> KnownNpcsAsync(Guid campaignId, string user, int page, CancellationToken ct)
+    /// <summary>NPCs conhecidos por página: tabela de 15 itens.</summary>
+    public const int KnownNpcPageSize = 15;
+
+    /// <remarks><paramref name="focus"/>: id de um NPC compartilhado (link da busca); sem filtros, a resposta abre na página dele.</remarks>
+    public async Task<object> KnownNpcsAsync(Guid campaignId, string user, string? q, string? kind, int page, CancellationToken ct, Guid? focus = null)
     {
         var (campaign, _) = await AccessAsync(campaignId, user, false, false, ct);
         page = Math.Clamp(page, 1, 100000);
         var query = db.MasterCharacters.AsNoTracking().Where(m => m.CampaignId == campaignId && m.SharedWithPlayers);
+        var term = TextSearch.Term(q);
+        if (term != null) query = query.Where(TextSearch.AnyField<MasterCharacter>(db, TextSearch.Pattern(term), m => m.Name, m => m.Summary));
+        if (!string.IsNullOrWhiteSpace(kind)) { var k = NpcKinds.Normalize(kind.Trim()); query = query.Where(m => m.Kind == k); }
+        var ordered = query.OrderBy(m => m.Name).ThenBy(m => m.Id);
         var total = await query.CountAsync(ct);
-        var rows = await query.OrderBy(m => m.Name).ThenBy(m => m.Id).Skip((page - 1) * 20).Take(20).Select(m => new { m.Id, m.Name, m.Kind, m.Summary, m.ImageUrl }).ToListAsync(ct);
+        if (focus is { } target && term == null && string.IsNullOrWhiteSpace(kind))
+        {
+            // Lista limitada a MaxNpcs: localizar a posição pelos ids ordenados é barato e igual em PostgreSQL e SQLite.
+            var index = (await ordered.Select(m => m.Id).ToListAsync(ct)).IndexOf(target);
+            if (index >= 0) page = index / KnownNpcPageSize + 1;
+        }
+        page = Math.Min(page, Math.Max(1, (total + KnownNpcPageSize - 1) / KnownNpcPageSize));
+        var rows = await ordered.Skip((page - 1) * KnownNpcPageSize).Take(KnownNpcPageSize).Select(m => new { m.Id, m.Name, m.Kind, m.Summary, m.ImageUrl }).ToListAsync(ct);
         var lore = await LorePagesAsync(campaignId, rows.Select(m => m.Id).ToList(), (user, campaign.OwnerId), ct);
         return new
         {
             items = rows.Select(m => new { m.Id, m.Name, m.Kind, m.Summary, image = KnownPortraitUrl(campaignId, m.Id, m.ImageUrl), page = lore.GetValueOrDefault(m.Id) }),
-            total, page, pageSize = 20,
+            total, page, pageSize = KnownNpcPageSize,
         };
     }
 

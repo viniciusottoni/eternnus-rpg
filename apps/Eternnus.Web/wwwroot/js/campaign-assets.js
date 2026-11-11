@@ -4,6 +4,7 @@ import { $, esc, button, modal, formError, submitForm, toast, empty } from "./ui
 import { folderTree, folderPath, flattenFolders } from "./policy.js";
 import { mapThumbnail } from "./table-map.js";
 import { safeImageUrl } from "./play-policy.js";
+import { controlsHtml, bindLiveControls, pagerHtml, emptyTableHtml, filterRows, pageSlice } from "./data-table.js";
 
 const base = d => `/campaigns/${d.id}/assets`;
 /** Bibliotecas: atalhos para a biblioteca geral e a do sistema. O acervo próprio da campanha vive em Páginas (ADR-063);
@@ -76,7 +77,7 @@ export async function renderCampaignMaps(d, target, folderId = "", page = 1) {
   finally { if (target.isConnected && runs.get(target) === run) target.querySelector(".fx-pane")?.removeAttribute("aria-busy"); }
   if (!target.isConnected || runs.get(target) !== run) return;
   const children = folderTree(result.folders), path = folderPath(result.folders, folderId), current = path.at(-1);
-  const official = catalog.items.filter(m => !m.key.startsWith("resource:"));
+  const official = catalog.items.filter(m => !m.key.startsWith("resource:") && !m.key.startsWith("asset:"));
   if (!openFolders.has(d.id)) openFolders.set(d.id, new Set());
   const open = openFolders.get(d.id);
   for (const f of path) open.add(f.id);
@@ -96,6 +97,8 @@ export async function renderCampaignMaps(d, target, folderId = "", page = 1) {
 <section class="fx-pane" aria-label="Conteúdo da pasta"><div class="fx-toolbar">${button("↑", "ca-open", current?.parentId || "", "fx-up", `aria-label="Subir para a pasta anterior"${current ? "" : " disabled"}`)}<nav class="fx-path" aria-label="Caminho da pasta"><ol>${crumbs.join("")}</ol></nav><span class="fx-count">${plural(subfolders.length, "pasta", "pastas")} · ${plural(result.total, "mapa", "mapas")}</span>${current ? `<span class="fx-folder-actions">${button("✎ Renomear", "ca-folder-rename", current.id, "subtle small", `aria-label="Renomear a pasta ${esc(current.name)}"`)}${button("Excluir pasta", "ca-folder-delete", current.id, "subtle small", canDelete ? "" : 'aria-disabled="true" data-tip="Esvazie a pasta antes de excluir."')}</span>` : ""}</div>
 ${subfolders.length || result.items.length ? `<ul class="fx-grid" aria-label="Pastas e mapas">${folderTiles}${mapTiles}</ul>` : `<div class="fx-empty">${ICON.open}<p><strong>Esta pasta está vazia.</strong><span>Envie um mapa ou crie uma subpasta para organizar seus cenários.</span></p></div>`}${pager(result)}</section></div>
 <div class="fx-footer">${d.activeSession ? button("Ocultar mapa na mesa", "ca-hide", "", "subtle") : '<p class="muted small">Abra uma sessão para mostrar seus mapas na mesa.</p>'}</div></section>`;
+  target.querySelector(".fx-section").insertAdjacentHTML("afterend", `<section class="fx-section portrait-section" aria-labelledby="fx-portrait-title"><div class="fx-head"><div><h3 id="fx-portrait-title">Retratos de NPC${helpButton("campanhas.acervo.retratos", "Retratos de NPC")}</h3><p class="muted small">Imagens enviadas pela ficha dos personagens do mestre. Ficam separadas dos mapas: não aparecem em cenas, na mesa nem no atlas.</p></div></div><div id="fx-portraits"></div></section>`);
+  renderPortraits(d, target.querySelector("#fx-portraits"));
   const atlas = document.createElement("details");
   atlas.className = "official-atlas metal";
   atlas.open = !folderId;
@@ -122,8 +125,42 @@ ${subfolders.length || result.items.length ? `<ul class="fx-grid" aria-label="Pa
       if (action === "ca-upload") mapModal(d, null, result.folders, folderId, reload);
       if (action === "ca-map-edit") mapModal(d, result.items.find(m => m.id === id), result.folders, folderId, reload);
       if (action === "ca-map-delete" || action === "ca-folder-delete") confirmDelete(action === "ca-map-delete" ? "Excluir mapa?" : "Excluir pasta?", async () => { await api(`${base(d)}/${action === "ca-map-delete" ? "maps" : "folders"}/${id}`, "DELETE"); await renderCampaignMaps(d, target, action === "ca-folder-delete" ? current?.parentId || "" : folderId); });
-      if (action === "ca-show" || action === "ca-hide") { await api(`/sessions/${d.activeSession.id}/map`, "POST", { mapKind: action === "ca-hide" ? "cartographic" : official.find(m => m.key === id)?.kind || "tileset", mapKey: action === "ca-hide" ? "valley" : id }); toast(action === "ca-hide" ? "Mapa da campanha ocultado. A mesa exibe o cenário oficial." : "Mapa mostrado para a mesa."); }
+      if (action === "ca-show" || action === "ca-hide") { await api(`/sessions/${d.activeSession.id}/map`, "POST", { mapKind: action === "ca-hide" ? "cartographic" : catalog.items.find(m => m.key === id)?.kind || "tileset", mapKey: action === "ca-hide" ? "valley" : id }); toast(action === "ca-hide" ? "Mapa da campanha ocultado. A mesa exibe o cenário oficial." : "Mapa mostrado para a mesa."); }
     } catch (error) { toast(error.message); }
+  };
+}
+/** Estado da tabela de retratos por campanha: busca e página. */
+const portraitView = { campaign: "", q: "", page: 1 };
+/** Retratos de NPC em tabela (busca e 15 por página). Carrega uma vez; filtrar e paginar não chamam a API. */
+async function renderPortraits(d, box) {
+  if (portraitView.campaign !== d.id) Object.assign(portraitView, { campaign: d.id, q: "", page: 1 });
+  box.innerHTML = '<p class="loading-line" role="status">Reunindo retratos…</p>';
+  let items;
+  try { items = (await api(`${base(d)}/portraits`)).items || []; }
+  catch (error) {
+    if (!box.isConnected) return;
+    box.innerHTML = `<p role="alert">${esc(error.message)}</p>${button("Tentar novamente", "ca-portrait-retry", "", "subtle small")}`;
+    box.onclick = e => { if (e.target.closest("[data-action='ca-portrait-retry']")) renderPortraits(d, box); };
+    return;
+  }
+  if (!box.isConnected) return;
+  if (!items.length) { box.innerHTML = '<p class="muted small" role="status">Nenhum retrato. Envie uma imagem pela ficha de um personagem do mestre, em Preparação.</p>'; return; }
+  box.innerHTML = `${controlsHtml("pt", { live: true, search: { label: "Buscar retratos", placeholder: "Nome do retrato", value: portraitView.q } })}<div id="pt-results"></div>`;
+  const paint = (focusSel = "") => {
+    const rows = filterRows(items, { q: portraitView.q, fields: ["name"] });
+    const pageData = pageSlice(rows, portraitView.page); portraitView.page = pageData.page;
+    const results = box.querySelector("#pt-results");
+    results.innerHTML = rows.length
+      ? `<div class="data-table-wrap" tabindex="0" role="region" aria-label="Retratos de NPC"><table class="data-table stack-table portrait-table"><caption class="sr-only">Retratos de NPC, página ${pageData.page} de ${pageData.pages}</caption><thead><tr><th scope="col">Imagem</th><th scope="col">Nome</th><th scope="col">Ações</th></tr></thead><tbody>${pageData.items.map(m => `<tr><td data-label="Imagem"><img class="npc-thumb" src="${esc(m.imageUrl)}" alt="" loading="lazy" decoding="async"></td><td data-label="Nome">${esc(m.name)}</td><td data-label="Ações">${button("Excluir", "ca-portrait-delete", m.id, "text-button small", `aria-label="Excluir o retrato ${esc(m.name)}"`)}</td></tr>`).join("")}</tbody></table></div>${pagerHtml(pageData, "ca-portrait-page", "retratos")}`
+      : emptyTableHtml(true, "");
+    if (focusSel) results.querySelector(focusSel)?.focus();
+  };
+  paint();
+  bindLiveControls(box.querySelector("#pt-controls"), ({ q }) => { Object.assign(portraitView, { q, page: 1 }); paint(); });
+  box.onclick = e => {
+    const b = e.target.closest("[data-action]"); if (!b || b.disabled) return;
+    if (b.dataset.action === "ca-portrait-page") { portraitView.page = Number(b.dataset.id); paint(".data-table-wrap"); }
+    if (b.dataset.action === "ca-portrait-delete") confirmDelete("Excluir retrato?", async () => { await api(`${base(d)}/maps/${b.dataset.id}`, "DELETE"); await renderPortraits(d, box); });
   };
 }
 /** Cria uma pasta em `parentId` ou, com `folder`, renomeia a pasta sem mudar o lugar dela nem o conteúdo. */

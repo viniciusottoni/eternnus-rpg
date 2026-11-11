@@ -165,10 +165,11 @@ export const MOBILE_VIEWS = Object.freeze({
 
 /**
  * Imagem de NPC/criatura: só endereços que o servidor produz — link https validado, retrato protegido do marcador
- * (com versão opcional) ou imagem do acervo da campanha (prévia do mestre). Qualquer outro valor é descartado.
+ * (com versão opcional), imagem do acervo da campanha (prévia do mestre) ou retrato de NPC conhecido. Qualquer outro valor é descartado.
  */
 const GUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const PORTRAIT = new RegExp(`^/api/sessions/${GUID}/tokens/${GUID}/portrait(?:[?]v=[0-9a-f]{1,32})?$`);
 const ASSET_IMAGE = new RegExp(`^/api/campaigns/${GUID}/assets/maps/${GUID}/image$`);
+const KNOWN_PORTRAIT = new RegExp(`^/api/campaigns/${GUID}/known-npcs/${GUID}/portrait(?:[?]v=[0-9a-f]{8})?$`);
 export const safeImageUrl = (url) =>
-  typeof url === "string" && (/^https:\/\/[^\s"'<>\\]+$/.test(url) || PORTRAIT.test(url) || ASSET_IMAGE.test(url)) ? url : null;
+  typeof url === "string" && (/^https:\/\/[^\s"'<>\\]+$/.test(url) || PORTRAIT.test(url) || ASSET_IMAGE.test(url) || KNOWN_PORTRAIT.test(url)) ? url : null;

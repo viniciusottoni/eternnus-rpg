@@ -12,7 +12,7 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
 {
     internal GameDb Db => db;
     internal AuditService Audit => audit;
-    public const int PageSize = 20;
+    public const int PageSize = 15;
     public const string SystemActor = "system";
     /// <summary>Suspensão sem data de término (exibida como "por tempo indeterminado").</summary>
     public static readonly DateTimeOffset Indefinite = new(9999, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -262,7 +262,8 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
     {
         var term = Term(q); page = Page(page);
         var query = db.Campaigns.AsNoTracking();
-        if (term != null) query = query.Where(c => c.Name.ToLower().Contains(term));
+        // Busca geral: nome da campanha ou do mestre (colunas da tabela).
+        if (term != null) query = query.Where(c => c.Name.ToLower().Contains(term) || db.Users.Any(u => u.Id == c.OwnerId && u.DisplayName.ToLower().Contains(term)));
         if (systemId is { } system) query = query.Where(c => c.RpgSystemId == system);
         if (online is { } live) query = query.Where(c => db.Sessions.Any(s => s.CampaignId == c.Id && s.EndedAt == null) == live);
         var total = await query.CountAsync(ct);

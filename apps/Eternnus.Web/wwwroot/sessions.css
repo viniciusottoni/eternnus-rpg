@@ -3173,6 +3173,7 @@ a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3
 /* Tabelas de capítulos e sessões (ADR-061): tabela no desktop, cartões empilhados até 720 px, sem rolagem lateral da página. */
 .section-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .search-bar.log-filters { grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1fr) auto; }
+.search-bar.log-filters.with-state { grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto; }
 .log-table td, .chapter-table td { vertical-align: top; }
 .log-table td:first-child, .chapter-table td:first-child { width: 4.5em; }
 .log-open { min-height: 32px; padding: 2px 0; font: normal 16px var(--serif); color: #efdcb1; text-align: left; white-space: normal; }
@@ -3187,7 +3188,7 @@ a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3
 @media (pointer: coarse) { .chapter-tools .icon-button, .chapter-tools button, .log-open { min-width: 44px; min-height: 44px; } }
 .table-note { margin: 8px 0 0; }
 @media (max-width: 720px) {
-  .search-bar.log-filters { grid-template-columns: 1fr 1fr; }
+  .search-bar.log-filters, .search-bar.log-filters.with-state { grid-template-columns: 1fr 1fr; }
   .search-bar.log-filters .field:first-child, .search-bar.log-filters > button, .search-bar.log-filters .search-extra { grid-column: 1 / -1; }
   .log-table thead, .chapter-table thead, .import-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .log-table, .log-table tbody, .log-table tr, .log-table td,
@@ -3200,6 +3201,14 @@ a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3
   .log-table td:first-child, .chapter-table td:first-child { width: auto; }
   .log-table td[data-label]::before, .chapter-table td[data-label]::before, .import-table td[data-label]::before { content: attr(data-label) ": "; color: var(--gold); font-size: 11px; font-weight: 600; }
   .log-table td[data-label="Sessão"]::before, .chapter-table td[data-label="Título"]::before { content: none; }
+  /* Tabelas de data-table.js: cada linha vira um cartão com rótulos. */
+  .stack-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .stack-table, .stack-table tbody, .stack-table tr, .stack-table td { display: block; width: auto; }
+  .stack-table tr { padding: 10px 12px; border-bottom: 1px solid #49433780; }
+  .data-table.stack-table td, .data-table.stack-table td.num { padding: 3px 0; border: 0; text-align: left; }
+  .stack-table td[data-label]::before { content: attr(data-label) ": "; color: var(--gold); font-size: 11px; font-weight: 600; }
+  .stack-table td:is([data-label="Personagem"], [data-label="Nome"], [data-label="Imagem"], [data-label="Ações"], [data-label="Abrir"], [data-label="Título"])::before { content: none; }
+  .stack-table .scene-actions { margin-top: 6px; }
 }
 /* Leitura de uma sessão. */
 .entry-meta { margin: 0 0 12px; }
@@ -3229,10 +3238,31 @@ a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3
 .known-npcs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 .known-npc { display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; }
 .known-npc.is-target { outline: 2px solid var(--gold); outline-offset: 2px; }
+/* Retrato clicável: abre a imagem inteira no visualizador comum (showImage). */
+.known-npc-zoom { flex: none; padding: 0; border: 0; border-radius: 50%; background: none; cursor: zoom-in; }
+.known-npc-zoom:hover img { border-color: var(--gold); }
+.known-npc-zoom:focus-visible { outline: 2px solid var(--bright); outline-offset: 3px; }
 .known-npc img, .known-npc-initial { flex: none; width: 64px; height: 64px; border-radius: 50%; border: 2px solid #a07b3a; object-fit: cover; object-position: center top; }
 .known-npc-initial { display: grid; place-items: center; color: #ead6a8; font: normal 26px var(--serif); background: #c6a46314; }
 .known-npc h3 { margin: 0 0 4px; color: #ead6a8; font: normal 17px var(--serif); overflow-wrap: anywhere; }
 .known-npc p { margin: 8px 0 0; }
+/* Tabelas com busca e filtros (data-table.js): controles em linha que quebram no celular. */
+.search-bar.table-controls { grid-template-columns: minmax(180px, 2fr) repeat(auto-fit, minmax(140px, 1fr)); }
+.table-controls .form-help:empty { display: none; }
+.table-controls-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.table-controls-actions button { min-height: 44px; }
+@media (max-width: 720px) { .search-bar.table-controls { grid-template-columns: 1fr; } }
+/* Retratos em tabelas (NPCs conhecidos, personagens do mestre, retratos do acervo). */
+.known-npc-table img, .known-npc-table .known-npc-initial { flex: none; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; border: 2px solid #a07b3a; object-fit: cover; object-position: center top; }
+.known-npc-table .known-npc-initial { color: #ead6a8; font: normal 20px var(--serif); background: #c6a46314; }
+.known-npc-table tr.is-target > td { background-color: #c6a46322; }
+.known-npc-table tr:focus-visible { outline: 2px solid var(--bright); outline-offset: -2px; }
+.npc-info-cell { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.npc-info-cell strong { display: block; overflow-wrap: anywhere; }
+.npc-info-cell small, .npc-table td small { display: block; color: var(--muted); }
+.npc-state { display: flex; flex-wrap: wrap; gap: 4px; }
+.npc-state .chip { white-space: nowrap; }
+.search-table td.small { max-width: 52ch; }
 /* Página de história do NPC (ADR-064): link visível dentro de cartões e listas. */
 .lore-link { color: var(--gold); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
 .lore-link:hover { color: var(--bright); }
