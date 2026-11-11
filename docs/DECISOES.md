@@ -637,4 +637,4 @@ Pedido: o cadastro de personagem do mestre trazia “Recursos” (com `Vida 10/1
 
 **Alternativa descartada:** manter a seção no cadastro, recolhida e sem valor inicial. Mais simples, mas a duplicação com a ficha continuava possível.
 
-**Consequências:** sem migração; NPCs existentes mantêm seus recursos. Cache v43 (nenhum arquivo novo na lista). Ajudas `campanhas.preparo.personagens` e `mesa.npcs.ficha` explicam onde ficam os recursos.
+**Consequências:** sem migração; NPCs existentes mantêm seus recursos. Cache v43 (nenhum arquivo novo na lista). Ajudas `campanhas.preparo.personagens` e `mesa.npcs.ficha` explicam onde ficam os recursos. A lista da Preparação passa a mostrar o lado (Inimigo, Neutro, Aliado) como selo com texto e a cor do marcador no mapa; o vermelho do texto é mais claro para manter contraste.
