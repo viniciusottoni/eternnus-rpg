@@ -202,7 +202,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         {
             items = items.Select(m => new
             {
-                m.Id, m.Name, m.Summary, m.Notes, m.Side, m.Resources, m.SourceId, m.Revision, copy = m.SourceId != null, m.Kind, m.ImageUrl, m.SharedWithPlayers,
+                m.Id, m.Name, m.Summary, m.Notes, m.Side, m.Resources, m.SourceId, m.Revision, copy = m.SourceId != null, m.Kind, m.ImageUrl, imagePreview = SessionService.PreviewUrl(m), m.SharedWithPlayers,
                 templateName = m.TemplateVersionId is { } v && templates.TryGetValue(v, out var name) ? name : null,
                 page = lore.GetValueOrDefault(m.Id),
             })
@@ -215,7 +215,8 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         var name = Text(x.Name, 40, "Dê um nome de até 40 caracteres ao personagem.", true);
         var side = x.Side ?? "enemy";
         if (side is not ("ally" or "enemy" or "neutral")) throw new RuleException(400, "Escolha aliado, inimigo ou neutro.");
-        var resources = ValidateResources(x.Resources);
+        // Recursos simples são editados na ficha (ADR-065); omitidos na edição mantêm os atuais.
+        var resources = x.Resources == null ? null : ValidateResources(x.Resources);
         MasterCharacter npc;
         if (id is { } npcId)
         {
@@ -229,7 +230,8 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
             npc = new MasterCharacter { CampaignId = campaignId };
             db.MasterCharacters.Add(npc);
         }
-        npc.Name = name; npc.Side = side; npc.Resources = resources; npc.UpdatedAt = Now;
+        npc.Name = name; npc.Side = side; npc.UpdatedAt = Now;
+        if (resources != null) npc.Resources = resources;
         npc.Kind = NpcKinds.Normalize(x.Kind ?? npc.Kind);
         npc.ImageUrl = await ValidImageAsync(campaignId, x.ImageUrl, db, ct);
         npc.Summary = Text(x.Summary, 500, "O resumo aceita até 500 caracteres.");
@@ -296,7 +298,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         return url;
     }
 
-    static List<NpcResource> ValidateResources(List<NpcResource>? input)
+    internal static List<NpcResource> ValidateResources(List<NpcResource>? input)
     {
         var list = input ?? [];
         if (list.Count > MaxNpcResources) throw new RuleException(400, $"Use até {MaxNpcResources} recursos.");

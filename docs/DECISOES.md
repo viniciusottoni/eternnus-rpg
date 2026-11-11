@@ -626,3 +626,15 @@ Pedido: havia NPCs da Preparação (exibidos em “NPCs conhecidos”) e página
 **Alternativa descartada:** juntar páginas NPC e NPCs da Preparação na mesma lista sem vínculo. Mantinha dois cadastros e duas regras de visibilidade para o mesmo personagem.
 
 **Consequências:** cache v42 (nenhum arquivo novo na lista). Ajuda `campanhas.preparo.personagens` ganha o parágrafo da história.
+
+## ADR-065 — Vida e recursos de NPCs ficam na ficha, não no cadastro (11/11/2026)
+
+Pedido: o cadastro de personagem do mestre trazia “Recursos” (com `Vida 10/10` já preenchido), e a ficha, criada depois, também acompanha vida e recursos pelo modelo. Com um modelo escolhido, a mesa mostrava os dois: a vida da ficha e a vida simples com −/+, sem sincronia.
+
+**Decisão:** o cadastro guarda só identidade (nome, tipo, lado, resumo, imagem, notas, visibilidade). “Ficha” é o único lugar do estado: sem modelo, edita os recursos simples (até 8, nome/valor/máximo); com modelo, os campos do modelo. Ao criar um personagem, a ficha abre em seguida.
+
+**Servidor:** `NpcInput.Resources` omitido ou nulo mantém os recursos na edição (criação começa vazia); clientes antigos que enviam a lista continuam funcionando. `PUT /npcs/{id}/sheet` aceita `resources` só com `templateId` nulo e devolve `simpleResources`. Escolher um modelo não apaga os recursos simples: eles ficam guardados, somem de `GET /live` (`resources: []` quando `hasSheet`) e `POST …/resource` responde 409; voltar a “Sem ficha” os traz de volta. A gravação segue o fluxo existente da ficha (sessão → personagem bloqueados, evento privado, `Revision++`, sinal após o commit).
+
+**Alternativa descartada:** manter a seção no cadastro, recolhida e sem valor inicial. Mais simples, mas a duplicação com a ficha continuava possível.
+
+**Consequências:** sem migração; NPCs existentes mantêm seus recursos. Cache v43 (nenhum arquivo novo na lista). Ajudas `campanhas.preparo.personagens` e `mesa.npcs.ficha` explicam onde ficam os recursos.

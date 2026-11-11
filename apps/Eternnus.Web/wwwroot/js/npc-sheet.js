@@ -87,6 +87,26 @@ function fieldsHtml(sheet) {
   }).join("")}</div></fieldset>`).join("");
 }
 
+const MAX_SIMPLE_RESOURCES = 8;
+
+/** Recursos simples (personagem sem modelo): nome, valor e máximo. Uma linha vazia ao fim permite acrescentar outro. */
+function simpleResourcesHtml(list = []) {
+  const rows = list.concat(list.length < MAX_SIMPLE_RESOURCES ? [{ label: "", value: 0, max: null }] : []);
+  return `<fieldset class="npc-sheet-section"><legend>Recursos simples</legend><p class="form-help">Contadores como vida, moral ou munição, ajustados com − e + na mesa. Deixe o nome vazio para não usar (até ${MAX_SIMPLE_RESOURCES}).</p>${rows.map((r, i) => `<div class="form-grid three"><div class="field"><label for="npc-r-l${i}">Nome</label><input id="npc-r-l${i}" name="rl${i}" maxlength="40" value="${esc(r.label)}" placeholder="${list.length ? "Moral" : "Vida"}"></div><div class="field"><label for="npc-r-v${i}">Valor</label><input id="npc-r-v${i}" name="rv${i}" type="number" min="0" max="100000" value="${esc(r.value ?? 0)}"></div><div class="field"><label for="npc-r-m${i}">Máximo</label><input id="npc-r-m${i}" name="rm${i}" type="number" min="0" max="100000" value="${esc(r.max ?? "")}"></div></div>`).join("")}</fieldset>`;
+}
+
+/** Lê as linhas de recursos simples do formulário; linhas sem nome são ignoradas. */
+function simpleResourcesFrom(form) {
+  const list = [];
+  for (let i = 0; form.elements["rl" + i]; i++) {
+    const label = form.elements["rl" + i].value.trim();
+    if (!label) continue;
+    const max = form.elements["rm" + i].value;
+    list.push({ label, value: Number(form.elements["rv" + i].value) || 0, max: max === "" ? null : Number(max) });
+  }
+  return list;
+}
+
 /** Retrato do NPC/criatura no topo da ficha: prévia, troca (acervo ou link https) e remoção. Vira o retrato do marcador no mapa. */
 function imageEditor(sheet, assets) {
   const preview = safeImageUrl(sheet.imagePreview);
@@ -139,7 +159,7 @@ export async function openNpcSheet({ campaignId, npcId, onSaved }) {
     const current = sheet.template?.id || "";
     modal(
       `▣ Ficha de ${sheet.name}`,
-      `<div id="npc-image-host"></div><form id="npc-sheet-form"><div class="field"><div class="field-label"><label for="npc-template">Modelo de ficha</label>${helpButton("mesa.npcs.ficha", "Ficha de NPC ou criatura")}</div><select id="npc-template" name="templateId"><option value="">Sem ficha (só recursos simples)</option>${templates.items.map((t) => `<option value="${esc(t.id)}" ${t.id === current ? "selected" : ""}>${esc(t.name)}${t.playerDefault ? " — modelo dos jogadores" : t.campaign ? " — desta campanha" : ""}</option>`).join("")}</select><small class="form-help">Pode ser o mesmo modelo dos jogadores ou outro. Trocar o modelo recomeça os valores.</small></div>${sheet.template ? fieldsHtml(sheet) : '<p class="muted">Escolha um modelo para acompanhar vida, atributos e o estado deste personagem.</p>'}${formError()}<div class="form-actions">${button("Fechar", "modal-close", "", "subtle")}${sheet.template ? '<button type="submit" class="primary">Salvar ficha</button>' : ""}</div></form>`,
+      `<div id="npc-image-host"></div><form id="npc-sheet-form"><div class="field"><div class="field-label"><label for="npc-template">Modelo de ficha</label>${helpButton("mesa.npcs.ficha", "Ficha de NPC ou criatura")}</div><select id="npc-template" name="templateId"><option value="">Sem ficha (só recursos simples)</option>${templates.items.map((t) => `<option value="${esc(t.id)}" ${t.id === current ? "selected" : ""}>${esc(t.name)}${t.playerDefault ? " — modelo dos jogadores" : t.campaign ? " — desta campanha" : ""}</option>`).join("")}</select><small class="form-help">Pode ser o mesmo modelo dos jogadores ou outro. Trocar o modelo recomeça os valores. Com um modelo, os recursos simples ficam guardados e voltam se você escolher “Sem ficha”.</small></div>${sheet.template ? fieldsHtml(sheet) : simpleResourcesHtml(sheet.simpleResources || [])}${formError()}<div class="form-actions">${button("Fechar", "modal-close", "", "subtle")}<button type="submit" class="primary">${sheet.template ? "Salvar ficha" : "Salvar recursos"}</button></div></form>`,
     );
     $("#modal").classList.add("wide");
     mountImage();
@@ -156,6 +176,13 @@ export async function openNpcSheet({ campaignId, npcId, onSaved }) {
     form.onsubmit = (e) => {
       e.preventDefault();
       submitForm(form, async () => {
+        if (!sheet.template) {
+          sheet = await api(`/campaigns/${campaignId}/npcs/${npcId}/sheet`, "PUT", { templateId: null, values: null, resources: simpleResourcesFrom(form), revision: sheet.revision });
+          onSaved?.(sheet);
+          toast(`Recursos de ${sheet.name} salvos.`);
+          render();
+          return;
+        }
         const values = {};
         for (const f of sheet.fields) {
           if (f.type === "computed") continue;

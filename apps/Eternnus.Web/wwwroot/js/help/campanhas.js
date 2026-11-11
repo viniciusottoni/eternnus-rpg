@@ -82,7 +82,8 @@ const entries = {
     "title": "Personagens do Mestre",
     "summary": "O Mestre pode guardar personagens e criar cópias para encontros.",
     "body": [
-      "Cada personagem pode ter até oito recursos. Colocar o original mantém sua referência; criar uma cópia para o encontro começa com os recursos cheios.",
+      "O cadastro guarda nome, tipo, lado, resumo, imagem e notas. Vida e recursos ficam em “Ficha”: escolha um modelo ou use até oito recursos simples.",
+      "Colocar o original mantém sua referência; criar uma cópia para o encontro começa com os recursos cheios.",
       "A cópia não altera o original.",
       "Os NPCs da campanha nascem aqui. Use “+ História” para escrever a história do personagem em Páginas: a página fica ligada a ele e aparece como “Ler página” em NPCs conhecidos para quem puder lê-la."
     ],

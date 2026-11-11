@@ -137,6 +137,7 @@ const entries = {
     "summary": "Acompanhe vida, atributos e o estado de cada NPC ou criatura.",
     "body": [
       "Escolha qualquer modelo de ficha aceito pela campanha: o mesmo dos jogadores ou outro, como um modelo próprio para criaturas.",
+      "Sem modelo, o personagem usa recursos simples (nome, valor e máximo), ajustados com − e + na mesa. Com modelo, a mesa mostra os recursos da ficha; os simples ficam guardados e voltam se você escolher “Sem ficha”.",
       "No mapa, selecione o marcador e use “Ficha do elemento”. Trocar o modelo recomeça os valores. Só você, Mestre, vê e edita essas fichas."
     ],
     "audience": "master"

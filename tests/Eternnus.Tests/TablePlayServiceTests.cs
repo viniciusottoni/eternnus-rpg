@@ -427,6 +427,53 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Simple_npc_resources_live_in_the_sheet_and_step_aside_when_a_template_is_chosen()
+    {
+        await SheetTemplateService.EnsureFreeTemplateAsync(db, default);
+        var id = await StartAsync(PlayModes.Free);
+        var free = SheetTemplate.FreeTemplateId;
+        // O cadastro sem recursos cria o personagem vazio; editar sem enviar recursos mantém os atuais.
+        var npcId = JsonSerializer.SerializeToElement(await prep.SaveNpcAsync(campaign.Id, null, new("Bruto", "Capanga", "", "enemy", null), Master, default), Web).GetProperty("id").GetGuid();
+        db.ChangeTracker.Clear();
+        var sheet = JsonSerializer.SerializeToElement(await service.NpcSheetAsync(campaign.Id, npcId, Master, default), Web);
+        Assert.Equal(0, sheet.GetProperty("simpleResources").GetArrayLength());
+        db.ChangeTracker.Clear();
+        sheet = JsonSerializer.SerializeToElement(await service.SaveNpcSheetAsync(campaign.Id, npcId, new(null, null, sheet.GetProperty("revision").GetInt32(), [new() { Label = "Vida", Value = 6, Max = 6 }]), Master, default), Web);
+        Assert.Equal("Vida", sheet.GetProperty("simpleResources")[0].GetProperty("label").GetString());
+        Assert.Contains("atualizou os recursos de Bruto", await StateText(id, Master));
+        db.ChangeTracker.Clear();
+        await prep.SaveNpcAsync(campaign.Id, npcId, new("Bruto", "Capanga do porto", "", "enemy", null, sheet.GetProperty("revision").GetInt32()), Master, default);
+        db.ChangeTracker.Clear();
+        Assert.Equal(6, (await db.MasterCharacters.AsNoTracking().SingleAsync(m => m.Id == npcId)).Resources.Single().Max);
+        // Recursos simples junto de um modelo e valores inválidos são recusados.
+        var revision = (await db.MasterCharacters.AsNoTracking().SingleAsync(m => m.Id == npcId)).Revision;
+        Assert.Equal(400, await Status(() => service.SaveNpcSheetAsync(campaign.Id, npcId, new(free, null, revision, [new() { Label = "Vida", Value = 1 }]), Master, default)));
+        db.ChangeTracker.Clear();
+        Assert.Equal(400, await Status(() => service.SaveNpcSheetAsync(campaign.Id, npcId, new(null, null, revision, [new() { Label = "Vida", Value = 9, Max = 5 }]), Master, default)));
+        db.ChangeTracker.Clear();
+
+        // Sem ficha, a mesa mostra e ajusta os recursos simples.
+        await service.AddNpcTokenAsync(id, new(npcId, 2, 1), Master, default);
+        db.ChangeTracker.Clear();
+        await service.AdjustNpcResourceAsync(id, npcId, new(0, -2), Master, default);
+        db.ChangeTracker.Clear();
+        var live = (await State(id, Master)).GetProperty("play").GetProperty("npcs").EnumerateArray().Single(n => n.GetProperty("id").GetGuid() == npcId);
+        Assert.Equal(4, live.GetProperty("resources")[0].GetProperty("value").GetInt32());
+
+        // Com modelo, os simples ficam guardados, somem da mesa e não podem ser ajustados; voltar a "Sem ficha" os traz de volta.
+        revision = (await db.MasterCharacters.AsNoTracking().SingleAsync(m => m.Id == npcId)).Revision;
+        db.ChangeTracker.Clear();
+        sheet = JsonSerializer.SerializeToElement(await service.SaveNpcSheetAsync(campaign.Id, npcId, new(free, null, revision), Master, default), Web);
+        db.ChangeTracker.Clear();
+        live = (await State(id, Master)).GetProperty("play").GetProperty("npcs").EnumerateArray().Single(n => n.GetProperty("id").GetGuid() == npcId);
+        Assert.Equal(0, live.GetProperty("resources").GetArrayLength());
+        Assert.Equal(409, await Status(() => service.AdjustNpcResourceAsync(id, npcId, new(0, -1), Master, default)));
+        db.ChangeTracker.Clear();
+        sheet = JsonSerializer.SerializeToElement(await service.SaveNpcSheetAsync(campaign.Id, npcId, new(null, null, sheet.GetProperty("revision").GetInt32()), Master, default), Web);
+        Assert.Equal(4, sheet.GetProperty("simpleResources")[0].GetProperty("value").GetInt32());
+    }
+
+    [Fact]
     public async Task Creature_images_reach_players_only_while_the_token_is_visible()
     {
         await SheetTemplateService.EnsureFreeTemplateAsync(db, default);

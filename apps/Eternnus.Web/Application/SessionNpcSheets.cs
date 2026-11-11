@@ -2,7 +2,8 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
 
-public record NpcSheetInput(Guid? TemplateId, Dictionary<string, string?>? Values, int Revision);
+/// <summary><c>Resources</c>: recursos simples, aceitos só sem modelo (<c>TemplateId</c> nulo); omitidos mantêm os atuais.</summary>
+public record NpcSheetInput(Guid? TemplateId, Dictionary<string, string?>? Values, int Revision, List<NpcResource>? Resources = null);
 /// <summary>Imagem do NPC/criatura: <c>asset:{id}</c> do acervo, link https ou vazio para remover.</summary>
 public record NpcImageInput(string? ImageUrl, int Revision);
 
@@ -39,7 +40,7 @@ public partial class SessionService
     object NpcSheetView(MasterCharacter npc, SheetTemplate? template, SheetTemplateVersion? version)
     {
         if (version == null || template == null)
-            return new { npc.Id, npc.Name, npc.Kind, npc.Revision, npc.ImageUrl, imagePreview = PreviewUrl(npc), template = (object?)null, fields = Array.Empty<object>(), values = new Dictionary<string, string>(), resources = Array.Empty<object>(), stats = Array.Empty<object>() };
+            return new { npc.Id, npc.Name, npc.Kind, npc.Revision, npc.ImageUrl, imagePreview = PreviewUrl(npc), template = (object?)null, fields = Array.Empty<object>(), values = new Dictionary<string, string>(), resources = Array.Empty<object>(), stats = Array.Empty<object>(), simpleResources = npc.Resources };
         var all = CharacterSheets.All(version.Fields, CharacterSheets.Complete(version.Fields, CharacterSheets.ParseValues(npc.Values)).Stored);
         var (resources, stats) = SheetSummary.Build(version.Fields, all);
         return new
@@ -47,7 +48,7 @@ public partial class SessionService
             npc.Id, npc.Name, npc.Kind, npc.Revision, npc.ImageUrl, imagePreview = PreviewUrl(npc),
             template = new { template.Id, template.Name, versionId = version.Id },
             fields = version.Fields.Select(f => new { f.Name, f.Label, f.Type, f.Options, f.Min, f.Max, f.Section, f.MaxLength }),
-            values = all, resources, stats,
+            values = all, resources, stats, simpleResources = npc.Resources,
         };
     }
 
@@ -66,6 +67,8 @@ public partial class SessionService
         var (c, master) = await CampaignAccessAsync(campaignId, user, ct);
         if (!master) throw new RuleException(403, "Somente o mestre edita fichas de NPCs e criaturas.");
         if (c.ArchivedAt != null) throw new RuleException(409, "Esta campanha está arquivada. Restaure-a para editar fichas.");
+        if (x.Resources != null && x.TemplateId != null) throw new RuleException(400, "Recursos simples valem só para personagem sem modelo de ficha.");
+        var simple = x.Resources == null ? null : PreparationService.ValidateResources(x.Resources);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         // Ordem comum: sessão ativa → personagem do mestre.
         var active = db.Database.IsNpgsql()
@@ -92,11 +95,16 @@ public partial class SessionService
             npc.TemplateVersionId = version.Id;
             npc.Values = JsonSerializer.Serialize(CharacterSheets.Complete(version.Fields, raw).Stored);
         }
-        else { npc.TemplateVersionId = null; npc.Values = "{}"; }
+        else
+        {
+            // Sem modelo valem os recursos simples. Ao escolher um modelo eles ficam guardados e voltam se o mestre retornar a "Sem ficha".
+            npc.TemplateVersionId = null; npc.Values = "{}";
+            if (simple != null) npc.Resources = simple;
+        }
         npc.Revision++; npc.UpdatedAt = Now;
         if (active != null)
         {
-            Event(active, user, await NameAsync(user, ct), EventKinds.Sheet, $"Mestre atualizou a ficha de {npc.Name}", new { npcId }, masterOnly: true);
+            Event(active, user, await NameAsync(user, ct), EventKinds.Sheet, simple != null ? $"Mestre atualizou os recursos de {npc.Name}" : $"Mestre atualizou a ficha de {npc.Name}", new { npcId }, masterOnly: true);
             await CommitAsync(tx, active, ct);
         }
         else
@@ -118,7 +126,7 @@ public partial class SessionService
         Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(imageUrl)))[..12];
 
     /// <summary>Prévia para o mestre (fora da mesa): imagem do acervo da campanha ou o próprio link https.</summary>
-    static string? PreviewUrl(MasterCharacter npc)
+    internal static string? PreviewUrl(MasterCharacter npc)
     {
         if (npc.ImageUrl == null) return null;
         NpcImages.Normalize(npc.ImageUrl, out var asset);
