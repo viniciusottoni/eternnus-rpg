@@ -596,3 +596,33 @@ Pedido: os atos/capítulos/arcos devem ficar visíveis também para os jogadores
 **Mudança em relação à ADR-061:** antes o jogador via o título do capítulo de qualquer sessão publicada. Agora só vê capítulos publicados. O resumo do capítulo passa a ser lido pelo grupo quando o capítulo está visível; o editor avisa isso.
 
 **Consequências:** cache v39. Ajuda `campanhas.capitulos.organizacao` passa a ser para todos.
+
+## ADR-063 — Um acervo só (Páginas), objetivos e pistas como páginas e imagens por link (11/11/2026)
+
+Pedido: o “+ Texto da campanha” das Bibliotecas e a “+ Página” do Mundo faziam a mesma coisa; escolher o mais simples e intuitivo para objetivos e pistas do Diário. Depois: imagem por link ou arquivo em páginas, mapas e personagens do mestre.
+
+**Decisão — acervo:** Páginas (`WorkspacePage`) é o único acervo textual da campanha. Bibliotecas mostra só os atalhos (biblioteca geral e do sistema) e um aviso apontando para Páginas. Textos antigos (`CampaignLibraryEntry`) não podem mais ser criados nem editados (`POST/PUT /assets/library` saem); enquanto existirem, aparecem em “Textos antigos da campanha” com **Converter em página** e **Excluir**. Converter copia título e texto (publicado → “Toda a mesa”; rascunho → “Só eu”; objetivo/pista mantêm o tipo), guarda `ConvertedPageId` e tira o texto da lista. O registro antigo é preservado, sem sincronização posterior.
+
+**Decisão — Diário:** objetivos e pistas passam a ser páginas dos tipos `objective`/`clue`, que já tinham estado aberto/resolvido/abandonado, segredos, relações, versões e anexos. O Diário lê essas páginas com a regra de leitura das páginas (mestre vê todas; jogador vê “Toda a mesa” e as compartilhadas com ele; segredos nunca entram) e usa o mesmo editor: “+ Objetivo”/“+ Pista” abrem a página já com o tipo, começando em “Só eu”. Alternativa descartada: manter um formulário simplificado gravando em outra tabela — duplicaria regras e o conteúdo apareceria em dois lugares.
+
+**Migração `LegacyTextsToPages`:** acrescenta `ConvertedPageId` e copia objetivos/pistas antigos para `WorkspacePage` (dono = mestre da campanha), sem apagar os originais. O `Down` remove só a coluna; as páginas copiadas ficam, pois podem ter sido editadas.
+
+**Decisão — imagens:** mapas e anexos de página aceitam imagem por link. O servidor baixa uma única vez (`RemoteImageFetcher`) e trata o resultado como upload: assinatura, antivírus e, nos mapas, normalização. Hotlink foi descartado para mapas porque a névoa mascara os bytes no servidor; nos anexos, porque os leitores exporiam o IP ao site de origem. Defesas contra SSRF: autorização antes de qualquer acesso à rede; só https na porta padrão, sem credenciais nem nomes locais; DNS resolvido no servidor e conexão só a endereços públicos (todos os endereços do nome precisam ser públicos); sem proxy, cookies ou redirecionamento automático (até três, cada um revalidado); 15 s e 10 MiB. Imagens anexadas aparecem na leitura da página. O personagem do mestre (e a criatura criada na mesa) ganha envio de arquivo: a imagem entra em Mapas e cenários como “Apenas imagem” e o personagem usa `asset:{id}`; o link https direto continua como antes, com o aviso de privacidade.
+
+**Limites:** a imagem do NPC é enviada antes de salvar o personagem; se o salvamento falhar, ela fica no acervo para reuso. Retratos enviados contam no teto de 50 mapas e 250 MiB. Sites que exigem login, cookies ou bloqueiam robôs não podem ser importados; o mestre envia o arquivo. Cache público v41.
+
+## ADR-064 — NPCs nascem em Preparação; páginas contam a história deles (11/11/2026)
+
+Pedido: havia NPCs da Preparação (exibidos em “NPCs conhecidos”) e páginas do tipo NPC (exibidas só em Páginas), sem relação entre si. O mestre esperava ver as páginas NPC em “NPCs conhecidos”.
+
+**Decisão:** a Preparação é o único cadastro de NPCs. É nela que o mestre decide se o personagem existe e se o grupo o conhece (“Visível para os jogadores”). O tipo `npc` deixa de ser oferecido em páginas novas. O servidor recusa `kind: npc` em criação e em troca de tipo, mas aceita páginas que já são desse tipo, que continuam editáveis (não havia nenhuma na base em uso). O texto longo continua em Páginas: o vínculo que já existia (`WorkspacePage.NpcId`, só do mestre) passa a ser a “história” do NPC. Não há coluna nem migração nova.
+
+**Exibição:** “NPCs conhecidos” mostra “Ler página” quando a página ligada está fora da lixeira e quem consulta pode lê-la, pela mesma regra de leitura das páginas (`WorkspaceService.Readable`). Se houver mais de uma página ligada, vale a fixada primeiro e depois a de menor título. O mestre vê um aviso quando a página não é de toda a mesa. Na Preparação, cada NPC mostra o link da história ou o botão “+ História”, que abre uma página nova já ligada e privada (“Só eu”). Na lista de Páginas, o mestre vê o selo “NPC: nome”.
+
+**Privacidade:** o jogador só fica sabendo que uma página trata de um NPC quando o NPC está compartilhado e ele já pode ler a página. NPC oculto, página privada e página na lixeira não aparecem. Os segredos da página continuam fora.
+
+**Exclusão:** como `NpcId` não tem chave estrangeira, excluir o NPC limpa o vínculo das páginas na mesma transação. As páginas continuam no acervo. Antes, o id órfão fazia a página responder 404 ao salvar.
+
+**Alternativa descartada:** juntar páginas NPC e NPCs da Preparação na mesma lista sem vínculo. Mantinha dois cadastros e duas regras de visibilidade para o mesmo personagem.
+
+**Consequências:** cache v42 (nenhum arquivo novo na lista). Ajuda `campanhas.preparo.personagens` ganha o parágrafo da história.

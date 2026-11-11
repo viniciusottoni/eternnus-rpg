@@ -14,7 +14,7 @@ As abas principais são fixas (ADR-059): Visão geral, Diário, Preparação, Gr
 
 Tipos: texto, lugar, facção, livro, capítulo, item, acontecimento, NPC, objetivo, pista e nota pessoal. Título obrigatório até 120 caracteres; conteúdo até 10.000; segredos até 4.000; coleção até 120; etiquetas até 300. Coleção é uma identificação textual simples; não há árvore de pastas de textos. Capítulos/páginas podem pertencer a uma página raiz, com ordem 0–10.000, sem ciclos ou níveis adicionais. Relações são identificadores de até vinte páginas acessíveis da própria campanha; leitura de relacionados, referências inversas e filhos refaz autorização, sem revelar nomes privados. Até 100 filhos/referências inversas são mostrados. Fixar ordena a página antes das demais. Objetivos/pistas têm estado aberto, resolvido ou abandonado.
 
-Somente o mestre administra páginas do mundo. Cada pessoa cria e edita suas notas; nem o mestre altera notas alheias. Uma página de lore de NPC pode apontar ao NPC de preparação sem copiar a ficha; referências de preparação não são enviadas ao leitor compartilhado. Os textos antigos continuam preservados no acervo anterior, acessível pelo novo Mundo; não há migração automática nem sincronização entre uma página nova e um texto anterior.
+Somente o mestre administra páginas do mundo. Cada pessoa cria e edita suas notas; nem o mestre altera notas alheias. Uma página de lore de NPC pode apontar ao NPC de preparação sem copiar a ficha; referências de preparação não são enviadas ao leitor compartilhado. Páginas são o único acervo textual (ADR-063). Objetivos e pistas do Diário são páginas dos tipos objetivo/pista; a migração LegacyTextsToPages copiou os antigos. Os demais textos antigos aparecem em Bibliotecas até o mestre convertê-los em página (cópia única, sem sincronização; o original é preservado).
 
 ## Privacidade
 
@@ -30,7 +30,7 @@ Revisão obrigatória em edições, lixeira e restauração. Até cinquenta vers
 
 Importação TXT/Markdown carrega texto no editor para revisão (até 10.000 caracteres), sem renderizar HTML ou executar Markdown. Não substitui um campo de conteúdo já preenchido. Exportação de página compartilhada contém apenas título/conteúdo; baixar rascunho e exportação do caderno próprio incluem seus segredos.
 
-Anexos: PDF, PNG, JPEG e WebP, assinatura e antivírus comuns de DocumentFiles, até 25 MiB por arquivo, dez por página e 250 MiB por campanha. Acesso segue a página no momento da leitura, inclusive após recolhimento ou lixeira. Downloads autenticados como anexo, private/no-store, nosniff e sandbox. Exclusão de anexo é definitiva, separada da lixeira da página. Bytes não aparecem nas listas ou versões. Importações externas específicas, pacote integral de exportação e recuperação de anexos fora da campanha ainda não são oferecidos.
+Anexos: PDF, PNG, JPEG e WebP, enviados do aparelho ou, para imagens, importados por link https (o servidor baixa uma vez com as defesas do ADR-063, até 10 MiB). Imagens anexadas aparecem na leitura da página. Mesmas regras: assinatura e antivírus comuns de DocumentFiles, até 25 MiB por arquivo, dez por página e 250 MiB por campanha. Acesso segue a página no momento da leitura, inclusive após recolhimento ou lixeira. Downloads autenticados como anexo, private/no-store, nosniff e sandbox. Exclusão de anexo é definitiva, separada da lixeira da página. Bytes não aparecem nas listas ou versões. Importações externas específicas, pacote integral de exportação e recuperação de anexos fora da campanha ainda não são oferecidos.
 
 ## Atlas
 

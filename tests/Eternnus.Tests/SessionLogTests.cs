@@ -227,4 +227,58 @@ public sealed class SessionLogTests : IAsyncLifetime
         var hidden = await db.MasterCharacters.SingleAsync(m => m.Name == "Vulto");
         Assert.Equal(404, (await Assert.ThrowsAsync<RuleException>(() => prep.KnownPortraitAsync(campaign.Id, hidden.Id, "player", default))).Status);
     }
+
+    [Fact]
+    public async Task Known_npcs_link_the_lore_page_only_for_readers_and_deleting_the_npc_unlinks_pages()
+    {
+        var prep = new PreparationService(db, TimeProvider.System);
+        var grak = new MasterCharacter { CampaignId = campaign.Id, Name = "Grak", SharedWithPlayers = true };
+        var vulto = new MasterCharacter { CampaignId = campaign.Id, Name = "Vulto" };
+        db.AddRange(grak, vulto); await db.SaveChangesAsync();
+        async Task<JsonElement> Page(string user) => Json(await prep.KnownNpcsAsync(campaign.Id, user, 1, default)).GetProperty("items")[0].GetProperty("page");
+
+        // Página privada: só o mestre vê o vínculo; o jogador não sabe que ela existe.
+        var lore = await service.Save(campaign.Id, null, "master", new("Grak, o chefe", "Nasceu nas montanhas.", "text", "self", Secrets: "Trai o rei", NpcId: grak.Id), default);
+        Assert.Equal(JsonValueKind.Null, (await Page("player")).ValueKind);
+        Assert.Equal(lore.Id, (await Page("master")).GetProperty("id").GetGuid());
+        Assert.Equal("self", (await Page("master")).GetProperty("visibility").GetString());
+
+        // Compartilhada com a mesa: o jogador recebe só id, título e visibilidade, nunca os segredos.
+        lore = await service.Save(campaign.Id, lore.Id, "master", new("Grak, o chefe", "Nasceu nas montanhas.", "text", "table", Secrets: "Trai o rei", NpcId: grak.Id, Revision: lore.Revision), default);
+        var shared = await Page("player");
+        Assert.Equal("Grak, o chefe", shared.GetProperty("title").GetString());
+        Assert.DoesNotContain("Trai", shared.GetRawText());
+
+        // NPC oculto não aparece, mesmo com página legível ligada a ele.
+        await service.Save(campaign.Id, null, "master", new("Vulto", "Espião.", "text", "table", NpcId: vulto.Id), default);
+        Assert.Single(Json(await prep.KnownNpcsAsync(campaign.Id, "player", 1, default)).GetProperty("items").EnumerateArray());
+
+        // Lixeira esconde o vínculo; a Preparação do mestre mostra a página ligada.
+        await service.Delete(campaign.Id, lore.Id, "master", lore.Revision, false, default);
+        Assert.Equal(JsonValueKind.Null, (await Page("master")).ValueKind);
+        await service.Delete(campaign.Id, lore.Id, "master", lore.Revision, true, default); // mesma instância rastreada: revisão já atualizada
+        var npcs = Json(await prep.NpcsAsync(campaign.Id, "master", default)).GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(lore.Id, npcs.Single(n => n.GetProperty("name").GetString() == "Grak").GetProperty("page").GetProperty("id").GetGuid());
+        Assert.Equal("Grak", Json(await service.List(campaign.Id, "master", "Grak", null, 1, false, default)).GetProperty("items")[0].GetProperty("npc").GetString());
+        Assert.Equal(JsonValueKind.Null, Json(await service.List(campaign.Id, "player", "Grak", null, 1, false, default)).GetProperty("items")[0].GetProperty("npc").ValueKind);
+
+        // Excluir o NPC mantém a página e remove o vínculo, que antes impedia salvá-la.
+        await prep.DeleteNpcAsync(campaign.Id, grak.Id, "master", default);
+        db.ChangeTracker.Clear();
+        var kept = await db.Set<WorkspacePage>().SingleAsync(p => p.Id == lore.Id);
+        Assert.Null(kept.NpcId);
+        await service.Save(campaign.Id, kept.Id, "master", new("Grak, o chefe", "Ainda lembrado.", "text", "table", Revision: kept.Revision), default);
+    }
+
+    [Fact]
+    public async Task New_pages_cannot_use_the_npc_kind_but_legacy_npc_pages_stay_editable()
+    {
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => service.Save(campaign.Id, null, "master", new("Grak", "x", "npc"), default))).Status);
+        var text = await service.Save(campaign.Id, null, "master", new("Grak", "x", "text"), default);
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => service.Save(campaign.Id, text.Id, "master", new("Grak", "x", "npc", Revision: text.Revision), default))).Status);
+        var legacy = new WorkspacePage { CampaignId = campaign.Id, OwnerId = "master", Kind = "npc", Title = "Antigo" };
+        db.Add(legacy); await db.SaveChangesAsync();
+        var saved = await service.Save(campaign.Id, legacy.Id, "master", new("Antigo", "novo texto", "npc", Revision: legacy.Revision), default);
+        Assert.Equal("npc", saved.Kind);
+    }
 }

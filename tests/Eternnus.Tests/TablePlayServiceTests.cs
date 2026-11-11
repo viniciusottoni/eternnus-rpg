@@ -377,8 +377,9 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
     [Fact]
     public async Task Journal_shares_only_published_content_and_attendance_follows_the_date()
     {
-        await new CampaignAssetsService(db).SaveTextAsync(campaign.Id, null, Master, new("Achar o cálice", "Está na cripta", true, 0, "objective"), default);
-        await new CampaignAssetsService(db).SaveTextAsync(campaign.Id, null, Master, new("Traidor", "É a capitã", false, 0, "clue"), default);
+        // Objetivos e pistas são páginas do Mundo (ADR-063): "Toda a mesa" aparece ao jogador; "Só eu" não.
+        await new WorkspaceService(db).Save(campaign.Id, null, Master, new("Achar o cálice", "Está na cripta", "objective", "table", Secrets: "O cálice é falso"), default);
+        await new WorkspaceService(db).Save(campaign.Id, null, Master, new("Traidor", "É a capitã", "clue", "self"), default);
         Assert.Equal(409, await Status(() => prep.AttendanceAsync(campaign.Id, new("yes"), Player, default)));
         var when = new DateTimeOffset(2026, 11, 14, 20, 0, 0, TimeSpan.FromHours(-3));
         await prep.ScheduleAsync(campaign.Id, new(when, "Online"), Master, default);
@@ -388,6 +389,9 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
         Assert.Equal("yes", journal.GetProperty("myAttendance").GetString());
         Assert.Contains("Achar o cálice", journal.ToString());
         Assert.DoesNotContain("Traidor", journal.ToString());
+        Assert.DoesNotContain("O cálice é falso", journal.ToString());
+        var masterView = JsonSerializer.SerializeToElement(await prep.JournalAsync(campaign.Id, Master, default), Web);
+        Assert.Contains("Traidor", masterView.ToString());
         await prep.ScheduleAsync(campaign.Id, new(when.AddDays(7), null), Master, default);
         Assert.Equal(JsonValueKind.Null, JsonSerializer.SerializeToElement(await prep.JournalAsync(campaign.Id, Player, default), Web).GetProperty("myAttendance").ValueKind);
     }

@@ -28,8 +28,8 @@ export async function renderPrep(d, target) {
   <p class="muted small">Prepare em particular: escolha o cenário, posicione personagens e escreva o texto. Nada aparece aos jogadores até você apresentar a cena na mesa.</p>
   ${scenes.items.length ? `<ul class="scene-cards">${scenes.items.map(card).join("")}</ul>` : empty("Nenhuma cena ainda.", "Uma cena pode ser um mapa com grade, uma imagem ou só um texto para ler à mesa.", d.archived ? "" : "pp-scene", "+ Nova cena")}
   <div class="section-title"><h2>Personagens do mestre${helpButton("campanhas.preparo.personagens", "Personagens do Mestre")}</h2>${button("+ Novo personagem", "pp-npc", "", "primary small", d.archived ? "disabled" : "")}</div>
-  <p class="muted small">Reutilize aliados e inimigos. Na mesa, use “Cópia para o encontro” para mexer nos recursos sem alterar o original. Marque “Visível para os jogadores” para apresentar o personagem em <a href="#campaign/${esc(d.id)}/npcs">NPCs conhecidos</a>.</p>
-  ${npcs.items.length ? `<ul class="npc-list">${npcs.items.map((n) => `<li class="metal"><div><strong>${esc(n.name)}</strong> <span class="chip">${n.kind === "creature" ? "criatura" : "personagem"}</span>${n.copy ? ' <span class="chip">cópia</span>' : ""}${n.sharedWithPlayers ? ' <span class="chip">visível ao grupo</span>' : ""}${n.templateName ? ` <span class="chip">ficha: ${esc(n.templateName)}</span>` : ""}<small>${esc(n.summary || "")}</small><small>${n.resources.map((r) => `${esc(r.label)} ${r.value}${r.max != null ? "/" + r.max : ""}`).join(" · ")}</small></div><div class="scene-actions">${button("Editar", "pp-npc", n.id, "subtle small")}${button("Ficha", "pp-npc-sheet", n.id, "subtle small")}${button("Copiar", "pp-npc-copy", n.id, "subtle small")}${button("Excluir", "pp-npc-delete", n.id, "text-button small")}</div></li>`).join("")}</ul>` : empty("Nenhum personagem do mestre.", "Crie um com nome, resumo e recursos como vida, moral ou munição.")}`;
+  <p class="muted small">Reutilize aliados e inimigos. Na mesa, use “Cópia para o encontro” para mexer nos recursos sem alterar o original. Marque “Visível para os jogadores” para apresentar o personagem em <a href="#campaign/${esc(d.id)}/npcs">NPCs conhecidos</a>. Use “+ História” para escrever a história dele em Páginas.</p>
+  ${npcs.items.length ? `<ul class="npc-list">${npcs.items.map((n) => `<li class="metal"><div><strong>${esc(n.name)}</strong> <span class="chip">${n.kind === "creature" ? "criatura" : "personagem"}</span>${n.copy ? ' <span class="chip">cópia</span>' : ""}${n.sharedWithPlayers ? ' <span class="chip">visível ao grupo</span>' : ""}${n.templateName ? ` <span class="chip">ficha: ${esc(n.templateName)}</span>` : ""}<small>${esc(n.summary || "")}</small><small>${n.resources.map((r) => `${esc(r.label)} ${r.value}${r.max != null ? "/" + r.max : ""}`).join(" · ")}</small>${n.page ? `<small>História: <a class="lore-link" href="#campaign/${esc(d.id)}/world/${esc(n.page.id)}">${esc(n.page.title)}</a></small>` : ""}</div><div class="scene-actions">${button("Editar", "pp-npc", n.id, "subtle small")}${n.page || n.copy ? "" : button("+ História", "pp-npc-lore", n.id, "subtle small", d.archived ? "disabled" : `aria-label="Escrever a história de ${esc(n.name)} em Páginas"`)}${button("Ficha", "pp-npc-sheet", n.id, "subtle small")}${button("Copiar", "pp-npc-copy", n.id, "subtle small")}${button("Excluir", "pp-npc-delete", n.id, "text-button small")}</div></li>`).join("")}</ul>` : empty("Nenhum personagem do mestre.", "Crie um com nome, resumo e recursos como vida, moral ou munição.")}`;
   target.querySelectorAll("[data-scene-map]").forEach((el) => mapThumbnail(el, mapOf(el.dataset.sceneMap)));
   target.onclick = async (e) => {
     const b = e.target.closest("[data-action^='pp-']");
@@ -45,6 +45,7 @@ export async function renderPrep(d, target) {
       if (b.dataset.action === "pp-scene-delete" && confirm("Excluir esta cena? Mapas e personagens continuam na campanha. Uma preparação de mapa própria desta cena também é excluída.")) { await api(`/campaigns/${d.id}/scenes/${id}`, "DELETE"); await renderPrep(d, target); }
       if (b.dataset.action === "pp-npc") await npcModal(d, npcs.items.find((n) => n.id === id), () => renderPrep(d, target));
       if (b.dataset.action === "pp-npc-sheet") await (await import("./npc-sheet.js")).openNpcSheet({ campaignId: d.id, npcId: id, onSaved: () => target.isConnected && renderPrep(d, target) });
+      if (b.dataset.action === "pp-npc-lore") { const n = npcs.items.find((x) => x.id === id); await (await import("./campaign-workspace.js")).newPage(d, { kind: "text", title: n.name, npcId: n.id }, () => target.isConnected && renderPrep(d, target)); }
       if (b.dataset.action === "pp-npc-copy") { await api(`/campaigns/${d.id}/npcs/${id}/copy`, "POST"); await renderPrep(d, target); }
       if (b.dataset.action === "pp-npc-delete" && confirm("Excluir este personagem do mestre?")) { await api(`/campaigns/${d.id}/npcs/${id}`, "DELETE"); await renderPrep(d, target); }
     } catch (error) { toast(error.message); }
@@ -62,7 +63,7 @@ async function npcModal(d, npc, done) {
     e.preventDefault();
     submitForm(e.currentTarget, async (data) => {
       const resources = rows.map((_, i) => ({ label: (data["l" + i] || "").trim(), value: Number(data["v" + i]) || 0, max: data["m" + i] === "" ? null : Number(data["m" + i]) })).filter((r) => r.label);
-      await api(`/campaigns/${d.id}/npcs${npc ? "/" + npc.id : ""}`, npc ? "PUT" : "POST", { name: data.name, summary: data.summary, notes: data.notes, side: data.side, resources, revision: npc?.revision || 0, kind: data.kind, imageUrl: sheets.imageFromForm(data), sharedWithPlayers: data.sharedWithPlayers === "on" });
+      await api(`/campaigns/${d.id}/npcs${npc ? "/" + npc.id : ""}`, npc ? "PUT" : "POST", { name: data.name, summary: data.summary, notes: data.notes, side: data.side, resources, revision: npc?.revision || 0, kind: data.kind, imageUrl: await sheets.imageFromUpload(data, d.id, data.name), sharedWithPlayers: data.sharedWithPlayers === "on" });
       $("#modal").close();
       await done();
     });
@@ -80,12 +81,14 @@ export async function renderJournal(d, targets, page = 1, search = "") {
   const master = j.campaign.isMaster;
   const objectives = j.entries.filter((e) => e.kind === "objective");
   const clues = j.entries.filter((e) => e.kind === "clue");
-  const entry = (e) => `<li class="metal"><strong>${esc(e.title)}</strong>${master && !e.published ? ' <span class="chip">rascunho</span>' : ""}<p class="small">${esc(e.text)}</p>${master ? button("Editar", "jr-entry", e.id, "text-button small") : ""}</li>`;
+  const audience = { self: "rascunho", master: "rascunho", selected: "só para alguns" };
+  const state = { resolved: "resolvido", abandoned: "abandonado" };
+  const entry = (e) => `<li class="metal${e.status !== "open" ? " journal-closed" : ""}"><strong>${esc(e.title)}</strong>${master && audience[e.visibility] ? ` <span class="chip">${audience[e.visibility]}</span>` : ""}${state[e.status] ? ` <span class="chip">${state[e.status]}</span>` : ""}<p class="small">${esc(e.text)}</p>${master ? button("Editar", "jr-entry", e.id, "text-button small", d.archived ? "disabled" : "") : button("Abrir", "jr-open", e.id, "text-button small")}</li>`;
   const status = { yes: "Vou", maybe: "Talvez", no: "Não vou" };
   main.innerHTML = `<div class="section-title"><h2>Próxima partida</h2>${master ? button("Marcar data", "jr-schedule", "", "subtle small", d.archived ? "disabled" : "") : ""}</div>
   <article class="metal next-session">${j.nextSession ? `<p class="next-date"><strong>${esc(localDateTime(j.nextSession.at))}</strong> <small>(seu horário${browserZone() ? ": " + esc(browserZone()) : ""})</small></p>${j.nextSession.note ? `<p class="small">${esc(j.nextSession.note)}</p>` : ""}${master ? `<p class="small">Confirmações: ${j.attendance.map((a) => `${esc(a.name)} — ${esc(status[a.status] || a.status)}`).join(" · ") || "nenhuma ainda"}${j.pending ? ` · ${j.pending} sem resposta` : ""}</p>` : `<div class="attendance" role="group" aria-label="Confirmar presença">${Object.entries(status).map(([v, l]) => `<button type="button" class="${j.myAttendance === v ? "primary" : "subtle"} small" data-action="jr-attend" data-id="${v}" aria-pressed="${j.myAttendance === v}">${l}</button>`).join("")}</div>${j.attendance.length ? `<p class="small muted">${j.attendance.map((a) => `${esc(a.name)}: ${esc(status[a.status] || a.status)}`).join(" · ")}</p>` : ""}`}` : `<p class="muted small">${master ? "Marque a próxima partida para os jogadores confirmarem presença." : "O mestre ainda não marcou a próxima partida."}</p>`}</article>
   <div class="journal-columns"><section aria-labelledby="jr-objectives-title"><div class="section-title"><h2 id="jr-objectives-title">Objetivos</h2>${master ? button("+ Objetivo", "jr-new", "objective", "subtle small", d.archived ? "disabled" : "") : ""}</div>${objectives.length ? `<ul class="journal-list">${objectives.map(entry).join("")}</ul>` : '<p class="muted small">Nenhum objetivo conhecido ainda.</p>'}</section>
-  <section aria-labelledby="jr-clues-title"><div class="section-title"><h2 id="jr-clues-title">Pistas</h2>${master ? button("+ Pista", "jr-new", "clue", "subtle small", d.archived ? "disabled" : "") : ""}</div>${clues.length ? `<ul class="journal-list">${clues.map(entry).join("")}</ul>` : '<p class="muted small">Nenhuma pista registrada.</p>'}</section></div>`;
+  <section aria-labelledby="jr-clues-title"><div class="section-title"><h2 id="jr-clues-title">Pistas</h2>${master ? button("+ Pista", "jr-new", "clue", "subtle small", d.archived ? "disabled" : "") : ""}</div>${clues.length ? `<ul class="journal-list">${clues.map(entry).join("")}</ul>` : '<p class="muted small">Nenhuma pista registrada.</p>'}</section></div>${master ? `<p class="muted small">Objetivos e pistas são páginas do Mundo: também aparecem em <a href="#campaign/${esc(d.id)}/world">Mundo e acervo › Páginas</a>, com segredos, relações e anexos. Escolha “Toda a mesa” para os jogadores verem.</p>` : ""}`;
   const pages = page > 1 || page * 20 < j.recapTotal
     ? `<div class="pagination">${button("← Anterior", "jr-page", page - 1, "subtle", page <= 1 ? "disabled" : "")}<span>Página ${page}</span>${button("Próxima →", "jr-page", page + 1, "subtle", page * 20 >= j.recapTotal ? "disabled" : "")}</div>`
     : "";
@@ -99,8 +102,12 @@ export async function renderJournal(d, targets, page = 1, search = "") {
       if (b.dataset.action === "jr-page") return renderJournal(d, targets, Number(b.dataset.id), search);
       if (b.dataset.action === "jr-attend") { await api(`/campaigns/${d.id}/attendance`, "POST", { status: b.dataset.id }); await reload(); }
       if (b.dataset.action === "jr-schedule") scheduleModal(d, j.nextSession, reload);
-      if (b.dataset.action === "jr-new") entryModal(d, { kind: b.dataset.id }, reload);
-      if (b.dataset.action === "jr-entry") entryModal(d, j.entries.find((x) => x.id === b.dataset.id), reload);
+      if (["jr-new", "jr-entry", "jr-open"].includes(b.dataset.action)) {
+        const pages = await import("./campaign-workspace.js");
+        if (b.dataset.action === "jr-new") await pages.newPage(d, { kind: b.dataset.id, visibility: "self" }, reload);
+        if (b.dataset.action === "jr-entry") await pages.editPage(d, b.dataset.id, reload);
+        if (b.dataset.action === "jr-open") await pages.openPage(d, b.dataset.id, reload);
+      }
       if (b.dataset.action === "jr-recap") recapModal(j.recaps.find((x) => x.id === b.dataset.id), reload);
     } catch (error) { toast(error.message); }
   };
@@ -114,19 +121,6 @@ function scheduleModal(d, current, done) {
     submitForm(e.currentTarget, async (data) => {
       if (!clear && !data.at) throw new Error("Escolha a data e a hora.");
       await api(`/campaigns/${d.id}/schedule`, "PUT", { at: clear ? null : new Date(data.at).toISOString(), note: clear ? "" : data.note });
-      $("#modal").close();
-      await done();
-    });
-  };
-}
-
-function entryModal(d, item, done) {
-  const label = item.kind === "clue" ? "pista" : "objetivo";
-  modal(item.id ? `Editar ${label}` : item.kind === "clue" ? "Nova pista" : "Novo objetivo", `<form id="entry-form"><div class="field"><label for="en-title">Título</label><input id="en-title" name="title" maxlength="120" required value="${esc(item.title || "")}"></div><div class="field"><label for="en-text">Texto</label><textarea id="en-text" name="text" maxlength="10000" rows="4" required>${esc(item.text || "")}</textarea></div><label class="check"><input type="checkbox" name="published" ${item.published ? "checked" : ""}> Os jogadores já sabem disto</label>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">Salvar</button></div></form>`);
-  $("#entry-form").onsubmit = (e) => {
-    e.preventDefault();
-    submitForm(e.currentTarget, async (data) => {
-      await api(`/campaigns/${d.id}/assets/library${item.id ? "/" + item.id : ""}`, item.id ? "PUT" : "POST", { title: data.title, text: data.text, published: data.published === "on", revision: item.revision || 0, kind: item.kind });
       $("#modal").close();
       await done();
     });

@@ -180,7 +180,7 @@ O filtro de eventos do estado ao vivo e do histórico já aplica `MasterOnly`/`V
 ## Continuidade
 
 - **Resumo da sessão:** `GameSession.Recap`, publicado com `RecapPublishedAt`. Pode ser escrito depois do encerramento, e só o publicado aparece aos jogadores.
-- **Objetivos e pistas:** reaproveitam o acervo da campanha (`CampaignLibraryEntry.Kind = objective|clue`). Os publicados são os que os jogadores conhecem; rascunhos ficam com o mestre. As entradas também aparecem na aba Bibliotecas.
+- **Objetivos e pistas:** são páginas do Mundo dos tipos `objective`/`clue` (ADR-063), com estado aberto, resolvido ou abandonado. O jogador vê as de “Toda a mesa” e as compartilhadas com ele; segredos e rascunhos (“Só eu”) ficam com o mestre. Também aparecem em Mundo e acervo › Páginas.
 - **Próxima partida:** `Campaign.NextSessionAt` em UTC, apresentada no fuso do navegador com o nome do fuso no formulário.
 - **Presença:** `CampaignAttendance` (sim, talvez, não) vale enquanto `SessionAt` coincidir com a data marcada. Mudar a data pede nova confirmação.
 - A visão compartilhada nunca inclui notas privadas, objetivo inicial do mestre ou o histórico completo.

@@ -70,7 +70,7 @@ Auditoria inicial: 59 conceitos e 202 linhas de controles/opções, antes de edi
 | Cenas preparadas | `campaign-prep.js` | ⓘ | `campanhas.preparo.cenas` | O Mestre prepara e apresenta cenas para a mesa. | Aplicado |
 | Personagens do Mestre | `campaign-prep.js` | ⓘ | `campanhas.preparo.personagens` | O Mestre pode guardar personagens e criar cópias para encontros. | Aplicado |
 | Modelos privados | `campaign-prep.js` | ⓘ | `campanhas.preparo.modelos-privados` | O Mestre cria modelos próprios para sua campanha. | Aplicado |
-| Acervo da campanha | `campaign-assets.js` | ⓘ | `campanhas.acervo.publicacao` | O Mestre escolhe o que compartilha com o grupo. | Aplicado |
+| Textos antigos (Bibliotecas) | `campaign-assets.js` | ⓘ | `campanhas.acervo.publicacao` | Textos de antes das Páginas; o Mestre converte cada um em página. | Aplicado |
 | Mapas e escala | `campaign-assets.js` | ⓘ | `campanhas.acervo.mapas` | A grade e a escala ligam o mapa ao deslocamento. | Aplicado |
 | Preparar e apresentar | `scene-editor.js`; `table-scenes.js` | ⓘ | `campanhas.cenas.preparacao` | Salvar a preparação não apresenta a cena aos jogadores. | Aplicado |
 | Aplicar à cena atual | `scene-editor.js` | ⓘ | `campanhas.cenas.aplicar` | Você escolhe quais partes salvas passam a valer agora. | Aplicado |
@@ -538,3 +538,12 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | NPCs conhecidos | `campaign-search.js` | Texto visível sob o título (o que o grupo vê) | — |
 | "Visível para os jogadores" (NPC) | `campaign-prep.js` | Auxiliar visível com os campos compartilhados | — |
 | Registro anterior | `campaign-workspace.js` | ⓘ movido para o texto de abertura do formulário | `campanhas.continuidade.historico` |
+
+### Classificação — NPCs e páginas de história (ADR-064, 11/11/2026)
+
+| Elemento | Arquivo | Nível | Chave |
+| --- | --- | --- | --- |
+| “+ História” e link “História:” no NPC | `campaign-prep.js` | Texto visível sob o título “Personagens do mestre” + ⓘ existente | `campanhas.preparo.personagens` |
+| “Esta página conta a história do NPC” | `campaign-workspace.js` | Auxiliar visível sob o campo (`aria-describedby`) | — |
+| Selo “NPC: nome” na lista de Páginas | `campaign-workspace.js` | Rótulo autoexplicativo + `data-tip` | — |
+| “Ler página” em NPCs conhecidos | `campaign-search.js` | Texto visível sob o título; aviso ao mestre quando a página não é de toda a mesa | — |

@@ -41,11 +41,18 @@ public sealed class DocumentFiles(IDocumentScanner scanner)
             }
             if (read != content.Length || stream.ReadByte() != -1) throw new RuleException(400, "O envio do arquivo foi interrompido. Tente novamente.");
         }
+        return await CheckAsync(content, file.FileName, allowed, ct);
+    }
+
+    /// <summary>Mesma verificação do upload (assinatura, antivírus, nome saneado) para bytes obtidos de outra forma, como a importação por link.</summary>
+    public async Task<UploadedDocument> CheckAsync(byte[] content, string? fileName, IReadOnlyCollection<string> allowed, CancellationToken ct)
+    {
+        if (content.Length == 0) throw new RuleException(400, "Escolha um arquivo.");
         var type = Sniff(content);
         if (type is null || !allowed.Contains(type))
             throw new RuleException(415, allowed.Count == 1 && allowed.Contains(DocumentKinds.Pdf) ? "Envie um arquivo PDF válido." : "Formato não aceito. Envie PDF, PNG, JPEG ou WebP.");
         await scanner.ScanAsync(content, ct);
-        return new UploadedDocument(content, type, SafeFileName(file.FileName, type), Convert.ToHexStringLower(SHA256.HashData(content)));
+        return new UploadedDocument(content, type, SafeFileName(fileName, type), Convert.ToHexStringLower(SHA256.HashData(content)));
     }
 
     /// <summary>Identifica o tipo pelos primeiros bytes. Nulo se não reconhecido.</summary>

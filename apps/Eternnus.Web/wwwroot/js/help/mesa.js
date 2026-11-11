@@ -145,7 +145,8 @@ const entries = {
     "title": "Imagem de NPC ou criatura",
     "summary": "A imagem vira o retrato do marcador no mapa; quem o enxerga também pode abri-la maior.",
     "body": [
-      "Prefira uma imagem do acervo da campanha: ela fica no servidor e só chega a quem enxerga o marcador.",
+      "Prefira uma imagem guardada no Eternnus: escolha uma do acervo da campanha ou envie um arquivo do aparelho. Ela fica no servidor e só chega a quem enxerga o marcador.",
+      "Um arquivo enviado também aparece em Mapas e cenários como “Apenas imagem” e pode servir a outros personagens.",
       "Um link https carrega a imagem direto do site de terceiros: esse site vê o endereço IP de quem abre e pode trocar o conteúdo depois.",
       "Marcadores ocultos ou apenas percebidos (“?”) não mostram a imagem.",
       "Para trocar ou remover depois, selecione o marcador e abra “Ficha do elemento”."

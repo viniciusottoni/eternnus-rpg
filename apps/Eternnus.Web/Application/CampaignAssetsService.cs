@@ -4,10 +4,12 @@ using System.Runtime.CompilerServices;
 using System.Buffers.Binary;
 namespace Eternnus.Web;
 
-public record CampaignTextInput(string Title, string Text, bool Published, int Revision = 0, string? Kind = null);
+public record CampaignTextConvertInput(int Revision);
 public record CampaignFolderInput(string Name, Guid? ParentId);
 public record CampaignFolderNameInput(string Name);
 public record CampaignMapInput(string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int Revision = 0, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0);
+/// <summary>Mapa importado de um link https: o servidor baixa uma vez e trata como upload (ver RemoteImageFetcher).</summary>
+public record CampaignMapImportInput(string Url, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0);
 /// <summary>Preparação de névoa/luz de um mapa: estado completo editado no editor e a revisão lida.</summary>
 public record MapLayerInput(bool? Fog, string[] Cells, List<FogLight>? Lights, string? Revealed, List<FogMarkInput>? Marks, int Revision, bool ResetExploration = false, string? PrepVersion = null);
 public record CampaignMapView(Guid Id, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int PixelWidth, int PixelHeight, int Revision, string ImageUrl, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0)
@@ -76,29 +78,34 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
     {
         var c = await Access(campaign, user, false, ct);
         page = Math.Clamp(page, 1, 100000);
-        var query = Texts.AsNoTracking().Where(x => x.CampaignId == campaign && (c.OwnerId == user || x.Published));
+        var query = Texts.AsNoTracking().Where(x => x.CampaignId == campaign && x.ConvertedPageId == null && (c.OwnerId == user || x.Published));
         var total = await query.CountAsync(ct);
         var items = await query.OrderByDescending(x => x.UpdatedAt).ThenBy(x => x.Id).Skip((page - 1) * PageSize).Take(PageSize).ToListAsync(ct);
         return new { items, total, page, pageSize = PageSize, systemId = c.RpgSystemId };
     }
-    public async Task<CampaignLibraryEntry> SaveTextAsync(Guid campaign, Guid? id, string user, CampaignTextInput x, CancellationToken ct)
+    /// <summary>Copia um texto antigo para uma página do Mundo (mesmo título/texto; publicado vira "Toda a mesa", rascunho vira "Só eu").
+    /// O texto é preservado e marcado com a página criada, saindo da lista do acervo antigo.</summary>
+    public async Task<object> ConvertTextAsync(Guid campaign, Guid id, string user, CampaignTextConvertInput x, CancellationToken ct)
     {
-        var title = Name(x.Title, 120); var text = LibraryService.Clean(x.Text ?? "", true);
-        if (text.Length is 0 or > 10000) throw new RuleException(400, "O texto de apoio deve ter entre 1 e 10.000 caracteres.");
         await using var tx = await db.Database.BeginTransactionAsync(ct); await Lock(campaign, user, ct);
-        var item = id is { } key ? await Texts.SingleOrDefaultAsync(e => e.Id == key && e.CampaignId == campaign, ct) ?? throw Missing() : new CampaignLibraryEntry { CampaignId = campaign };
-        if (id != null && item.Revision != x.Revision) throw Stale();
-        if (id == null && await Texts.CountAsync(e => e.CampaignId == campaign, ct) >= 500) throw new RuleException(409, "Limite de 500 textos por campanha.");
-        if (x.Kind is not (null or "text" or "objective" or "clue")) throw new RuleException(400, "Escolha texto, objetivo ou pista.");
-        item.Title = title; item.Text = text; item.Published = x.Published; item.UpdatedAt = DateTime.UtcNow;
-        if (x.Kind != null) item.Kind = x.Kind;
-        if (id == null) db.Add(item); else item.Revision++;
-        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return item;
+        if (await db.Campaigns.AnyAsync(c => c.Id == campaign && c.ArchivedAt != null, ct)) throw new RuleException(409, "Restaure a campanha antes de editar.");
+        var item = await Texts.SingleOrDefaultAsync(e => e.Id == id && e.CampaignId == campaign, ct) ?? throw Missing();
+        if (item.ConvertedPageId != null) throw new RuleException(409, "Este texto já virou página. Procure-o em Mundo e acervo › Páginas.");
+        if (item.Revision != x.Revision) throw Stale();
+        if (await db.Set<WorkspacePage>().CountAsync(p => p.CampaignId == campaign, ct) >= 1000) throw new RuleException(409, "Limite de 1.000 páginas por campanha, incluindo lixeira.");
+        var page = new WorkspacePage
+        {
+            CampaignId = campaign, OwnerId = user, Kind = item.Kind is "objective" or "clue" ? item.Kind : "text",
+            Title = item.Title, Content = item.Text, Visibility = item.Published ? "table" : "self", UpdatedAt = DateTime.UtcNow,
+        };
+        db.Add(page); item.ConvertedPageId = page.Id; item.Revision++;
+        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
+        return new { pageId = page.Id };
     }
     public async Task DeleteTextAsync(Guid campaign, Guid id, string user, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct); await Lock(campaign, user, ct);
-        var item = await Texts.SingleOrDefaultAsync(x => x.CampaignId == campaign && x.Id == id, ct) ?? throw Missing();
+        var item = await Texts.SingleOrDefaultAsync(x => x.CampaignId == campaign && x.Id == id && x.ConvertedPageId == null, ct) ?? throw Missing();
         db.Remove(item); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
     static CampaignMapView View(CampaignMap m) => new(m.Id, m.Name, m.FolderId, m.GridPixels, m.ScaleMeters, m.Width, m.Height, m.Revision, $"/api/campaigns/{m.CampaignId}/assets/maps/{m.Id}/image", m.HasGrid, m.GridOffsetX, m.GridOffsetY);

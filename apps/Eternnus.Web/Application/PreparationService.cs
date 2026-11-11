@@ -197,12 +197,14 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         var versionIds = items.Where(m => m.TemplateVersionId != null).Select(m => m.TemplateVersionId!.Value).Distinct().ToList();
         var templates = await db.SheetTemplateVersions.AsNoTracking().Where(v => versionIds.Contains(v.Id))
             .Join(db.SheetTemplates, v => v.TemplateId, t => t.Id, (v, t) => new { v.Id, t.Name }).ToDictionaryAsync(x => x.Id, x => x.Name, ct);
+        var lore = await LorePagesAsync(campaignId, items.Select(m => m.Id).ToList(), null, ct);
         return new
         {
             items = items.Select(m => new
             {
                 m.Id, m.Name, m.Summary, m.Notes, m.Side, m.Resources, m.SourceId, m.Revision, copy = m.SourceId != null, m.Kind, m.ImageUrl, m.SharedWithPlayers,
                 templateName = m.TemplateVersionId is { } v && templates.TryGetValue(v, out var name) ? name : null,
+                page = lore.GetValueOrDefault(m.Id),
             })
         };
     }
@@ -237,20 +239,34 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         return new { npc.Id, npc.Revision };
     }
 
-    /// <summary>NPCs que o mestre compartilhou: só nome, tipo, resumo e imagem; paginado em vinte.</summary>
+    /// <summary>NPCs que o mestre compartilhou: nome, tipo, resumo, imagem e a página de lore quando quem lê pode abri-la; paginado em vinte.</summary>
     public async Task<object> KnownNpcsAsync(Guid campaignId, string user, int page, CancellationToken ct)
     {
-        await AccessAsync(campaignId, user, false, false, ct);
+        var (campaign, _) = await AccessAsync(campaignId, user, false, false, ct);
         page = Math.Clamp(page, 1, 100000);
         var query = db.MasterCharacters.AsNoTracking().Where(m => m.CampaignId == campaignId && m.SharedWithPlayers);
         var total = await query.CountAsync(ct);
         var rows = await query.OrderBy(m => m.Name).ThenBy(m => m.Id).Skip((page - 1) * 20).Take(20).Select(m => new { m.Id, m.Name, m.Kind, m.Summary, m.ImageUrl }).ToListAsync(ct);
+        var lore = await LorePagesAsync(campaignId, rows.Select(m => m.Id).ToList(), (user, campaign.OwnerId), ct);
         return new
         {
-            items = rows.Select(m => new { m.Id, m.Name, m.Kind, m.Summary, image = KnownPortraitUrl(campaignId, m.Id, m.ImageUrl) }),
+            items = rows.Select(m => new { m.Id, m.Name, m.Kind, m.Summary, image = KnownPortraitUrl(campaignId, m.Id, m.ImageUrl), page = lore.GetValueOrDefault(m.Id) }),
             total, page, pageSize = 20,
         };
     }
+
+    /// <summary>Página de lore de cada NPC (vínculo <c>WorkspacePage.NpcId</c>, ADR-064), fora da lixeira; fixada primeiro, depois por título.
+    /// Com <paramref name="reader"/>, só páginas que essa pessoa pode ler; sem ele (mestre na Preparação), qualquer página do acervo. Uma consulta.</summary>
+    async Task<Dictionary<Guid, LorePage>> LorePagesAsync(Guid campaignId, List<Guid> npcIds, (string User, string Master)? reader, CancellationToken ct)
+    {
+        if (npcIds.Count == 0) return [];
+        var pages = reader is { } r ? WorkspaceService.Readable(db, campaignId, r.User, r.Master) : db.Set<WorkspacePage>().Where(p => p.CampaignId == campaignId);
+        var rows = await pages.AsNoTracking().Where(p => p.DeletedAt == null && p.NpcId != null && npcIds.Contains(p.NpcId.Value))
+            .OrderByDescending(p => p.Pinned).ThenBy(p => p.Title).ThenBy(p => p.Id).Take(MaxNpcs * 5).Select(p => new { NpcId = p.NpcId!.Value, p.Id, p.Title, p.Visibility }).ToListAsync(ct);
+        return rows.GroupBy(p => p.NpcId).ToDictionary(g => g.Key, g => new LorePage(g.First().Id, g.First().Title, g.First().Visibility));
+    }
+    /// <summary>Visibilidade acompanha para o mestre conferir se o grupo também consegue abrir a página.</summary>
+    record LorePage(Guid Id, string Title, string Visibility);
 
     /// <summary>Link https direto ou rota protegida da imagem do acervo, com versão derivada da imagem escolhida.</summary>
     public static string? KnownPortraitUrl(Guid campaignId, Guid npcId, string? image)
@@ -314,7 +330,11 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
     public async Task DeleteNpcAsync(Guid campaignId, Guid id, string user, CancellationToken ct)
     {
         await AccessAsync(campaignId, user, true, true, ct);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         if (await db.MasterCharacters.Where(m => m.Id == id && m.CampaignId == campaignId).ExecuteDeleteAsync(ct) == 0) throw new RuleException(404, "Personagem do mestre não encontrado.");
+        // Páginas de lore continuam no acervo, só perdem o vínculo (sem chave estrangeira, o id órfão impediria salvá-las).
+        await db.Set<WorkspacePage>().Where(p => p.CampaignId == campaignId && p.NpcId == id).ExecuteUpdateAsync(s => s.SetProperty(p => p.NpcId, (Guid?)null), ct);
+        await tx.CommitAsync(ct);
     }
 
     static string Cut(string s, int max) => s.Length > max ? s[..max] : s;

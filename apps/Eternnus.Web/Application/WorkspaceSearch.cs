@@ -45,12 +45,12 @@ public sealed partial class WorkspaceService
         // Páginas do mundo e notas: mesma regra de leitura do acervo; segredos nunca entram na busca.
         var pages = await Visible(campaign, user, c.OwnerId).Where(p => p.DeletedAt == null).Where(TextSearch.AnyField<WorkspacePage>(db, pattern, p => p.Title, p => p.Content, p => p.Tags, p => p.Collection))
             .OrderByDescending(p => p.UpdatedAt).Take(SearchPerKind).Select(p => new { p.Id, p.Title, p.Content, p.Kind }).ToListAsync(ct);
-        hits.AddRange(pages.Select(p => new SearchHit(p.Kind == "note" ? "note" : "page", p.Title, TextSearch.Excerpt(p.Content, term), $"{root}/{(p.Kind == "note" ? "notes" : "world")}/{p.Id:D}")));
+        hits.AddRange(pages.Select(p => new SearchHit(p.Kind is "note" or "objective" or "clue" ? p.Kind : "page", p.Title, TextSearch.Excerpt(p.Content, term), $"{root}/{(p.Kind == "note" ? "notes" : "world")}/{p.Id:D}")));
 
-        // Diário (objetivos/pistas) e textos da biblioteca: jogador só os publicados.
-        var entries = await db.Set<CampaignLibraryEntry>().AsNoTracking().Where(e => e.CampaignId == campaign && (master || e.Published)).Where(TextSearch.AnyField<CampaignLibraryEntry>(db, pattern, e => e.Title, e => e.Text))
-            .OrderByDescending(e => e.UpdatedAt).Take(SearchPerKind).Select(e => new { e.Title, e.Text, e.Kind }).ToListAsync(ct);
-        hits.AddRange(entries.Select(e => new SearchHit(e.Kind is "objective" or "clue" ? e.Kind : "library", e.Title, TextSearch.Excerpt(e.Text, term), e.Kind is "objective" or "clue" ? $"{root}/journal" : $"{root}/resources")));
+        // Textos antigos ainda não convertidos em página: jogador só os publicados.
+        var entries = await db.Set<CampaignLibraryEntry>().AsNoTracking().Where(e => e.CampaignId == campaign && e.ConvertedPageId == null && (master || e.Published)).Where(TextSearch.AnyField<CampaignLibraryEntry>(db, pattern, e => e.Title, e => e.Text))
+            .OrderByDescending(e => e.UpdatedAt).Take(SearchPerKind).Select(e => new { e.Title, e.Text }).ToListAsync(ct);
+        hits.AddRange(entries.Select(e => new SearchHit("library", e.Title, TextSearch.Excerpt(e.Text, term), $"{root}/resources")));
 
         // NPCs: mestre busca nos seus (inclusive notas); jogador só nome e resumo dos compartilhados.
         var npcs = db.MasterCharacters.AsNoTracking().Where(m => m.CampaignId == campaign && (master || m.SharedWithPlayers));

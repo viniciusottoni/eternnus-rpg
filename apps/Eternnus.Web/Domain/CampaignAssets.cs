@@ -8,9 +8,11 @@ public class CampaignLibraryEntry
     public Guid CampaignId { get; set; }
     [MaxLength(120)] public string Title { get; set; } = "";
     [MaxLength(10000)] public string Text { get; set; } = "";
-    /// <summary>text | objective | clue. Objetivos e pistas publicados formam o diário dos jogadores.</summary>
+    /// <summary>text | objective | clue (legado). Objetivos e pistas vivem agora em WorkspacePage; os antigos foram copiados pela migração LegacyTextsToPages.</summary>
     [MaxLength(20)] public string Kind { get; set; } = "text";
     public bool Published { get; set; }
+    /// <summary>Página criada a partir deste texto antigo. Preenchida, o texto sai da lista do acervo (o registro é preservado).</summary>
+    public Guid? ConvertedPageId { get; set; }
     public int Revision { get; set; } = 1;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -14,13 +14,31 @@ try {
   await master(path + "/table-settings", "PUT", { settings: { fogEnabled: false, rememberExplored: true, pathMovement: true, alliesAlwaysVisible: true, torchRadius: 4, brazierRadius: 3, creatureLight: 0, playerLightMeters: 0, playerVisionMeters: 0 } });
   await player("/api/campaigns/join", "POST", { code: (await master(path)).inviteCode });
   const base = path + "/assets";
-  const text = await master(base + "/library", "POST", { title: "NPC", text: "Segredo", published: false });
-  check((await player(base + "/library")).total, 0);
-  await player(base + "/library", "POST", { title: "Proibido", text: "Não", published: true }, 403);
+  // Textos antigos (ADR-063): não há mais criação; o mestre converte cada um em página.
+  const legacy = (title, published) => env.sql(`INSERT INTO "CampaignLibraryEntry" ("Id","CampaignId","Title","Text","Kind","Published","Revision","UpdatedAt") VALUES (gen_random_uuid(),'${campaign.id}','${title}','Texto de ${title}','text',${published},1,now()) RETURNING "Id"`).split(/\s+/)[0];
+  const draftId = legacy("Rascunho antigo", false), publishedId = legacy("Carta antiga", true);
+  check((await player(base + "/library")).items.map((x) => x.title), ["Carta antiga"]);
+  check((await master(base + "/library")).total, 2);
   await outsider(base + "/library", "GET", undefined, 404);
-  await master(`${base}/library/${text.id}`, "PUT", { title: "NPC", text: "Revelado", published: true, revision: text.revision });
-  check((await player(base + "/library")).items[0].text, "Revelado");
-  await master(`${base}/library/${text.id}`, "PUT", { title: "NPC", text: "Obsoleto", published: true, revision: text.revision }, 409);
+  await master(base + "/library", "POST", { title: "Novo", text: "Não", published: true }, 405);
+  await player(`${base}/library/${publishedId}/convert`, "POST", { revision: 1 }, 403);
+  await master(`${base}/library/${publishedId}/convert`, "POST", { revision: 7 }, 409);
+  const converted = await master(`${base}/library/${publishedId}/convert`, "POST", { revision: 1 });
+  await master(`${base}/library/${publishedId}/convert`, "POST", { revision: 2 }, 409);
+  const page = await player(`${path}/workspace/pages/${converted.pageId}`);
+  check([page.title, page.content, page.visibility, page.kind], ["Carta antiga", "Texto de Carta antiga", "table", "text"]);
+  check((await player(base + "/library")).total, 0);
+  const privatePage = await master(`${base}/library/${draftId}/convert`, "POST", { revision: 1 });
+  await player(`${path}/workspace/pages/${privatePage.pageId}`, "GET", undefined, 404);
+  check((await master(base + "/library")).total, 0);
+  check(env.sql(`SELECT count(*) FROM "CampaignLibraryEntry" WHERE "CampaignId"='${campaign.id}' AND "ConvertedPageId" IS NOT NULL`).trim(), "2");
+  // Importação por link: autoriza antes de qualquer rede e recusa destinos internos sem conectar (ADR-063).
+  const linked = { name: "Link", folderId: null, gridPixels: 64, scaleMeters: 1.5, hasGrid: false };
+  await player(base + "/maps/import", "POST", { ...linked, url: "https://example.com/a.png" }, 403);
+  for (const url of ["https://127.0.0.1/a.png", "https://169.254.169.254/latest", "http://example.com/a.png", "https://localhost/a.png"])
+    await master(base + "/maps/import", "POST", { ...linked, url }, 400);
+  await player(`${path}/workspace/pages/${converted.pageId}/attachments/import`, "POST", { url: "https://example.com/a.png" }, 404);
+  await master(`${path}/workspace/pages/${converted.pageId}/attachments/import`, "POST", { url: "https://[::1]/a.png" }, 400);
   check((await player(`/api/library?systemId=${systemId}`)).total, 0);
   check((await player("/api/library?systemId=none")).total, 0);
   const folder = await master(base + "/folders", "POST", { name: "Mundo", parentId: null });

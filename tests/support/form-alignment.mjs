@@ -30,6 +30,23 @@ export function formAlignmentIssues(rootSelector = 'body') {
   return [...new Set(issues)];
 }
 
+// Rádio/checkbox esticado: um estilo global de campo (width: 100%) faz o controle ocupar a linha e empurra o texto do
+// cartão para fora. Cada controle visível deve ter no máximo 32 px de largura, e o rótulo que o contém não pode transbordar.
+export function choiceControlIssues(rootSelector = 'body') {
+  const root = document.querySelector(rootSelector) || document.body;
+  const visible = (e) => e.checkVisibility() && e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0;
+  const issues = [];
+  for (const input of root.querySelectorAll('input[type=radio], input[type=checkbox]')) {
+    if (!visible(input) || getComputedStyle(input).opacity === '0') continue;
+    const name = (input.labels?.[0]?.textContent || input.getAttribute('aria-label') || input.name || input.value).trim().replace(/\s+/g, ' ').slice(0, 28);
+    const width = input.getBoundingClientRect().width;
+    if (width > 32) issues.push(`${input.type} esticado「${name}」 ${Math.round(width)} px`);
+    const label = input.closest('label');
+    if (label && visible(label) && label.scrollWidth > label.clientWidth + 1 && getComputedStyle(label).overflowX === 'visible') issues.push(`texto fora do rótulo「${name}」`);
+  }
+  return [...new Set(issues)];
+}
+
 // Foco visível cortado: foca cada controle visível (após uma tecla, para valer :focus-visible) e confere se o contorno
 // (outline + offset) cabe dentro de todos os ancestrais que cortam conteúdo (overflow ≠ visible). Só avalia controles
 // que já estão inteiros na área visível do ancestral; os que estão fora da rolagem são ignorados.

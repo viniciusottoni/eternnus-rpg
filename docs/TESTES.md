@@ -469,3 +469,22 @@ Sem aparelho físico, Safari/iOS ou publicação.
 - `node tests/campaign-chapters.mjs` e `node tests/campaign-workspace.mjs`: aprovados após ajuste dos seletores ao novo Diário.
 
 Sem aparelho físico, Safari/iOS, carga medida ou publicação.
+
+### Rádio e checkbox esticados (v40)
+
+- `tests/support/form-alignment.mjs` ganhou `choiceControlIssues`: todo rádio/checkbox visível tem no máximo 32 px de largura e o rótulo que o contém não transborda. `tests/modals-ui.mjs` e `tests/forms-ui.mjs` aplicam a verificação em todos os modais e telas cobertos; `modals-ui` passou a abrir também “Alterar papel” e “Suspender” do admin.
+- Evidência: no código anterior a verificação acusou só `admin-papel` (rádio com 478 px no desktop e 274 px no celular). Com a correção, `forms-ui` aprovado e `modals-ui` sem problemas de layout. Os quatro modais da mesa no celular (`mesa-rolagem`, `mesa-ordem`, `mesa-nota`, `jogador-rolagem`) não abrem no QA porque a mesa em retrato fica inerte, só em paisagem; falha anterior a esta mudança. Varredura avulsa da mesa no celular (retrato e paisagem, mestre e jogador) sem controles esticados.
+
+### Acervo único, Diário em Páginas e imagens por link (ADR-063, v41)
+
+- `CampaignAssetsTests.Legacy_texts_convert_into_pages_once_and_only_by_the_master`, `TablePlayServiceTests.Journal_shares_only_published_content...` (objetivos/pistas como páginas, segredos fora) e `RemoteImageFetcherTests` (faixas internas IPv4/IPv6, links recusados, redirecionamento revalidado, limite de bytes, nome que resolve para IP interno). Suíte C#: 750 aprovados.
+- `node tests/campaign-assets.mjs`: 101 verificações no PostgreSQL, incluindo a migração `LegacyTextsToPages` em banco novo, conversão (403/409/visibilidade) e recusa de `maps/import` e `attachments/import` para jogador e destinos internos. Testes unitários JS: 143 aprovados. `campaign-workspace`, `campaign-sessions` e `forms-ui` aprovados; `modals-ui` sem falhas novas (só os quatro modais da mesa no celular em retrato, já conhecidos).
+- Não medido: importação de um link real da internet (o ambiente de teste não depende de rede externa) e a interface dos novos campos de link/arquivo nos modais de mapa, anexos e NPC, que não foi conferida no navegador.
+
+### NPCs só em Preparação e página de história (ADR-064, v42)
+
+- `SessionLogTests.Known_npcs_link_the_lore_page_only_for_readers_and_deleting_the_npc_unlinks_pages`: página privada some para o jogador e aparece para o mestre com `visibility`; página da mesa aparece sem segredos; NPC oculto não lista; lixeira esconde o vínculo; selo `npc` na lista só para o mestre; excluir o NPC limpa `NpcId` e a página volta a salvar.
+- `SessionLogTests.New_pages_cannot_use_the_npc_kind_but_legacy_npc_pages_stay_editable`: `kind: npc` dá 400 em página nova e em troca de tipo; página antiga do tipo continua editável.
+- Suíte C# completa: 752 aprovados. `tests/*.test.mjs` aprovados.
+- Verificação no navegador (Chrome headless, PostgreSQL do harness, roteiro avulso fora do repositório): Preparação com “História:” e “+ História” (abre página nova ligada, privada e sem o tipo NPC); NPCs conhecidos do mestre com aviso de página privada; do jogador com “Ler página”, que abre a leitura sem segredos; lista de Páginas com selo “NPC: nome” e filtro sem NPC; celular 390 px sem overflow e link com alvo de toque ≥ 44 px. Nenhum erro de página.
+- Não medido: Safari/iOS e aparelho físico.

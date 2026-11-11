@@ -96,7 +96,7 @@ public static class ServiceRegistration
         builder.Services.AddScoped<IAvatarSafety, AvatarSafety>();
         builder.Services.AddHttpClient("avatar-moderation", client => { client.MaxResponseContentBufferSize = 32768; })
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
-        builder.Services.AddScoped<IDocumentScanner, ClamAvDocumentScanner>(); builder.Services.AddScoped<DocumentFiles>();
+        builder.Services.AddScoped<IDocumentScanner, ClamAvDocumentScanner>(); builder.Services.AddScoped<DocumentFiles>(); builder.Services.AddSingleton<RemoteImageFetcher>();
         builder.Services.AddScoped<AuditService>(); builder.Services.AddScoped<AdminService>(); builder.Services.AddScoped<RpgSystemService>();
         builder.Services.AddScoped<SupportService>(); builder.Services.AddScoped<LibraryService>(); builder.Services.AddScoped<SheetTemplateService>();
         builder.Services.AddScoped<GuildService>(); builder.Services.AddScoped<ProgressionService>();

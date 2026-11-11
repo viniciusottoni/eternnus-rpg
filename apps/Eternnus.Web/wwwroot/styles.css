@@ -2751,6 +2751,16 @@ dialog::backdrop { background: #060c0bd1; backdrop-filter: blur(5px); }
 .attendance button { min-height: 44px; min-width: 88px; }
 .journal-list li { padding: 10px 12px; }
 .journal-list .recap { white-space: pre-wrap; }
+.journal-list li.journal-closed { opacity: .72; }
+.legacy-texts { margin-top: 24px; }
+.legacy-texts .resource-card .primary { margin-right: 6px; }
+.workspace-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin: 12px 0; }
+.workspace-figure { margin: 0; }
+.workspace-figure img { display: block; width: 100%; max-height: 320px; object-fit: contain; border: 1px solid var(--line); border-radius: 6px; background: rgba(0, 0, 0, .25); }
+.workspace-figure figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+.workspace-file { display: flex; align-items: center; gap: 10px; }
+.workspace-thumb { width: 56px; height: 56px; object-fit: cover; border: 1px solid var(--line); border-radius: 4px; flex: none; }
+#ws-link-form { margin-top: 16px; }
 .chip { padding: 0 6px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--muted); }
 .badge.archived { opacity: .8; }
 .play-mode-choice { display: grid; gap: 8px; }
@@ -2879,8 +2889,9 @@ textarea:focus-visible,
 select:focus-visible { outline: none; border-color: var(--bright); box-shadow: inset 0 0 0 1px var(--bright); }
 button:focus-visible, a:focus-visible, summary:focus-visible, .button:focus-visible,
 input[type=checkbox]:focus-visible, input[type=radio]:focus-visible, input[type=file]:focus-visible { outline: 2px solid var(--bright); outline-offset: 2px; }
-/* Rádio e checkbox sem o padding dos campos de texto: o controle fica quadrado e o foco, circular/regular. */
-input:is([type=radio], [type=checkbox]) { min-height: 0; padding: 0; box-sizing: border-box; flex: none; }
+/* Rádio e checkbox sem o padding dos campos de texto: o controle fica quadrado e o foco, circular/regular.
+   width: auto anula o `input { width: 100% }` do game.css; sem isso o rádio ocupa a linha e empurra o texto do cartão para fora. */
+input:is([type=radio], [type=checkbox]) { width: auto; min-height: 0; padding: 0; box-sizing: border-box; flex: none; }
 :is(#modal-body, .se-tools, .se-side, .panel-tabs, .panel-body, .page-tabs, .fx-sidebar, .fx-path, .data-table-wrap, .stage-tools, .admin-tabs, .lib-pdf-toolbar)
   :is(button, a, summary, .button):focus-visible { outline: 2px solid var(--bright); outline-offset: -2px; box-shadow: inset 0 0 0 4px #0b0a08cc; }
 #modal-body .form-actions :is(button, .button):focus-visible { outline-offset: 2px; box-shadow: none; }

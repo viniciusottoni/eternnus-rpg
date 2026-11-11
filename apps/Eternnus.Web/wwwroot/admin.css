@@ -278,6 +278,7 @@ a.stat-tile.admin-tile-link:focus-visible {
   align-items: flex-start;
   gap: 10px;
   min-height: 44px;
+  margin: 0; /* o espaçamento vem do gap da grade, não da margem global de label */
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 5px;

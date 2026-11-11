@@ -10,8 +10,8 @@ public static class CampaignAssetsEndpoints
         var api = app.MapGroup("/api/campaigns/{campaignId:guid}/assets").RequireAuthorization("Verified");
         static string Id(ClaimsPrincipal user) => PlatformAccess.UserId(user);
         api.MapGet("/library", (Guid campaignId, int? page, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.LibraryAsync(campaignId, Id(u), page ?? 1, ct));
-        api.MapPost("/library", (Guid campaignId, CampaignTextInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveTextAsync(campaignId, null, Id(u), x, ct));
-        api.MapPut("/library/{id:guid}", (Guid campaignId, Guid id, CampaignTextInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveTextAsync(campaignId, id, Id(u), x, ct));
+        // Textos antigos: não há mais criação/edição; o mestre converte cada um em página do Mundo (ADR-063).
+        api.MapPost("/library/{id:guid}/convert", (Guid campaignId, Guid id, CampaignTextConvertInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.ConvertTextAsync(campaignId, id, Id(u), x, ct));
         api.MapDelete("/library/{id:guid}", async (Guid campaignId, Guid id, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeleteTextAsync(campaignId, id, Id(u), ct); return Results.NoContent(); });
         api.MapGet("/maps", (Guid campaignId, Guid? folderId, int? page, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.MapTreeAsync(campaignId, Id(u), folderId, page ?? 1, ct));
         api.MapPost("/folders", (Guid campaignId, CampaignFolderInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.CreateFolderAsync(campaignId, Id(u), x, ct));
@@ -35,6 +35,13 @@ public static class CampaignAssetsEndpoints
             static int Offset(string text) => text.Length == 0 ? 0 : int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : throw new RuleException(400, "Deslocamento da grade inválido.");
             var document = await files.ReadAsync(form.Files[0], new[] { DocumentKinds.Png, DocumentKinds.Jpeg }, ct);
             return Results.Ok(await s.SaveMapAsync(campaignId, null, Id(u), new(form["name"].ToString(), folder, grid, scale, 0, hasGrid, Offset(form["gridOffsetX"].ToString()), Offset(form["gridOffsetY"].ToString())), document, ct));
+        }).RequireRateLimiting("upload");
+        api.MapPost("/maps/import", async (Guid campaignId, CampaignMapImportInput x, RemoteImageFetcher remote, DocumentFiles files, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            await s.EnsureMasterAsync(campaignId, Id(u), ct); // autoriza antes de qualquer acesso à rede
+            var (bytes, fileName) = await remote.FetchAsync(x.Url, CampaignAssetsService.MaxImageBytes, ct);
+            var document = await files.CheckAsync(bytes, fileName, new[] { DocumentKinds.Png, DocumentKinds.Jpeg }, ct);
+            return Results.Ok(await s.SaveMapAsync(campaignId, null, Id(u), new(x.Name, x.FolderId, x.GridPixels, x.ScaleMeters, 0, x.HasGrid, x.GridOffsetX, x.GridOffsetY), document, ct));
         }).RequireRateLimiting("upload");
         api.MapPut("/maps/{id:guid}", (Guid campaignId, Guid id, CampaignMapInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveMapAsync(campaignId, id, Id(u), x, null, ct));
         api.MapDelete("/maps/{id:guid}", async (Guid campaignId, Guid id, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeleteMapAsync(campaignId, id, Id(u), ct); return Results.NoContent(); });
