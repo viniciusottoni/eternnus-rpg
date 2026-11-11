@@ -83,7 +83,8 @@ const entries = {
     "summary": "O Mestre pode guardar personagens e criar cópias para encontros.",
     "body": [
       "Cada personagem pode ter até oito recursos. Colocar o original mantém sua referência; criar uma cópia para o encontro começa com os recursos cheios.",
-      "A cópia não altera o original."
+      "A cópia não altera o original.",
+      "Os NPCs da campanha nascem aqui. Use “+ História” para escrever a história do personagem em Páginas: a página fica ligada a ele e aparece como “Ler página” em NPCs conhecidos para quem puder lê-la."
     ],
     "audience": "master"
   },
@@ -97,10 +98,10 @@ const entries = {
     "audience": "master"
   },
   "campanhas.acervo.publicacao": {
-    "title": "Acervo da campanha",
-    "summary": "O Mestre escolhe o que compartilha com o grupo.",
+    "title": "Textos antigos",
+    "summary": "Textos de antes das Páginas; o Mestre converte cada um em página.",
     "body": [
-      "Bibliotecas, objetivos e pistas podem ficar em rascunho ou ser publicados. Jogadores recebem o conteúdo publicado.",
+      "O acervo da campanha (lore, objetivos e pistas) fica em Mundo e acervo › Páginas. Converter copia título e texto: publicado vira “Toda a mesa”, rascunho vira “Só eu”.",
       "Mapas pertencem à campanha. Um mapa em uso precisa ser ocultado antes de editar ou excluir o arquivo."
     ],
     "audience": "all"
@@ -110,6 +111,7 @@ const entries = {
     "summary": "A grade e a escala ligam o mapa ao deslocamento.",
     "body": [
       "O Mestre organiza mapas em pastas e configura grade e escala. Os alcances em metros da ficha são convertidos em casas pela escala do mapa.",
+      "A imagem pode vir do aparelho ou de um link https. Com link, o Eternnus baixa uma cópia uma única vez; depois ela é tratada como um envio e os jogadores não acessam o site de origem.",
       "Os cenários do atlas são públicos e não exigem nível. Mapas enviados e suas imagens mascaradas exigem acesso à campanha."
     ],
     "audience": "master"

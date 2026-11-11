@@ -3,29 +3,37 @@ import { api } from "./api.js";
 import { $, esc, button, modal, formError, submitForm, toast, empty } from "./ui.js";
 import { folderTree, folderPath, flattenFolders } from "./policy.js";
 import { mapThumbnail } from "./table-map.js";
+import { safeImageUrl } from "./play-policy.js";
 
 const base = d => `/campaigns/${d.id}/assets`;
+/** Bibliotecas: atalhos para a biblioteca geral e a do sistema. O acervo próprio da campanha vive em Páginas (ADR-063);
+ *  textos antigos aparecem só enquanto existirem, para o mestre convertê-los em página. */
 export async function renderCampaignLibrary(d, target, page = 1) {
   target.innerHTML = '<p role="status">Consultando a biblioteca…</p>';
   const result = await api(`${base(d)}/library?page=${page}`);
   if (!target.isConnected) return;
-  target.innerHTML = `<div class="section-title"><h2>Bibliotecas${helpButton("campanhas.acervo.publicacao", "Acervo da campanha")}</h2>${d.isMaster ? button("+ Texto da campanha", "ca-text", "", "primary") : ""}</div><div class="resource-grid"><a class="resource-card metal" href="#library/general"><h3>Biblioteca geral</h3><p>Materiais para qualquer mesa, disponíveis a qualquer momento.</p></a><a class="resource-card metal" href="#library/system/${esc(d.rpgSystemId)}"><h3>${esc(d.system)}</h3><p>Biblioteca padrão do sistema e modelos de ficha.</p></a></div><h3>Acervo da campanha</h3><p class="muted small">Textos preparados pelo mestre. ${d.isMaster ? "Rascunhos ficam visíveis apenas para você; publique quando desejar." : "O mestre escolhe quando revelar cada texto."}</p>${result.items.length ? `<div class="resource-grid">${result.items.map(x => `<article class="resource-card metal"><span class="badge">${x.published ? "Publicado" : "Rascunho"}</span><h3>${esc(x.title)}</h3><p class="resource-body">${esc(x.text)}</p>${d.isMaster ? button("Editar / publicar", "ca-text", x.id, "subtle small") + button("Excluir", "ca-delete", x.id, "subtle small") : ""}</article>`).join("")}</div>` : empty("Nenhum texto disponível.", "O acervo da campanha aparecerá aqui.")}${pager(result)}`;
+  const legacy = result.total
+    ? `<section class="legacy-texts" aria-labelledby="ca-legacy-title"><h3 id="ca-legacy-title">Textos antigos da campanha${helpButton("campanhas.acervo.publicacao", "Textos antigos")}</h3><p class="muted small">${d.isMaster ? "Criados antes das Páginas. Converta cada um para ganhar tipo, segredos, relações, versões e anexos; publicados viram “Toda a mesa” e rascunhos, “Só eu”." : "Textos publicados pelo mestre antes das Páginas."}</p><div class="resource-grid">${result.items.map(x => `<article class="resource-card metal">${d.isMaster ? `<span class="badge">${x.published ? "Publicado" : "Rascunho"}</span>` : ""}<h3>${esc(x.title)}</h3><p class="resource-body">${esc(x.text)}</p>${d.isMaster ? button("Converter em página", "ca-convert", x.id, "primary small", d.archived ? "disabled" : "") + button("Excluir", "ca-delete", x.id, "subtle small", d.archived ? "disabled" : "") : ""}</article>`).join("")}</div>${pager(result)}</section>`
+    : "";
+  target.innerHTML = `<div class="section-title"><h2>Bibliotecas</h2></div><div class="resource-grid"><a class="resource-card metal" href="#library/general"><h3>Biblioteca geral</h3><p>Materiais para qualquer mesa, disponíveis a qualquer momento.</p></a><a class="resource-card metal" href="#library/system/${esc(d.rpgSystemId)}"><h3>${esc(d.system)}</h3><p>Biblioteca padrão do sistema e modelos de ficha.</p></a></div><p class="muted small">Lore, lugares, livros, objetivos e pistas desta campanha ficam em <a href="#campaign/${esc(d.id)}/world">Mundo e acervo › Páginas</a>.</p>${legacy}`;
   target.onclick = async event => {
-    const b = event.target.closest("[data-action]"); if (!b) return;
+    const b = event.target.closest("[data-action]"); if (!b || b.disabled) return;
     try {
       if (b.dataset.action === "ca-page") return renderCampaignLibrary(d, target, Number(b.dataset.id));
-      if (b.dataset.action === "ca-text") textModal(d, result.items.find(x => x.id === b.dataset.id), () => renderCampaignLibrary(d, target, page));
-      if (b.dataset.action === "ca-delete") confirmDelete("Excluir texto?", async () => { await api(`${base(d)}/library/${b.dataset.id}`, "DELETE"); await renderCampaignLibrary(d, target, page); });
+      if (b.dataset.action === "ca-convert") {
+        const item = result.items.find(x => x.id === b.dataset.id);
+        b.disabled = true;
+        try { await api(`${base(d)}/library/${item.id}/convert`, "POST", { revision: item.revision }); }
+        finally { b.disabled = false; }
+        toast("Texto convertido. Ele agora está em Páginas.");
+        await renderCampaignLibrary(d, target, result.items.length > 1 ? page : Math.max(1, page - 1));
+      }
+      if (b.dataset.action === "ca-delete") confirmDelete("Excluir texto antigo?", async () => { await api(`${base(d)}/library/${b.dataset.id}`, "DELETE"); await renderCampaignLibrary(d, target, page); });
     } catch (error) { toast(error.message); }
   };
 }
 function pager(r) {
   return r.total > r.pageSize ? `<div class="pagination">${button("← Anterior", "ca-page", r.page - 1, "subtle", r.page <= 1 ? "disabled" : "")}<span>Página ${r.page} de ${Math.ceil(r.total / r.pageSize)}</span>${button("Próxima →", "ca-page", r.page + 1, "subtle", r.page * r.pageSize >= r.total ? "disabled" : "")}</div>` : "";
-}
-function textModal(d, item, reload) {
-  modal(item ? "Editar texto da campanha" : "Novo texto da campanha", `<form id="ca-form"><div class="field"><label for="ca-title">Nome</label><input id="ca-title" name="title" maxlength="120" required value="${esc(item?.title || "")}"></div><div class="field"><label for="ca-text">Texto de apoio</label><textarea id="ca-text" name="text" rows="8" maxlength="10000" required>${esc(item?.text || "")}</textarea></div><label class="check"><input type="checkbox" name="published" ${item?.published ? "checked" : ""}> Visível aos jogadores</label>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button class="primary" type="submit">Salvar texto</button></div></form>`);
-  $("#ca-title").focus();
-  $("#ca-form").onsubmit = event => { event.preventDefault(); submitForm(event.currentTarget, async data => { await api(`${base(d)}/library${item ? "/" + item.id : ""}`, item ? "PUT" : "POST", { title: data.title, text: data.text, published: data.published === "on", revision: item?.revision || 0 }); $("#modal").close(); toast("Texto salvo."); await reload(); }); };
 }
 function confirmDelete(title, action) {
   modal(title, `<p>Esta ação remove o recurso da campanha.</p><form id="ca-delete-form">${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button class="danger" type="submit">Excluir</button></div></form>`);
@@ -125,7 +133,7 @@ function folderModal(d, parentId, parent, reload, folder = null) {
 }
 function mapModal(d, item, folders, folderId, reload) {
   const hasGrid = item ? item.hasGrid !== false : true;
-  modal(item ? "Configurar mapa" : "Enviar mapa", `<form id="ca-form" class="map-upload"><div class="field"><label for="ca-name">Nome do mapa</label><input id="ca-name" name="name" required maxlength="120" value="${esc(item?.name || "")}"></div>${item ? "" : '<div class="field"><label for="ca-image">Imagem PNG ou JPEG (até 10 MB)</label><input id="ca-image" type="file" name="file" accept="image/png,image/jpeg" required><small class="form-help">A imagem só sai do seu aparelho ao salvar.</small></div>'}<fieldset class="grid-choice"><legend>Como usar a imagem</legend><label class="check se-option"><input type="radio" name="useGrid" value="no" ${hasGrid ? "" : "checked"}><span><strong>Apenas imagem</strong><small>Para mostrar ao grupo, sem casas, marcadores ou névoa.</small></span></label><label class="check se-option"><input type="radio" name="useGrid" value="yes" ${hasGrid ? "checked" : ""}><span><strong>Usar grade</strong><small>Personagens andam por casas; dá para usar paredes, luz e névoa.</small></span></label></fieldset><div data-grid-host ${hasGrid ? "" : "hidden"}><p class="form-help" data-grid-wait>${item ? "" : "Escolha a imagem para ver a prévia da grade."}</p></div><div class="field"><label for="ca-location">Pasta</label><select id="ca-location" name="folderId"><option value="">${ROOT_NAME}</option>${flattenFolders(folderTree(folders)).map(f => `<option value="${esc(f.id)}" ${f.id === (item?.folderId || folderId) ? "selected" : ""}>${"   ".repeat(f.depth + 1)}${esc(f.name)}</option>`).join("")}</select></div>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button class="primary" type="submit">Salvar mapa</button></div></form>`);
+  modal(item ? "Configurar mapa" : "Enviar mapa", `<form id="ca-form" class="map-upload"><div class="field"><label for="ca-name">Nome do mapa</label><input id="ca-name" name="name" required maxlength="120" value="${esc(item?.name || "")}"></div>${item ? "" : '<fieldset class="grid-choice"><legend>De onde vem a imagem</legend><label class="check se-option"><input type="radio" name="source" value="file" checked><span><strong>Do aparelho</strong><small>PNG ou JPEG até 10 MB.</small></span></label><label class="check se-option"><input type="radio" name="source" value="link"><span><strong>De um link</strong><small>O Eternnus baixa uma cópia; os jogadores não acessam o site de origem.</small></span></label></fieldset><div class="field" data-source="file"><label for="ca-image">Imagem PNG ou JPEG (até 10 MB)</label><input id="ca-image" type="file" name="file" accept="image/png,image/jpeg" required><small class="form-help">A imagem só sai do seu aparelho ao salvar.</small></div><div class="field" data-source="link" hidden><label for="ca-url">Link https da imagem</label><input id="ca-url" name="url" type="url" inputmode="url" maxlength="2000" placeholder="https://…/mapa.jpg" disabled aria-describedby="ca-url-hint"><small class="form-help" id="ca-url-hint">Use o endereço que abre a própria imagem (PNG ou JPEG, até 10 MB). A prévia abaixo é carregada do site do link.</small></div>'}<fieldset class="grid-choice"><legend>Como usar a imagem</legend><label class="check se-option"><input type="radio" name="useGrid" value="no" ${hasGrid ? "" : "checked"}><span><strong>Apenas imagem</strong><small>Para mostrar ao grupo, sem casas, marcadores ou névoa.</small></span></label><label class="check se-option"><input type="radio" name="useGrid" value="yes" ${hasGrid ? "checked" : ""}><span><strong>Usar grade</strong><small>Personagens andam por casas; dá para usar paredes, luz e névoa.</small></span></label></fieldset><div data-grid-host ${hasGrid ? "" : "hidden"}><p class="form-help" data-grid-wait>${item ? "" : "Escolha a imagem para ver a prévia da grade."}</p></div><div class="field"><label for="ca-location">Pasta</label><select id="ca-location" name="folderId"><option value="">${ROOT_NAME}</option>${flattenFolders(folderTree(folders)).map(f => `<option value="${esc(f.id)}" ${f.id === (item?.folderId || folderId) ? "selected" : ""}>${"   ".repeat(f.depth + 1)}${esc(f.name)}</option>`).join("")}</select></div>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button class="primary" type="submit">Salvar mapa</button></div></form>`);
   $("#modal").classList.add("wide");
   const form = $("#ca-form");
   const host = form.querySelector("[data-grid-host]");
@@ -138,9 +146,16 @@ function mapModal(d, item, folders, folderId, reload) {
     adjust = mountGridAdjust(host, src, { onChange: (v) => { valid = v.valid; } });
   };
   if (item) mount(item.imageUrl);
+  const linkPreview = value => /^https:/i.test(value) ? safeImageUrl(value) || "" : "";
   form.addEventListener("change", e => {
     if (e.target.name === "useGrid") host.hidden = e.target.value !== "yes";
     if (e.target.name === "file" && e.target.files?.[0]) { if (objectUrl) URL.revokeObjectURL(objectUrl); objectUrl = URL.createObjectURL(e.target.files[0]); mount(objectUrl); }
+    if (e.target.name === "url" && linkPreview(e.target.value.trim())) mount(linkPreview(e.target.value.trim()));
+    if (e.target.name === "source") for (const box of form.querySelectorAll("[data-source]")) {
+      const on = box.dataset.source === e.target.value;
+      box.hidden = !on;
+      const input = box.querySelector("input"); input.disabled = !on; input.required = on;
+    }
   });
   $("#modal").addEventListener("close", () => { adjust?.dispose(); if (objectUrl) URL.revokeObjectURL(objectUrl); }, { once: true });
   $("#ca-name").focus();
@@ -150,6 +165,9 @@ function mapModal(d, item, folders, folderId, reload) {
     if (grid && adjust && !valid) throw new Error("Ajuste a grade: " + (host.querySelector("[data-grid-summary]")?.textContent || "valores inválidos."));
     const scale = Number(form.querySelector("[name=scaleMeters]")?.value || item?.scaleMeters || 1.5);
     if (item) await api(`${base(d)}/maps/${item.id}`, "PUT", { name: data.name, folderId: data.folderId || null, gridPixels: v.gridPixels, scaleMeters: scale, revision: item.revision, hasGrid: grid, gridOffsetX: grid ? v.gridOffsetX : 0, gridOffsetY: grid ? v.gridOffsetY : 0 });
+    else if (data.source === "link") {
+      await api(`${base(d)}/maps/import`, "POST", { url: String(data.url || "").trim(), name: data.name, folderId: data.folderId || null, gridPixels: v.gridPixels, scaleMeters: scale, hasGrid: grid, gridOffsetX: grid ? v.gridOffsetX : 0, gridOffsetY: grid ? v.gridOffsetY : 0 });
+    }
     else {
       const file = form.querySelector("[name=file]").files?.[0];
       if (!file?.size || file.size > 10 * 1024 * 1024) throw new Error("Selecione uma imagem de até 10 MB.");

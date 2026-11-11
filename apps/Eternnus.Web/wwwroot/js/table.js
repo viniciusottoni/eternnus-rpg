@@ -829,7 +829,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     $("#token-form").onsubmit = (e) => {
       e.preventDefault();
       submitForm(e.currentTarget, async (data) => {
-        const imageUrl = sheets.imageFromForm(data);
+        const imageUrl = await sheets.imageFromUpload(data, campaignId, data.label);
         const created = await api(`${base}/tokens`, "POST", { label: data.label, side: data.side, x: cell.x, y: cell.y, hidden: data.hidden === "on", light: data.light === "" ? null : Number(data.light), templateId: data.templateId || null, imageUrl });
         $("#modal").close();
         if (data.templateId && created.masterCharacterId) {

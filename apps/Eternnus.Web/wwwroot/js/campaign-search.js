@@ -37,6 +37,14 @@ export function mountSearch(d) {
 
 const safeImage = (url) => (typeof url === "string" && (/^https:\/\//i.test(url) || /^\/api\/campaigns\/[0-9a-f-]{36}\/known-npcs\/[0-9a-f-]{36}\/portrait\?v=[0-9a-f]{8}$/i.test(url)) ? url : "");
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Link "Ler página": só com id válido. O servidor já filtra pelo direito de leitura; o mestre também vê se o grupo alcança a página. */
+const loreLink = (d, page) => {
+  if (!page || !UUID.test(page.id || "")) return "";
+  const note = d.isMaster && page.visibility !== "table" ? `<small class="muted">${page.visibility === "selected" ? "Só as pessoas escolhidas na página veem este link." : "Página privada: o grupo não vê este link."}</small>` : "";
+  return `<p class="small"><a class="lore-link" href="#campaign/${esc(d.id)}/world/${esc(page.id)}" aria-label="Ler a página ${esc(page.title)}">Ler página: ${esc(page.title)}</a></p>${note}`;
+};
+
 /** NPCs conhecidos: nome, tipo, resumo e imagem que o mestre liberou. `focus`: id do NPC vindo da busca. */
 export async function renderKnownNpcs(d, target, focus = "", page = 1) {
   target.innerHTML = '<p class="loading-line" role="status">Reunindo os rostos conhecidos…</p>';
@@ -44,9 +52,9 @@ export async function renderKnownNpcs(d, target, focus = "", page = 1) {
     const r = await api(`/campaigns/${d.id}/known-npcs?page=${page}`);
     if (!target.isConnected) return;
     const pages = Math.max(1, Math.ceil(r.total / r.pageSize));
-    target.innerHTML = `<div class="section-title"><h2>NPCs conhecidos</h2>${d.isMaster ? `<a class="button subtle small" href="#campaign/${esc(d.id)}/prep">Gerenciar em Preparação</a>` : ""}</div><p class="muted small section-lead">${d.isMaster ? "Aparecem aqui os personagens marcados como “Visível para os jogadores”. O grupo vê só nome, tipo, resumo e imagem; lado, recursos, ficha e notas continuam com você." : "Personagens que o mestre apresentou ao grupo."}</p>${
+    target.innerHTML = `<div class="section-title"><h2>NPCs conhecidos</h2>${d.isMaster ? `<a class="button subtle small" href="#campaign/${esc(d.id)}/prep">Gerenciar em Preparação</a>` : ""}</div><p class="muted small section-lead">${d.isMaster ? "Aparecem aqui os personagens marcados como “Visível para os jogadores”. O grupo vê nome, tipo, resumo, imagem e a página de história, se puder lê-la. Lado, recursos, ficha e notas continuam com você." : "Personagens que o mestre apresentou ao grupo."}</p>${
       r.items.length
-        ? `<ul class="known-npcs">${r.items.map((n) => { const img = safeImage(n.image); return `<li id="npc-${esc(n.id)}" class="metal known-npc" tabindex="-1">${img ? `<img src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer" decoding="async">` : `<span class="known-npc-initial" aria-hidden="true">${esc((n.name || "?").trim().charAt(0).toUpperCase())}</span>`}<div><h3>${esc(n.name)}</h3><span class="status-chip">${n.kind === "creature" ? "Criatura" : "Personagem"}</span>${n.summary ? `<p class="workspace-prose small">${esc(n.summary)}</p>` : ""}</div></li>`; }).join("")}</ul>`
+        ? `<ul class="known-npcs">${r.items.map((n) => { const img = safeImage(n.image); return `<li id="npc-${esc(n.id)}" class="metal known-npc" tabindex="-1">${img ? `<img src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer" decoding="async">` : `<span class="known-npc-initial" aria-hidden="true">${esc((n.name || "?").trim().charAt(0).toUpperCase())}</span>`}<div><h3>${esc(n.name)}</h3><span class="status-chip">${n.kind === "creature" ? "Criatura" : "Personagem"}</span>${n.summary ? `<p class="workspace-prose small">${esc(n.summary)}</p>` : ""}${loreLink(d, n.page)}</div></li>`; }).join("")}</ul>`
         : `<p class="muted small">${d.isMaster ? "Nenhum personagem compartilhado. Edite um personagem em Preparação e marque “Visível para os jogadores”." : "O mestre ainda não apresentou nenhum NPC."}</p>`
     }${pages > 1 ? `<div class="pagination">${button("← Anterior", "kn-page", page - 1, "subtle", page <= 1 ? "disabled" : "")}<span>Página ${page} de ${pages}</span>${button("Próxima →", "kn-page", page + 1, "subtle", page >= pages ? "disabled" : "")}</div>` : ""}`;
     target.querySelectorAll(".known-npc img").forEach((img) => img.addEventListener("error", () => img.replaceWith(Object.assign(document.createElement("span"), { className: "known-npc-initial", textContent: img.closest("li").querySelector("h3").textContent.trim().charAt(0).toUpperCase() })), { once: true }));

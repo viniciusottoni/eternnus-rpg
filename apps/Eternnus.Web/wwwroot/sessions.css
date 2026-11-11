@@ -3172,6 +3172,8 @@ a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3
 .chapter-tools { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; }
 .chapter-table td[data-label="Ações"] { width: 1%; white-space: nowrap; }
 .chapter-tools .icon-button { min-width: 36px; min-height: 36px; padding: 0 10px; }
+/* Novo capítulo no início da sessão: no celular o rótulo longo quebra linha e desalinharia os campos lado a lado. */
+@media (max-width: 720px) { .chapter-new.form-grid { grid-template-columns: 1fr; } }
 @media (pointer: coarse) { .chapter-tools .icon-button, .chapter-tools button, .log-open { min-width: 44px; min-height: 44px; } }
 .table-note { margin: 8px 0 0; }
 @media (max-width: 720px) {
@@ -3221,3 +3223,7 @@ a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3
 .known-npc-initial { display: grid; place-items: center; color: #ead6a8; font: normal 26px var(--serif); background: #c6a46314; }
 .known-npc h3 { margin: 0 0 4px; color: #ead6a8; font: normal 17px var(--serif); overflow-wrap: anywhere; }
 .known-npc p { margin: 8px 0 0; }
+/* Página de história do NPC (ADR-064): link visível dentro de cartões e listas. */
+.lore-link { color: var(--gold); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.lore-link:hover { color: var(--bright); }
+@media (pointer: coarse) { .lore-link { display: inline-flex; align-items: center; min-height: 44px; } }

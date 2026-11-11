@@ -20,7 +20,24 @@ export function imageFields(prefix, current = "", assets = []) {
   return `<fieldset class="npc-image"><legend>Imagem (opcional)${helpButton("mesa.npcs.imagem", "Imagem de NPC ou criatura")}</legend>
     <div class="field"><label for="${prefix}-asset">Do acervo da campanha</label><select id="${prefix}-asset" name="imageAsset"><option value="">Nenhuma</option>${assets.map((a) => `<option value="${esc(a.value)}" ${isAsset && a.value === current ? "selected" : ""}>${esc(a.label)}</option>`).join("")}</select></div>
     <div class="field"><label for="${prefix}-link">Ou link https</label><input id="${prefix}-link" name="imageLink" type="url" inputmode="url" maxlength="500" placeholder="https://…" value="${isAsset ? "" : esc(current || "")}" aria-describedby="${prefix}-link-hint"><small class="form-help" id="${prefix}-link-hint">O site do link vê o endereço IP de quem abre a imagem e pode trocar o conteúdo depois. Prefira o acervo.</small></div>
+    <div class="field"><label for="${prefix}-file">Ou enviar do aparelho (PNG ou JPEG, até 10 MB)</label><input id="${prefix}-file" name="imageFile" type="file" accept="image/png,image/jpeg" aria-describedby="${prefix}-file-hint"><small class="form-help" id="${prefix}-file-hint">A imagem fica guardada no Eternnus, em Mapas e cenários como “Apenas imagem”, e pode ser usada de novo.</small></div>
   </fieldset>`;
+}
+
+/** Com arquivo escolhido, envia a imagem ao acervo da campanha ("Apenas imagem") e devolve asset:{id};
+ *  sem arquivo, segue `imageFromForm`. O envio acontece antes de salvar o personagem: se o salvamento falhar,
+ *  a imagem continua no acervo e pode ser escolhida na próxima tentativa. */
+export async function imageFromUpload(data, campaignId, name) {
+  const file = data.imageFile;
+  if (!(file instanceof File) || !file.size) return imageFromForm(data);
+  if (file.size > 10 * 1024 * 1024) throw new Error("Escolha uma imagem de até 10 MB.");
+  const upload = new FormData();
+  upload.append("name", `Imagem — ${String(name || "personagem").trim()}`.slice(0, 120));
+  upload.append("folderId", ""); upload.append("file", file);
+  upload.append("gridPixels", "64"); upload.append("scaleMeters", "1.5");
+  upload.append("hasGrid", "false"); upload.append("gridOffsetX", "0"); upload.append("gridOffsetY", "0");
+  const map = await api(`/campaigns/${campaignId}/assets/maps`, "POST", upload);
+  return `asset:${map.id}`;
 }
 
 /** Valor enviado ao servidor: acervo tem prioridade; link precisa ser https. */
@@ -112,8 +129,8 @@ export async function openNpcSheet({ campaignId, npcId, onSaved }) {
     form.onsubmit = (e) => {
       e.preventDefault();
       submitForm(form, async (data) => {
-        const imageUrl = imageFromForm(data);
-        if (!imageUrl) throw new Error("Escolha uma imagem do acervo ou informe um link https.");
+        const imageUrl = await imageFromUpload(data, campaignId, sheet.name);
+        if (!imageUrl) throw new Error("Escolha uma imagem do acervo, envie um arquivo ou informe um link https.");
         await saveImage(imageUrl);
       });
     };

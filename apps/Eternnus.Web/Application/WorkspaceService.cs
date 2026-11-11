@@ -8,7 +8,9 @@ public record PastSessionInput(int Number, string Title, string Summary, DateOnl
 public record PastSceneInput(string? Title, string? Text);
 public sealed partial class WorkspaceService(GameDb db)
 {
-    static readonly string[] Kinds = ["text", "note", "place", "faction", "book", "chapter", "item", "event", "npc", "objective", "clue"];
+    /// <summary>"npc" só é aceito em páginas antigas desse tipo (ADR-064).</summary>
+    const string LegacyNpcKind = "npc";
+    static readonly string[] Kinds = ["text", "note", "place", "faction", "book", "chapter", "item", "event", LegacyNpcKind, "objective", "clue"];
     IQueryable<WorkspacePage> Pages => db.Set<WorkspacePage>();
     static RuleException Missing() => new(404, "Conteúdo não encontrado.");
     public async Task<Campaign> Access(Guid id, string user, bool write, CancellationToken ct)
@@ -22,7 +24,9 @@ public sealed partial class WorkspaceService(GameDb db)
         var c = await (db.Database.IsNpgsql() ? db.Campaigns.FromSqlInterpolated($"SELECT * FROM \"Campaigns\" WHERE \"Id\" = {id} FOR UPDATE") : db.Campaigns.Where(c => c.Id == id)).SingleOrDefaultAsync(ct) ?? throw Missing();
         await Access(id, user, true, ct); return c;
     }
-    IQueryable<WorkspacePage> Visible(Guid campaign, string user, string master) => Pages.Where(p => p.CampaignId == campaign &&
+    IQueryable<WorkspacePage> Visible(Guid campaign, string user, string master) => Readable(db, campaign, user, master);
+    /// <summary>Regra única de leitura das páginas (inclui lixeira; filtre <c>DeletedAt</c> conforme o uso). Reaproveitada por "NPCs conhecidos".</summary>
+    public static IQueryable<WorkspacePage> Readable(GameDb db, Guid campaign, string user, string master) => db.Set<WorkspacePage>().Where(p => p.CampaignId == campaign &&
         (p.OwnerId == user || p.Visibility == "table" || p.Visibility == "master" && master == user || p.Visibility == "selected" && db.Set<WorkspaceReader>().Any(r => r.PageId == p.Id && r.UserId == user)));
     public async Task<object> List(Guid campaign, string user, string? search, string? kind, int page, bool trash, CancellationToken ct, bool mine = false)
     {
@@ -35,7 +39,9 @@ public sealed partial class WorkspaceService(GameDb db)
         if (!string.IsNullOrWhiteSpace(search)) q = q.Where(p => p.Title.Contains(search) || p.Content.Contains(search) || p.Collection.Contains(search) || p.Tags.Contains(search));
         var total = await q.CountAsync(ct);
         var items = await q.OrderByDescending(p => p.Pinned).ThenBy(p => p.Collection).ThenBy(p => p.Order).ThenBy(p => p.Title).ThenBy(p => p.Id).Skip((page - 1) * 20).Take(20)
-            .Select(p => new { p.Id, p.Title, p.Kind, p.Collection, p.Tags, p.Visibility, p.Status, p.ParentId, p.Order, p.Pinned, p.Revision, p.UpdatedAt, canEdit = p.OwnerId == user || p.Kind != "note" && c.OwnerId == user }).ToListAsync(ct);
+            .Select(p => new { p.Id, p.Title, p.Kind, p.Collection, p.Tags, p.Visibility, p.Status, p.ParentId, p.Order, p.Pinned, p.Revision, p.UpdatedAt, canEdit = p.OwnerId == user || p.Kind != "note" && c.OwnerId == user,
+                // Selo "NPC: nome" só para o mestre; o vínculo com a Preparação não aparece na lista dos jogadores.
+                npc = c.OwnerId == user && p.NpcId != null ? db.MasterCharacters.Where(m => m.Id == p.NpcId).Select(m => m.Name).FirstOrDefault() : null }).ToListAsync(ct);
         return new { items, total, page, pageSize = 20 };
     }
     public async Task<object> Read(Guid campaign, Guid id, string user, CancellationToken ct)
@@ -65,6 +71,8 @@ public sealed partial class WorkspaceService(GameDb db)
         if (id != null && !(p.OwnerId == user || p.Kind != "note" && c.OwnerId == user)) throw Missing();
         if (x.Kind != "note" && c.OwnerId != user || id != null && (p.Kind == "note") != (x.Kind == "note")) throw new RuleException(403, "Somente o mestre organiza o acervo. Use seu caderno pessoal.");
         if (id != null && x.Revision != p.Revision) throw new RuleException(409, "O conteúdo mudou. Reabra antes de salvar.");
+        // ADR-064: NPCs nascem na Preparação; a página só descreve um NPC pelo vínculo NpcId. O tipo antigo continua editável.
+        if (x.Kind == LegacyNpcKind && (id == null || p.Kind != LegacyNpcKind)) throw new RuleException(400, "Crie NPCs em Preparação. Para escrever a história de um NPC, escolha outro tipo e associe a página ao personagem.");
         if (id == null && await Pages.CountAsync(p => p.CampaignId == campaign, ct) >= 1000) throw new RuleException(409, "Limite de 1.000 páginas por campanha, incluindo lixeira.");
         var recipients = (x.Recipients ?? []).Distinct().ToArray();
         if (x.Visibility == "selected" && (recipients.Length == 0 || await db.Users.CountAsync(u => recipients.Contains(u.Id) && (u.Id == c.OwnerId || db.Members.Any(m => m.CampaignId == campaign && m.UserId == u.Id)), ct) != recipients.Length)) throw new RuleException(400, "Escolha participantes desta campanha.");

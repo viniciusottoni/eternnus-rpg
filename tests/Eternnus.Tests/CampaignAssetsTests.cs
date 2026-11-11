@@ -20,17 +20,27 @@ public sealed class CampaignAssetsTests : IAsyncLifetime
     }
     public async Task DisposeAsync() { await db.DisposeAsync(); await connection.DisposeAsync(); }
     [Fact]
-    public async Task Drafts_are_hidden_until_master_publishes_and_players_cannot_write()
+    public async Task Legacy_texts_convert_into_pages_once_and_only_by_the_master()
     {
-        var draft = await service.SaveTextAsync(campaign.Id, null, "master", new("NPC", "Segredo", false), default);
+        var draft = new CampaignLibraryEntry { CampaignId = campaign.Id, Title = "NPC", Text = "Segredo" };
+        var shown = new CampaignLibraryEntry { CampaignId = campaign.Id, Title = "Carta", Text = "Leia em voz alta", Published = true, Kind = "clue" };
+        db.AddRange(draft, shown); await db.SaveChangesAsync();
         var hidden = JsonSerializer.SerializeToElement(await service.LibraryAsync(campaign.Id, "player", 1, default));
-        Assert.Equal(0, hidden.GetProperty("total").GetInt32());
-        Assert.Equal(403, (await Assert.ThrowsAsync<RuleException>(() => service.SaveTextAsync(campaign.Id, draft.Id, "player", new("NPC", "Alterado", true, draft.Revision), default))).Status);
-        await service.SaveTextAsync(campaign.Id, draft.Id, "master", new("NPC", "Revelado", true, draft.Revision), default);
-        var visible = JsonSerializer.SerializeToElement(await service.LibraryAsync(campaign.Id, "player", 1, default));
-        Assert.Equal(1, visible.GetProperty("total").GetInt32());
+        Assert.Equal(1, hidden.GetProperty("total").GetInt32());
         Assert.Equal(404, (await Assert.ThrowsAsync<RuleException>(() => service.LibraryAsync(campaign.Id, "stranger", 1, default))).Status);
-        Assert.Equal(409, (await Assert.ThrowsAsync<RuleException>(() => service.SaveTextAsync(campaign.Id, draft.Id, "master", new("NPC", "Antigo", false, 1), default))).Status);
+        Assert.Equal(403, (await Assert.ThrowsAsync<RuleException>(() => service.ConvertTextAsync(campaign.Id, shown.Id, "player", new(shown.Revision), default))).Status);
+        Assert.Equal(409, (await Assert.ThrowsAsync<RuleException>(() => service.ConvertTextAsync(campaign.Id, shown.Id, "master", new(shown.Revision + 5), default))).Status);
+        await service.ConvertTextAsync(campaign.Id, shown.Id, "master", new(shown.Revision), default);
+        await service.ConvertTextAsync(campaign.Id, draft.Id, "master", new(draft.Revision), default);
+        db.ChangeTracker.Clear();
+        var pages = await db.Set<WorkspacePage>().Where(p => p.CampaignId == campaign.Id).OrderBy(p => p.Title).ToListAsync();
+        Assert.Equal([("Carta", "clue", "table", "master"), ("NPC", "text", "self", "master")], pages.Select(p => (p.Title, p.Kind, p.Visibility, p.OwnerId)));
+        Assert.Equal(2, await db.Set<CampaignLibraryEntry>().CountAsync(e => e.ConvertedPageId != null));
+        var master = JsonSerializer.SerializeToElement(await service.LibraryAsync(campaign.Id, "master", 1, default));
+        Assert.Equal(0, master.GetProperty("total").GetInt32());
+        var again = await db.Set<CampaignLibraryEntry>().SingleAsync(e => e.Id == shown.Id);
+        Assert.Equal(409, (await Assert.ThrowsAsync<RuleException>(() => service.ConvertTextAsync(campaign.Id, shown.Id, "master", new(again.Revision), default))).Status);
+        Assert.Equal(404, (await Assert.ThrowsAsync<RuleException>(() => service.DeleteTextAsync(campaign.Id, shown.Id, "master", default))).Status);
     }
     [Fact]
     public async Task Folders_enforce_depth_ownership_and_nonempty_deletion()

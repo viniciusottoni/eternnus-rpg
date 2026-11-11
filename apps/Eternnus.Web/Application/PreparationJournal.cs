@@ -19,9 +19,13 @@ public sealed partial class PreparationService
         var recapTotal = await recapQuery.CountAsync(ct);
         var recaps = await recapQuery.OrderByDescending(s => s.Number).Skip((page - 1) * 20).Take(20)
             .Select(s => new { s.Id, s.Number, s.Title, s.Recap, s.RecapPublishedAt, s.StartedAt, s.EndedAt, published = s.RecapPublishedAt != null }).ToListAsync(ct);
-        var entries = await db.Set<CampaignLibraryEntry>().AsNoTracking().Where(e => e.CampaignId == campaignId && (e.Kind == "objective" || e.Kind == "clue") && (master || e.Published))
-            .OrderBy(e => e.Kind).ThenByDescending(e => e.UpdatedAt).Take(100)
-            .Select(e => new { e.Id, e.Kind, e.Title, e.Text, e.Published, e.Revision, e.UpdatedAt }).ToListAsync(ct);
+        // Objetivos e pistas são páginas do Mundo (ADR-063). Mesma regra de leitura das páginas: o mestre vê todas;
+        // o jogador, as de "Toda a mesa" e as compartilhadas com ele. Segredos nunca entram.
+        var entries = await db.Set<WorkspacePage>().AsNoTracking()
+            .Where(p => p.CampaignId == campaignId && p.DeletedAt == null && (p.Kind == "objective" || p.Kind == "clue")
+                && (master || p.OwnerId == user || p.Visibility == "table" || p.Visibility == "selected" && db.Set<WorkspaceReader>().Any(r => r.PageId == p.Id && r.UserId == user)))
+            .OrderBy(p => p.Kind).ThenBy(p => p.Status != "open").ThenByDescending(p => p.Pinned).ThenByDescending(p => p.UpdatedAt).Take(100)
+            .Select(p => new { p.Id, p.Kind, p.Title, text = p.Content, published = p.Visibility == "table", p.Visibility, p.Status, p.Revision, p.UpdatedAt }).ToListAsync(ct);
         var attendance = c.NextSessionAt is { } at
             ? await db.Attendance.AsNoTracking().Where(a => a.CampaignId == campaignId && a.SessionAt == at)
                 .Join(db.Users, a => a.UserId, u => u.Id, (a, u) => new { a.UserId, name = u.DisplayName, a.Status }).OrderBy(a => a.name).ToListAsync(ct)

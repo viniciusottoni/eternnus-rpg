@@ -2,7 +2,7 @@
 // Abre cada modal em desktop (1440×900) e celular (390×844), mede problemas de layout e gera capturas + folha de contato.
 import { chromium } from '../artifacts/qa-runtime/node_modules/playwright/index.mjs';
 import { startEnvironment } from './support/harness.mjs';
-import { formAlignmentIssues, focusClipIssues } from './support/form-alignment.mjs';
+import { formAlignmentIssues, focusClipIssues, choiceControlIssues } from './support/form-alignment.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
@@ -25,13 +25,13 @@ try {
   const hero = await player('/api/characters', 'POST', { campaignId: campaign.id, name: 'Lira' });
   await master(`/api/campaigns/${campaign.id}/npcs`, 'POST', { name: 'Capitã Vela', summary: 'Guarda do porto', notes: '', side: 'neutral', resources: [{ label: 'Moral', value: 3, max: 5 }] });
   await master(`/api/campaigns/${campaign.id}/assets/folders`, 'POST', { name: 'Reino do Norte', parentId: null });
-  await master(`/api/campaigns/${campaign.id}/assets/library`, 'POST', { title: 'Carta do rei', text: 'Leia em voz alta.', published: false });
   const session = await master(`/api/campaigns/${campaign.id}/sessions`, 'POST', { title: 'Travessia', objective: '', mapKind: 'tileset', mapKey: 'bridge' });
   await master(`/api/sessions/${session.id}/join`, 'POST', {}, 204);
   await player(`/api/sessions/${session.id}/join`, 'POST', { characterId: hero.id }, 204);
   const topic = await player('/api/guild/topics', 'POST', { categoryId: '00000000-0000-4000-8000-000000000202', title: 'Boas histórias', body: 'Como preparar uma aventura em grupo?' });
   browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true });
   const clients = { m: master, p: player, ad: admin };
+  const playerId = (await admin('/api/admin/users?q=modal.player')).items[0].id;
   async function pageFor(client, mobile) {
     const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 }, reducedMotion: 'reduce', serviceWorkers: 'block', hasTouch: mobile, isMobile: mobile });
     await context.addCookies(client.cookieHeader().split('; ').filter(Boolean).map((s) => { const i = s.indexOf('='); return { name: s.slice(0, i), value: s.slice(i + 1), url: env.origin }; }));
@@ -53,7 +53,6 @@ try {
     ['m', `campaign/${C}/prep`, '[data-action=pp-npc]', ['[data-action=pp-npc]'], 'npc-novo'],
     ['m', `campaign/${C}/prep`, '[data-action=pp-scene]', ['[data-action=pp-scene]'], 'editor-cena'],
     ['m', `campaign/${C}/players`, '.page-tabs', ['[data-action=cp-remove]'], 'jogador-remover'],
-    ['m', `campaign/${C}/resources`, '[data-action=ca-text]', ['[data-action=ca-text]'], 'acervo-texto'],
     ['m', `campaign/${C}/maps`, '[data-action=ca-folder]', ['[data-action=ca-folder]'], 'pasta-nova'],
     ['m', `campaign/${C}/maps`, '.fx-folder-tile', ['.fx-folder-tile', '[data-action=ca-folder-rename]'], 'pasta-renomear'],
     ['m', `campaign/${C}/maps`, '[data-action=ca-upload]', ['[data-action=ca-upload]'], 'mapa-enviar'],
@@ -75,6 +74,8 @@ try {
     ['ad', 'admin/systems', '[data-action=admin-system-table]', ['[data-action=admin-system-table]'], 'admin-mesa-padrao'],
     ['ad', 'admin/music', '[data-action=am-upload]', ['[data-action=am-upload]'], 'admin-musica'],
     ['ad', 'templates', '.page-heading', ['[data-action=tpl-new]'], 'modelo-novo'],
+    ['ad', `admin/users/${playerId}`, '[data-action=admin-role]', ['[data-action=admin-role]'], 'admin-papel'],
+    ['ad', `admin/users/${playerId}`, '[data-action=admin-suspend]', ['[data-action=admin-suspend]'], 'admin-suspender'],
   ];
   for (const mobile of [false, true]) {
     const vp = mobile ? 'mobile' : 'desktop';
@@ -111,7 +112,7 @@ try {
           };
         });
         await page.keyboard.press('Shift');
-        const alignment = [...await page.evaluate(formAlignmentIssues, '#modal-body'), ...await page.evaluate(focusClipIssues, '#modal')];
+        const alignment = [...await page.evaluate(formAlignmentIssues, '#modal-body'), ...await page.evaluate(choiceControlIssues, '#modal-body'), ...await page.evaluate(focusClipIssues, '#modal')];
         const problems = [...alignment, ...Object.entries({ 'rolagem no diálogo': metrics.dialogScroll, 'transbordo horizontal': metrics.bodyHorizontal, 'fora da tela': !metrics.fitsViewport, 'fieldset padrão do navegador': metrics.defaultFieldsets > 0, 'ⓘ grande': metrics.bigHelp > 0, 'tooltip no X': metrics.closeTip, 'botão Fechar duplicado': metrics.fechar > 0, [`elemento fora da borda (${metrics.outside.join(', ')})`]: metrics.outside.length > 0 }).filter(([, v]) => v).map(([k]) => k)];
         await page.locator('#modal').screenshot({ path: `${dir}/${name}-${vp}.png` });
         results.push({ name, vp, problems });

@@ -8,6 +8,9 @@ public static class UploadLimits
     public const long DocumentBytes = 25L * 1024 * 1024;
     public const long DocumentRequestBytes = DocumentBytes + 256 * 1024;
 
+    /// <summary>Imagem importada por link para anexo de página: o corpo da requisição é JSON pequeno; o limite vale para o download.</summary>
+    public const int LinkedImageBytes = 10 * 1024 * 1024;
+
     /// <summary>Importação em lote de sessões: CSV até 1 MiB + margem para multipart.</summary>
     public const long SessionImportRequestBytes = SessionImportFormat.MaxBytes + 64 * 1024;
 

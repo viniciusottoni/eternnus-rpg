@@ -2,7 +2,7 @@
 // Desktop 1440×900 e celular 390×844. Os modais são cobertos por tests/modals-ui.mjs com a mesma verificação.
 import { chromium } from '../artifacts/qa-runtime/node_modules/playwright/index.mjs';
 import { startEnvironment } from './support/harness.mjs';
-import { formAlignmentIssues, focusClipIssues } from './support/form-alignment.mjs';
+import { formAlignmentIssues, focusClipIssues, choiceControlIssues } from './support/form-alignment.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 const dir = 'artifacts/qa/formularios';
 await mkdir(dir, { recursive: true });
@@ -53,7 +53,7 @@ try {
         await page.waitForFunction(() => !document.querySelector('#app').inert && !document.querySelector('#app').hasAttribute('aria-busy') && !document.querySelector('.loading-line'), { timeout: 20000 }).catch(() => {});
         await page.waitForTimeout(700);
         await page.keyboard.press('Shift');
-        const issues = [...await page.evaluate(formAlignmentIssues, 'body'), ...await page.evaluate(focusClipIssues, '#main')];
+        const issues = [...await page.evaluate(formAlignmentIssues, 'body'), ...await page.evaluate(choiceControlIssues, 'body'), ...await page.evaluate(focusClipIssues, '#main')];
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1 || innerWidth > (visualViewport?.width || innerWidth) + 1);
         const problems = [...issues, ...(overflow ? ['página mais larga que a tela'] : [])];
         await page.screenshot({ path: `${dir}/${name}.png` });

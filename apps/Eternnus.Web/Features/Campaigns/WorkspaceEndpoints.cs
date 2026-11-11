@@ -27,6 +27,14 @@ public static class WorkspaceEndpoints
             var file = await files.ReadAsync(form.Files[0], DocumentKinds.Library, ct);
             return Results.Ok(await s.Attach(campaign, id, User(u), file, ct));
         }).RequireRateLimiting("upload");
+        // Imagem por link: o servidor baixa uma vez (RemoteImageFetcher) e guarda como anexo comum, com a mesma verificação do upload.
+        api.MapPost("/pages/{id:guid}/attachments/import", async (Guid campaign, Guid id, AttachmentLink x, RemoteImageFetcher remote, DocumentFiles files, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            await s.EnsureEditor(campaign, id, User(u), ct);
+            var (bytes, fileName) = await remote.FetchAsync(x.Url, UploadLimits.LinkedImageBytes, ct);
+            var file = await files.CheckAsync(bytes, fileName, new[] { DocumentKinds.Png, DocumentKinds.Jpeg, DocumentKinds.WebP }, ct);
+            return Results.Ok(await s.Attach(campaign, id, User(u), file, ct));
+        }).RequireRateLimiting("upload");
         api.MapGet("/pages/{id:guid}/attachments/{file:guid}", async (Guid campaign, Guid id, Guid file, HttpContext http, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) =>
         {
             var attachment = await s.Attachment(campaign, id, file, User(u), ct);
@@ -75,4 +83,5 @@ public static class WorkspaceEndpoints
         chapters.MapDelete("/{id:guid}", async (Guid campaign, Guid id, int revision, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeleteChapter(campaign, id, User(u), revision, ct); return Results.NoContent(); });
     }
     public record PageState(int Revision, bool Restore = false);
+    public record AttachmentLink(string Url);
 }
