@@ -21,7 +21,7 @@ test("the soundtrack is the unmodified official file under a versioned public na
   assert.match(MUSIC_SRC, /^\/assets\/audio\/[a-z0-9-]+\.v\d+\.mp3$/);
   const [served, original] = await Promise.all([
     readFile(new URL("../apps/Eternnus.Web/wwwroot" + MUSIC_SRC, import.meta.url)),
-    readFile(new URL("../assets/Eternnus RPG - The Blade and the Serpent.mp3", import.meta.url)),
+    readFile(new URL("../assets/musics/Eternnus RPG - The Blade and the Serpent.mp3", import.meta.url)),
   ]);
   assert.ok(served.equals(original), "served soundtrack must be byte-identical to the source");
 });
