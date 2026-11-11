@@ -276,6 +276,13 @@ public static class SheetSummary
         return (resources, stats);
     }
 
+    /// <summary>Armadura/CA para a bolha do marcador: o campo com o papel Armadura, se o modelo o define e tem valor.</summary>
+    public static StatView? Armor(IReadOnlyList<SheetField> fields, IReadOnlyDictionary<string, string> values)
+    {
+        var f = fields.FirstOrDefault(x => x.Role == SheetFieldRoles.Armor);
+        return f != null && values.TryGetValue(f.Name, out var v) && v.Length > 0 ? new(f.Name, Label(f), Short(v)) : null;
+    }
+
     static string Label(SheetField f) => string.IsNullOrWhiteSpace(f.Label) ? f.Name : f.Label;
     static string Short(string v) => v.Length > 40 ? v[..37] + "…" : v;
 

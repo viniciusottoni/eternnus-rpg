@@ -452,7 +452,7 @@ public static class CharacterSheets
             canEdit = user != null && (c.OwnerId == user || await IsMasterAsync(db, c.Id, user, ct)),
             canChangeVisibility = c.OwnerId == user,
             legacy = ctx.Legacy,
-            template = new { ctx.Template.Id, ctx.Template.Name, systemId = ctx.Template.RpgSystemId, archived = ctx.Template.ArchivedAt != null },
+            template = new { ctx.Template.Id, ctx.Template.Name, systemId = ctx.Template.RpgSystemId, archived = ctx.Template.ArchivedAt != null, isDefault = ctx.Template.IsDefault && ctx.Template.CampaignId == null },
             version = new
             {
                 v.Id, v.Number, v.Pages, v.Fields, v.Actions, hasPdf = v.PdfFileId != null,
@@ -539,7 +539,7 @@ public class CharacterSheetService(GameDb db, SessionService sessions, Progressi
             campaignId,
             system,
             source,
-            template = new { t.Id, t.Name, t.Description },
+            template = new { t.Id, t.Name, t.Description, isDefault = t.IsDefault && t.CampaignId == null },
             version = new { v.Id, v.Number, fields = v.Fields.Count, actions = v.Actions.Count, hasPdf = v.PdfFileId != null, pdfUrl = v.PdfFileId != null ? $"/api/sheet-templates/{t.Id}/versions/{v.Id}/pdf" : null },
         };
     }

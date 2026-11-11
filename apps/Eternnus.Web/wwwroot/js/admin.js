@@ -2,6 +2,7 @@ import { helpButton } from "./help.js";
 // Painel administrativo (#admin/{aba}/{id}). Somente UX: o servidor reaplica a política Admin em cada endpoint.
 // Rotas: #admin, #admin/overview, #admin/users[/{guid}], #admin/campaigns[/{guid}], #admin/systems, #admin/templates/..., #admin/tickets/..., #admin/audit.
 import { api } from "./api.js";
+import { newsSlot } from "./notices.js";
 import { state } from "./state.js";
 import { shell } from "./layout.js";
 import { $, esc, button, field, formError, submitForm, modal, toast, navigate } from "./ui.js";
@@ -153,7 +154,7 @@ export async function renderAdmin(segments = []) {
     navigate("admin/" + tab);
     return;
   }
-  $("#main").innerHTML = `<div class="page-heading admin-heading"><div><span class="eyebrow">CONSELHO DE ETERNNUS</span><h1>Painel admin <span class="heading-gem">✦</span></h1><p>O que acontece na plataforma, quem está nela e o que foi feito pela equipe.</p></div></div><nav class="page-tabs" aria-label="Seções do painel">${ADMIN_TABS.map(([key, label]) => `<a href="#admin/${key}" ${key === tab ? 'aria-current="page" class="active"' : ""}>${label}</a>`).join("")}</nav><section id="admin-view" class="admin-page"${tab === "templates" ? "" : ' aria-live="polite"'}></section>`;
+  $("#main").innerHTML = `<div class="page-heading admin-heading"><div><span class="eyebrow">CONSELHO DE ETERNNUS</span><h1>Painel admin <span class="heading-gem">✦</span></h1><p>O que acontece na plataforma, quem está nela e o que foi feito pela equipe.</p></div></div><nav class="page-tabs" aria-label="Seções do painel">${ADMIN_TABS.map(([key, label]) => `<a href="#admin/${key}" ${key === tab ? 'aria-current="page" class="active"' : ""}>${label}${key === "tickets" ? newsSlot("queue", label) : ""}</a>`).join("")}</nav><section id="admin-view" class="admin-page"${tab === "templates" ? "" : ' aria-live="polite"'}></section>`;
   const view = $("#admin-view");
   const alive = () => request === generation && view.isConnected;
   // Fichas-modelo: o mesmo módulo da equipe, montado dentro do painel; devolve ao roteador a função de descarte do editor.
@@ -220,7 +221,7 @@ async function renderOverview(ctx) {
 // ---------- Usuários ----------
 async function renderUsers(ctx) {
   const f = filters.users;
-  ctx.view.innerHTML = `<form id="admin-users-filter" class="admin-filters" role="search"><div class="field"><label for="f-q">Nome ou e-mail</label><input id="f-q" name="q" maxlength="100" value="${esc(f.q)}" placeholder="Buscar pessoa…"></div><div class="field"><label for="f-role">Papel</label><select id="f-role" name="role"><option value="">Todos</option>${Object.entries(ROLE_LABELS).map(([key, label]) => `<option value="${key}" ${f.role === key ? "selected" : ""}>${label}</option>`).join("")}</select></div><div class="field"><label for="f-status">Situação</label><select id="f-status" name="status">${[["", "Todas"], ["active", "Ativos"], ["pending", "Pendentes"], ["suspended", "Suspensos"]].map(([key, label]) => `<option value="${key}" ${f.status === key ? "selected" : ""}>${label}</option>`).join("")}</select></div><button type="submit" class="primary">Filtrar</button></form><div id="admin-list"></div>`;
+  ctx.view.innerHTML = `<form id="admin-users-filter" class="admin-filters" role="search"><div class="field"><label for="f-q">Nome ou e-mail</label><input id="f-q" name="q" maxlength="100" value="${esc(f.q)}" placeholder="Buscar pessoa…"></div><div class="field"><label for="f-role">Papel</label><select id="f-role" name="role"><option value="">Todos</option>${Object.entries(ROLE_LABELS).map(([key, label]) => `<option value="${key}" ${f.role === key ? "selected" : ""}>${label}</option>`).join("")}</select></div><div class="field"><label for="f-status">Situação</label><select id="f-status" name="status">${[["", "Todas"], ["active", "Ativos"], ["pending", "Pendentes"], ["suspended", "Suspensos"]].map(([key, label]) => `<option value="${key}" ${f.status === key ? "selected" : ""}>${label}</option>`).join("")}</select></div><button type="submit" class="subtle">Buscar</button></form><div id="admin-list"></div>`;
   $("#admin-users-filter").onsubmit = (event) => {
     event.preventDefault();
     Object.assign(f, Object.fromEntries(new FormData(event.currentTarget)), { page: 1 });
@@ -344,7 +345,7 @@ async function renderCampaigns(ctx) {
   ctx.view.innerHTML = `<form id="admin-campaigns-filter" class="admin-filters" role="search"><div class="field"><label for="f-q">Campanha ou mestre</label><input id="f-q" name="q" maxlength="100" value="${esc(f.q)}" placeholder="Nome da campanha ou do mestre…"></div><div class="field"><label for="f-system">Sistema</label><select id="f-system" name="systemId"><option value="">Todos</option>${systems
     .filter((s) => isAdminGuid(s.id))
     .map((s) => `<option value="${s.id}" ${f.systemId === s.id ? "selected" : ""}>${esc(s.name)}${s.active ? "" : " (inativo)"}</option>`)
-    .join("")}</select></div><div class="field"><label for="f-online">Mesa</label><select id="f-online" name="online">${[["", "Todas"], ["true", "Online agora"], ["false", "Offline"]].map(([key, label]) => `<option value="${key}" ${f.online === key ? "selected" : ""}>${label}</option>`).join("")}</select></div><button type="submit" class="primary">Filtrar</button></form><div id="admin-list"></div>`;
+    .join("")}</select></div><div class="field"><label for="f-online">Mesa</label><select id="f-online" name="online">${[["", "Todas"], ["true", "Online agora"], ["false", "Offline"]].map(([key, label]) => `<option value="${key}" ${f.online === key ? "selected" : ""}>${label}</option>`).join("")}</select></div><button type="submit" class="subtle">Buscar</button></form><div id="admin-list"></div>`;
   $("#admin-campaigns-filter").onsubmit = (event) => {
     event.preventDefault();
     Object.assign(f, Object.fromEntries(new FormData(event.currentTarget)), { page: 1 });
@@ -542,7 +543,7 @@ function fillAuditData(root, items) {
 }
 async function renderAudit(ctx) {
   const f = filters.audit;
-  ctx.view.innerHTML = `<form id="admin-audit-filter" class="admin-filters admin-filters-wide" role="search"><div class="field"><label for="f-action">Ação (prefixo)</label><input id="f-action" name="action" maxlength="60" value="${esc(f.action)}" list="audit-actions" placeholder="ex.: user." autocapitalize="off" spellcheck="false"><datalist id="audit-actions">${["user.", "user.role", "user.suspend", "campaign.", "system.", "library.", "template.", "guild.", "ticket."].map((a) => `<option value="${a}"></option>`).join("")}</datalist></div><div class="field"><label for="f-actor">Ator (nome ou id)</label><input id="f-actor" name="actor" maxlength="100" value="${esc(f.actor)}"></div><div class="field"><label for="f-target-type">Tipo de alvo</label><select id="f-target-type" name="targetType"><option value="">Todos</option>${Object.entries(TARGET_LABELS).map(([key, label]) => `<option value="${key}" ${f.targetType === key ? "selected" : ""}>${label}</option>`).join("")}</select></div><div class="field"><label for="f-target-id">Id do alvo</label><input id="f-target-id" name="targetId" maxlength="80" value="${esc(f.targetId)}" autocapitalize="off" spellcheck="false"></div><div class="field"><label for="f-from">De</label><input id="f-from" name="from" type="date" value="${esc(f.from)}"></div><div class="field"><label for="f-to">Até</label><input id="f-to" name="to" type="date" value="${esc(f.to)}"></div><div class="admin-filter-buttons"><button type="submit" class="primary">Filtrar</button>${button("Limpar", "admin-audit-clear", "", "subtle")}</div></form><div id="admin-list"></div>`;
+  ctx.view.innerHTML = `<form id="admin-audit-filter" class="admin-filters admin-filters-wide" role="search"><div class="field"><label for="f-action">Ação (prefixo)</label><input id="f-action" name="action" maxlength="60" value="${esc(f.action)}" list="audit-actions" placeholder="ex.: user." autocapitalize="off" spellcheck="false"><datalist id="audit-actions">${["user.", "user.role", "user.suspend", "campaign.", "system.", "library.", "template.", "guild.", "ticket."].map((a) => `<option value="${a}"></option>`).join("")}</datalist></div><div class="field"><label for="f-actor">Ator (nome ou id)</label><input id="f-actor" name="actor" maxlength="100" value="${esc(f.actor)}"></div><div class="field"><label for="f-target-type">Tipo de alvo</label><select id="f-target-type" name="targetType"><option value="">Todos</option>${Object.entries(TARGET_LABELS).map(([key, label]) => `<option value="${key}" ${f.targetType === key ? "selected" : ""}>${label}</option>`).join("")}</select></div><div class="field"><label for="f-target-id">Id do alvo</label><input id="f-target-id" name="targetId" maxlength="80" value="${esc(f.targetId)}" autocapitalize="off" spellcheck="false"></div><div class="field"><label for="f-from">De</label><input id="f-from" name="from" type="date" value="${esc(f.from)}"></div><div class="field"><label for="f-to">Até</label><input id="f-to" name="to" type="date" value="${esc(f.to)}"></div><div class="admin-filter-buttons"><button type="submit" class="subtle">Buscar</button></div></form><div id="admin-list"></div>`;
   $("#admin-audit-filter").onsubmit = (event) => {
     event.preventDefault();
     Object.assign(f, Object.fromEntries(new FormData(event.currentTarget)), { page: 1 });
@@ -591,10 +592,6 @@ async function handleClick(event, ctx) {
     if (action === "admin-audit-page") {
       filters.audit.page = Math.max(1, Number(id) || 1);
       await listAudit(ctx);
-    }
-    if (action === "admin-audit-clear") {
-      Object.assign(filters.audit, { action: "", actor: "", targetType: "", targetId: "", from: "", to: "", page: 1 });
-      await renderAudit(ctx);
     }
     if (action === "admin-role" && ctx.user) roleModal(ctx);
     if (action === "admin-suspend" && ctx.user) suspendModal(ctx);

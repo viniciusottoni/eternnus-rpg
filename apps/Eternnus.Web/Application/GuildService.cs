@@ -118,9 +118,9 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
                 c.Order,
                 c.MinLevelToPost,
                 c.StaffOnly,
-                topicCount = db.GuildTopics.Count(t => t.CategoryId == c.Id && t.DeletedAt == null),
-                postCount = db.GuildTopics.Where(t => t.CategoryId == c.Id && t.DeletedAt == null).Sum(t => (int?)t.PostCount) ?? 0,
-                lastTopic = db.GuildTopics.Where(t => t.CategoryId == c.Id && t.DeletedAt == null)
+                topicCount = db.GuildTopics.Count(t => t.CategoryId == c.Id && t.DeletedAt == null && t.HeldAt == null),
+                postCount = db.GuildTopics.Where(t => t.CategoryId == c.Id && t.DeletedAt == null && t.HeldAt == null).Sum(t => (int?)t.PostCount) ?? 0,
+                lastTopic = db.GuildTopics.Where(t => t.CategoryId == c.Id && t.DeletedAt == null && t.HeldAt == null)
                     .OrderByDescending(t => t.LastPostAt).ThenByDescending(t => t.Id)
                     .Select(t => new { t.Id, t.Title, t.LastPostAt, author = db.Users.Where(u => u.Id == t.AuthorId).Select(u => u.DisplayName).FirstOrDefault() })
                     .FirstOrDefault(),
@@ -143,6 +143,8 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
         if (category?.Length > 60) throw new RuleException(404, "Categoria não encontrada.");
         page = Math.Clamp(page, 1, 100000);
         var query = db.GuildTopics.AsNoTracking().Where(t => deleted ? t.DeletedAt != null : t.DeletedAt == null);
+        // Tópico em análise (ADR-068) sai das listas; a equipe continua vendo, com o selo.
+        if (!viewer.Staff) query = query.Where(t => t.HeldAt == null);
         object? categoryInfo = null;
         if (!string.IsNullOrWhiteSpace(category))
         {
@@ -180,6 +182,7 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
                 x.t.Pinned,
                 x.t.Locked,
                 x.t.DeletedAt,
+                x.t.HeldAt,
                 x.t.Revision,
                 category = db.GuildCategories.Where(c => c.Id == x.t.CategoryId).Select(c => new { c.Slug, c.Name }).FirstOrDefault(),
                 system = db.RpgSystems.Where(s => s.Id == x.t.RpgSystemId).Select(s => new { s.Id, s.Name }).FirstOrDefault(),
@@ -188,7 +191,7 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
         var items = rows.Select(t => new
         {
             t.Id, t.Title, t.CreatedAt, t.LastPostAt, t.PostCount, replyCount = Math.Max(0, t.PostCount - 1), t.Pinned, t.Locked,
-            deleted = t.DeletedAt != null, t.DeletedAt, t.Revision, t.category, t.system, author = Author(t.author, userId),
+            deleted = t.DeletedAt != null, t.DeletedAt, held = t.HeldAt != null, t.Revision, t.category, t.system, author = Author(t.author, userId),
         }).ToList();
         return new { items, total, page, pageSize = PageSize, category = categoryInfo };
     }
@@ -198,7 +201,7 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
         limit = Math.Clamp(limit, 1, 20);
         var rows = await (from t in db.GuildTopics.AsNoTracking()
                           join u in db.Users on t.AuthorId equals u.Id
-                          where t.DeletedAt == null && db.GuildCategories.Any(c => c.Id == t.CategoryId && c.ArchivedAt == null)
+                          where t.DeletedAt == null && t.HeldAt == null && db.GuildCategories.Any(c => c.Id == t.CategoryId && c.ArchivedAt == null)
                           orderby t.LastPostAt descending, t.Id
                           select new
                           {
@@ -228,12 +231,16 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
                 t.Pinned,
                 t.Locked,
                 t.DeletedAt,
+                t.HeldAt,
                 t.Revision,
                 category = db.GuildCategories.Where(c => c.Id == t.CategoryId).Select(c => new { c.Id, c.Slug, c.Name, c.StaffOnly, archived = c.ArchivedAt != null }).FirstOrDefault(),
                 system = db.RpgSystems.Where(s => s.Id == t.RpgSystemId).Select(s => new { s.Id, s.Name }).FirstOrDefault(),
                 author = new AuthorRow(u.Id, u.DisplayName, u.AvatarUrl, u.Level, u.Role),
             }).SingleOrDefaultAsync(ct);
         if (topic is null || (topic.DeletedAt != null && !viewer.Staff)) throw new RuleException(404, "Tópico não encontrado.");
+        // Tópico em análise: só a equipe e o autor (que vê o aviso) abrem.
+        var topicHeld = topic.HeldAt != null;
+        if (topicHeld && !viewer.Staff && topic.author.Id != userId) throw new RuleException(404, "Tópico não encontrado.");
         var total = await db.GuildPosts.CountAsync(p => p.TopicId == id, ct);
         var pageCount = Math.Max(1, (total + PageSize - 1) / PageSize);
         page = Math.Clamp(page, 1, pageCount);
@@ -251,6 +258,7 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
                               p.EditedAt,
                               p.DeletedAt,
                               p.DeletedById,
+                              p.HeldAt,
                               p.UsefulCount,
                               author = new AuthorRow(u.Id, u.DisplayName, u.AvatarUrl, u.Level, u.Role),
                               markedUseful = db.GuildReactions.Any(r => r.PostId == p.Id && r.UserId == userId),
@@ -262,6 +270,8 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
         {
             var deleted = p.DeletedAt != null;
             var mine = p.author.Id == userId;
+            // Em análise (ADR-068): texto só para equipe e autor; sem edição, útil ou nova denúncia até a decisão.
+            var held = !deleted && (p.HeldAt != null || (topicHeld && p.Id == firstPostId));
             return new
             {
                 p.Id,
@@ -273,11 +283,12 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
                 p.markedUseful,
                 isFirst = p.Id == firstPostId,
                 removed = !deleted ? null : p.DeletedById == p.author.Id ? "author" : "moderation",
-                body = deleted && !staff ? null : p.Body,
-                canEdit = !deleted && mine && !topicDeleted && (!topic.Locked || staff),
+                held,
+                body = (deleted || held) && !staff && !(held && mine) ? null : p.Body,
+                canEdit = !deleted && !held && mine && !topicDeleted && (!topic.Locked || staff),
                 canDelete = !deleted && mine && !topicDeleted,
-                canMarkUseful = !deleted && !mine && !topicDeleted,
-                canReport = !deleted && !mine && !topicDeleted && !p.reported,
+                canMarkUseful = !deleted && !held && !mine && !topicDeleted && !topicHeld,
+                canReport = !deleted && !held && !mine && !topicDeleted && !topicHeld && !p.reported,
                 p.reported,
                 openReports = staff ? p.openReports : (int?)null,
             };
@@ -287,14 +298,14 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
             topic = new
             {
                 topic.Id, topic.Title, topic.CreatedAt, topic.LastPostAt, topic.PostCount, topic.Pinned, topic.Locked,
-                deleted = topicDeleted, topic.Revision, topic.category, topic.system, author = Author(topic.author, userId),
+                deleted = topicDeleted, held = topicHeld, topic.Revision, topic.category, topic.system, author = Author(topic.author, userId),
             },
             posts,
             page,
             pageSize = PageSize,
             total,
             pageCount,
-            canReply = !topicDeleted && (!topic.Locked || staff),
+            canReply = !topicDeleted && ((!topic.Locked && !topicHeld) || staff),
             staff,
         };
     }
@@ -317,6 +328,8 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
         db.GuildPosts.Add(new GuildPost { TopicId = topic.Id, AuthorId = userId, Body = body, CreatedAt = now });
         // Tópico e primeiro post na mesma gravação; o XP entra antes do SaveChanges.
         await progression.AwardAsync(userId, XpReasons.GuildTopic, $"guild_topic:{topic.Id}", ct);
+        // A própria mensagem não acende o indicador de novidade (ADR-069).
+        await NoticeService.MarkAsync(db, userId, ReadScopes.GuildTopic, topic.Id, now, ct);
         await db.SaveChangesAsync(ct);
         return new { id = topic.Id };
     }
@@ -329,18 +342,20 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
         var now = DateTime.UtcNow;
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         // Atualização condicional e atômica: trava a linha do tópico até o commit e confere exclusão/tranca no próprio UPDATE.
-        var updated = await db.GuildTopics.Where(t => t.Id == topicId && t.DeletedAt == null && (!t.Locked || staff))
+        var updated = await db.GuildTopics.Where(t => t.Id == topicId && t.DeletedAt == null && ((!t.Locked && t.HeldAt == null) || staff))
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.PostCount, t => t.PostCount + 1).SetProperty(t => t.LastPostAt, now), ct);
         if (updated == 0)
         {
-            var state = await db.GuildTopics.Where(t => t.Id == topicId).Select(t => new { t.DeletedAt, t.Locked }).SingleOrDefaultAsync(ct);
-            if (state is null || state.DeletedAt != null) throw new RuleException(404, "Tópico não encontrado.");
+            var state = await db.GuildTopics.Where(t => t.Id == topicId).Select(t => new { t.DeletedAt, t.Locked, t.HeldAt, t.AuthorId }).SingleOrDefaultAsync(ct);
+            if (state is null || state.DeletedAt != null || (state.HeldAt != null && state.AuthorId != userId)) throw new RuleException(404, "Tópico não encontrado.");
+            if (state.HeldAt != null) throw new RuleException(409, "Este tópico está em análise pela moderação e não recebe respostas por enquanto.");
             throw new RuleException(409, "Este tópico foi trancado pela moderação e não recebe respostas.");
         }
         var post = new GuildPost { TopicId = topicId, AuthorId = userId, Body = body, CreatedAt = now };
         db.GuildPosts.Add(post);
         await db.SaveChangesAsync(ct); // gera o Id do post para a chave de XP
         await progression.AwardAsync(userId, XpReasons.GuildPost, $"guild_post:{post.Id}", ct);
+        await NoticeService.MarkAsync(db, userId, ReadScopes.GuildTopic, topicId, now, ct);
         await db.SaveChangesAsync(ct);
         var position = await db.GuildPosts.CountAsync(p => p.TopicId == topicId && p.Id <= post.Id, ct);
         await tx.CommitAsync(ct);
@@ -351,9 +366,11 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
     {
         var body = Body(input.Body);
         var viewer = await ViewerAsync(userId, ct);
-        var post = await db.GuildPosts.AsNoTracking().Where(p => p.Id == postId).Select(p => new { p.AuthorId, p.TopicId, p.DeletedAt, p.EditedAt }).SingleOrDefaultAsync(ct);
+        var post = await db.GuildPosts.AsNoTracking().Where(p => p.Id == postId).Select(p => new { p.AuthorId, p.TopicId, p.DeletedAt, p.EditedAt, p.HeldAt }).SingleOrDefaultAsync(ct);
         if (post is null || post.AuthorId != userId) throw new RuleException(404, "Mensagem não encontrada.");
         if (post.DeletedAt != null) throw new RuleException(409, "Esta mensagem foi removida e não pode ser editada.");
+        // O texto denunciado fica como está até a decisão: a moderação julga o que foi denunciado.
+        if (post.HeldAt != null) throw new RuleException(409, HeldEditMessage);
         var topic = await db.GuildTopics.AsNoTracking().Where(t => t.Id == post.TopicId).Select(t => new { t.DeletedAt, t.Locked }).SingleAsync(ct);
         if (topic.DeletedAt != null) throw new RuleException(404, "Tópico não encontrado.");
         if (topic.Locked && !viewer.Staff) throw new RuleException(409, "Este tópico foi trancado pela moderação.");
@@ -362,10 +379,13 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
             throw new RuleException(409, "Esta mensagem foi alterada desde que você a abriu. Recarregue o tópico e tente de novo.");
         // UPDATE condicional: duas edições simultâneas com a mesma revisão não se sobrescrevem em silêncio.
         var now = UtcNowMicroseconds();
-        var changed = await db.GuildPosts.Where(p => p.Id == postId && p.DeletedAt == null && p.EditedAt == seen)
+        var changed = await db.GuildPosts.Where(p => p.Id == postId && p.DeletedAt == null && p.HeldAt == null && p.EditedAt == seen)
             .ExecuteUpdateAsync(x => x.SetProperty(p => p.Body, body).SetProperty(p => p.EditedAt, now), ct);
         if (changed == 0)
+        {
+            if (await db.GuildPosts.AnyAsync(p => p.Id == postId && p.HeldAt != null, ct)) throw new RuleException(409, HeldEditMessage);
             throw new RuleException(409, "Esta mensagem foi alterada desde que você a abriu. Recarregue o tópico e tente de novo.");
+        }
         return new { id = postId, body, editedAt = now, revision = PostRevision(now) };
     }
 
@@ -393,7 +413,7 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
 
     async Task<(string AuthorId, Guid TopicId)> VisiblePostAsync(long postId, CancellationToken ct)
     {
-        var post = await db.GuildPosts.AsNoTracking().Where(p => p.Id == postId && p.DeletedAt == null && db.GuildTopics.Any(t => t.Id == p.TopicId && t.DeletedAt == null))
+        var post = await db.GuildPosts.AsNoTracking().Where(p => p.Id == postId && p.DeletedAt == null && p.HeldAt == null && db.GuildTopics.Any(t => t.Id == p.TopicId && t.DeletedAt == null && t.HeldAt == null))
             .Select(p => new { p.AuthorId, p.TopicId }).SingleOrDefaultAsync(ct) ?? throw new RuleException(404, "Mensagem não encontrada.");
         return (post.AuthorId, post.TopicId);
     }
@@ -442,18 +462,72 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
         return await UsefulStateAsync(postId, userId, ct);
     }
 
+    const string HeldEditMessage = "Esta mensagem está em análise pela moderação e não pode ser editada agora.";
+    const string DuplicateReportMessage = "Você já denunciou esta mensagem. A moderação vai analisar.";
+
+    async Task<GuildPost?> LockPostAsync(long id, CancellationToken ct)
+    {
+        var query = db.Database.IsNpgsql()
+            ? db.GuildPosts.FromSqlInterpolated($"SELECT * FROM \"GuildPosts\" WHERE \"Id\" = {id} FOR UPDATE")
+            : db.GuildPosts.Where(p => p.Id == id);
+        return await query.SingleOrDefaultAsync(ct);
+    }
+
+    /// <summary>Trava tópico e post, sempre nessa ordem (a mesma de <see cref="DeleteOwnAsync"/>), para denúncia e decisão não se cruzarem.</summary>
+    async Task<(GuildTopic Topic, GuildPost Post)> LockPostWithTopicAsync(long postId, CancellationToken ct)
+    {
+        var topicId = await db.GuildPosts.AsNoTracking().Where(p => p.Id == postId).Select(p => (Guid?)p.TopicId).SingleOrDefaultAsync(ct)
+            ?? throw new RuleException(404, "Mensagem não encontrada.");
+        // Entidade já rastreada não é sobrescrita pela consulta, e ExecuteUpdate não a atualiza: recarrega para decidir com o estado gravado.
+        var stale = db.ChangeTracker.Entries<GuildTopic>().Any(e => e.Entity.Id == topicId) || db.ChangeTracker.Entries<GuildPost>().Any(e => e.Entity.Id == postId);
+        var topic = await LockTopicAsync(topicId, ct) ?? throw new RuleException(404, "Mensagem não encontrada.");
+        var post = await LockPostAsync(postId, ct) ?? throw new RuleException(404, "Mensagem não encontrada.");
+        if (stale) { await db.Entry(topic).ReloadAsync(ct); await db.Entry(post).ReloadAsync(ct); }
+        return (topic, post);
+    }
+
+    async Task<bool> IsOpeningAsync(GuildPost post, CancellationToken ct)
+    {
+        var (topicId, postId) = (post.TopicId, post.Id);
+        return !await db.GuildPosts.AnyAsync(p => p.TopicId == topicId && p.Id < postId, ct);
+    }
+
+    /// <summary>Denúncia (ADR-068): a primeira já oculta a mensagem até a decisão da moderação; se for a abertura, o tópico inteiro sai das listas.
+    /// Não oculta mensagem da equipe nem mensagem que a moderação já manteve (denúncia arquivada depois da última edição): nesses casos só entra na fila.</summary>
     public async Task<object> ReportAsync(long postId, GuildReportInput input, string userId, CancellationToken ct)
     {
         var reason = Reason(input.Reason, 5, 500, "o motivo da denúncia");
-        var (authorId, _) = await VisiblePostAsync(postId, ct);
-        if (authorId == userId) throw new RuleException(403, "Você não pode denunciar a própria mensagem.");
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var (topic, post) = await LockPostWithTopicAsync(postId, ct);
+        if (post.DeletedAt != null || topic.DeletedAt != null) throw new RuleException(404, "Mensagem não encontrada.");
+        if (post.AuthorId == userId) throw new RuleException(403, "Você não pode denunciar a própria mensagem.");
         if (await db.GuildReports.AnyAsync(r => r.PostId == postId && r.ReporterId == userId, ct))
-            throw new RuleException(409, "Você já denunciou esta mensagem. A moderação vai analisar.");
+            throw new RuleException(409, DuplicateReportMessage);
         var report = new GuildReport { PostId = postId, ReporterId = userId, Reason = reason };
         db.GuildReports.Add(report);
+        var opening = await IsOpeningAsync(post, ct);
+        var authorRole = await db.Users.Where(u => u.Id == post.AuthorId).Select(u => u.Role).SingleOrDefaultAsync(ct) ?? "";
+        var keptSince = post.EditedAt ?? post.CreatedAt;
+        var keptByModeration = await db.GuildReports.AnyAsync(r => r.PostId == postId && r.Resolution == "dismissed" && r.ResolvedAt > keptSince, ct);
+        if (!PlatformRoles.IsStaff(authorRole) && !keptByModeration)
+        {
+            var now = DateTime.UtcNow;
+            post.HeldAt ??= now;
+            if (opening && topic.HeldAt is null) { topic.HeldAt = now; topic.Revision++; }
+        }
         try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException) { throw new RuleException(409, "Você já denunciou esta mensagem. A moderação vai analisar."); }
-        return new { id = report.Id };
+        catch (DbUpdateException) { throw new RuleException(409, DuplicateReportMessage); }
+        await tx.CommitAsync(ct);
+        return new { id = report.Id, hidden = post.HeldAt != null, topicHidden = opening && topic.HeldAt != null };
+    }
+
+    /// <summary>Sem denúncia aberta, a mensagem volta a aparecer; se for a abertura, o tópico também. Chamar com tópico e post travados.</summary>
+    async Task ReleaseIfSettledAsync(GuildTopic topic, GuildPost post, CancellationToken ct)
+    {
+        if (post.HeldAt is null && topic.HeldAt is null) return;
+        if (await db.GuildReports.AnyAsync(r => r.PostId == post.Id && r.ResolvedAt == null, ct)) return;
+        post.HeldAt = null;
+        if (topic.HeldAt != null && await IsOpeningAsync(post, ct)) { topic.HeldAt = null; topic.Revision++; }
     }
 
     // ---------- Moderação (admin + embaixadores) ----------
@@ -509,8 +583,9 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
                     excerpt = x.p.Body.Length > 280 ? x.p.Body.Substring(0, 280) : x.p.Body,
                     x.p.CreatedAt,
                     deleted = x.p.DeletedAt != null,
+                    held = x.p.HeldAt != null,
                     author = db.Users.Where(u => u.Id == x.p.AuthorId).Select(u => new { u.Id, name = u.DisplayName, role = u.Role, level = u.Level }).FirstOrDefault(),
-                    topic = new { x.t.Id, x.t.Title, deleted = x.t.DeletedAt != null, x.t.Locked },
+                    topic = new { x.t.Id, x.t.Title, deleted = x.t.DeletedAt != null, held = x.t.HeldAt != null, x.t.Locked },
                 },
                 postReports = db.GuildReports.Count(o => o.PostId == x.r.PostId),
                 openPostReports = db.GuildReports.Count(o => o.PostId == x.r.PostId && o.ResolvedAt == null),
@@ -527,11 +602,11 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var report = await db.GuildReports.AsNoTracking().Where(r => r.Id == reportId).Select(r => new { r.PostId, r.ResolvedAt }).SingleOrDefaultAsync(ct)
             ?? throw new RuleException(404, "Denúncia não encontrada.");
+        var (topic, post) = await LockPostWithTopicAsync(report.PostId, ct);
         // UPDATE condicional: dois moderadores não resolvem a mesma denúncia.
         var resolved = await db.GuildReports.Where(r => r.Id == reportId && r.ResolvedAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(r => r.ResolvedAt, now).SetProperty(r => r.ResolvedById, userId).SetProperty(r => r.Resolution, input.Resolution), ct);
         if (resolved == 0) throw new RuleException(409, "Esta denúncia já foi resolvida por outra pessoa da moderação.");
-        var post = await db.GuildPosts.SingleAsync(p => p.Id == report.PostId, ct);
         var others = 0;
         if (input.Resolution == "removed")
         {
@@ -545,6 +620,8 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
             audit.Record(userId, "guild.report.dismiss", "guild_report", reportId.ToString(), $"Denúncia #{reportId} arquivada. {note}",
                 new { reportId, postId = post.Id, post.TopicId, note });
         }
+        // Decidida a última denúncia aberta, a ocultação termina: removida fica como "removida pela moderação"; arquivada volta a aparecer.
+        await ReleaseIfSettledAsync(topic, post, ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return new { resolution = input.Resolution, alsoResolved = others };
@@ -560,11 +637,12 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
         var reason = Reason(input.Reason);
         var now = DateTime.UtcNow;
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        var post = await db.GuildPosts.SingleOrDefaultAsync(p => p.Id == postId, ct) ?? throw new RuleException(404, "Mensagem não encontrada.");
-        var changed = await db.GuildPosts.Where(p => p.Id == postId && p.DeletedAt == null)
-            .ExecuteUpdateAsync(s => s.SetProperty(p => p.DeletedAt, now).SetProperty(p => p.DeletedById, userId), ct);
-        if (changed == 0) throw new RuleException(409, "Esta mensagem já foi removida.");
+        var (topic, post) = await LockPostWithTopicAsync(postId, ct);
+        if (post.DeletedAt != null) throw new RuleException(409, "Esta mensagem já foi removida.");
+        post.DeletedAt = now;
+        post.DeletedById = userId;
         var resolved = await ResolveOpenReportsAsync(postId, userId, now, ct);
+        await ReleaseIfSettledAsync(topic, post, ct);
         audit.Record(userId, "guild.post.delete", "guild_post", postId.ToString(), $"Mensagem removida pela moderação: {reason}",
             new { postId, post.TopicId, authorId = post.AuthorId, reason, resolvedReports = resolved, excerpt = Excerpt(post.Body) });
         await db.SaveChangesAsync(ct);

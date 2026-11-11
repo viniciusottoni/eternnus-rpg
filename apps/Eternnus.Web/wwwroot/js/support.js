@@ -2,6 +2,7 @@ import { helpButton } from "./help.js";
 // Suporte: chamados do usuário (#support, #support/{id}) e fila da equipe (renderAdminTickets, usada em #admin/tickets).
 // Regras puras e rótulos ficam em support-policy.js; o servidor reaplica todas as permissões.
 import { api } from "./api.js";
+import { ensureNotices, keepHighlighted, markSeen } from "./notices.js";
 import { shell } from "./layout.js";
 import { $, esc, button, field, formError, submitForm, modal, toast, empty, formatDate } from "./ui.js";
 import { guardAvatars } from "./sheet.js";
@@ -48,10 +49,13 @@ export async function renderSupport(segments = []) {
   const controller = new AbortController();
   main.addEventListener("click", onUserClick, { signal: controller.signal });
   const id = P.ticketFromSegments(segments);
-  if (id) await showTicket(id);
-  else await showList();
+  let releaseNews = () => {};
+  // Respostas novas da equipe: destaque na lista; abrir o chamado o marca como lido (ADR-069).
+  if (id) { await showTicket(id); markSeen({ scope: "support", id }); }
+  else { await showList(); releaseNews = keepHighlighted(main, (await ensureNotices())?.tickets); }
   return () => {
     controller.abort();
+    releaseNews();
     userGeneration++;
   };
 }
@@ -235,10 +239,12 @@ export async function renderAdminTickets(container, segments = []) {
   const ctx = { root: container, signal: controller.signal };
   container.addEventListener("click", (event) => onAdminClick(event, ctx), { signal: controller.signal });
   const id = P.ticketFromSegments(segments);
-  if (id) await showAdminTicket(ctx, id);
-  else await showQueue(ctx);
+  let releaseNews = () => {};
+  if (id) { await showAdminTicket(ctx, id); markSeen({ scope: "support-queue", id }); }
+  else { await showQueue(ctx); releaseNews = keepHighlighted(container, (await ensureNotices())?.queue); }
   return () => {
     controller.abort();
+    releaseNews();
     adminGeneration++;
   };
 }
@@ -254,10 +260,6 @@ async function onAdminClick(event, ctx) {
     filters.page = Math.max(1, Number(id) || 1);
     await loadQueue(ctx);
   }
-  if (action === "adm-t-clear") {
-    Object.assign(filters, { status: "active", priority: "", category: "", assigned: "any", q: "", page: 1 });
-    await showQueue(ctx);
-  }
   if (action === "adm-t-reload" && P.isGuid(id)) await showAdminTicket(ctx, id);
 }
 
@@ -267,7 +269,7 @@ async function showQueue(ctx) {
     ["me", "Atribuídos a mim"],
     ["none", "Sem responsável"],
   ];
-  ctx.root.innerHTML = `<div class="section-title support-admin-title"><h2>Chamados de suporte</h2><span>FILA DA EQUIPE</span></div><div class="stat-grid support-stats" id="adm-t-stats" aria-live="polite"></div><form id="adm-t-filters" class="support-filters" role="search" aria-label="Filtrar chamados"><div class="field"><label for="adm-t-status">Status</label><select id="adm-t-status" name="status">${options(P.STATUSES, (s) => P.statusLabel(s, true), filters.status, `<option value="active"${filters.status === "active" ? " selected" : ""}>Ativos</option><option value=""${filters.status === "" ? " selected" : ""}>Todos</option>`)}</select></div><div class="field"><label for="adm-t-priority">Prioridade</label><select id="adm-t-priority" name="priority">${options(P.PRIORITIES, P.priorityLabel, filters.priority, '<option value="">Todas</option>')}</select></div><div class="field"><label for="adm-t-category">Categoria</label><select id="adm-t-category" name="category">${options(P.CATEGORIES, P.categoryLabel, filters.category, '<option value="">Todas</option>')}</select></div><div class="field"><label for="adm-t-assigned">Responsável</label><select id="adm-t-assigned" name="assigned">${assigned.map(([v, l]) => `<option value="${v}"${filters.assigned === v ? " selected" : ""}>${l}</option>`).join("")}</select></div><div class="field support-search"><label for="adm-t-q">Busca</label><input id="adm-t-q" name="q" type="search" maxlength="100" placeholder="Nº ou assunto" value="${esc(filters.q)}"></div><div class="support-filter-actions"><button type="submit" class="primary">Filtrar</button>${button("Limpar", "adm-t-clear", "", "subtle")}</div></form><p id="adm-t-count" class="muted small" aria-live="polite"></p><div id="adm-t-list" aria-busy="true">${loadingBlock("Carregando a fila…")}</div><div id="adm-t-pages" class="pagination"></div>`;
+  ctx.root.innerHTML = `<div class="section-title support-admin-title"><h2>Chamados de suporte</h2><span>FILA DA EQUIPE</span></div><div class="stat-grid support-stats" id="adm-t-stats" aria-live="polite"></div><form id="adm-t-filters" class="support-filters" role="search" aria-label="Filtrar chamados"><div class="field"><label for="adm-t-status">Status</label><select id="adm-t-status" name="status">${options(P.STATUSES, (s) => P.statusLabel(s, true), filters.status, `<option value="active"${filters.status === "active" ? " selected" : ""}>Ativos</option><option value=""${filters.status === "" ? " selected" : ""}>Todos</option>`)}</select></div><div class="field"><label for="adm-t-priority">Prioridade</label><select id="adm-t-priority" name="priority">${options(P.PRIORITIES, P.priorityLabel, filters.priority, '<option value="">Todas</option>')}</select></div><div class="field"><label for="adm-t-category">Categoria</label><select id="adm-t-category" name="category">${options(P.CATEGORIES, P.categoryLabel, filters.category, '<option value="">Todas</option>')}</select></div><div class="field"><label for="adm-t-assigned">Responsável</label><select id="adm-t-assigned" name="assigned">${assigned.map(([v, l]) => `<option value="${v}"${filters.assigned === v ? " selected" : ""}>${l}</option>`).join("")}</select></div><div class="field support-search"><label for="adm-t-q">Busca</label><input id="adm-t-q" name="q" type="search" maxlength="100" placeholder="Nº ou assunto" value="${esc(filters.q)}"></div><div class="support-filter-actions"><button type="submit" class="subtle">Buscar</button></div></form><div id="adm-t-list" aria-busy="true">${loadingBlock("Carregando a fila…")}</div><div id="adm-t-pages" class="pagination"></div>`;
   q(ctx, "#adm-t-filters").addEventListener(
     "submit",
     (e) => {
@@ -310,7 +312,6 @@ async function loadQueue(ctx) {
   ]
     .map(([n, label]) => `<div class="stat-tile"><strong>${Number(n) || 0}</strong><span>${label}</span></div>`)
     .join("");
-  q(ctx, "#adm-t-count").textContent = plural(data.total, "chamado encontrado", "chamados encontrados");
   const items = data.items.filter((t) => P.isGuid(t.id));
   list.innerHTML = items.length
     ? `<div class="data-table-wrap"><table class="data-table support-queue"><caption class="sr-only">Chamados de suporte, por prioridade e atualização</caption><thead><tr><th scope="col">Nº</th><th scope="col">Assunto</th><th scope="col">Solicitante</th><th scope="col">Categoria</th><th scope="col">Prioridade</th><th scope="col">Status</th><th scope="col">Responsável</th><th scope="col">Atualizado</th></tr></thead><tbody>${items.map(queueRow).join("")}</tbody></table></div>`
@@ -318,7 +319,7 @@ async function loadQueue(ctx) {
         "Nenhum chamado neste filtro.",
         filters.status === "active" && !filters.q && !filters.priority && !filters.category && filters.assigned === "any"
           ? "A fila está em dia. Novos chamados aparecem aqui."
-          : "Ajuste os filtros ou use “Limpar” para ver a fila padrão.",
+          : "Ajuste a busca ou os filtros para ver outros chamados.",
       );
   q(ctx, "#adm-t-pages").innerHTML = pagination(data.total, data.page, "adm-t-page");
 }

@@ -48,7 +48,12 @@ public sealed partial class PreparationService
         var note = Text(x.Note, 200, "A observação aceita até 200 caracteres.");
         DateTime? at = x.At?.UtcDateTime;
         if (at is { } when && (when < Now.AddDays(-1) || when > Now.AddYears(2))) throw new RuleException(400, "Escolha uma data entre hoje e os próximos dois anos.");
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.Campaigns.Where(c => c.Id == campaignId).ExecuteUpdateAsync(c => c.SetProperty(p => p.NextSessionAt, at).SetProperty(p => p.NextSessionNote, note), ct);
+        // Data marcada pede confirmação de presença: novidade no Início e no Diário. Desmarcar apaga o aviso.
+        if (at != null) await NoticeService.NotifyAsync(db, campaignId, user, NoticeAreas.Schedule, "schedule", NoticeAudience.Players, ct);
+        else await NoticeService.ForgetAsync(db, campaignId, "schedule", ct);
+        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
 
     public async Task AttendanceAsync(Guid campaignId, AttendanceInput x, string user, CancellationToken ct)

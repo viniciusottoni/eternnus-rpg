@@ -98,6 +98,10 @@ public sealed partial class WorkspaceService(GameDb db)
         p.Title = x.Title.Trim(); p.Content = x.Content; p.Kind = x.Kind; p.Visibility = x.Visibility; p.Secrets = x.Secrets; p.Collection = x.Collection.Trim(); p.Tags = x.Tags.Trim(); p.Status = x.Status; p.ParentId = x.ParentId; p.NpcId = x.NpcId; p.MapId = x.MapId; p.Order = x.Order; p.UpdatedAt = DateTime.UtcNow;
         if (id == null) db.Add(p);
         if (x.Visibility == "selected") foreach (var reader in recipients) db.Add(new WorkspaceReader { PageId = p.Id, UserId = reader });
+        // Novidade para quem passa a ler a página (objetivos e pistas aparecem no Diário). Caderno pessoal ("self") não avisa ninguém.
+        var area = p.Kind is "objective" or "clue" ? NoticeAreas.Journal : NoticeAreas.Pages;
+        if (x.Visibility == "self") await NoticeService.ForgetAsync(db, campaign, p.Id.ToString(), ct);
+        else await NoticeService.NotifyAsync(db, campaign, user, area, p.Id.ToString(), x.Visibility switch { "table" => NoticeAudience.Everyone, "master" => NoticeAudience.Master, _ => NoticeAudience.Readers }, ct, recipients);
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return p;
     }
     public async Task Delete(Guid campaign, Guid id, string user, int revision, bool restore, CancellationToken ct)
@@ -106,7 +110,9 @@ public sealed partial class WorkspaceService(GameDb db)
         var p = await Pages.SingleOrDefaultAsync(p => p.Id == id && p.CampaignId == campaign, ct) ?? throw Missing();
         if (!(p.OwnerId == user || p.Kind != "note" && c.OwnerId == user)) throw Missing();
         if (p.Revision != revision) throw new RuleException(409, "Reabra a página antes de continuar.");
-        p.DeletedAt = restore ? null : DateTime.UtcNow; p.Revision++; await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
+        p.DeletedAt = restore ? null : DateTime.UtcNow; p.Revision++;
+        if (!restore) await NoticeService.ForgetAsync(db, campaign, id.ToString(), ct);
+        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
     public async Task<object> Versions(Guid campaign, Guid id, string user, CancellationToken ct)
     {
@@ -142,8 +148,11 @@ public sealed partial class WorkspaceService(GameDb db)
         if (id == null && await db.Set<PastSession>().CountAsync(p => p.CampaignId == campaign, ct) >= 1000) throw new RuleException(409, "Limite de 1.000 sessões anteriores.");
         var scenes = PastScenes(x.Scenes);
         p.ChapterId = await ChapterOf(db, campaign, x.ChapterId, ct);
+        var wasPublished = id != null && p.Published;
         p.Number = x.Number; p.Title = x.Title.Trim(); p.Summary = x.Summary; p.Date = x.Date; p.Published = x.Published; p.Scenes = scenes;
         if (id == null) db.Add(p); else p.Revision++;
+        if (x.Published && !wasPublished) await NoticeService.NotifyAsync(db, campaign, user, NoticeAreas.Journal, $"past-{p.Id}", NoticeAudience.Players, ct);
+        else if (!x.Published) await NoticeService.ForgetAsync(db, campaign, $"past-{p.Id}", ct);
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return p;
     }
     /// <summary>Exclui um registro anterior ao Eternnus (resumo e cenas). Sessões jogadas na plataforma não passam por aqui.</summary>

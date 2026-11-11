@@ -147,6 +147,7 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
             var account = await AccountLimits.LockUserAsync(db, user, ct);
             await AccountLimits.ReserveAsync(db, account, c, ct);
             db.Members.Add(new() { CampaignId = id, UserId = user }); c.LastActivityAt = DateTime.UtcNow; c.Revision++;
+            await NoticeService.NotifyAsync(db, id, user, NoticeAreas.Players, user, NoticeAudience.Everyone, ct);
             await progression.AwardAsync(user, XpReasons.CampaignJoined, $"campaign_joined:{id}:{user}", ct);
             await db.SaveChangesAsync(ct);
         }

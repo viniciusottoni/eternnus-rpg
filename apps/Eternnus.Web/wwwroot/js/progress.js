@@ -2,6 +2,7 @@ import { helpButton } from "./help.js";
 // Nível, XP e conquistas (#progress) e ranking (#progress/ranking[/week]).
 // Apresentação apenas: valores e conquistas vêm de /api/progress; cálculos/formatação em progress-policy.js.
 import { api } from "./api.js";
+import { ensureNotices, highlightNew, markSeen } from "./notices.js";
 import { state } from "./state.js";
 import { shell } from "./layout.js";
 import { $, esc, button, empty } from "./ui.js";
@@ -54,6 +55,12 @@ export async function renderProgress(segments = []) {
       target.innerHTML = overviewView(data);
       mountRules(target, data.rules);
       syncUser(data);
+      // Conquistas liberadas desde a última visita ficam destacadas até sair da tela.
+      ensureNotices().then((news) => {
+        if (request !== generation || !news?.achievements?.length) return;
+        highlightNew(target, news.achievements);
+        markSeen({ scope: "progress", asOf: news.asOf });
+      });
     }
     applyBars(target);
     guardImages(target);
@@ -154,7 +161,7 @@ function achievementView(a) {
   const status = a.unlocked
     ? `<span class="achievement-date">✓ ${a.unlockedAt ? `Conquistada em ${esc(formatDay(a.unlockedAt))}` : "Conquistada · trajetória reconhecida"}</span>`
     : `<span class="achievement-date">Em andamento · ${esc(a.current || 0)} de ${esc(a.threshold)}</span>`;
-  return `<li class="achievement${a.unlocked ? " is-unlocked" : " is-locked"}"><span class="achievement-icon" aria-hidden="true">${esc(a.icon)}</span><div><strong>${esc(a.title)}</strong><p>${esc(a.description)}</p>${status}${achievementMeter(a)}</div></li>`;
+  return `<li class="achievement${a.unlocked ? " is-unlocked" : " is-locked"}" data-news-key="${esc(a.key)}"><span class="achievement-icon" aria-hidden="true">${esc(a.icon)}</span><div><strong>${esc(a.title)}</strong><p>${esc(a.description)}</p>${status}${achievementMeter(a)}</div></li>`;
 }
 
 function achievementMeter(a) {

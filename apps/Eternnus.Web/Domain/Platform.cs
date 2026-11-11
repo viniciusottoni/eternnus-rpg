@@ -276,6 +276,8 @@ public class GuildTopic
     public bool Pinned { get; set; }
     public bool Locked { get; set; }
     public DateTime? DeletedAt { get; set; }
+    /// <summary>Oculto até decisão da moderação: a abertura do tópico recebeu denúncia (ADR-068). Só equipe e autor leem.</summary>
+    public DateTime? HeldAt { get; set; }
     public int Revision { get; set; } = 1;
 }
 public class GuildPost
@@ -289,6 +291,8 @@ public class GuildPost
     public DateTime? EditedAt { get; set; }
     public DateTime? DeletedAt { get; set; }
     [MaxLength(450)] public string? DeletedById { get; set; }
+    /// <summary>Oculta até decisão da moderação: recebeu denúncia ainda aberta (ADR-068). Texto só para equipe e autor.</summary>
+    public DateTime? HeldAt { get; set; }
     public int UsefulCount { get; set; }
 }
 /// <summary>Marcação "útil" (uma por usuário e post; não vale no próprio post).</summary>

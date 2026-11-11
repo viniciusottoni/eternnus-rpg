@@ -648,3 +648,68 @@ Toda tabela da plataforma pagina em 15 itens. A busca geral da campanha não lim
 Imagens enviadas pela ficha do personagem do mestre eram gravadas como mapa “apenas imagem” e apareciam no Atlas do Eternnus, no seletor de cenas e na publicação do atlas. `CampaignMap.Purpose` passa a separar `map` de `portrait` (migração `NpcPortraitAssets`, padrão `map`). A migração reclassifica de forma conservadora: só imagens sem grade ligadas a um NPC ou com o nome gerado pelo envio do NPC, e que não sejam usadas por cena, sessão, atlas ou camada de névoa; nada é apagado. Listas de mapas, `ResolveMapAsync` e o atlas ignoram retratos; o seletor de imagem do NPC lista só retratos (mantendo a imagem atual de outra categoria); o acervo ganha a seção “Retratos de NPC” em tabela. Mapas e retratos têm cotas separadas (50 e 200) e dividem os 250 MB. O “Atlas do Eternnus” passa a mostrar só os cenários oficiais, pois os mapas da campanha já têm o explorador.
 
 Tabelas restantes (mesma decisão de 15 por página com busca e filtros por coluna): capítulos (`q`, `kind`, `published` no servidor; ↑/↓ só sem filtro, pois movem na ordem completa), registro de sessões (filtro `state` do mestre), denúncias da Guilda (`q`, `resolution`, 15 por página; tópicos continuam com 20 por não serem tabela), categorias da Guilda, regras de XP, ranking e versões de ficha-modelo (no cliente, listas curtas, via `mountClientTable`), campanhas do admin (busca também pelo nome do mestre). Fila de suporte, usuários e auditoria do admin já tinham busca e filtros por coluna. Em telas estreitas, as tabelas novas usam `.stack-table` (linhas viram cartões com rótulos).
+
+## ADR-066 — Senha local mais simples: 8 a 128 caracteres e dois tipos (11/11/2026)
+
+A exigência anterior (10 a 128 caracteres com maiúscula, minúscula, número e símbolo) dificultava o cadastro. A senha local passa a aceitar de 8 a 128 caracteres com ao menos dois tipos distintos entre maiúscula, minúscula, número e símbolo. A regra vive em `PasswordPolicy` (pura, testada) e é aplicada pelos endpoints de cadastro/redefinição e por `PasswordPolicyValidator`, registrado no Identity com os requisitos padrão desligados. Hash, tokens e bloqueio por tentativas continuam do Identity. Contas existentes não são afetadas; o login só limita o tamanho máximo. A interface mostra o requisito uma única vez, abaixo do campo de senha.
+
+## ADR-067 — Importar PDF preenchido na ficha padrão do sistema (11/11/2026)
+
+Jogadores que já têm a ficha oficial preenchida em PDF editável podem trazer os valores para a ficha da plataforma, em qualquer sistema que tenha modelo padrão (`IsDefault`, fora de campanha) com PDF de fundo. Modelos privados de campanha e modelos não padrão não oferecem a importação, pois a correspondência depende do mesmo layout da ficha oficial.
+
+O arquivo é lido somente no navegador (`pdf-import.js`, pdf.js com scripts, XFA e eval desligados, até 25 MB e 50 páginas) e nunca é enviado. Os campos AcroForm (texto, lista, caixa e rádio) casam com os campos do modelo pela posição: cada widget vai ao campo da mesma página que cobre ao menos 50% da sua área; widgets sem posição correspondente casam pelo nome normalizado do campo ou do rótulo (`pdf-import-policy.js`, puro e testado). Vários widgets num texto longo são unidos em ordem de leitura. Campos calculados, vazios, desmarcados ou com formato inválido (número fora de faixa, opção inexistente) não são importados e os inválidos são listados. A importação só preenche a tela; gravar continua sendo “Criar personagem”/“Salvar ficha”, com a validação do servidor. Em ficha existente, a substituição pede confirmação. A API passa a expor `template.isDefault` na ficha e no modelo da campanha.
+
+No mesmo trabalho, o “formulário acessível” da ficha passa a mostrar os campos em três colunas (duas até 1.100 px, uma até 760 px); textos longos ocupam a linha inteira.
+
+## ADR-067 — Listas padronizadas: uma barra de busca, “Buscar” sempre, sem “Limpar” (11/11/2026)
+
+Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar” em outras, nenhum botão nas tabelas filtradas no cliente, “Limpar” em quase todas e contagens entre a busca e a tabela. Fica assim:
+
+- `controlsHtml` (`data-table.js`) é a barra única: busca larga, filtros por coluna e o botão secundário “Buscar”, alinhados pela base; no celular, empilhados. Tabelas no cliente continuam reagindo ao digitar; “Buscar” aplica na hora. Personagens do mestre, capítulos, sessões, Páginas, notas, NPCs conhecidos, denúncias da Guilda e a busca geral usam essa barra. Admin, suporte e biblioteca mantêm o layout próprio, com “Buscar” no lugar de “Filtrar”.
+- Não existe botão “Limpar”: apagar a busca e voltar os filtros para “Todos” mostra a lista inteira.
+- Nada entre a barra e a tabela: contagens saem (o total fica na paginação) e avisos de filtro vão para baixo da tabela.
+- O botão de adicionar de cada lista (“+ …”) é sempre dourado (`primary`).
+- Páginas e Minhas notas viram tabela (título com coleção/etiquetas e NPC, tipo, quem lê, estado, ações); a lixeira é um filtro “Mostrar”.
+- Mapas e cenários não mostra mais a seção “Retratos de NPC”. Retratos continuam isolados dos mapas (ADR anterior) e são escolhidos e trocados pela ficha do personagem; a API `assets/portraits` permanece para o seletor.
+
+## ADR-069 — Indicadores de novidade no menu, nos cartões e nos itens (11/11/2026)
+
+**Contexto:** a pessoa não sabia o que mudou desde a última visita (tópico novo na Guilda, resumo publicado, mesa aberta, conquista liberada, resposta de chamado). O pedido: selo vermelho com a quantidade no menu, no cartão/aba e no próprio item, para guiar a leitura; ao ver a tela e sair dela, o selo some. Em campanhas, só para quem participa.
+
+**Decisão:** dois mecanismos, conforme o conteúdo já tenha data própria e público amplo ou não.
+- `Notice` (por leitor) para campanhas: o caso de uso que publica grava o aviso na mesma transação, para o público que pode ler o item (jogadores, mestre, leitores escolhidos de uma página) e nunca para o autor. Itens sem data de publicação (sessões anteriores, capítulos, atlas, integrantes) não precisam de colunas novas. Ver a aba apaga os avisos daquela área até o instante mostrado (`asOf`); despublicar/excluir remove o aviso de todos. O público de uma campanha é pequeno; a cópia por leitor é barata e mantém a leitura de contadores simples.
+- `ReadMark` (por instante) para Guilda (por tópico e geral), conquistas, chamados (por chamado e fila do Admin) e denúncias: o conteúdo já tem data e o público é a plataforma inteira, então copiar por leitor não escalaria. Novidade = conteúdo de outra pessoa mais novo que a marca, numa janela de 60 dias. A própria mensagem na Guilda avança a marca do tópico.
+- GETs nunca escrevem; "visto" é `POST /api/notices/seen` com CSRF. A migração `Notices` cria as tabelas e uma marca de base para as contas existentes (sem enxurrada de itens antigos); contas novas usam a data de criação.
+- Cliente: `notices.js` consulta os contadores a cada navegação e a cada 60 s com a aba visível; o destino aberto preserva o próprio selo até a próxima navegação, e os itens destacados continuam marcados enquanto a pessoa estiver na tela. Abrir um tópico/chamado marca só ele; abrir uma aba da campanha marca as áreas dela; o Início marca mesas abertas e partidas marcadas; Conquistas e a moderação marcam ao abrir.
+
+**Alternativas descartadas:** caixa de notificações com cópia por usuário também para a Guilda (crescimento com o número de contas a cada mensagem); colunas `PublishedAt` em cada entidade de campanha (várias migrações e regras de visibilidade repetidas na leitura); estado só no navegador (some ao trocar de aparelho e não respeita quem pode ler).
+
+**Consequências e limites:** contadores limitados a 99+ e listas a 100 chaves. Página compartilhada reacende o aviso a cada gravação; resumo, sessão anterior, capítulo e NPC avisam só na primeira publicação. Integrante removido deixa de ver os avisos da campanha (a leitura filtra por participação). Sem push nem e-mail; atualização por consulta a cada 60 s. Cache v48 com `notices.js` na lista pública.
+
+## ADR-068 — Três salões novos e ocultação na primeira denúncia da Guilda (11/11/2026)
+
+**Contexto:** a Guilda tinha seis salões e nenhum lugar para sugestões de melhoria da plataforma. Denúncias só entravam na fila: o conteúdo denunciado continuava visível até alguém da equipe agir. O pedido: mais três salões, sendo um para melhorias, e que uma única denúncia já esconda o tópico e o envie à moderação, em todos os salões.
+
+**Decisão:**
+- Salões semeados (abertos a partir do nível 1): Forja de Ideias (sugestões de melhorias e novos recursos), Galeria do Artífice (mapas, retratos, tokens e artes) e Portal do Aprendiz (dúvidas de iniciantes, que não podem abrir tópicos em "Regras e sistemas"). A migração `GuildModerationHold` insere com `ON CONFLICT DO NOTHING`, preservando bancos onde a administração já criou um salão com o mesmo identificador; ordens e textos dos salões existentes não são alterados.
+- `HeldAt` em `GuildPosts` e `GuildTopics`. A primeira denúncia oculta a mensagem; se ela for a abertura, oculta também o tópico inteiro. Denunciar uma resposta oculta só a resposta: uma denúncia numa resposta não pode derrubar a conversa toda.
+- Oculto para todos, exceto equipe e autor. O autor lê o próprio texto com aviso, mas não edita nem responde até a decisão (a moderação julga o texto denunciado). Tópico oculto sai de listas, recentes, contagens dos salões e indicador de novidades; a leitura responde 404 a quem não é equipe nem autor.
+- A ocultação termina quando não resta denúncia aberta da mensagem: arquivar devolve a mensagem (e o tópico) ao público; remover deixa "removida pela moderação" e o tópico volta às listas. Para tirar o tópico inteiro, a equipe usa "Remover tópico".
+- Contra abuso: mensagens de Admin/Embaixador entram na fila sem serem ocultadas (avisos oficiais não somem por uma denúncia), e mensagem com denúncia arquivada depois da última edição também não volta a ser ocultada por novas denúncias, até o autor editar o texto. O limite "social" já se aplica à rota de denúncia.
+- Denúncia e decisão travam tópico e post nessa ordem (a mesma da exclusão pelo autor) e gravam a ocultação na mesma transação da denúncia. Ocultar por denúncia não gera auditoria (é ação de membro); remover e arquivar continuam auditados.
+
+**Alternativas descartadas:** ocultar o tópico inteiro a cada denúncia de qualquer resposta (uma conta derrubaria qualquer conversa); limite de N denúncias (pedido explícito por uma); reutilizar `DeletedAt` para a ocultação (misturaria "removido" com "em análise" e a restauração da moderação).
+
+**Consequências e limites:** uma conta mal-intencionada ainda pode ocultar temporariamente mensagens de membros até a equipe arquivar; a fila de denúncias e a auditoria ficam como ferramentas de resposta. Não há punição automática para denúncias falsas.
+
+## ADR-070 — Dados rápidos, bolhas de vida e armadura, mapa solto na mesa e UVTT (11/11/2026)
+
+**Contexto:** retorno de jogador comparando com Owlbear e Roll20: a mesa parecia pouco intuitiva; faltavam dados à mão, estado dos marcadores no próprio mapa e um jeito direto de trazer mapas (inclusive do Dungeondraft).
+
+**Decisão:**
+- **Bandeja de dados** sempre visível no palco (d4 a d20, um clique = 1 dado sem modificador; ⬡ abre o construtor). Usa `POST /rolls` com `spec`; o mestre alterna “mesa”/“só eu” (`table`/`blind`); para jogadores vale a regra da mesa. O resultado aparece em destaque sobre o mapa a partir do evento recebido pela consulta ao vivo: quem não recebe o evento não vê nada. Máximo/mínimo só com um dado sem modificador. A bandeja tem faixa própria (o mapa encolhe e nenhuma casa fica coberta); no celular, duas colunas de alvos de 44 px.
+- **Bolhas** sobre o marcador: barra do primeiro recurso da ficha (vida) e escudo com o campo de papel Armadura. Só com dados já enviados: resumo do grupo (fichas legíveis) e, para o mestre, `play.npcs`. Clique na barra abre o ajuste; personagem usa `POST /characters/{id}/resource` (dono ou mestre), NPC usa `POST /npcs/{id}/resource`, que passa a aceitar `field` para NPC com ficha-modelo. Alternância ♥ é só de apresentação. Alternativa por teclado: “♥ … do selecionado” nas ferramentas do mestre e a ficha resumida do jogador.
+- **Mapa solto na mesa** (arrastar ou “Enviar mapa ou UVTT”): só o mestre. A imagem vai ao acervo (`POST /assets/maps`) com grade sugerida; WebP e imagens acima dos limites são redesenhadas no navegador. Depois de mostrar na mesa abre o ajuste de grade. Novo `POST /sessions/{id}/map/grid` ajusta a grade **com o mapa na mesa** (antes era preciso tirar o mapa da mesa): sessão → mapa bloqueados, evento privado, névoa recalculada (`TableFog.Fit`), marcadores fora da grade vão à casa livre mais próxima.
+- **UVTT** (.dd2vtt/.uvtt/.df2vtt): lido no navegador; imagem e `pixels_per_grid` viram o mapa (a redução mantém o quadrado inteiro em pixels); paredes, portas e luzes viram a preparação do mapa via `PUT /assets/layers`. A camada da mesa é por casas: paredes sobre linhas da grade marcam a casa do lado de fora da sala quando o desenho fecha a sala (empate: direita/baixo); portas viram `d`/`o`; luzes viram focos (raio em casas, até 100). Importação também no acervo (“Importar UVTT”).
+
+**Consequências:** nenhuma tabela nova. A conversão de paredes é aproximada; o mestre confere em “Paredes e portas”. O arquivo UVTT (até 60 MB) é lido no aparelho; só a imagem preparada e as marcas são enviadas. Exportar mapas fica fora desta etapa.

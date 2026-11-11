@@ -92,7 +92,10 @@ public sealed partial class WorkspaceService
             chapter.Revision++;
         }
         chapter.Title = title; chapter.Kind = kind; chapter.Summary = summary;
+        var wasPublished = id != null && chapter.Published;
         if (x.Published is { } published) chapter.Published = published;
+        if (chapter.Published && !wasPublished) await NoticeService.NotifyAsync(db, campaign, user, NoticeAreas.Journal, $"chapter-{chapter.Id}", NoticeAudience.Players, ct);
+        else if (!chapter.Published) await NoticeService.ForgetAsync(db, campaign, $"chapter-{chapter.Id}", ct);
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
         return chapter;
     }

@@ -104,7 +104,7 @@ try {
   await mp.locator('[data-action="t-view"][data-id="party"]').click();
   check(await mp.locator('.party').isVisible() && await mp.locator('#main').isVisible(), 'grupo e mapa visíveis juntos');
   await mp.locator('[data-action="t-view"][data-id="map"]').click();
-  await mp.locator('[data-action="t-roll-builder"]').click();
+  await mp.locator('#t-turn [data-action="t-roll-builder"]').click();
   await mp.locator('#modal[open]').waitFor();
   check((await mp.locator('#modal').boundingBox()).height <= 390, 'rolagem cabe na altura móvel');
   await shot(mp, '04-rolagem');

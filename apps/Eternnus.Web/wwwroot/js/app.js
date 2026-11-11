@@ -8,6 +8,7 @@ import { api, renewCsrf, clearCsrf } from "./api.js";
 import { $, esc, button, toast, installUi } from "./ui.js";
 import { renderAuth, refreshUser, installAuth, takeReturnRoute } from "./auth.js";
 import { renderHome, shell, installNavMore } from "./layout.js";
+import { installNotices, enterRoute } from "./notices.js";
 import { renderCampaigns, installCampaigns } from "./campaigns.js";
 import { canAccess, openingDeadline, PLATFORM_ROUTES, isSafeSegment, canOpenPlatform, safeReturnRoute, isInviteCode } from "./policy.js";
 import { parseRoute, isGuid } from "./session-policy.js";
@@ -27,6 +28,7 @@ installAuth();
 installCampaigns();
 installPwa();
 installNavMore();
+installNotices();
 const requestedRoute = () => location.hash.slice(1) || "overview";
 function route() {
   if (opening) return Promise.resolve();
@@ -52,6 +54,8 @@ async function renderRoute() {
   // Activity is a CSRF-protected write; profile GET remains read-only.
   api("/auth/activity", "POST", undefined, { background: true }).catch(() => {});
   const view = requestedRoute();
+  // Contadores de novidade: o destino aberto mantém o próprio selo até a próxima navegação.
+  enterRoute(view);
   // Convite: conta pendente guarda o código no servidor e vê o aviso de verificação; conta verificada vê a prévia.
   const [root, inviteCode] = view.split("/");
   if (root === "invite") {

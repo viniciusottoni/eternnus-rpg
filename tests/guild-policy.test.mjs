@@ -91,6 +91,23 @@ test("botões do post seguem as capacidades do servidor", () => {
   assert.equal(removed.moderateRestore, true);
   assert.equal(g.postButtons({ ...base, removed: "author" }, { staff: true }).moderateRestore, false);
   assert.equal(g.postButtons({ ...base, reported: true, canReport: false }).reported, true);
+  const held = g.postButtons({ ...base, held: true, canMarkUseful: false, canReport: false }, { staff: true, canReply: true });
+  assert.equal(held.useful.show, false);
+  assert.equal(held.reply, false);
+  assert.equal(held.report, false);
+  assert.equal(held.moderateRemove, true);
+});
+
+test("mensagem em análise e resultado da denúncia (ADR-068)", () => {
+  assert.equal(g.heldLabel({ held: false }), "");
+  assert.equal(g.heldLabel({ held: true, removed: "moderation" }, { staff: true }), "");
+  assert.equal(g.heldLabel({ held: true }), "Mensagem oculta: em análise pela moderação");
+  assert.match(g.heldLabel({ held: true }, { mine: true }), /^Sua mensagem recebeu uma denúncia/);
+  assert.match(g.heldLabel({ held: true }, { staff: true, mine: true }), /aguardando sua decisão/);
+  assert.match(g.reportOutcome({ hidden: true, topicHidden: true }), /tópico ficou oculto/);
+  assert.match(g.reportOutcome({ hidden: true, topicHidden: false }), /mensagem ficou oculta/);
+  assert.match(g.reportOutcome({ hidden: false }), /segue visível/);
+  assert.match(g.reportOutcome(null), /segue visível/);
 });
 
 test("ferramentas de moderação do tópico", () => {

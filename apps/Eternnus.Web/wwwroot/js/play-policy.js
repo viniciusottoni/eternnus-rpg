@@ -173,3 +173,87 @@ const ASSET_IMAGE = new RegExp(`^/api/campaigns/${GUID}/assets/maps/${GUID}/imag
 const KNOWN_PORTRAIT = new RegExp(`^/api/campaigns/${GUID}/known-npcs/${GUID}/portrait(?:[?]v=[0-9a-f]{8})?$`);
 export const safeImageUrl = (url) =>
   typeof url === "string" && (/^https:\/\/[^\s"'<>\\]+$/.test(url) || PORTRAIT.test(url) || ASSET_IMAGE.test(url) || KNOWN_PORTRAIT.test(url)) ? url : null;
+
+/** Dados da bandeja sempre visível da mesa: um clique rola 1 dado (d4 a d20). */
+export const QUICK_DICE = Object.freeze([4, 6, 8, 10, 12, 20]);
+/** Rolagem rápida da bandeja: um dado, sem modificador (o mesmo DiceSpec do construtor). */
+export const quickSpec = (sides) => ({ count: 1, sides, modifier: 0, keep: null, keepCount: 0, explode: false, successAt: null, percentTarget: null, percentRule: null });
+
+/**
+ * Destaque de rolagem sobre o mapa a partir de um evento recebido do servidor (que já filtrou quem vê).
+ * Nulo para eventos sem resultado (rolagem secreta, aviso). Crítico/falha só com um único dado sem modificador.
+ */
+export function rollSpotlight(event, data) {
+  if (event?.kind !== "roll" || !data || data.secret || !data.roll) return null;
+  const roll = data.roll;
+  const total = Number(roll.total);
+  if (!Number.isFinite(total)) return null;
+  const values = Array.isArray(roll.values) ? roll.values.map(Number) : [];
+  const sides = Number(String(roll.formula || "").match(/^1d(\d+)$/)?.[1]);
+  const tone = values.length === 1 && sides > 1 && !roll.modifier ? (values[0] === sides ? "crit" : values[0] === 1 ? "fumble" : "") : "";
+  const successes = roll.successes != null;
+  return {
+    actor: String(data.actor || event.author || "").slice(0, 60),
+    label: String(data.label || "").slice(0, 60),
+    formula: String(roll.formula || "").slice(0, 80),
+    total: successes ? `${total} ${total === 1 ? "sucesso" : "sucessos"}` : String(total),
+    outcome: roll.outcome || data.request?.outcome || "",
+    tone,
+    private: data.visibility && data.visibility !== "table",
+  };
+}
+
+const ARMOR_LABEL = /^(ca|ac|classe de armadura|armadura|defesa)$/i;
+const bubbleTone = (value, max) => {
+  if (!(max > 0)) return "";
+  const p = value / max;
+  return value <= 0 ? "down" : p <= 0.25 ? "critical" : p <= 0.5 ? "wounded" : "healthy";
+};
+
+/**
+ * Bolhas de vida e armadura sobre cada marcador (tokenId → bolha). Só usa o que o servidor já enviou:
+ * personagens com ficha legível (resumo do grupo) e, para o mestre, NPCs/criaturas de `play.npcs`.
+ * `target` diz qual escrita ajusta o recurso; `editable` é só UX: o servidor confere dono e mestre.
+ */
+export function tokenBubbles(state) {
+  const out = new Map();
+  if (!state?.tokens?.length) return out;
+  const master = !!state.me?.isMaster;
+  const people = new Map((state.participants || []).filter((p) => p.characterId).map((p) => [p.characterId, p]));
+  const npcs = new Map((master ? state.play?.npcs || [] : []).map((n) => [n.tokenId, n]));
+  for (const token of state.tokens) {
+    if (token.perceived) continue;
+    let resource = null, armor = null, target = null, editable = false;
+    if (token.characterId) {
+      const p = people.get(token.characterId);
+      if (!p?.canView || !p.summary) continue;
+      const r = p.summary.resources?.[0];
+      if (r) { resource = r; target = { kind: "character", id: token.characterId, field: r.field }; }
+      armor = p.summary.armor || (p.summary.stats || []).find((s) => ARMOR_LABEL.test(String(s.label).trim())) || null;
+      editable = master || (!!p.isMe && p.characterId === state.me?.characterId);
+    } else if (master && token.masterCharacterId) {
+      const n = npcs.get(token.id);
+      if (!n) continue;
+      if (n.sheet) {
+        const r = n.sheet.resources?.[0];
+        if (r) { resource = r; target = { kind: "npc", id: n.id, field: r.field }; }
+        armor = n.sheet.armor || (n.sheet.stats || []).find((s) => ARMOR_LABEL.test(String(s.label).trim())) || null;
+      } else {
+        const list = n.resources || [];
+        const ai = list.findIndex((r) => ARMOR_LABEL.test(String(r.label).trim()));
+        const ri = list.findIndex((r, i) => i !== ai);
+        if (ri >= 0) { resource = { label: list[ri].label, value: list[ri].value, max: list[ri].max ?? null }; target = { kind: "npc", id: n.id, index: ri }; }
+        if (ai >= 0) armor = { label: list[ai].label, value: String(list[ai].value) };
+      }
+      editable = true;
+    }
+    if (!resource && !armor) continue;
+    const value = Number(resource?.value) || 0, max = Number(resource?.max) || 0;
+    out.set(token.id, {
+      resource: resource ? { label: String(resource.label), value, max: max > 0 ? max : null, tone: bubbleTone(value, max) } : null,
+      armor: armor ? { label: String(armor.label), value: String(armor.value).slice(0, 4) } : null,
+      target: editable && resource ? target : null,
+    });
+  }
+  return out;
+}

@@ -94,7 +94,7 @@ export async function renderLibrary(segments = []) {
     .join("")}</select></div>
   <div class="lib-filter"><label for="lib-type">Tipo</label><select id="lib-type" name="type"><option value="">Todos</option><option value="pdf" ${filters.type === "pdf" ? "selected" : ""}>PDF</option><option value="image" ${filters.type === "image" ? "selected" : ""}>Imagem</option></select></div>
 </form>
-<div class="list-summary lib-summary"><span id="lib-count" aria-live="polite"></span><span class="lib-summary-actions">${button("Limpar filtros", "lib-clear", "", "text-button")}${staff ? `<label class="lib-toggle"><input type="checkbox" id="lib-deleted" ${showDeleted ? "checked" : ""}> Mostrar excluídos</label>` : ""}</span></div>
+<div class="list-summary lib-summary"><span class="lib-summary-actions">${staff ? `<label class="lib-toggle"><input type="checkbox" id="lib-deleted" ${showDeleted ? "checked" : ""}> Mostrar excluídos</label>` : ""}</span></div>
 <div id="lib-grid" class="lib-grid" aria-live="polite" aria-busy="true"></div>
 <div id="lib-pagination" class="pagination"></div>`;
   if (!staff) showDeleted = false;
@@ -164,7 +164,6 @@ async function load() {
   } catch (error) {
     if (request !== generation || !$("#lib-grid")) return;
     grid.removeAttribute("aria-busy");
-    $("#lib-count").textContent = "";
     $("#lib-pagination").innerHTML = "";
     grid.innerHTML = `<div class="empty lib-error" role="alert"><span class="empty-sigil" aria-hidden="true">⚠</span><h3>A biblioteca não respondeu.</h3><p>${esc(error.message)}</p>${button("Tentar novamente", "lib-retry", "", "primary")}</div>`;
     return;
@@ -173,13 +172,12 @@ async function load() {
   grid.removeAttribute("aria-busy");
   items = result.items.filter((i) => isGuid(i.id));
   const filtered = Object.values(filters).some(Boolean);
-  $("#lib-count").textContent = `${result.total} ${result.total === 1 ? "material" : "materiais"}${showDeleted ? " excluídos" : ""}`;
   grid.innerHTML = items.length
     ? items.map(card).join("")
     : showDeleted
       ? empty("Nenhum material excluído.", "Os materiais excluídos aparecem aqui para revisão e restauração.")
       : filtered
-        ? empty("Nenhum material encontrado.", "Tente outra busca ou limpe os filtros.", "lib-clear", "Limpar filtros")
+        ? empty("Nenhum material encontrado.", "Tente outra busca ou volte os filtros para “Todos”.")
         : isStaff(state.user)
           ? empty("A estante ainda está vazia.", "Publique o primeiro material para toda a guilda.", "lib-add", "+ Adicionar material")
           : empty("A estante ainda está vazia.", "Em breve a equipe publicará regras, mapas e aventuras aqui.");
@@ -213,14 +211,6 @@ async function onClick(e) {
   const { action, id } = b.dataset;
   const item = items.find((i) => i.id === id);
   if (action === "lib-retry") return load();
-  if (action === "lib-clear") {
-    Object.assign(filters, { q: "", systemId: "", category: "", type: "" });
-    const form = $("#lib-filters");
-    form.reset();
-    form.elements.q.value = "";
-    page = 1;
-    return load();
-  }
   if (action === "lib-page") {
     page = Math.max(1, Number(id) || 1);
     await load();

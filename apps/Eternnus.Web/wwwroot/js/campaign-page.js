@@ -21,6 +21,7 @@ import { mapChoices, mountMapChoices } from "./map-picker.js";
 import { guardAvatars } from "./sheet.js";
 import { renderCampaignLibrary, renderCampaignMaps } from "./campaign-assets.js";
 import { keepMasterPresence } from "./session-presence.js";
+import { campaignNotices, newsBadge, keepHighlighted, markSeen } from "./notices.js";
 
 // Abas principais [chave, rótulo, só mestre]. Nada aparece ou some da barra ao navegar: subpáginas ficam dentro da aba-mãe.
 const TABS = [
@@ -53,19 +54,31 @@ const subpageAllowed = (tab, d) => {
   if (item && item[2] && !d.isMaster) return false;
   return true;
 };
-function subnav(d, parent, tab) {
+function subnav(d, parent, tab, news) {
   const items = (SUBPAGES[parent] || []).filter(([, , masterOnly]) => !masterOnly || d.isMaster);
   if (items.length < 2) return "";
   const label = TABS.find(([key]) => key === parent)?.[1] || "";
-  return `<nav class="sub-tabs" aria-label="Seções de ${esc(label)}">${items.map(([key, text]) => `<a href="#campaign/${esc(d.id)}/${key}" ${key === tab ? 'aria-current="page" class="active"' : ""}>${esc(text)}</a>`).join("")}</nav>`;
+  return `<nav class="sub-tabs" aria-label="Seções de ${esc(label)}">${items.map(([key, text]) => `<a href="#campaign/${esc(d.id)}/${key}" ${key === tab ? 'aria-current="page" class="active"' : ""}>${esc(text)}${newsBadge(tabNews(news, key, true), text)}</a>`).join("")}</nav>`;
 }
 let generation = 0;
+
+// Novidades (ADR-069): cada área aparece na aba onde o conteúdo é lido.
+const AREA_TAB = { table: "overview", schedule: "journal", journal: "journal", players: "players", pages: "world", npcs: "npcs", atlas: "atlas" };
+const tabOfRoute = (tab) => (JOURNAL_SECTIONS[tab] ? "journal" : tab);
+/** Quantidade de novidades de uma aba principal (soma das subpáginas) ou de uma subpágina. */
+function tabNews(news, key, sub = false) {
+  if (!news?.areas) return 0;
+  return Object.entries(news.areas).reduce((sum, [area, n]) => {
+    const target = AREA_TAB[area];
+    return target && (sub ? target === key : parentTab(target) === key) ? sum + n : sum;
+  }, 0);
+}
 
 export async function renderCampaignPage(id, tab = "overview", item = "") {
   const request = ++generation;
   if (!ITEM.test(item || "")) item = "";
   // A tela anterior fica sob a camada de carregamento até os dados chegarem: sem página vazia entre as abas.
-  const detail = await api("/campaigns/" + id);
+  const [detail, news] = await Promise.all([api("/campaigns/" + id), campaignNotices(id)]);
   if (request !== generation) return;
   shell("campaigns");
   state.campaign = detail;
@@ -77,16 +90,28 @@ export async function renderCampaignPage(id, tab = "overview", item = "") {
   $("#main").innerHTML =
     `${detail.isOneShot ? '<a class="back-link" href="#one-shot">← One-shots</a>' : '<a class="back-link" href="#campaigns">← Minhas campanhas</a>'}
   <section class="campaign-hero metal"><div class="campaign-hero-copy"><span class="eyebrow">${esc(detail.system)}</span><h1>${esc(detail.name)}</h1>${detail.archived ? '<p class="notice-box">Campanha arquivada: conteúdo e histórico preservados, sem novas partidas até ser restaurada.</p>' : ""}${heroPremise(detail)}<div class="hero-meta"><span>♛ <b>Mestre:</b> ${esc(masterName)}</span><span>♙ <b>${detail.members.length}</b> ${detail.members.length === 1 ? "jogador" : "jogadores"}</span>${detail.isMaster && !detail.isOneShot ? `<span>▣ <b>${detail.sessionCount}</b> ${detail.sessionCount === 1 ? "sessão" : "sessões"}</span>` : ""}${online ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>ONLINE</span>' : ""}</div></div>${online ? `<a class="button primary enter-table" href="#table/${esc(id)}">▶ ${detail.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>` : ""}</section>
-  <nav class="page-tabs" aria-label="Seções da campanha">${visible.map(([key, label]) => `<a href="#campaign/${esc(id)}/${key}" ${key === parent ? 'aria-current="page" class="active"' : ""}>${label}</a>`).join("")}</nav>
-  <div class="campaign-page-grid"><section id="campaign-tab" class="campaign-tab" aria-live="polite">${subnav(detail, parent, tab)}<div id="campaign-tab-body" class="campaign-tab-body"></div></section>${overviewCard(detail)}</div>`;
+  <nav class="page-tabs" aria-label="Seções da campanha">${visible.map(([key, label]) => `<a href="#campaign/${esc(id)}/${key}" ${key === parent ? 'aria-current="page" class="active"' : ""}>${label}${newsBadge(tabNews(news, key), label)}</a>`).join("")}</nav>
+  <div class="campaign-page-grid"><section id="campaign-tab" class="campaign-tab" aria-live="polite">${subnav(detail, parent, tab, news)}<div id="campaign-tab-body" class="campaign-tab-body"></div></section>${overviewCard(detail)}</div>`;
   await renderTab(detail, tab, item);
+  if (request !== generation) return;
+  const releaseNews = showNews(detail, tab, news);
   const anchor = JOURNAL_SECTIONS[tab];
   if (anchor) document.getElementById(anchor)?.scrollIntoView({ block: "start" });
   if (tab === "overview" && item === "premise" && detail.description) openPremise(detail);
   guardAvatars($("#main"));
   if (detail.isOneShot) $(".campaign-hero-copy").insertAdjacentHTML("beforeend", `<p class="notice-box">One-shot: se o mestre se desconectar, a mesa espera ${detail.recoveryMinutes || 10} minutos antes de ser removida. Encerrar apaga os dados; converter em campanha preserva tudo. Prazo máximo: ${esc(new Date(detail.expiresAt).toLocaleString("pt-BR"))}.</p>`);
   const releasePresence = keepMasterPresence(detail);
-  return () => { ++generation; releasePresence(); };
+  return () => { ++generation; releasePresence(); releaseNews(); };
+}
+
+/** Destaca os itens novos da aba aberta e registra "visto" das áreas dela. Os destaques ficam até sair da aba. */
+function showNews(d, tab, news) {
+  const route = tabOfRoute(tab);
+  const items = (news?.items || []).filter((n) => AREA_TAB[n.area] === route);
+  if (!items.length) return () => {};
+  const release = keepHighlighted($("#campaign-tab-body"), items.map((n) => n.key));
+  markSeen({ scope: "campaign", campaignId: d.id, areas: [...new Set(items.map((n) => n.area))], asOf: news.asOf });
+  return release;
 }
 
 /** Premissa no topo: trecho curto com as quebras preservadas; "mais" abre o texto completo num popup. */
@@ -117,12 +142,12 @@ async function renderTab(d, tab, item = "") {
   if (tab === "journal" || JOURNAL_SECTIONS[tab]) return renderJournalTab(d, target, JOURNAL_SECTIONS[tab] ? item : "");
   if (tab === "npcs") return (await import("./campaign-search.js")).renderKnownNpcs(d, target, /^[0-9a-f-]{36}$/i.test(item) ? item : "");
   if (tab === "players") {
-    target.innerHTML = `<div class="section-title"><h2>Jogadores</h2>${d.isMaster ? "" : button("+ Vincular minha ficha", "cp-link", d.id, "subtle small")}</div>${
+    target.innerHTML = `<div class="section-title"><h2>Jogadores</h2>${d.isMaster ? "" : button("+ Vincular minha ficha", "cp-link", d.id, "primary small")}</div>${
       d.members.length
         ? `<ul class="member-list">${d.members
             .map((m) => {
               const sheets = d.characters.filter((c) => c.ownerId === m.id);
-              return `<li class="member-row metal"><img class="avatar" src="${esc(m.avatarUrl)}" alt="" referrerpolicy="no-referrer"><div><strong>${esc(m.name)}</strong><small>${sheets.length ? sheets.map((c) => `${esc(c.name)} · Nv. ${c.level} · Vida ${c.hp}/${c.maxHp}`).join("<br>") : "Nenhuma ficha vinculada"}</small></div>${d.isMaster ? button("Remover", "cp-remove", m.id, "subtle small") : ""}</li>`;
+              return `<li class="member-row metal" data-news-key="${esc(m.id)}"><img class="avatar" src="${esc(m.avatarUrl)}" alt="" referrerpolicy="no-referrer"><div><strong>${esc(m.name)}</strong><small>${sheets.length ? sheets.map((c) => `${esc(c.name)} · Nv. ${c.level} · Vida ${c.hp}/${c.maxHp}`).join("<br>") : "Nenhuma ficha vinculada"}</small></div>${d.isMaster ? button("Remover", "cp-remove", m.id, "subtle small") : ""}</li>`;
             })
             .join("")}</ul>`
         : empty(
@@ -346,7 +371,7 @@ async function templateSettings(campaign, target) {
   const [templates, current, own] = await Promise.all([api(`/sheet-templates?systemId=${campaign.rpgSystemId}`), api(`/campaigns/${campaign.id}/sheet-template`), api(`/campaigns/${campaign.id}/private-templates`)]);
   if (!target.isConnected) return;
   const section = document.createElement("section"); section.className = "metal cs-template-settings";
-  section.innerHTML = `<h3>Ficha-modelo da campanha${helpButton("campanhas.config.modelo", "Ficha-modelo da campanha")}</h3><p>Novas fichas usam ${esc(current.template.name)}. Alterar esta escolha preserva as fichas existentes e suas versões.</p><form id="cp-template-form"><div class="field"><label for="cp-template">Modelo das novas fichas</label><select id="cp-template" name="templateId"><option value="">Usar o padrão do sistema</option>${templates.map(t => `<option value="${esc(t.id)}" ${campaign.sheetTemplateId === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}${own.items.length ? `<optgroup label="Modelos desta campanha">${own.items.map(t => `<option value="${esc(t.id)}" ${campaign.sheetTemplateId === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</optgroup>` : ""}</select></div>${formError()}<button type="submit" class="primary">Salvar modelo da campanha</button></form><h4>Modelos simples desta campanha</h4><p class="muted small">Campos de texto, número, seleção e marcação; recursos como estresse ou munição; ações com fórmula opcional. Não entram no catálogo público.</p>${own.items.length ? `<ul class="plain-list">${own.items.map(t => `<li>${esc(t.name)} <small>v${t.version?.number ?? 1}${t.inUse ? " · em uso" : ""}</small> ${button("Editar", "cp-template-edit", t.id, "text-button small")}</li>`).join("")}</ul>` : ""}${campaign.archived ? "" : button("+ Criar modelo simples", "cp-template-new", "", "subtle small")}`;
+  section.innerHTML = `<h3>Ficha-modelo da campanha${helpButton("campanhas.config.modelo", "Ficha-modelo da campanha")}</h3><p>Novas fichas usam ${esc(current.template.name)}. Alterar esta escolha preserva as fichas existentes e suas versões.</p><form id="cp-template-form"><div class="field"><label for="cp-template">Modelo das novas fichas</label><select id="cp-template" name="templateId"><option value="">Usar o padrão do sistema</option>${templates.map(t => `<option value="${esc(t.id)}" ${campaign.sheetTemplateId === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}${own.items.length ? `<optgroup label="Modelos desta campanha">${own.items.map(t => `<option value="${esc(t.id)}" ${campaign.sheetTemplateId === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</optgroup>` : ""}</select></div>${formError()}<button type="submit" class="primary">Salvar modelo da campanha</button></form><h4>Modelos simples desta campanha</h4><p class="muted small">Campos de texto, número, seleção e marcação; recursos como estresse ou munição; ações com fórmula opcional. Não entram no catálogo público.</p>${own.items.length ? `<ul class="plain-list">${own.items.map(t => `<li>${esc(t.name)} <small>v${t.version?.number ?? 1}${t.inUse ? " · em uso" : ""}</small> ${button("Editar", "cp-template-edit", t.id, "text-button small")}</li>`).join("")}</ul>` : ""}${campaign.archived ? "" : button("+ Criar modelo simples", "cp-template-new", "", "primary small")}`;
   target.append(section);
   section.querySelector("form").onsubmit = event => {
     event.preventDefault(); submitForm(event.currentTarget, async data => {

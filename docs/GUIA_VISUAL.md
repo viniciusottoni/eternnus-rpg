@@ -62,6 +62,7 @@ Texto funcional usa fontes do sistema. O produto não depende de serviço extern
 | Componente | Fonte | Contrato de reutilização |
 | --- | --- | --- |
 | Loading universal | `js/loading.js` / `#splash` | Mesmo cenário, logotipo e círculo rúnico da abertura em toda espera em primeiro plano, inclusive formulários e SSO. Abertura de 3.000 ms; demais esperas duram a operação, sem atraso mínimo. Sobrepõe modais, torna o conteúdo inerte e restaura foco. Atualização automática em segundo plano não interrompe tarefas. |
+| Listas e tabelas | `js/data-table.js` / `sessions.css` | Cabeçalho com título e o botão de adicionar dourado (“+ …”, `primary small`); texto curto de orientação; barra `controlsHtml` (busca, filtros, “Buscar” secundário; nunca “Limpar”); tabela logo abaixo, sem contagem entre as duas; paginação de 15 com o total. No celular, `.stack-table` vira cartões. (ADR-067) |
 | Shell | `js/layout.js` | Renderiza menu, perfil, contexto, `#main` e rodapé. Uma funcionalidade não deve criar outro menu. |
 | Navegação inferior móvel | `js/layout.js` / `styles.css` | Barra fixa com ícone e nome do destino, estado ativo e bloqueio coerente com a conta. Reserva espaço no conteúdo e respeita a área segura. |
 | Instalação PWA | `js/pwa.js` | Ação discreta: usa o prompt capturado quando disponível e oferece instruções manuais nos demais casos, incluindo iPhone. Não bloquear a navegação nem repetir prompts forçadamente. |
@@ -86,6 +87,8 @@ Texto funcional usa fontes do sistema. O produto não depende de serviço extern
 | Mesa `.table-shell` | `table.js` | Grid imersivo: topo, grupo, palco, painel e barra de turno. Ver comportamento móvel abaixo. |
 | Cartão do grupo `.party-card` | `table.js` | Avatar, personagem, nível, vida e presença. Turno atual com borda dourada e selo ⌛. Mestre (ou o próprio jogador) abre a ficha pelo cartão. Avatar enviado que não puder ser exibido a outro participante cai no avatar padrão (`guardAvatars`). |
 | Tabuleiro `.board` | `table-map.js` | Canvas com foco visível; setas movem o cursor e Enter confirma; Esc cancela o modo. Marcadores: verde aliado, vermelho inimigo, aura dourada no turno atual. |
+| Bolhas do marcador | `table-map.js` | Barra de vida acima do marcador (verde, âmbar, vermelho, cinza ao zerar) com números a partir de 20 px por casa; escudo azul-aço com a armadura. Barra ajustável tem contorno dourado mais forte. |
+| Bandeja de dados `.dice-tray` | `table.js`, `sessions.css` | Faixa própria à direita do mapa (o mapa encolhe, sem cobrir casas); celular: duas colunas de 44 px. Destaque do resultado `.roll-spotlight` no alto do palco, sem animação com `prefers-reduced-motion`. |
 | Painel de registros `.side-panel` | `table.js` | Abas do mestre (Chat, Rolagens, Histórico, Notas) e do jogador (Chat, Rolagens, Sua ficha). Chat aceita `/r 1d20+3`. |
 | Barra de turno `.turn-bar` | `table.js` | Mestre: registrar nota, mostrar mapa, definir turno, abrir ficha e próximo turno. Jogador: atacar, habilidade, magia, item, mover, defender e encerrar turno, desabilitados com motivo fora da vez. |
 | Arauto de turno `.turn-herald` | `table.js` | Faixa "Turno de X" / "Seu turno, X" sobre o mapa por ~2 s; não captura cliques. |
@@ -241,3 +244,10 @@ CAMPANHAS_CONTINUIDADE.md descreve abas principais, coleções, leitura longa (.
 Ajuda visual fixa em círculo de 18×18 px em todas as telas, inclusive dentro de botões/legendas com altura mínima de 44 px. A área de toque da ajuda continua independente. Mesa: topo e rodapé têm faixas laterais roláveis, sem quebra de botões; o mapa compacto abre preenchendo a área útil com proporção preservada. Arrastar mapa percorre a visão local; Mapa inteiro reencaixa o cenário, ± e pinça alteram escala limitada. Partes fora da janela são acessíveis por rolagem/pan.
 
 Preparação de cenas e de mapas/cenários reutiliza a mesma câmera, comandos com rolagem e propriedades recolhíveis. O mapa ocupa o espaço restante do modal em paisagem; em retrato propriedades abertas ficam abaixo da prévia. Ajuste de grade oferece pinça e ± de 1–4× só na imagem. Todo gesto preserva dimensões da grade e dados.
+
+## Indicadores de novidade (ADR-069)
+
+- Selo `.news-badge`: círculo vermelho (`#c8352b`, texto branco) com a quantidade, “99+” acima de 99, contorno escuro para separar do metal. No menu lateral fica à direita do rótulo; na barra inferior do celular, sobre o canto do ícone, sem alterar o alvo de 44 px. O botão “Mais” recebe um ponto vermelho quando um destino secundário tem novidade.
+- O mesmo selo aparece no título do cartão de campanha, nas abas/subabas da campanha, nos salões da Guilda, no botão Moderação e na aba Tickets do painel admin (`newsSlot`, atualizado junto com o menu).
+- Item novo (`.is-new`): filete vermelho à esquerda e etiqueta “Novo”/“Nova” (texto, não só cor). Linhas de tabela usam o filete na primeira célula.
+- Vermelho fica reservado a “há algo novo para você”; erros e perigo continuam com `--danger`. O selo entra com um leve aumento só sem `prefers-reduced-motion`.

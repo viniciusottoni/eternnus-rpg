@@ -41,11 +41,13 @@ import {
 } from "./session-policy.js";
 import { FOG_TOOLS, FOG_PICKS, MARK_KINDS, fogReach, decodeBits, settingsFromForm, attackCells } from "./fog-policy.js";
 import { settingsFields } from "./table-settings.js";
-import { playerCommands, requiresTurn, modeLabel, resourceState, waitingText, canUndo, unreadCount, MOBILE_VIEWS } from "./play-policy.js";
+import { playerCommands, requiresTurn, modeLabel, resourceState, waitingText, canUndo, unreadCount, MOBILE_VIEWS, QUICK_DICE, quickSpec, rollSpotlight, tokenBubbles } from "./play-policy.js";
+import { isImageType, isUvttName } from "./vtt-import-policy.js";
 import { interfaceMode, interfaceToggle, mountInterfaceToggle, onInterfaceChange, setInterfaceMode } from "./interface-mode.js";
 import { HELP, hiddenCustomizations, pendingParts } from "./scene-policy.js";
 const tools = () => import("./table-tools.js");
 const npcSheets = () => import("./npc-sheet.js");
+const mapImport = () => import("./map-import.js");
 /** Ferramentas de névoa por grupo (interface Completa) e o atalho "Revelar área" da Básica. */
 const FOG_GROUPS = {
   reveal: { label: "Revelar área", tools: ["reveal", "conceal"] },
@@ -149,7 +151,10 @@ function mountTable(campaignId, sessionId, isMaster) {
     topHtml = "",
     ui = interfaceMode(),
     mobileView = "map",
-    lastSeenChat = 0;
+    lastSeenChat = 0,
+    bubbles = true,
+    quickHidden = false,
+    spotTimer = 0;
   const previousHp = new Map();
   let previousActive;
   const controller = new AbortController();
@@ -158,7 +163,7 @@ function mountTable(campaignId, sessionId, isMaster) {
   $("#app").innerHTML = `<div class="table-shell">
     <header class="table-top"><a class="table-brand" href="#campaign/${esc(campaignId)}" aria-label="Voltar à campanha"><img src="/assets/eternnus-logo.webp" alt="Eternnus RPG"></a><div class="table-title"><h1><span id="t-campaign">Mesa</span> <span class="online-badge" data-tip="A sessão está ativa; presenças aparecem no grupo." id="t-online"><i aria-hidden="true"></i>ONLINE</span></h1><p id="t-sub">Conectando à sessão…</p></div><div class="table-top-scroll" role="group" aria-label="Comandos da sessão — deslize para ver mais"><button type="button" id="t-fullscreen" class="subtle" hidden>Tela cheia</button><div class="table-top-actions" id="t-top"></div><div class="session-audio-host" id="t-audio" hidden></div><div class="music-dock"></div></div></header>
     <aside class="party" aria-labelledby="party-title" tabindex="-1"><h2 id="party-title"><span aria-hidden="true">⚔</span> Aventureiros <span class="count-chip" id="t-count">0 online</span></h2><ul id="t-party" class="party-list"></ul><p class="party-caption">Avatares conectados e estado atual${helpButton("mesa.mapa.legenda", "Marcadores, vida e presença")}</p></aside>
-    <main class="stage" id="main" tabindex="-1" aria-label="Mapa da sessão"><div class="stage-chip" id="t-chip"></div><div class="stage-tools" id="t-tools" role="toolbar" aria-label="Ferramentas do mapa" aria-orientation="vertical"></div><div class="fog-palette" id="t-fog" role="toolbar" aria-label="Névoa e luz" hidden></div><div class="play-banner" id="t-banner" role="status" hidden></div><div class="pending-banner" id="t-pending" role="status" hidden></div><div class="board" id="t-board"></div><div class="turn-herald" id="t-herald" aria-hidden="true"><span></span></div><p class="stage-hint" id="t-hint" role="status"></p></main>
+    <main class="stage" id="main" tabindex="-1" aria-label="Mapa da sessão"><div class="stage-chip" id="t-chip"></div><div class="stage-tools" id="t-tools" role="toolbar" aria-label="Ferramentas do mapa" aria-orientation="vertical"></div><div class="fog-palette" id="t-fog" role="toolbar" aria-label="Névoa e luz" hidden></div><div class="play-banner" id="t-banner" role="status" hidden></div><div class="pending-banner" id="t-pending" role="status" hidden></div><div class="board" id="t-board"></div><div class="turn-herald" id="t-herald" aria-hidden="true"><span></span></div><div class="roll-spotlight" id="t-spot" role="status" aria-live="polite" hidden></div><div class="dice-tray" id="t-dice" role="toolbar" aria-label="Dados rápidos"></div><div class="drop-veil" id="t-drop" hidden><p><strong>Solte para usar como mapa</strong><span>Imagem PNG, JPEG ou WebP, ou arquivo UVTT (.dd2vtt, .uvtt, .df2vtt)</span></p></div><input type="file" id="t-map-file" accept="image/png,image/jpeg,image/webp,.dd2vtt,.uvtt,.df2vtt" hidden><p class="stage-hint" id="t-hint" role="status"></p></main>
     <section class="side-panel" aria-label="Registros da mesa"><div class="panel-tabs" role="tablist" id="t-tabs"></div><div class="panel-body" id="t-panel" role="tabpanel" tabindex="0"></div><form id="t-chat" class="chat-form" autocomplete="off"><div class="field-label"><label class="sr-only" for="t-message">Mensagem para a mesa</label>${helpButton("mesa.chat.comandos", "Conversa e dados")}</div><input id="t-message" name="content" maxlength="2000" placeholder="Escrever mensagem… (/r 1d20+3 para rolar)" required><button type="submit" class="primary icon-send" aria-label="Enviar">➤</button></form></section>
     <div class="table-bottom"><footer class="turn-bar" id="t-turn" aria-live="polite"></footer><nav class="table-view-switch" id="t-views" aria-label="Alternar entre mapa, ficha e conversa"></nav></div>
     <div class="ended-veil" id="t-ended" hidden></div>
@@ -170,6 +175,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     onCell: (cell) => onCell(cell),
     onPaint: (cells) => onPaint(cells),
     onDrop: (token, cell) => onDrop(token, cell),
+    onBubble: (token) => bubbleModal(token),
     onCancel: () => setMode("none"),
   });
   const temporaryImages = mountTemporaryImages(sessionId, $(".party"));
@@ -253,6 +259,7 @@ function mountTable(campaignId, sessionId, isMaster) {
   function stop() {
     stopped = true;
     controller.abort();
+    clearTimeout(spotTimer);
     clearInterval(beat);
     document.removeEventListener("visibilitychange", onVisible);
     board.destroy();
@@ -282,6 +289,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     renderTurnBar();
     renderBanner();
     renderViews();
+    renderDice();
     guardAvatars($("#t-turn"));
     if (mode === "move" && !canMoveNow()) mode = "none";
     if (selected && !live.tokens.some((t) => t.id === selected))
@@ -290,6 +298,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     board.update(boardState(), boardView());
     if (viewAs) refreshViewAs();
     herald(first);
+    if (!first) spotlight();
     lastEventId = Math.max(lastEventId, ...live.events.map((e) => e.id), 0);
     if (live.session.endedAt) showEnded();
   }
@@ -372,14 +381,16 @@ function mountTable(campaignId, sessionId, isMaster) {
       `<button type="button" class="tool labeled ${active ? "active" : ""}" data-action="${action}" data-id="${esc(id)}" aria-pressed="${active}" ${disabled ? `aria-disabled="true" data-tip="${action === 't-token-settings' ? 'Selecione um marcador para ajustar luz e visão.' : 'Esta ferramenta exige um mapa com grade.'}"` : ""}><span aria-hidden="true">${icon}</span><span class="tool-label">${esc(label)}</span></button>`;
     const fogOn = !!live.fog?.active;
     const complete = ui === "complete";
-    const basicTools = `${labeled("➤", "t-tool-select", "Selecionar e mover", mode === "none" && tiles && !watched, !tiles)}${labeled("⚑", "t-tool-place", "Adicionar personagem", mode === "place", !tiles)}${fogOn ? labeled("☀", "t-fog-group", "Revelar área", mode === "fog" && fogGroup === "reveal", !tiles, "reveal") : ""}${labeled("👁", "t-view-as", watched ? "Voltar à visão do mestre" : "Ver como jogador", !!watched, !tiles)}${sel?.masterCharacterId ? labeled("▣", "t-token-sheet", "Ficha do elemento", false, false) : ""}${sel && !sel.characterId ? labeled("✕", "t-tool-remove", "Remover marcador", false, false) : ""}`;
+    const selBubble = sel ? tokenBubbles(live).get(sel.id) : null;
+    const gridMap = tiles && Number(live.map.gridPixels) >= 8 && String(live.map.key || "").startsWith("asset:") && !watched;
+    const basicTools = `${labeled("➤", "t-tool-select", "Selecionar e mover", mode === "none" && tiles && !watched, !tiles)}${labeled("⚑", "t-tool-place", "Adicionar personagem", mode === "place", !tiles)}${fogOn ? labeled("☀", "t-fog-group", "Revelar área", mode === "fog" && fogGroup === "reveal", !tiles, "reveal") : ""}${labeled("👁", "t-view-as", watched ? "Voltar à visão do mestre" : "Ver como jogador", !!watched, !tiles)}${sel?.masterCharacterId ? labeled("▣", "t-token-sheet", "Ficha do elemento", false, false) : ""}${sel && selBubble?.target ? labeled("♥", "t-token-bubble", `${selBubble.resource.label} do selecionado`, false, false) : ""}${sel && !sel.characterId ? labeled("✕", "t-tool-remove", "Remover marcador", false, false) : ""}${labeled("⇪", "t-map-upload", "Enviar mapa ou UVTT")}${gridMap ? labeled("▦", "t-map-grid", "Ajustar grade do mapa") : ""}`;
     const completeTools = complete
-      ? `<div class="tool-group" role="group" aria-label="Elementos"><span class="tool-group-title">Elementos</span>${labeled("✎", "t-token-settings", "Luz, visão e ocultação", false, !sel)}</div><div class="tool-group" role="group" aria-label="Paredes, luz e exploração">${labeled("▇", "t-fog-group", "Paredes e portas", mode === "fog" && fogGroup === "walls", !tiles, "walls")}${labeled("✹", "t-fog-group", "Luz e visão", mode === "fog" && fogGroup === "light", !tiles, "light")}${labeled("⚠", "t-fog-group", "Exploração", mode === "fog" && fogGroup === "explore", !tiles, "explore")}</div><div class="tool-group" role="group" aria-label="Grade e configuração">${labeled("▦", "t-tool-grid", "Mostrar grade", grid, !tiles)}${labeled("⚙", "t-table-settings", "Configuração da mesa")}</div>`
+      ? `<div class="tool-group" role="group" aria-label="Elementos"><span class="tool-group-title">Elementos</span>${labeled("✎", "t-token-settings", "Luz, visão e ocultação", false, !sel)}</div><div class="tool-group" role="group" aria-label="Paredes, luz e exploração">${labeled("▇", "t-fog-group", "Paredes e portas", mode === "fog" && fogGroup === "walls", !tiles, "walls")}${labeled("✹", "t-fog-group", "Luz e visão", mode === "fog" && fogGroup === "light", !tiles, "light")}${labeled("⚠", "t-fog-group", "Exploração", mode === "fog" && fogGroup === "explore", !tiles, "explore")}</div><div class="tool-group" role="group" aria-label="Grade e configuração">${labeled("▦", "t-tool-grid", "Mostrar grade", grid, !tiles)}${labeled("♥", "t-tool-bubbles", "Vida e armadura nos marcadores", bubbles, !tiles)}${labeled("⚙", "t-table-settings", "Configuração da mesa")}</div>`
       : "";
     const hidden = live.me.isMaster && !complete ? hiddenCustomizations({ fog: live.fog, scene: live.play?.scene, tokens: live.tokens }) : [];
     $("#t-tools").innerHTML = live.me.isMaster
       ? `${basicTools}${completeTools}${hidden.length ? `<button type="button" class="hidden-chip" data-action="t-hidden">Ajustes avançados ativos (${hidden.length}) · ver</button>` : ""}`
-      : `${tool("➤", "t-move", "Mover meu personagem", mode === "move", !canMoveNow())}${tool("▦", "t-tool-grid", "Mostrar ou ocultar a grade", grid, !tiles)}${tool("⌖", "t-focus-board", "Usar o mapa pelo teclado", false, !tiles)}`;
+      : `${tool("➤", "t-move", "Mover meu personagem", mode === "move", !canMoveNow())}${tool("▦", "t-tool-grid", "Mostrar ou ocultar a grade", grid, !tiles)}${tool("♥", "t-tool-bubbles", "Mostrar ou ocultar vida e armadura nos marcadores", bubbles, !tiles)}${tool("⌖", "t-focus-board", "Usar o mapa pelo teclado", false, !tiles)}`;
     $("#t-tools").classList.toggle("labeled-tools", live.me.isMaster);
     renderPending();
     renderFogPalette();
@@ -431,9 +442,14 @@ function mountTable(campaignId, sessionId, isMaster) {
 
   /** Estado desenhado: o do mestre ou, em "ver como", o mapa/marcadores/névoa exatamente como o jogador recebe. */
   function boardState() {
-    if (!viewAs || !viewAsState) return live;
-    const p = live.participants.find((x) => x.userId === viewAs);
-    return { ...live, map: viewAsState.map, tokens: viewAsState.tokens, fog: viewAsState.fog, me: { ...live.me, isMaster: false, characterId: p?.characterId } };
+    let state = live;
+    if (viewAs && viewAsState) {
+      const p = live.participants.find((x) => x.userId === viewAs);
+      state = { ...live, map: viewAsState.map, tokens: viewAsState.tokens, fog: viewAsState.fog, me: { ...live.me, isMaster: false, characterId: p?.characterId } };
+    }
+    // Bolhas de vida e armadura: só dados já recebidos; "ver como" mostra o que o jogador veria.
+    const found = tokenBubbles(state);
+    return found.size ? { ...state, tokens: state.tokens.map((t) => (found.has(t.id) ? { ...t, bubble: found.get(t.id) } : t)) } : state;
   }
   let viewAsRevision = -1;
   async function refreshViewAs() {
@@ -487,7 +503,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     const draggable = live.me.isMaster
       ? (mode === "none" && !viewAs ? "*" : null)
       : turn.token && canMoveNow() ? turn.token.id : null;
-    return { mode: paintTool ? "paint" : mode, reach: turn.reach, attack: turn.attack, draggable, selected, grid, fogTools: mode === "fog", viewAs: !!(viewAs && viewAsState) };
+    return { mode: paintTool ? "paint" : mode, reach: turn.reach, attack: turn.attack, draggable, selected, grid, bubbles, fogTools: mode === "fog", viewAs: !!(viewAs && viewAsState) };
   }
 
   async function onDrop(token, cell) {
@@ -711,6 +727,106 @@ function mountTable(campaignId, sessionId, isMaster) {
     banner.hidden = !text;
     banner.textContent = text;
   }
+
+  /** Bandeja de dados sempre visível: um clique rola 1 dado; "Mais" abre o construtor completo. */
+  function renderDice() {
+    const host = $("#t-dice");
+    const cmds = playerCommands(live);
+    const off = !!live.session.endedAt || (!live.me.isMaster && !cmds.canRoll);
+    const why = live.session.endedAt ? "A sessão foi encerrada." : "A partida está pausada pelo mestre.";
+    const dis = off ? `aria-disabled="true" data-tip="${esc(why)}"` : "";
+    const html = `${QUICK_DICE.map((d) => `<button type="button" class="die" data-action="t-quick-roll" data-id="${d}" aria-label="Rolar 1d${d}" ${dis}>d${d}</button>`).join("")}<button type="button" class="die more" data-action="t-roll-builder" aria-label="Mais opções de rolagem" ${off ? dis : 'data-tip="Quantidade, modificador, fórmula e favoritas"'}>⬡</button>${live.me.isMaster ? `<button type="button" class="die privacy" data-action="t-quick-hidden" aria-pressed="${quickHidden}" aria-label="${quickHidden ? "Rolagens rápidas só para você" : "Rolagens rápidas visíveis à mesa"}" data-tip="${quickHidden ? "Rolagens rápidas só para você" : "Rolagens rápidas visíveis à mesa"}">${quickHidden ? "🔒" : "👁"}</button>` : ""}${helpButton("mesa.dados.bandeja", "Dados rápidos")}`;
+    if (host.innerHTML !== html) host.innerHTML = html;
+    $(".stage").classList.add("has-dice");
+  }
+
+  /** Resultado de rolagem recém-chegada em destaque sobre o mapa (o servidor já filtrou quem vê). */
+  function spotlight() {
+    const fresh = live.events.filter((e) => e.id > lastEventId && e.kind === "roll");
+    const last = fresh[fresh.length - 1];
+    const s = last && rollSpotlight(last, eventData(last));
+    if (!s) return;
+    const el = $("#t-spot");
+    el.className = `roll-spotlight ${s.tone}`;
+    el.innerHTML = `<span class="spot-who">${esc(s.actor)}${s.label ? ` · ${esc(s.label)}` : ""}</span><strong class="spot-total">${esc(s.total)}</strong><span class="spot-formula">${esc(s.formula)}${s.outcome ? ` · ${esc(s.outcome)}` : ""}${s.private ? " · privada" : ""}${s.tone === "crit" ? " · máximo!" : s.tone === "fumble" ? " · mínimo" : ""}</span>`;
+    el.hidden = false;
+    el.classList.remove("show");
+    void el.offsetWidth;
+    el.classList.add("show");
+    clearTimeout(spotTimer);
+    spotTimer = setTimeout(() => { el.hidden = true; el.classList.remove("show"); }, 3600);
+  }
+
+  async function quickRoll(sides) {
+    const cmds = playerCommands(live);
+    if (live.session.endedAt || (!live.me.isMaster && !cmds.canRoll)) return toast(live.session.endedAt ? "A sessão foi encerrada." : "A partida está pausada pelo mestre.");
+    const body = { spec: quickSpec(sides), label: "" };
+    if (live.me.isMaster) body.visibility = quickHidden ? "blind" : "table";
+    const r = await quick(`${base}/rolls`, "POST", body);
+    if (r?.hidden) toast("Rolagem enviada ao mestre.");
+  }
+
+  /** Ajuste da barra de vida (ou do primeiro recurso) do marcador: escrita comum da mesa, conferida no servidor. */
+  function bubbleModal(token) {
+    const b = token.bubble || tokenBubbles(live).get(token.id);
+    if (!b?.target || !b.resource) return;
+    const r = b.resource;
+    const hp = /^(vida|pv|hp|pontos de vida)/i.test(r.label);
+    modal(`${token.label}: ${r.label}`, `<form id="bubble-form"><p class="bubble-now">Agora: <strong>${esc(resourceState(r).text)}</strong>${b.armor ? ` · ${esc(b.armor.label)} ${esc(b.armor.value)}` : ""}</p><div class="field"><label for="f-bubble">Quanto</label><input id="f-bubble" name="amount" type="number" min="1" max="100000" step="1" value="1" required inputmode="numeric"></div>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="danger" name="kind" value="down">${hp ? "− Dano" : "− Diminuir"}</button><button type="submit" class="primary" name="kind" value="up">${hp ? "+ Cura" : "+ Aumentar"}</button></div></form>`);
+    $("#f-bubble").select();
+    $("#bubble-form").onsubmit = (e) => {
+      e.preventDefault();
+      const up = e.submitter?.value === "up";
+      submitForm(e.currentTarget, async (data) => {
+        const delta = (up ? 1 : -1) * Math.abs(Math.round(Number(data.amount)));
+        if (!delta) throw new Error("Informe um valor maior que zero.");
+        const t = b.target;
+        if (t.kind === "character") await api(`${base}/characters/${t.id}/resource`, "POST", { field: t.field, delta });
+        else await api(`${base}/npcs/${t.id}/resource`, "POST", { index: t.index ?? 0, delta, field: t.field ?? null });
+        $("#modal").close();
+      });
+    };
+  }
+
+  /** Mestre solta (ou escolhe) um arquivo: imagem vira mapa com grade sugerida; UVTT traz grade, paredes, portas e luzes. */
+  async function useMapFile(file) {
+    if (!file) return;
+    if (!isImageType(file.type) && !isUvttName(file.name)) return toast("Use imagem PNG, JPEG ou WebP, ou arquivo UVTT (.dd2vtt, .uvtt, .df2vtt).");
+    // Depois de trocar o mapa, a conferência da grade abre com o estado ao vivo já atualizado.
+    const onGrid = () => setTimeout(() => { if (!stopped && live) mapImport().then((m) => m.openGridModal({ base, live })).catch((e) => toast(e.message)); }, 900);
+    (await mapImport()).openDroppedMap({ file, campaignId, base, live, onGrid });
+  }
+
+  // Arrastar arquivo sobre o palco: só o mestre troca o mapa. Para todos, soltar não abre o arquivo no navegador.
+  const stage = $(".stage");
+  const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+  let dragDepth = 0;
+  stage.addEventListener("dragenter", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    if (!live?.me.isMaster || live.session.endedAt) return;
+    dragDepth++;
+    $("#t-drop").hidden = false;
+  });
+  stage.addEventListener("dragover", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = live?.me.isMaster && !live.session.endedAt ? "copy" : "none";
+  });
+  stage.addEventListener("dragleave", (e) => {
+    if (!hasFiles(e)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) $("#t-drop").hidden = true;
+  });
+  stage.addEventListener("drop", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth = 0;
+    $("#t-drop").hidden = true;
+    if (!live?.me.isMaster || live.session.endedAt) return;
+    useMapFile(e.dataTransfer.files?.[0]).catch((error) => toast(error.message));
+  });
+  $("#t-map-file").addEventListener("change", (e) => { useMapFile(e.target.files?.[0]).catch((error) => toast(error.message)); });
 
   function renderViews() {
     const views = MOBILE_VIEWS[live.me.isMaster ? "master" : "player"];
@@ -1225,6 +1341,16 @@ function mountTable(campaignId, sessionId, isMaster) {
       renderTools();
       board.setView(boardView());
     }
+    if (action === "t-tool-bubbles") {
+      bubbles = !bubbles;
+      renderTools();
+      board.setView(boardView());
+    }
+    if (action === "t-quick-roll") await quickRoll(Number(id));
+    if (action === "t-quick-hidden") { quickHidden = !quickHidden; renderDice(); }
+    if (action === "t-token-bubble") { const sel = boardState().tokens.find((t) => t.id === selected); if (sel) bubbleModal(sel); }
+    if (action === "t-map-upload") { const input = $("#t-map-file"); input.value = ""; input.click(); }
+    if (action === "t-map-grid") await (await mapImport()).openGridModal({ base, live });
     if (action === "t-focus-board") board.focus();
     if (action === "t-tool-fog") { fogGroup = ui === "complete" ? "walls" : "reveal"; setMode(mode === "fog" ? "none" : "fog"); }
     if (action === "t-fog-tool") { fogTool = id; renderTools(); board.setView(boardView()); }

@@ -62,7 +62,7 @@ try {
   await player("/api/campaigns/join", "POST", { code: inviteCode });
   await second("/api/campaigns/join", "POST", { code: inviteCode });
   const campaignTemplate = await player(cpath + "/sheet-template");
-  check([campaignTemplate.source, campaignTemplate.template.id, campaignTemplate.version.id, campaignTemplate.version.hasPdf], ["default", tid, v1, true]);
+  check([campaignTemplate.source, campaignTemplate.template.id, campaignTemplate.version.id, campaignTemplate.version.hasPdf, campaignTemplate.template.isDefault], ["default", tid, v1, true, true]);
   await outsider(cpath + "/sheet-template", "GET", undefined, 404);
   noEmail(campaignTemplate, "modelo da campanha");
 
@@ -83,7 +83,7 @@ try {
   await player("/api/characters", "POST", { campaignId: campaign.id, values: {} }, 400);
   await outsider("/api/characters", "POST", { campaignId: campaign.id, values: { nome: "Intruso" } }, 404);
   let sheet = await player(`/api/characters/${lysara.id}/sheet`);
-  check([sheet.template.id, sheet.version.number, sheet.version.hasPdf, sheet.version.pdfUrl], [tid, 1, true, `/api/sheet-templates/${tid}/versions/${v1}/pdf`]);
+  check([sheet.template.id, sheet.version.number, sheet.version.hasPdf, sheet.version.pdfUrl, sheet.template.isDefault], [tid, 1, true, `/api/sheet-templates/${tid}/versions/${v1}/pdf`, true]);
   check([sheet.values.nome, sheet.values.forca, sheet.values.classe, sheet.computed.forca_mod, sheet.newerVersion], ["Lysara", "14", "Mago", "2", null]);
   check(sheet.actions.map((a) => [a.id, a.source]), [["t:espada", "template"]]);
   ok(

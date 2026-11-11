@@ -33,6 +33,8 @@ public static class SessionEndpoints
         api.MapPost("/turn/end", async (Guid sessionId, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.EndTurnAsync(sessionId, Id(u), ct); return Results.NoContent(); });
         api.MapPost("/actions", async (Guid sessionId, ActionInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => Results.Ok(await s.UseActionAsync(sessionId, x, Id(u), ct)));
         api.MapPost("/map", async (Guid sessionId, MapInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.SetMapAsync(sessionId, x, Id(u), ct); return Results.NoContent(); });
+        // Grade do mapa enviado ajustada com ele na mesa (mestre). Ver SessionMapGrid.cs.
+        api.MapPost("/map/grid", (Guid sessionId, MapGridInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.SetMapGridAsync(sessionId, x, Id(u), ct));
         api.MapPost("/tokens", async (Guid sessionId, MapTokenInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => Results.Ok(await s.AddTokenAsync(sessionId, x, Id(u), ct)));
         api.MapPost("/tokens/{tokenId:guid}/move", async (Guid sessionId, Guid tokenId, MoveInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.MoveTokenAsync(sessionId, tokenId, x, Id(u), ct); return Results.NoContent(); });
         api.MapDelete("/tokens/{tokenId:guid}", async (Guid sessionId, Guid tokenId, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.RemoveTokenAsync(sessionId, tokenId, Id(u), ct); return Results.NoContent(); });

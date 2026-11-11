@@ -72,7 +72,6 @@ Auditoria inicial: 59 conceitos e 202 linhas de controles/opções, antes de edi
 | Modelos privados | `campaign-prep.js` | ⓘ | `campanhas.preparo.modelos-privados` | O Mestre cria modelos próprios para sua campanha. | Aplicado |
 | Textos antigos (Bibliotecas) | `campaign-assets.js` | ⓘ | `campanhas.acervo.publicacao` | Textos de antes das Páginas; o Mestre converte cada um em página. | Aplicado |
 | Mapas e escala | `campaign-assets.js` | ⓘ | `campanhas.acervo.mapas` | A grade e a escala ligam o mapa ao deslocamento. | Aplicado |
-| Retratos de NPC | `campaign-assets.js` | ⓘ | `campanhas.acervo.retratos` | Imagens dos personagens do mestre, separadas dos mapas. | Aplicado |
 | Preparar e apresentar | `scene-editor.js`; `table-scenes.js` | ⓘ | `campanhas.cenas.preparacao` | Salvar a preparação não apresenta a cena aos jogadores. | Aplicado |
 | Aplicar à cena atual | `scene-editor.js` | ⓘ | `campanhas.cenas.aplicar` | Você escolhe quais partes salvas passam a valer agora. | Aplicado |
 | Alcance da preparação | `scene-editor.js` | ⓘ | `campanhas.cenas.alcance` | A preparação pode pertencer ao mapa ou só à cena. | Aplicado |
@@ -89,10 +88,13 @@ Auditoria inicial: 59 conceitos e 202 linhas de controles/opções, antes de edi
 | Ficha compartilhada ou privada | `character-sheet.js` | ⓘ | `fichas.visibilidade.privacidade` | Você escolhe a visibilidade da sua ficha. | Aplicado |
 | Versão da ficha | `character-sheet.js` | ⓘ | `fichas.versao.migracao` | Sua ficha mantém a versão do modelo usada na criação. | Aplicado |
 | PDF preenchido | `character-sheet.js` | ⓘ | `fichas.pdf.exportacao` | O PDF usa os últimos valores salvos da ficha. | Aplicado |
+| Importar PDF preenchido | `character-sheet.js` | ⓘ | `fichas.pdf.importacao` | Traz os valores de um PDF editável para a ficha padrão do sistema. | Aplicado |
 | Ações da ficha | `sheet.js` | ⓘ | `fichas.acoes.campos` | Tipo, dados e efeito descrevem a ação. | Aplicado |
 | Histórico de alterações | `character-sheet.js` | ⓘ | `fichas.historico.privado` | O histórico é reservado ao dono e ao Mestre autorizado. | Aplicado |
 | Marcar como útil | `guild.js` | ⓘ | `guilda.posts.util` | Você reconhece uma resposta que ajudou. | Aplicado |
 | Papéis e moderação | `guild.js` | ⓘ | `guilda.equipe.moderacao` | Admin e Embaixador identificam a equipe. | Aplicado |
+| Denúncia e ocultação (modal de denúncia) | `guild.js` | ⓘ | `guilda.denuncias.ocultacao` | A primeira denúncia já oculta o conteúdo até a decisão da moderação. | Aplicado |
+| Selo "Em análise" e aviso de mensagem oculta | `guild.js` | Texto visível / tooltip curto | — | Selo com tooltip de até 80 caracteres; aviso escrito no próprio post e no topo do tópico do autor. | Aplicado |
 | Configuração da mesa | `table.js` | ⓘ | `mesa.config.heranca` | O Mestre pode ajustar a sessão ou toda a campanha. | Aplicado |
 | Névoa e exploração | `table-settings.js` | ⓘ | `mesa.config.nevoa` | A névoa limita o que cada Jogador recebe do mapa. | Aplicado |
 | Revelação manual | `table-settings.js` | ⓘ | `mesa.config.revelacao-manual` | O Mestre escolhe as casas reveladas. | Aplicado |
@@ -448,7 +450,7 @@ Arquivos integrados: `js/app.js`, `ui.js`, `layout.js`, `auth.js`, `profile.js`,
 | campanhas | 17 |
 | sessoes | 2 |
 | mesa | 18 |
-| fichas | 5 |
+| fichas | 6 |
 | modelos | 6 |
 | biblioteca | 2 |
 | guilda | 2 |
@@ -533,7 +535,7 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | Elemento | Arquivo | Nível | Chave |
 | --- | --- | --- | --- |
 | Tabela de sessões (origem, visibilidade, busca, importação) | `campaign-sessions.js` | ⓘ no título + texto visível sob o título conforme o papel | `campanhas.sessoes.tabela` |
-| Filtros (busca, capítulo, origem) | `campaign-sessions.js` | Labels visíveis; contagem de resultados em `role=status`; "Limpar filtros" | — |
+| Filtros (busca, capítulo, origem) | `campaign-sessions.js` | Labels visíveis; barra padrão com “Buscar” (sem “Limpar”); total na paginação | — |
 | Importar em lote | `campaign-sessions.js` | Passos visíveis no modal, auxiliar do arquivo (limites, formato de data e publicado), prévia com erros por linha em `role=alert` | — |
 | Busca na campanha (Visão geral) | `campaign-search.js` | ⓘ no título + auxiliar com as fontes buscadas conforme o papel | `campanhas.busca.geral` |
 | NPCs conhecidos | `campaign-search.js` | Texto visível sob o título (o que o grupo vê) | — |
@@ -548,3 +550,26 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | “Esta página conta a história do NPC” | `campaign-workspace.js` | Auxiliar visível sob o campo (`aria-describedby`) | — |
 | Selo “NPC: nome” na lista de Páginas | `campaign-workspace.js` | Rótulo autoexplicativo + `data-tip` | — |
 | “Ler página” em NPCs conhecidos | `campaign-search.js` | Texto visível sob o título; aviso ao mestre quando a página não é de toda a mesa | — |
+
+### Classificação — indicadores de novidade (ADR-069, 11/11/2026)
+
+| Elemento | Arquivo | Nível | Chave |
+| --- | --- | --- | --- |
+| Selo vermelho com quantidade (menu, cartões de campanha, abas, salões, Moderação, Tickets) | `notices.js` (`newsBadge`, `newsSlot`) | Selo: tooltip “N novidades” + texto para leitor de tela com o destino (“3 novidades em Guilda”) | — |
+| Ponto vermelho no botão “Mais” (celular) | `notices.js` | Texto para leitor de tela com a soma dos destinos secundários | — |
+| Destaque “Novo”/“Nova” no item | `notices.js` (`highlightNew`), `guild.js` | Rótulo autoexplicativo e visível; não depende só da cor | — |
+| “✓ Marcar tudo como lido” (Guilda) | `guild.js` | Rótulo autoexplicativo; só aparece com tópicos novos | — |
+
+### Classificação — dados rápidos, bolhas e mapa solto (ADR-070, 11/11/2026)
+
+| Elemento | Arquivo | Nível | Chave |
+| --- | --- | --- | --- |
+| Bandeja d4–d20 e ⬡ | `table.js` (`renderDice`) | Rótulo visível + nome acessível “Rolar 1dN”; ⓘ da bandeja | `mesa.dados.bandeja` |
+| Olho “mesa/só eu” (mestre) | `table.js` | `aria-pressed` + nome acessível e `data-tip` com o estado | `mesa.dados.bandeja` |
+| Destaque do resultado sobre o mapa | `table.js` (`spotlight`) | `role="status"` com quem rolou, fórmula e total em texto | — |
+| Barra de vida e escudo de armadura no marcador | `table-map.js` (`drawBubbles`) | Ajuda conceitual da legenda; alternativa por teclado “♥ … do selecionado” | `mesa.mapa.legenda` |
+| “Dano/Cura” da barra | `table.js` (`bubbleModal`) | Rótulos autoexplicativos; valor atual em texto | — |
+| ♥ mostrar/ocultar bolhas | `table.js` | `aria-pressed` + rótulo visível (mestre) ou `data-tip` (jogador) | — |
+| Soltar arquivo no mapa / “Enviar mapa ou UVTT” | `table.js`, `map-import.js` | Véu com instrução visível; modal com ⓘ | `mesa.mapa.soltar` |
+| “Ajustar grade do mapa” | `map-import.js` (`openGridModal`) | Texto visível no modal; prévia compartilhada de `grid-adjust.js` | `campanhas.mapas.grade` |
+| “⇪ Importar UVTT” no acervo | `campaign-assets.js` | Rótulo + `data-tip` ≤ 80; modal com ⓘ | `mesa.mapa.soltar` |

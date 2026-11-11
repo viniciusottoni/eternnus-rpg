@@ -49,17 +49,17 @@ public static class AuthEndpoints
         }).RequireAuthorization();
         api.MapPost("/register", async (RegisterInput x, UserManager<AppUser> users, SignInManager<AppUser> signIn, AccountMail mail, GameDb db) =>
         {
-            if (!Email(x.Email) || string.IsNullOrWhiteSpace(x.Name) || x.Name.Trim().Length > 80 || x.Password?.Length is not (>= 10 and <= 128) || x.Password != x.ConfirmPassword)
-                return Bad("Confira nome, e-mail e senhas. As senhas devem ser iguais e ter entre 10 e 128 caracteres.");
+            if (!Email(x.Email) || string.IsNullOrWhiteSpace(x.Name) || x.Name.Trim().Length > 80 || !PasswordPolicy.IsValid(x.Password) || x.Password != x.ConfirmPassword)
+                return Bad("Confira nome, e-mail e senhas. As senhas devem ser iguais. " + PasswordPolicy.Requirement);
             var user = new AppUser { UserName = x.Email.Trim(), Email = x.Email.Trim(), DisplayName = x.Name.Trim(), LastEmailAt = DateTime.UtcNow };
             await using var tx = await db.Database.BeginTransactionAsync();
             var result = await users.CreateAsync(user, x.Password);
-            if (!result.Succeeded) return Bad("Não foi possível cadastrar. Use um e-mail disponível e senha com maiúscula, minúscula, número e símbolo.");
+            if (!result.Succeeded) return Bad("Não foi possível cadastrar. Use um e-mail disponível. " + PasswordPolicy.Requirement);
             await mail.QueueAsync(user, false); await tx.CommitAsync(); await LoginSession.SignInAsync(signIn, user); return Results.Ok(Profile(user));
         }).RequireRateLimiting("auth");
         api.MapPost("/login", async (Credentials x, SignInManager<AppUser> signIn) =>
         {
-            if (!Email(x.Email) || x.Password?.Length is not (> 0 and <= 128)) return Bad("Informe e-mail e senha válidos.");
+            if (!Email(x.Email) || x.Password?.Length is not (> 0 and <= PasswordPolicy.MaxLength)) return Bad("Informe e-mail e senha válidos.");
             var user = await signIn.UserManager.FindByEmailAsync(x.Email.Trim());
             var result = user == null ? SignInResult.Failed : await signIn.CheckPasswordSignInAsync(user, x.Password, true);
             if (!result.Succeeded) return Results.Json(new { message = "E-mail ou senha inválidos, ou acesso temporariamente bloqueado." }, statusCode: 401);
@@ -99,7 +99,7 @@ public static class AuthEndpoints
         }).RequireRateLimiting("mail");
         api.MapPost("/reset-password", async (ResetInput x, UserManager<AppUser> users) =>
         {
-            if (x.Password?.Length is not (>= 10 and <= 128) || x.Password != x.ConfirmPassword) return Bad("Confira a nova senha e sua confirmação.");
+            if (!PasswordPolicy.IsValid(x.Password) || x.Password != x.ConfirmPassword) return Bad("Confira a nova senha e sua confirmação. " + PasswordPolicy.Requirement);
             var user = await users.FindByIdAsync(x.UserId ?? ""); var token = Decode(x.Code);
             if (user == null || token == null || !(await users.ResetPasswordAsync(user, token, x.Password)).Succeeded) return Bad("Link inválido, expirado ou já utilizado, ou senha fora dos requisitos.");
             return Results.Ok(new { message = "Senha alterada. Entre novamente com a nova senha." });

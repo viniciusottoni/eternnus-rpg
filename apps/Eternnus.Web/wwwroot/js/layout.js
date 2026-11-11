@@ -3,6 +3,7 @@ import { installButton } from "./pwa.js";
 import { $, esc, button } from "./ui.js";
 import { isAdmin, isStaff, isInviteCode } from "./policy.js";
 import { api } from "./api.js";
+import { newsBadge, navCount, paintNav, currentNotices, ensureNotices, markSeen, highlightNew } from "./notices.js";
 // [rota, ícone, rótulo, principal no celular?, visível para?]. Itens secundários aparecem no menu "Mais" da barra inferior.
 // Admin resolve chamados e edita fichas-modelo dentro do Painel admin; por isso Suporte e Fichas-modelo saem do menu dele.
 const notAdmin = (user) => !isAdmin(user);
@@ -27,7 +28,7 @@ function navLink([route, icon, label, primary], view) {
   const cls = `nav-item ${primary ? "nav-primary" : "nav-secondary"}`;
   return locked
     ? `<span class="${cls} locked" aria-disabled="true" tabindex="0" aria-describedby="account-verify-help" data-tip="Confirme seu e-mail"><i>${icon}</i>${label}<small>♙</small></span>`
-    : `<a class="${cls} ${routeOf(view) === route ? "active" : ""}" href="#${route}"${routeOf(view) === route ? ' aria-current="page"' : ""}><i>${icon}</i>${label}</a>`;
+    : `<a class="${cls} ${routeOf(view) === route ? "active" : ""}" href="#${route}"${routeOf(view) === route ? ' aria-current="page"' : ""}><i>${icon}</i>${label}${newsBadge(navCount(route), label)}</a>`;
 }
 export function navLinks(view) {
   const items = visible();
@@ -73,6 +74,7 @@ function updateShell(view) {
   panel.querySelectorAll(".nav-item").forEach((item) => item.remove());
   panel.querySelector(".nav-caption")?.insertAdjacentHTML("afterend", moreItems(view));
   breadcrumb.innerHTML = `ETERNNUS <span>/</span> ${esc(navigation.find((n) => n[0] === routeOf(view))?.[2] || "Seu universo")}`;
+  paintNav();
   // Novo <main>: conteúdo e manipuladores da tela anterior saem juntos, como na reconstrução completa.
   const fresh = document.createElement("main");
   fresh.id = "main";
@@ -87,6 +89,7 @@ export function shell(view) {
   $("#app").innerHTML =
     `<aside class="sidebar"><a class="brand" href="#overview"><img src="/assets/eternnus-logo.webp" alt="Eternnus RPG"><span>FORJE A SUA LENDA</span></a><div class="profile-block"><img class="avatar" src="${esc(state.user.avatarUrl)}" alt="Avatar de ${esc(state.user.name)}" referrerpolicy="no-referrer"><div><strong>${esc(state.user.name)}</strong><small class="${state.user.verified ? "verified" : "pending"}">● ${state.user.verified ? "Conta verificada" : "Confirmação pendente"}</small>${state.user.verified ? `<a class="level-chip" href="#progress" data-tip="Seu nível e conquistas">Nível ${Number(state.user.level) || 1}${isStaff(state.user) ? ` · ${state.user.role === "admin" ? "Admin" : "Embaixador"}` : ""}</a>` : ""}</div></div><span class="nav-caption">SEU UNIVERSO</span>${state.user.verified ? "" : '<p id="account-verify-help" class="form-help">Confirme seu e-mail para acessar os destinos de jogo.</p>'}<nav aria-label="Menu principal">${navLinks(view)}</nav><div id="nav-more-panel" class="nav-more-panel metal" hidden><span class="nav-caption">MAIS CAMINHOS</span>${moreItems(view)}</div><div class="sidebar-quote"><span>✧</span><p>Grandes histórias começam<br>com uma escolha.</p></div>${button("↪ Sair da conta", "auth-signout", "", "logout")}</aside><div class="workspace"><header class="topbar"><div class="breadcrumb">ETERNNUS <span>/</span> ${esc(navigation.find((n) => n[0] === routeOf(view))?.[2] || "Seu universo")}</div>${installButton()}<div class="topbar-end"><span class="world-status"><i></i> O próximo capítulo é seu</span><div class="music-dock"></div></div></header><main id="main" tabindex="-1"></main><footer><span>ETERNNUS RPG</span><span>Escreva histórias. Viva lendas.</span><span>✧</span></footer></div>`;
   placeAccountControls();
+  paintNav();
 }
 export function renderHome() {
   shell("overview");
@@ -119,21 +122,27 @@ export function renderHome() {
 async function loadNext() {
   const host = document.getElementById("home-next");
   if (!host) return;
-  let home;
-  try { home = await api("/home", "GET", undefined, { background: true }); } catch { return; }
+  let home, news;
+  try { [home, news] = await Promise.all([api("/home", "GET", undefined, { background: true }), ensureNotices()]); } catch { return; }
   if (!host.isConnected) return;
   const when = (iso) => new Date(iso).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-  const active = home.active.map((c) => `<article class="resume-card metal"><span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>${c.session?.paused ? "Pausada" : "Mesa aberta"}</span><h3>${esc(c.name)}</h3><p class="small">${esc(c.system)}${c.isMaster ? " · você é o mestre" : ""}</p><a class="button primary" href="#table/${esc(c.id)}">▶ ${c.joined ? "Retomar mesa" : "Entrar na mesa"}</a></article>`).join("");
+  const active = home.active.map((c) => `<article class="resume-card metal" data-news-key="table-${esc(c.id)}"><span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>${c.session?.paused ? "Pausada" : "Mesa aberta"}</span><h3>${esc(c.name)}</h3><p class="small">${esc(c.system)}${c.isMaster ? " · você é o mestre" : ""}</p><a class="button primary" href="#table/${esc(c.id)}">▶ ${c.joined ? "Retomar mesa" : "Entrar na mesa"}</a></article>`).join("");
   const pending = [
     home.pendingInvite && isInviteCode(home.pendingInvite) ? `<li><a href="#invite/${esc(home.pendingInvite)}">Você tem um convite guardado — continuar</a></li>` : "",
     home.pendingTests ? `<li>${home.pendingTests} pedido(s) de teste aguardando você na mesa</li>` : "",
-    ...home.upcoming.filter((u) => !u.isMaster && !u.attendance).map((u) => `<li><a href="#campaign/${esc(u.id)}/journal">Confirme presença em ${esc(u.name)} (${esc(when(u.at))})</a></li>`),
+    ...home.upcoming.filter((u) => !u.isMaster && !u.attendance).map((u) => `<li data-news-key="schedule-${esc(u.id)}"><a href="#campaign/${esc(u.id)}/journal">Confirme presença em ${esc(u.name)} (${esc(when(u.at))})</a></li>`),
     !home.hasCharacters && (home.active.length || home.recent.length) ? '<li><a href="#characters">Crie seu primeiro personagem</a></li>' : "",
   ].filter(Boolean).join("");
-  const upcoming = home.upcoming.map((u) => `<li><strong>${esc(u.name)}</strong> — ${esc(when(u.at))}${u.attendance ? ` · ${esc({ yes: "você vai", maybe: "talvez", no: "você não vai" }[u.attendance] || "")}` : ""}</li>`).join("");
+  const upcoming = home.upcoming.map((u) => `<li data-news-key="schedule-${esc(u.id)}"><strong>${esc(u.name)}</strong> — ${esc(when(u.at))}${u.attendance ? ` · ${esc({ yes: "você vai", maybe: "talvez", no: "você não vai" }[u.attendance] || "")}` : ""}</li>`).join("");
   const recent = !home.active.length && home.recent[0] ? `<article class="resume-card metal"><span class="eyebrow">CAMPANHA RECENTE</span><h3>${esc(home.recent[0].name)}</h3><p class="small">${esc(home.recent[0].system)}</p><a class="button primary" href="#campaign/${esc(home.recent[0].id)}">Continuar →</a></article>` : "";
   const empty = !active && !recent ? `<article class="resume-card metal"><h3>Sua próxima história começa aqui</h3><p class="small">Crie uma campanha, abra uma one-shot ou entre pelo link de convite que o mestre enviar.</p><div class="buttons"><a class="button primary" href="#campaigns">Criar campanha</a><a class="button subtle" href="#one-shot">One-shot rápida</a></div></article>` : "";
   host.innerHTML = `<div class="section-title"><h2>Próxima partida</h2></div><div class="resume-grid">${active}${recent}${empty}</div>${pending ? `<div class="home-pending metal"><h3>Precisa de você</h3><ul>${pending}</ul></div>` : ""}${upcoming ? `<div class="home-upcoming"><h3>Agenda</h3><ul>${upcoming}</ul></div>` : ""}`;
+  // Mesas abertas e partidas marcadas desde a última visita ficam destacadas nesta visita; ao sair, deixam de ser novidade.
+  const fresh = currentNotices() || news;
+  if (fresh?.homeItems?.length) {
+    highlightNew(host, fresh.homeItems.map((n) => `${n.area}-${n.campaignId}`));
+    markSeen({ scope: "home", asOf: fresh.asOf });
+  }
 }
 
 // Painel "Mais" da navegação inferior no celular. Instalado uma vez; fecha ao navegar, com Esc ou clique fora.

@@ -5,8 +5,9 @@ import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
 import { helpButton } from "./help.js";
 import { sessionLabel } from "./session-policy.js";
 import { chapterKindLabel } from "./campaign-chapters.js";
+import { controlsHtml, readControls } from "./data-table.js";
 
-const SOURCES = Object.freeze([["", "Todas"], ["eternnus", "No Eternnus"], ["past", "Antes do Eternnus"]]);
+const SOURCES = Object.freeze([["eternnus", "No Eternnus"], ["past", "Antes do Eternnus"]]);
 const sourceLabel = (s) => (s === "past" ? "Antes do Eternnus" : "No Eternnus");
 const KEY = /^(live|past)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -46,21 +47,26 @@ export async function renderSessionLog(d, target, query = {}, { open = "", onCha
   const reload = (next = {}) => renderSessionLog(d, target, { ...q, ...next }, { onChanged });
   const pages = Math.max(1, Math.ceil(r.total / r.pageSize));
   const filtered = q.search || q.chapter || q.source || (master && q.state);
-  const stateField = master ? `<div class="field"><label for="lg-state">Estado</label><select id="lg-state" name="state">${[["", "Todos"], ["published", "Publicadas"], ["draft", "Não publicadas"]].map(([v, l]) => `<option value="${v}" ${v === q.state ? "selected" : ""}>${l}</option>`).join("")}</select></div>` : "";
   // Jogador não distingue sessão avulsa de sessão em capítulo oculto: ambas aparecem "sem capítulo".
-  const chapterOptions = `<option value="">Todos</option><option value="none" ${q.chapter === "none" ? "selected" : ""}>${master ? "Sem capítulo (avulsas)" : "Sem capítulo"}</option>${r.chapters.map((c) => `<option value="${esc(c.id)}" ${c.id === q.chapter ? "selected" : ""}>${esc(chapterKindLabel(c.kind))} — ${esc(c.title)}</option>`).join("")}`;
+  const controls = controlsHtml("lg", {
+    search: { name: "search", label: "Buscar nas sessões", placeholder: "Goblins, Rosered, pedra negra…", value: q.search },
+    filters: [
+      { name: "chapter", label: "Capítulo", value: q.chapter, options: [["none", master ? "Sem capítulo (avulsas)" : "Sem capítulo"], ...r.chapters.map((c) => [c.id, `${chapterKindLabel(c.kind)} — ${c.title}`])] },
+      { name: "source", label: "Origem", all: "Todas", value: q.source, options: SOURCES },
+      ...(master ? [{ name: "state", label: "Estado", value: q.state, options: [["published", "Publicadas"], ["draft", "Não publicadas"]] }] : []),
+    ],
+  });
   const row = (s) => `<tr><td class="num" data-label="Nº">${String(s.number).padStart(2, "0")}</td><td data-label="Sessão"><button type="button" class="text-button log-open" data-action="lg-open" data-id="${esc(s.key)}">${esc(s.title)}</button>${s.excerpt ? `<p class="log-excerpt">${esc(s.excerpt)}</p>` : ""}</td><td data-label="Capítulo">${s.chapterTitle ? `<span class="status-chip">❖ ${esc(s.chapterTitle)}</span>` : `<span class="muted">${master ? "Avulsa" : "—"}</span>`}</td><td data-label="Origem">${sourceLabel(s.source)}</td><td data-label="Data">${esc(rowDate(s))}</td>${master ? `<td data-label="Estado">${rowState(s)}</td>` : ""}</tr>`;
-  target.innerHTML = `<div class="section-title"><h2 id="cp-log-title">Sessões${helpButton("campanhas.sessoes.tabela", "Tabela de sessões")}</h2>${editable ? `<div class="section-actions">${button("+ Sessão anterior", "lg-past", "", "subtle small")}${button("⇪ Importar em lote", "lg-import", "", "subtle small")}${d.activeSession ? "" : button("✦ Iniciar nova sessão", "cp-start", d.id, "subtle small")}</div>` : ""}</div>
+  target.innerHTML = `<div class="section-title"><h2 id="cp-log-title">Sessões${helpButton("campanhas.sessoes.tabela", "Tabela de sessões")}</h2>${editable ? `<div class="section-actions">${button("+ Sessão anterior", "lg-past", "", "primary small")}${button("⇪ Importar em lote", "lg-import", "", "subtle small")}${d.activeSession ? "" : button("✦ Iniciar nova sessão", "cp-start", d.id, "subtle small")}</div>` : ""}</div>
   <p class="muted small section-lead">${master ? "Sessões jogadas no Eternnus e as registradas antes da plataforma, numa só lista. Os jogadores veem só resumos e registros publicados." : "O que aconteceu em cada sessão, publicado pelo mestre — no Eternnus ou antes dele. Busque por nomes, lugares ou acontecimentos."}</p>
-  <form class="search-bar log-filters${master ? " with-state" : ""}" role="search" data-log-filters><div class="field"><label for="lg-search">Buscar nas sessões</label><input id="lg-search" name="search" type="search" minlength="2" maxlength="100" value="${esc(q.search)}" placeholder="Goblins, Rosered, pedra negra…"></div><div class="field"><label for="lg-chapter">Capítulo</label><select id="lg-chapter" name="chapter">${chapterOptions}</select></div><div class="field"><label for="lg-source">Origem</label><select id="lg-source" name="source">${SOURCES.map(([v, l]) => `<option value="${v}" ${v === q.source ? "selected" : ""}>${l}</option>`).join("")}</select></div>${stateField}<button type="submit" class="subtle">Buscar</button>${filtered ? `<p class="search-extra"><span role="status">${r.total} ${r.total === 1 ? "sessão encontrada" : "sessões encontradas"}.</span> ${button("Limpar filtros", "lg-clear", "", "text-button small")}</p>` : ""}</form>
+  ${controls}
   ${r.items.length ? `<div class="data-table-wrap" tabindex="0" role="region" aria-label="Sessões da campanha"><table class="data-table log-table"><caption class="sr-only">Sessões da campanha${q.search ? `, busca por ${esc(q.search)}` : ""}, página ${q.page} de ${pages}</caption><thead><tr><th scope="col">Nº</th><th scope="col">Sessão</th><th scope="col">Capítulo</th><th scope="col">Origem</th><th scope="col">Data</th>${master ? '<th scope="col">Estado</th>' : ""}</tr></thead><tbody>${r.items.map(row).join("")}</tbody></table></div>` : `<p class="muted small">${filtered ? "Nenhuma sessão encontrada com estes filtros." : master ? "Nenhuma sessão ainda. Inicie a primeira, registre uma anterior ou importe várias de uma vez." : "Nenhum resumo publicado ainda."}</p>`}
   ${pages > 1 ? `<div class="pagination">${button("← Mais recentes", "lg-page", q.page - 1, "subtle", q.page <= 1 ? "disabled" : "")}<span>Página ${q.page} de ${pages} · ${r.total} sessões</span>${button("Anteriores →", "lg-page", q.page + 1, "subtle", q.page >= pages ? "disabled" : "")}</div>` : ""}`;
-  target.querySelector("[data-log-filters]").onsubmit = (e) => {
+  target.querySelector("#lg-controls").onsubmit = (e) => {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const search = String(f.get("search") || "").trim();
-    if (search.length === 1) { toast("Digite ao menos 2 caracteres para buscar."); return; }
-    reload({ search, chapter: String(f.get("chapter") || ""), source: String(f.get("source") || ""), state: String(f.get("state") || ""), page: 1 });
+    const { q: search, filters } = readControls(e.currentTarget);
+    if (search.length === 1) { target.querySelector("#lg-q-hint").textContent = "Digite ao menos 2 caracteres ou deixe vazio."; target.querySelector("#lg-q")?.focus(); return; }
+    reload({ search, chapter: filters.chapter || "", source: filters.source || "", state: filters.state || "", page: 1 });
   };
   const changed = async () => { await reload(); await onChanged?.(); };
   target.onclick = async (e) => {
@@ -68,7 +74,6 @@ export async function renderSessionLog(d, target, query = {}, { open = "", onCha
     if (!b || b.disabled || b.getAttribute("aria-disabled") === "true") return;
     try {
       if (b.dataset.action === "lg-page") await reload({ page: Number(b.dataset.id) });
-      if (b.dataset.action === "lg-clear") await reload({ search: "", chapter: "", source: "", state: "", page: 1 });
       if (b.dataset.action === "lg-open") await openEntry(d, b.dataset.id, changed);
       if (b.dataset.action === "lg-past") await (await import("./campaign-workspace.js")).pastEditor(d, {}, changed);
       if (b.dataset.action === "lg-import") importModal(d, changed);

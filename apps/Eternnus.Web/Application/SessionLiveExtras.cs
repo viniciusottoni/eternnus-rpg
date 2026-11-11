@@ -17,8 +17,10 @@ public partial class SessionService
             if (!versions.TryGetValue(c.TemplateVersionId ?? SheetTemplateVersion.FreeTemplateV1Id, out var v)) continue;
             var raw = c.TemplateVersionId == null ? CharacterSheets.LegacyValues(c) : CharacterSheets.ParseValues(c.Values);
             var (stored, _) = CharacterSheets.Complete(v.Fields, raw);
-            var (resources, stats) = SheetSummary.Build(v.Fields, CharacterSheets.All(v.Fields, stored));
-            result[c.Id] = new { resources = resources.Take(3), stats = stats.Take(3), conditions = c.Conditions };
+            var all = CharacterSheets.All(v.Fields, stored);
+            var (resources, stats) = SheetSummary.Build(v.Fields, all);
+            // armor: CA/Armadura para a bolha do marcador no mapa (nulo quando o modelo não define o papel).
+            result[c.Id] = new { resources = resources.Take(3), stats = stats.Take(3), conditions = c.Conditions, armor = SheetSummary.Armor(v.Fields, all) };
         }
         return result;
     }
@@ -80,7 +82,7 @@ public partial class SessionService
                 {
                     var all = CharacterSheets.All(version.Fields, CharacterSheets.Complete(version.Fields, CharacterSheets.ParseValues(r.Values)).Stored);
                     var (resources, stats) = SheetSummary.Build(version.Fields, all);
-                    sheet = new { resources, stats };
+                    sheet = new { resources, stats, armor = SheetSummary.Armor(version.Fields, all) };
                 }
                 // Com ficha, os recursos simples ficam guardados mas não aparecem nem são ajustados na mesa (ADR-065).
                 npcs.Add(new { r.tokenId, r.Id, r.Name, r.Summary, resources = sheet == null ? r.Resources : [], r.SourceId, r.Kind, r.Revision, image = PortraitUrl(s.Id, r.tokenId, r.ImageUrl), hasSheet = sheet != null, sheet });

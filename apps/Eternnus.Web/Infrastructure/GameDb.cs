@@ -91,6 +91,7 @@ public class GameDb(DbContextOptions<GameDb> options) : IdentityDbContext<AppUse
         ChapterModel.Configure(b);
         PreparationModel.Configure(b);
         MusicModel.Configure(b);
+        NoticeModel.Configure(b);
     }
 
     /// <summary>Plataforma: papéis, sistemas, auditoria, suporte, biblioteca, fichas-modelo, Guilda e progressão.</summary>
@@ -153,7 +154,10 @@ public class GameDb(DbContextOptions<GameDb> options) : IdentityDbContext<AppUse
             new GuildCategory { Id = Guid.Parse("00000000-0000-4000-8000-000000000203"), Name = "Procura-se grupo", Slug = "procura-se-grupo", Description = "Encontre mesa, mestre ou jogadores.", Order = 2 },
             new GuildCategory { Id = Guid.Parse("00000000-0000-4000-8000-000000000204"), Name = "Regras e sistemas", Slug = "regras-e-sistemas", Description = "Dúvidas e debates sobre regras de cada sistema.", Order = 3, MinLevelToPost = 2 },
             new GuildCategory { Id = Guid.Parse("00000000-0000-4000-8000-000000000205"), Name = "Mestres e campanhas", Slug = "mestres-e-campanhas", Description = "Ideias, ganchos e relatos de campanha.", Order = 4, MinLevelToPost = 2 },
-            new GuildCategory { Id = Guid.Parse("00000000-0000-4000-8000-000000000206"), Name = "Fichas e biblioteca", Slug = "fichas-e-biblioteca", Description = "Sugestões para fichas-modelo e materiais da biblioteca.", Order = 5 });
+            new GuildCategory { Id = Guid.Parse("00000000-0000-4000-8000-000000000206"), Name = "Fichas e biblioteca", Slug = "fichas-e-biblioteca", Description = "Sugestões para fichas-modelo e materiais da biblioteca.", Order = 5 },
+            new GuildCategory { Id = Guid.Parse("00000000-0000-4000-8000-000000000207"), Name = "Forja de Ideias", Slug = "forja-de-ideias", Description = "Sugestões de melhorias e novos recursos para a plataforma.", Order = 6 },
+            new GuildCategory { Id = Guid.Parse("00000000-0000-4000-8000-000000000208"), Name = "Galeria do Artífice", Slug = "galeria-do-artifice", Description = "Mapas, retratos, tokens e artes criadas pela comunidade.", Order = 7 },
+            new GuildCategory { Id = Guid.Parse("00000000-0000-4000-8000-000000000209"), Name = "Portal do Aprendiz", Slug = "portal-do-aprendiz", Description = "Dúvidas de quem está começando no RPG ou na Eternnus.", Order = 8 });
         b.Entity<GuildTopic>().HasIndex(x => new { x.CategoryId, x.DeletedAt, x.Pinned, x.LastPostAt });
         b.Entity<GuildTopic>().HasIndex(x => new { x.AuthorId, x.CreatedAt });
         b.Entity<GuildTopic>().Property(x => x.Revision).IsConcurrencyToken();

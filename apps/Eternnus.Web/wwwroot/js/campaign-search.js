@@ -13,7 +13,7 @@ const KINDS = Object.freeze({
 const ROUTE = /^campaign\/[0-9a-f-]{36}(\/[a-z]+(\/[a-z0-9-]{1,48})?)?$/i;
 
 export function searchForm(d) {
-  return `<section class="campaign-search metal" aria-labelledby="cs-title"><h2 id="cs-title" class="small-heading">Buscar na campanha${helpButton("campanhas.busca.geral", "Busca na campanha")}</h2><form id="cs-form" class="search-bar" role="search"><div class="field"><label for="cs-q" class="sr-only">Termo de busca</label><input id="cs-q" name="q" type="search" minlength="2" maxlength="100" required placeholder="Nome, lugar, acontecimento…" aria-describedby="cs-hint"></div><button type="submit" class="primary">Buscar</button><small id="cs-hint" class="form-help search-extra">${d.isMaster ? "Sessões, capítulos, mundo, notas, diário, NPCs e cenas." : "Sessões publicadas, mundo, suas notas, diário e NPCs conhecidos."}</small></form><div id="cs-results" aria-live="polite"></div></section>`;
+  return `<section class="campaign-search metal" aria-labelledby="cs-title"><h2 id="cs-title" class="small-heading">Buscar na campanha${helpButton("campanhas.busca.geral", "Busca na campanha")}</h2><form id="cs-form" class="search-bar table-controls" role="search"><div class="field"><label for="cs-q" class="sr-only">Termo de busca</label><input id="cs-q" name="q" type="search" minlength="2" maxlength="100" required placeholder="Nome, lugar, acontecimento…" aria-describedby="cs-hint"></div><div class="field"><label for="cs-kind" class="sr-only">Tipo</label><select id="cs-kind" name="kind"><option value="">Todos os tipos</option>${Object.entries(KINDS).filter(([v]) => d.isMaster || v !== "scene").map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select></div><div class="table-controls-actions"><button type="submit" class="subtle">Buscar</button></div><small id="cs-hint" class="form-help search-extra">${d.isMaster ? "Sessões, capítulos, mundo, notas, diário, NPCs e cenas." : "Sessões publicadas, mundo, suas notas, diário e NPCs conhecidos."}</small></form><div id="cs-results" aria-live="polite"></div></section>`;
 }
 
 /** Busca geral: tabela paginada de 15 itens no servidor. Filtros de tipo e página vão na consulta. */
@@ -21,8 +21,6 @@ export function mountSearch(d) {
   const form = $("#cs-form"), results = $("#cs-results");
   if (!form) return;
   const state = { q: "", kind: "", page: 1 };
-  // Cena preparada só aparece para o mestre; o jogador não vê esse tipo no filtro.
-  const kinds = Object.entries(KINDS).filter(([v]) => d.isMaster || v !== "scene");
   /** `focusSel`: o que recebe o foco depois de redesenhar (o botão clicado some no redesenho). */
   const load = async (focusSel = "") => {
     results.innerHTML = '<p class="loading-line" role="status">Buscando…</p>';
@@ -34,14 +32,12 @@ export function mountSearch(d) {
       state.page = r.page;
       const items = r.items.filter((i) => ROUTE.test(i.route));
       const pages = Math.max(1, Math.ceil(r.total / r.pageSize));
-      const kindOptions = kinds.map(([v, l]) => `<option value="${esc(v)}" ${v === state.kind ? "selected" : ""}>${esc(l)}</option>`).join("");
-      const controls = `<form class="search-bar table-controls" id="cs-filter" role="search"><div class="field"><label for="cs-kind">Tipo</label><select id="cs-kind" name="kind"><option value="">Todos os tipos</option>${kindOptions}</select></div></form>`;
       const table = items.length
         ? `<div class="data-table-wrap" tabindex="0" role="region" aria-label="Resultados da busca"><table class="data-table stack-table search-table"><caption class="sr-only">Resultados para ${esc(r.q)}, página ${r.page} de ${pages}</caption><thead><tr><th scope="col">Tipo</th><th scope="col">Título</th><th scope="col">Trecho</th><th scope="col">Abrir</th></tr></thead><tbody>${items.map((i) => `<tr><td data-label="Tipo"><span class="status-chip">${esc(KINDS[i.kind] || "Conteúdo")}</span></td><td data-label="Título"><strong>${esc(i.title)}</strong></td><td data-label="Trecho" class="small">${esc(i.excerpt || "")}</td><td data-label="Abrir"><a class="button subtle small" href="#${esc(i.route)}">Abrir</a></td></tr>`).join("")}</tbody></table></div>`
         : `<p class="muted small" role="status">Nada encontrado para “${esc(r.q)}”${state.kind ? " neste tipo" : ""}.</p>`;
       const pager = pages > 1 ? `<nav class="pagination" aria-label="Páginas da busca">${button("← Anterior", "cs-page", state.page - 1, "subtle small", state.page <= 1 ? "disabled" : "")}<span>Página ${r.page} de ${pages} · ${r.total} ${r.total === 1 ? "resultado" : "resultados"} para “${esc(r.q)}”</span>${button("Próxima →", "cs-page", state.page + 1, "subtle small", state.page >= pages ? "disabled" : "")}</nav>` : `<p class="muted small" role="status">${r.total} ${r.total === 1 ? "resultado" : "resultados"} para “${esc(r.q)}”.</p>`;
       const notice = r.truncated ? `<p class="muted small" role="status">Mostrando os primeiros 500 acertos. Refine a busca para ver mais.</p>` : "";
-      results.innerHTML = controls + notice + pager + table + (pages > 1 ? pager : "");
+      results.innerHTML = table + notice + pager;
       if (focusSel) results.querySelector(focusSel)?.focus();
     } catch (error) {
       if (results.isConnected) results.innerHTML = `<p role="alert">${esc(error.message)}</p>${button("Tentar novamente", "cs-retry", "", "subtle small")}`;
@@ -49,9 +45,16 @@ export function mountSearch(d) {
   };
   form.onsubmit = async (e) => {
     e.preventDefault();
-    const q = String(new FormData(form).get("q") || "").trim();
+    const data = new FormData(form);
+    const q = String(data.get("q") || "").trim();
     if (q.length < 2) { results.innerHTML = '<p class="muted small" role="status">Digite ao menos 2 caracteres.</p>'; return; }
-    Object.assign(state, { q, kind: "", page: 1 });
+    Object.assign(state, { q, kind: String(data.get("kind") || ""), page: 1 });
+    await load();
+  };
+  // Trocar o tipo refaz a busca atual; sem termo, o tipo vale para a próxima busca.
+  form.onchange = async (e) => {
+    if (e.target.id !== "cs-kind" || !state.q) return;
+    Object.assign(state, { kind: e.target.value, page: 1 });
     await load();
   };
   results.onclick = async (e) => {
@@ -60,13 +63,6 @@ export function mountSearch(d) {
     if (b.dataset.action === "cs-page") { state.page = Number(b.dataset.id); await load(".data-table-wrap"); }
     if (b.dataset.action === "cs-retry") await load();
   };
-  // Tipo filtra ao trocar a opção; Enter no select também envia.
-  results.onchange = async (e) => {
-    if (e.target.id !== "cs-kind") return;
-    Object.assign(state, { kind: e.target.value, page: 1 });
-    await load("#cs-kind");
-  };
-  results.onsubmit = (e) => { if (e.target.id === "cs-filter") e.preventDefault(); };
 }
 
 // Mesma regra de imagem da mesa: link https validado ou o retrato protegido do NPC conhecido.
@@ -130,7 +126,6 @@ async function loadKnown(d, target, state, focus, focusSel = "") {
         catch (error) { toast(error.message); }
         return;
       }
-      if (e.target.closest("[data-table-clear='kn']")) return loadKnown(d, target, { q: "", kind: "", page: 1 }, "", "#kn-q");
       const b = e.target.closest("[data-action='kn-page']");
       if (b && !b.disabled) loadKnown(d, target, { ...state, page: Number(b.dataset.id) }, "", ".data-table-wrap");
       const retry = e.target.closest("[data-action='kn-retry']");
