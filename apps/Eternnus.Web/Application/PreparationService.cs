@@ -236,7 +236,11 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         npc.ImageUrl = await ValidImageAsync(campaignId, x.ImageUrl, db, ct);
         npc.Summary = Text(x.Summary, 500, "O resumo aceita até 500 caracteres.");
         npc.Notes = Text(x.Notes, 4000, "As notas aceitam até 4.000 caracteres.");
+        var wasShared = id != null && npc.SharedWithPlayers;
         if (x.SharedWithPlayers is { } shared) npc.SharedWithPlayers = shared;
+        // NPC revelado ao grupo é novidade em "NPCs conhecidos"; escondê-lo de novo apaga o aviso.
+        if (npc.SharedWithPlayers && !wasShared) await NoticeService.NotifyAsync(db, campaignId, user, NoticeAreas.Npcs, npc.Id.ToString(), NoticeAudience.Players, ct);
+        else if (!npc.SharedWithPlayers) await NoticeService.ForgetAsync(db, campaignId, npc.Id.ToString(), ct, NoticeAreas.Npcs);
         try { await db.SaveChangesAsync(ct); } catch (DbUpdateConcurrencyException) { throw new RuleException(409, "O personagem mudou em outra tela. Recarregue antes de salvar."); }
         return new { npc.Id, npc.Revision };
     }
@@ -349,6 +353,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         await AccessAsync(campaignId, user, true, true, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         if (await db.MasterCharacters.Where(m => m.Id == id && m.CampaignId == campaignId).ExecuteDeleteAsync(ct) == 0) throw new RuleException(404, "Personagem do mestre não encontrado.");
+        await NoticeService.ForgetAsync(db, campaignId, id.ToString(), ct, NoticeAreas.Npcs);
         // Páginas de lore continuam no acervo, só perdem o vínculo (sem chave estrangeira, o id órfão impediria salvá-las).
         await db.Set<WorkspacePage>().Where(p => p.CampaignId == campaignId && p.NpcId == id).ExecuteUpdateAsync(s => s.SetProperty(p => p.NpcId, (Guid?)null), ct);
         await tx.CommitAsync(ct);

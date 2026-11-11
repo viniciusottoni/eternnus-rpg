@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Eternnus.Web;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -111,7 +111,7 @@ public sealed class GuildTests : IAsyncLifetime
         Assert.Contains((Veteran, XpReasons.GuildPost, $"guild_post:{r2}"), progression.Awards);
 
         var categories = Json(await guild.CategoriesAsync(Common, default)).GetProperty("items").EnumerateArray().ToList();
-        Assert.Equal(6, categories.Count);
+        Assert.Equal(9, categories.Count);
         Assert.Equal("avisos", categories[0].GetProperty("slug").GetString());
         var taverna = categories.Single(c => c.GetProperty("slug").GetString() == "taverna");
         Assert.Equal(1, taverna.GetProperty("topicCount").GetInt32());
@@ -192,11 +192,115 @@ public sealed class GuildTests : IAsyncLifetime
         Assert.Equal(400, await StatusAsync(() => guild.ReportAsync(post, new("ruim"), Other, default)));
         await guild.ReportAsync(post, new("Conteúdo ofensivo"), Other, default);
         Assert.Equal(409, await StatusAsync(() => guild.ReportAsync(post, new("De novo, ofensivo"), Other, default)));
-        var view = Json(await guild.TopicAsync(id, Other, 1, default)).GetProperty("posts")[0];
+        // Denúncia na resposta (o tópico segue aberto): quem denunciou vê o próprio registro, nunca a contagem.
+        var reply = await ReplyAsync(await TopicAsync(Veteran), Common, "Resposta qualquer");
+        await guild.ReportAsync(reply, new("Conteúdo ofensivo"), Other, default);
+        var view = Json(await guild.TopicAsync(await db.GuildPosts.Where(p => p.Id == reply).Select(p => p.TopicId).SingleAsync(), Other, 1, default)).GetProperty("posts")[1];
         Assert.False(view.GetProperty("canReport").GetBoolean());
         Assert.True(view.GetProperty("reported").GetBoolean());
         Assert.Equal(JsonValueKind.Null, view.GetProperty("openReports").ValueKind);
         Assert.Equal(1, Json(await guild.TopicAsync(id, Admin, 1, default)).GetProperty("posts")[0].GetProperty("openReports").GetInt32());
+    }
+
+    [Fact]
+    public async Task First_report_on_the_opening_hides_the_whole_topic_until_moderation_decides()
+    {
+        var id = await TopicAsync(Common, body: "Abertura ofensiva");
+        var opening = await FirstPostAsync(id);
+        await ReplyAsync(id, Veteran, "Resposta");
+        var result = Json(await guild.ReportAsync(opening, new("Conteúdo ofensivo"), Other, default));
+        Assert.True(result.GetProperty("hidden").GetBoolean());
+        Assert.True(result.GetProperty("topicHidden").GetBoolean());
+
+        // Membros: fora das listas, contagens, recentes e leitura; resposta bloqueada.
+        Assert.Equal(404, await StatusAsync(() => guild.TopicAsync(id, Other, 1, default)));
+        Assert.Equal(404, await StatusAsync(() => guild.ReplyAsync(id, new("Oi?"), Veteran, default)));
+        Assert.Equal(0, Json(await guild.TopicsAsync(Other, "taverna", null, null, 1, false, default)).GetProperty("total").GetInt32());
+        Assert.Empty(Json(await guild.RecentAsync(Other, 5, default)).EnumerateArray());
+        var taverna = Json(await guild.CategoriesAsync(Other, default)).GetProperty("items").EnumerateArray().Single(c => c.GetProperty("slug").GetString() == "taverna");
+        Assert.Equal(0, taverna.GetProperty("topicCount").GetInt32());
+        // Autor: lê com aviso e o próprio texto, mas não edita nem responde até a decisão.
+        var mine = Json(await guild.TopicAsync(id, Common, 1, default));
+        Assert.True(mine.GetProperty("topic").GetProperty("held").GetBoolean());
+        Assert.False(mine.GetProperty("canReply").GetBoolean());
+        Assert.Equal("Abertura ofensiva", mine.GetProperty("posts")[0].GetProperty("body").GetString());
+        Assert.False(mine.GetProperty("posts")[0].GetProperty("canEdit").GetBoolean());
+        Assert.Equal(409, await StatusAsync(() => guild.EditAsync(opening, new("Corrigido"), Common, default)));
+        Assert.Equal(409, await StatusAsync(() => guild.ReplyAsync(id, new("Posso explicar"), Common, default)));
+        // Equipe: lista com o selo e ainda pode responder.
+        var staffList = Json(await guild.TopicsAsync(Ambassador, "taverna", null, null, 1, false, default)).GetProperty("items")[0];
+        Assert.True(staffList.GetProperty("held").GetBoolean());
+        var queue = Json(await guild.ReportsAsync(Ambassador, "open", 1, default)).GetProperty("items")[0].GetProperty("post");
+        Assert.True(queue.GetProperty("held").GetBoolean());
+        Assert.True(queue.GetProperty("topic").GetProperty("held").GetBoolean());
+        // Segunda denúncia na mensagem já oculta só entra na fila.
+        await guild.ReportAsync(opening, new("Também achei ofensivo"), Veteran, default);
+
+        // Arquivar uma das duas mantém oculto; arquivar a última libera.
+        var reports = await db.GuildReports.Where(r => r.PostId == opening).OrderBy(r => r.Id).Select(r => r.Id).ToListAsync();
+        await guild.ResolveAsync(reports[0], new("dismissed", "Sem violação"), Admin, default);
+        Assert.Equal(404, await StatusAsync(() => guild.TopicAsync(id, Other, 1, default)));
+        await guild.ResolveAsync(reports[1], new("dismissed", "Sem violação"), Admin, default);
+        var back = Json(await guild.TopicAsync(id, Other, 1, default));
+        Assert.False(back.GetProperty("topic").GetProperty("held").GetBoolean());
+        Assert.Equal("Abertura ofensiva", back.GetProperty("posts")[0].GetProperty("body").GetString());
+        Assert.True(back.GetProperty("canReply").GetBoolean());
+        Assert.False(await db.Audit.AnyAsync(a => a.ActorId == Other || a.ActorId == Veteran)); // denunciar não gera auditoria
+
+        // Mantida pela moderação: nova denúncia vai à fila sem ocultar, até o autor editar o texto.
+        var again = Json(await guild.ReportAsync(opening, new("Insisto que é ofensivo"), Ambassador, default));
+        Assert.False(again.GetProperty("hidden").GetBoolean());
+        Assert.False(again.GetProperty("topicHidden").GetBoolean());
+        await guild.EditAsync(opening, new("Texto novo, de novo ofensivo"), Common, default);
+        Assert.True(Json(await guild.ReportAsync(opening, new("Editou e piorou"), Admin, default)).GetProperty("topicHidden").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Report_on_a_reply_hides_only_that_reply_and_removal_releases_it_as_removed()
+    {
+        var id = await TopicAsync(Veteran);
+        var reply = await ReplyAsync(id, Common, "Spam aqui");
+        var result = Json(await guild.ReportAsync(reply, new("Propaganda"), Other, default));
+        Assert.True(result.GetProperty("hidden").GetBoolean());
+        Assert.False(result.GetProperty("topicHidden").GetBoolean());
+
+        var member = Json(await guild.TopicAsync(id, Other, 1, default));
+        Assert.True(member.GetProperty("canReply").GetBoolean());
+        var hidden = member.GetProperty("posts")[1];
+        Assert.True(hidden.GetProperty("held").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, hidden.GetProperty("body").ValueKind);
+        Assert.False(hidden.GetProperty("canMarkUseful").GetBoolean());
+        Assert.Equal(404, await StatusAsync(() => guild.MarkUsefulAsync(reply, Veteran, default)));
+        Assert.Equal("Spam aqui", Json(await guild.TopicAsync(id, Common, 1, default)).GetProperty("posts")[1].GetProperty("body").GetString());
+        Assert.Equal("Spam aqui", Json(await guild.TopicAsync(id, Admin, 1, default)).GetProperty("posts")[1].GetProperty("body").GetString());
+
+        // Remoção direta pela moderação resolve a denúncia e encerra a ocultação: fica "removida pela moderação".
+        await guild.ModerateDeletePostAsync(reply, new("Propaganda"), Ambassador, default);
+        var after = Json(await guild.TopicAsync(id, Other, 1, default)).GetProperty("posts")[1];
+        Assert.False(after.GetProperty("held").GetBoolean());
+        Assert.Equal("moderation", after.GetProperty("removed").GetString());
+        Assert.Null((await db.GuildPosts.AsNoTracking().SingleAsync(p => p.Id == reply)).HeldAt);
+    }
+
+    [Fact]
+    public async Task Staff_messages_are_reported_without_being_hidden()
+    {
+        var id = await TopicAsync(Ambassador, Avisos);
+        var result = Json(await guild.ReportAsync(await FirstPostAsync(id), new("Não concordo com o aviso"), Common, default));
+        Assert.False(result.GetProperty("hidden").GetBoolean());
+        Assert.False(result.GetProperty("topicHidden").GetBoolean());
+        Assert.Equal(1, Json(await guild.TopicsAsync(Other, "avisos", null, null, 1, false, default)).GetProperty("total").GetInt32());
+        Assert.Equal(1, Json(await guild.ReportsAsync(Admin, "open", 1, default)).GetProperty("total").GetInt32());
+    }
+
+    [Fact]
+    public async Task New_halls_are_seeded_open_to_every_level()
+    {
+        var items = Json(await guild.CategoriesAsync(Common, default)).GetProperty("items").EnumerateArray()
+            .Select(c => (c.GetProperty("slug").GetString(), c.GetProperty("minLevelToPost").GetInt32(), c.GetProperty("staffOnly").GetBoolean())).ToList();
+        Assert.Equal(9, items.Count);
+        Assert.Equal(new (string?, int, bool)[] { ("forja-de-ideias", 1, false), ("galeria-do-artifice", 1, false), ("portal-do-aprendiz", 1, false) }, items.Skip(6).ToArray());
+        await TopicAsync(Common, Guid.Parse("00000000-0000-4000-8000-000000000207"));
     }
 
     [Fact]

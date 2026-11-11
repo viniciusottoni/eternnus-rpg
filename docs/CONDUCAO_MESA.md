@@ -104,6 +104,12 @@ O filtro de eventos do estado ao vivo e do histórico já aplica `MasterOnly`/`V
 - No máximo 5 pedidos abertos por sessão.
 - O mestre acompanha respostas e pendências. O jogador vê só os pedidos que o envolvem e não vê o próprio resultado quando a visibilidade é `blind`.
 
+## Dados rápidos e bolhas no mapa (ADR-070)
+
+- A bandeja à direita do mapa rola 1d4, 1d6, 1d8, 1d10, 1d12 ou 1d20 com um clique (`spec` sem modificador); ⬡ abre o construtor completo. O resultado aparece por alguns segundos sobre o mapa para quem recebeu o evento da rolagem; às cegas e cópias privadas seguem a visibilidade de sempre. Mestre: o olho alterna entre rolar para a mesa e só para ele. Jogador: vale `playerRollVisibility`. Pausada, só o mestre rola.
+- Cada marcador mostra a barra do primeiro recurso da ficha (vida) e o escudo com a Armadura, quando a ficha permite a leitura. NPCs e criaturas: só para o mestre. Tocar na barra abre “Dano/Cura” (ou Diminuir/Aumentar); o servidor confere dono/mestre e os limites do modelo, e o ajuste entra no histórico como os demais. ♥ mostra ou oculta as bolhas só na própria tela.
+- Mestre: soltar imagem ou UVTT no mapa (ou “Enviar mapa ou UVTT”) cria o mapa no acervo e pode usá-lo na hora; “Ajustar grade do mapa” corrige a grade com o mapa na mesa.
+
 ## Desfazer
 
 - Disponível para movimento e ajuste de recurso. Eventos elegíveis trazem `undoable: true`.

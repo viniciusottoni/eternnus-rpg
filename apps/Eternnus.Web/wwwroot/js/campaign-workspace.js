@@ -2,6 +2,8 @@ import { api } from './api.js';
 import { $, esc, modal, button, formError, submitForm, toast, empty } from './ui.js';
 import { shell } from './layout.js';
 import { helpButton } from './help.js';
+import { controlsHtml, readControls, pagerHtml, emptyTableHtml } from './data-table.js';
+const PAGE_SIZE = 20;
 const TYPES = [['text','Texto livre'],['place','Lugar'],['faction','Facção'],['book','Livro'],['chapter','Capítulo'],['item','Item'],['event','Acontecimento'],['npc','NPC'],['objective','Objetivo'],['clue','Pista'],['note','Nota pessoal']];
 /** ADR-064: NPCs nascem em Preparação; o tipo "npc" só aparece em páginas antigas que já o usam. */
 const choosable = (kind) => TYPES.filter(([v]) => v !== 'npc' || v === kind);
@@ -17,13 +19,27 @@ export async function renderWorkspace(d, target, notes = false, query = {search:
     const params = new URLSearchParams({...query, mine:notes, kind: notes ? 'note' : query.kind});
     const result = await api(`${base(d)}/pages?${params}`);
     if (!target.isConnected) return;
-    target.innerHTML = `<div class="section-title"><h2>${notes ? 'Minhas notas' : 'Mundo e acervo'}${helpButton('campanhas.acervo.cadernos','Acervo e cadernos')}</h2>${!d.archived && (notes || d.isMaster) ? button('+ '+(notes?'Nota':'Página'),'ws-new','','primary') : ''}</div>
-      <p class="form-help">${notes ? 'Suas notas começam privadas, inclusive para o mestre. Você escolhe com quem compartilhar. <a href="#notebook">Abrir meu caderno de todas as campanhas</a>' : 'Organize lore, lugares, facções e livros. Abra uma página para ler, relacionar ou compartilhar.'}</p>
-      <form id="ws-search" class="search-bar${notes?'':' with-filter'}" role="search"><div class="field"><label for="ws-q">Buscar no título, texto, coleção ou etiquetas</label><input id="ws-q" name="search" maxlength="100" value="${esc(query.search)}"></div>${notes?'':`<div class="field"><label for="ws-kind">Tipo</label><select id="ws-kind" name="kind"><option value="">Todos</option>${options(choosable(query.kind),query.kind)}</select></div>`}<button class="subtle" type="submit">Buscar</button><label class="check search-extra"><input type="checkbox" name="trash" ${query.trash?'checked':''}> Mostrar a lixeira</label></form>
-      ${result.items.length ? `<ul class="plain-list workspace-list">${result.items.map(p => `<li class="metal"><span class="badge">${esc(TYPES.find(([v])=>v===p.kind)?.[1] || p.kind)} · ${esc(VIS.find(([v])=>v===p.visibility)?.[1] || '')}</span><h3>${p.pinned ? "★ " : ""}${esc(p.title)}</h3>${p.npc ? `<a class="chip" href="#campaign/${esc(d.id)}/prep" data-tip="Página de lore deste personagem da Preparação">NPC: ${esc(p.npc)}</a>` : ''}<p class="muted small">${esc(p.collection)} ${esc(p.tags)} · ${esc(STATUS.find(([v])=>v===p.status)?.[1] || '')}</p>${query.trash ? button('Restaurar','ws-restore',p.id,'subtle',d.archived?'disabled':'') : button('Abrir','ws-open',p.id,'subtle')}</li>`).join('')}</ul>` : empty('Nenhum conteúdo encontrado.',query.trash?'A lixeira está vazia.':'Crie uma página ou ajuste a busca.')}
-      ${query.page>1||query.page*20<result.total?`<div class="pagination workspace-pagination">${button('← Anterior','ws-page',query.page-1,'subtle',query.page<=1?'disabled':'')}<span>${result.total} registros · Página ${query.page}</span>${button('Próxima →','ws-page',query.page+1,'subtle',query.page*20>=result.total?'disabled':'')}</div>`:''}`;
+    const label = (list, v) => esc(list.find(([x]) => x === v)?.[1] || '');
+    const filtered = Boolean(query.search || query.kind || query.trash);
+    const pages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+    const controls = controlsHtml('ws', {
+      search: { name: 'search', label: 'Buscar no título, texto, coleção ou etiquetas', placeholder: notes ? 'Título ou texto da nota' : 'Título, texto, coleção ou etiqueta', value: query.search },
+      filters: [
+        ...(notes ? [] : [{ name: 'kind', label: 'Tipo', value: query.kind, options: choosable(query.kind) }]),
+        { name: 'trash', label: 'Mostrar', all: notes ? 'Notas ativas' : 'Páginas ativas', value: query.trash ? 'true' : '', options: [['true', 'Lixeira']] },
+      ],
+    });
+    // Tabela padrão (mesma barra de busca das demais listas); a leitura continua no modal.
+    const row = p => `<tr><td data-label="Título"><strong class="ws-title">${p.pinned ? '<span aria-label="Fixada">★</span> ' : ''}${esc(p.title)}</strong>${p.npc ? ` <a class="chip" href="#campaign/${esc(d.id)}/prep" data-tip="Página de lore deste personagem da Preparação">NPC: ${esc(p.npc)}</a>` : ''}${p.collection || p.tags ? `<small class="muted">${esc([p.collection, p.tags].filter(Boolean).join(' · '))}</small>` : ''}</td>${notes ? '' : `<td data-label="Tipo">${label(TYPES, p.kind) || esc(p.kind)}</td>`}<td data-label="Quem lê">${label(VIS, p.visibility)}</td><td data-label="Estado">${label(STATUS, p.status)}</td><td data-label="Ações"><div class="scene-actions">${query.trash ? button('Restaurar','ws-restore',p.id,'subtle small',d.archived?'disabled':`aria-label="Restaurar ${esc(p.title)}"`) : button('Abrir','ws-open',p.id,'subtle small',`aria-label="Abrir ${esc(p.title)}"`)}</div></td></tr>`;
+    const table = `<div class="data-table-wrap" tabindex="0" role="region" aria-label="${notes ? 'Minhas notas' : 'Páginas do acervo'}"><table class="data-table stack-table workspace-table"><caption class="sr-only">${notes ? 'Minhas notas' : 'Páginas do acervo'}${query.trash ? ' na lixeira' : ''}, página ${query.page} de ${pages}</caption><thead><tr><th scope="col">Título</th>${notes ? '' : '<th scope="col">Tipo</th>'}<th scope="col">Quem lê</th><th scope="col">Estado</th><th scope="col">Ações</th></tr></thead><tbody>${result.items.map(row).join('')}</tbody></table></div>`;
+    const none = query.trash && !query.search && !query.kind ? emptyTableHtml(false, 'A lixeira está vazia.')
+      : filtered ? emptyTableHtml(true, '')
+      : empty(notes ? 'Nenhuma nota ainda.' : 'Nenhuma página ainda.', notes ? 'Crie uma nota para guardar ideias e pistas.' : 'Crie uma página de lore, lugar, facção ou livro.');
+    target.innerHTML = `<div class="section-title"><h2>${notes ? 'Minhas notas' : 'Mundo e acervo'}${helpButton('campanhas.acervo.cadernos','Acervo e cadernos')}</h2>${!d.archived && (notes || d.isMaster) ? button('+ '+(notes?'Nota':'Página'),'ws-new','','primary small') : ''}</div>
+      <p class="muted small section-lead">${notes ? 'Suas notas começam privadas, inclusive para o mestre. Você escolhe com quem compartilhar. <a href="#notebook">Abrir meu caderno de todas as campanhas</a>' : 'Organize lore, lugares, facções e livros. Abra uma página para ler, relacionar ou compartilhar.'}</p>
+      ${controls}${result.items.length ? table : none}${pagerHtml({ page: query.page, pages, total: result.total }, 'ws-page', notes ? 'notas' : 'páginas')}`;
     const reload = () => renderWorkspace(d,target,notes,query);
-    $('#ws-search').onsubmit = e => {e.preventDefault(); const f = new FormData(e.currentTarget); renderWorkspace(d,target,notes,{search:f.get('search'),kind:f.get('kind')||'',page:1,trash:f.has('trash')});};
+    $('#ws-controls').onsubmit = e => {e.preventDefault(); const { q, filters } = readControls(e.currentTarget); renderWorkspace(d,target,notes,{search:q,kind:filters.kind||'',page:1,trash:filters.trash==='true'});};
     target.onclick = async e => { const b=e.target.closest('[data-action]'); if(!b||b.disabled||b.getAttribute('aria-disabled')==='true') return; try {
       if(b.dataset.action==='ws-new') await pageEditor(d,{kind:notes?'note':'text'},reload);
       if(b.dataset.action==='ws-open') await readPage(d,b.dataset.id,reload);

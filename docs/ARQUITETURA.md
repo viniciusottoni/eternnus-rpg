@@ -91,7 +91,7 @@ ES Modules nativos, servidos pelo mesmo host. Não há framework ou processo Nod
 | `js/sheet.js` | Formulário da ficha com editor de ações, visualização reutilizada pela mesa e barras de vida. |
 | `js/campaign-page.js` | Página da campanha (visão geral, sessões, jogadores, recursos, configurações) e abertura de sessão com escolha de mapa. |
 | `js/table.js` | Mesa ao vivo: entrada/escolha de ficha, consulta ao vivo, heartbeat, grupo, painel de registros, comandos do mestre e do jogador. Devolve uma função de descarte usada pelo roteador. |
-| `js/table-map.js` | Tabuleiro em canvas (camada estática em cache, luzes/água animadas, marcadores, alcance, teclado) e imagem cartográfica; miniaturas de mapas. |
+| `js/table-map.js` | Tabuleiro em canvas (camada estática em cache, luzes/água animadas, marcadores com bolhas de vida/armadura clicáveis, alcance, teclado) e imagem cartográfica; miniaturas de mapas. Bolhas vêm de `tokenBubbles` (`play-policy.js`), só com dados já enviados pelo servidor. |
 | `js/session-history.js` | Histórico da sessão: resumo, linha do tempo, notas, personagens, rolagens, busca e paginação. |
 | `js/session-policy.js` | Regras puras de UX da mesa: rotas, modificadores, alcance, comandos habilitados, feeds, intervalo da consulta ao vivo. Espelha o servidor sem substituí-lo. |
 | `js/pwa.js` | Registro/estado da experiência instalável e orientação de instalação conforme o navegador. Não armazena perfil nem dados da API. |
@@ -132,7 +132,7 @@ Regras específicas de um sistema de RPG (iniciativa automática, cálculo de ac
 
 [PLATAFORMA.md](PLATAFORMA.md) descreve a integração de sistemas/papéis, auditoria, suporte, biblioteca, editor de modelos, fórmulas, Guilda, progressão e ficha por modelo. Domain/Platform.cs e Domain/Formulas mantêm dados/regras puras; os serviços específicos ficam em Application e endpoints finos em Features. A composição continua em Program.cs/ServiceRegistration, com PostgreSQL e migrações versionadas.
 
-CharacterSheetService centraliza origem, validação, colunas espelhadas, histórico e migração; SessionService reaproveita essas regras e continua dono das escritas na mesa. CampaignService.SetSheetTemplateAsync usa o bloqueio transacional/revisão de campanha existentes. api.js oferece resposta binária além de JSON para os PDFs privados, sem duplicar autenticação/erros/fetch. character-sheet.js coordena o preenchimento acessível, pdf-sheet.js é compartilhado com o editor e filled-pdf.js produz páginas novas sem conteúdo ativo.
+CharacterSheetService centraliza origem, validação, colunas espelhadas, histórico e migração; SessionService reaproveita essas regras e continua dono das escritas na mesa. CampaignService.SetSheetTemplateAsync usa o bloqueio transacional/revisão de campanha existentes. api.js oferece resposta binária além de JSON para os PDFs privados, sem duplicar autenticação/erros/fetch. character-sheet.js coordena o preenchimento acessível, pdf-sheet.js é compartilhado com o editor e filled-pdf.js produz páginas novas sem conteúdo ativo. pdf-import.js lê localmente um PDF preenchido e pdf-import-policy.js (puro) casa seus campos com o modelo padrão (ADR-067).
 
 ## Campanhas, contas e acervos — evolução integrada
 
@@ -154,6 +154,7 @@ CharacterSheetService centraliza origem, validação, colunas espelhadas, histó
 - Cliente:
   - `js/play-policy.js`: puro;
   - `js/table-tools.js`: construtor de rolagens, pedidos, ordem e PNJs, sob demanda;
+  - `js/vtt-import-policy.js` (puro: grade sugerida, redução com quadrado inteiro, leitura do UVTT e paredes/portas/luzes em casas) e `js/map-import.js` (sob demanda: imagem solta na mesa, importação UVTT pelo acervo e ajuste de grade ao vivo via `POST /sessions/{id}/map/grid`, ADR-070);
   - `js/campaign-prep.js`: cartões de cenas, PNJs, diário e modelos simples, sob demanda;
   - `js/scene-policy.js` (puro), `js/scene-editor.js` (editor único de cenas e da preparação do mapa), `js/table-scenes.js` (aba Cenas da mesa), `js/interface-mode.js` (Básica/Completa), `js/grid-adjust.js` e `js/map-picker.js` (seletor compartilhado), sob demanda. Ver [CENAS_EDITOR.md](CENAS_EDITOR.md);
   - `js/invite.js`: convite, sob demanda.
@@ -184,3 +185,7 @@ Ver [CAMPANHAS_CONTINUIDADE.md](CAMPANHAS_CONTINUIDADE.md). Domain/Workspace.cs,
 
 
 Câmera compartilhada (ADR-057): table-map.js recebe um host de controles via handlers.camera, mantém escala/pan transitórios por instância e descarta controles/gestos no destroy. map-gestures.js encapsula reconhecimento da pinça e interceptação antes de ações do mapa; grid-adjust.js reutiliza o mesmo módulo para a prévia da grade. Editor de cenas e preparação compartilhada usam o mesmo createBoard. Sem novas escritas HTTP.
+
+## Indicadores de novidade (ADR-069)
+
+`Domain/Notices.cs` define `Notice` (aviso por leitor, só campanhas), `ReadMark` (marca de leitura por instante), `NoticeAreas` e `ReadScopes`. `Application/NoticeService.cs` reúne a gravação estática chamada pelos casos de uso (`NotifyAsync`, `ForgetAsync`, `MarkAsync`, sem `SaveChanges` próprio, dentro da transação de quem publica) e a leitura/visto usados por `Features/Notices/NoticeEndpoints.cs`. Pontos de gravação: `SessionService.StartAsync/EndAsync`, `SessionScenes.RecapAsync`, `WorkspaceService.Save/Delete/SavePast`, `WorkspaceChapters.SaveChapter`, `WorkspaceAtlas.PublishMap`, `PreparationService.SaveNpcAsync/DeleteNpcAsync/ScheduleAsync`, `CampaignService.JoinAsync` e `GuildService.CreateTopicAsync/ReplyAsync` (marca própria). Cliente: `js/notices.js` (contadores, selos `newsBadge`/`newsSlot`, destaque `highlightNew`/`keepHighlighted`, `markSeen`), usado por `layout.js`, `app.js`, `campaigns.js`, `one-shots.js`, `campaign-page.js`, `guild.js`, `progress.js`, `support.js` e `admin.js`.

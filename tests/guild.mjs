@@ -68,6 +68,9 @@ try {
       ["regras-e-sistemas", false, 2],
       ["mestres-e-campanhas", false, 2],
       ["fichas-e-biblioteca", false, 1],
+      ["forja-de-ideias", false, 1],
+      ["galeria-do-artifice", false, 1],
+      ["portal-do-aprendiz", false, 1],
     ],
     "seeded categories in order",
   );
@@ -147,13 +150,19 @@ try {
   // ---------- Denúncias ----------
   error = await ana(`/api/guild/posts/${opening}/report`, "POST", { reason: "Denunciando a mim mesma" }, 403);
   check(error.message, "Você não pode denunciar a própria mensagem.", "no self report");
-  await bruno(`/api/guild/posts/${opening}/report`, "POST", { reason: "Código estranho na mensagem" });
+  check(await bruno(`/api/guild/posts/${opening}/report`, "POST", { reason: "Código estranho na mensagem" }).then((r) => [r.hidden, r.topicHidden]), [true, true], "first report hides the opening and its topic");
   error = await bruno(`/api/guild/posts/${opening}/report`, "POST", { reason: "De novo, por garantia" }, 409);
   check(error.message, "Você já denunciou esta mensagem. A moderação vai analisar.", "no duplicate report");
   await carla(`/api/guild/posts/${reply.id}/report`, "POST", { reason: "ok" }, 400);
   await carla(`/api/guild/posts/${reply.id}/report`, "POST", { reason: "Parece propaganda" });
-  topic = await bruno(`/api/guild/topics/${tavern.id}`);
-  check([topic.posts[0].reported, topic.posts[0].canReport, topic.posts[0].openReports], [true, false, null], "reporter sees own report, not counts");
+  await bruno(`/api/guild/topics/${tavern.id}`, "GET", undefined, 404);
+  ok(!(await bruno("/api/guild/topics?category=taverna")).items.some((t) => t.id === tavern.id), "held topic leaves member lists");
+  ok(!(await bruno("/api/guild/recent?limit=20")).some((t) => t.id === tavern.id), "held topic leaves recent");
+  error = await bruno(`/api/guild/topics/${tavern.id}/posts`, "POST", { body: "Alguém aí?" }, 404);
+  topic = await ana(`/api/guild/topics/${tavern.id}`);
+  check([topic.topic.held, topic.canReply, topic.posts[0].held, topic.posts[0].body.endsWith("(editado 2x)"), topic.posts[0].canEdit], [true, false, true, true, false], "author sees the held topic, frozen");
+  await ana(`/api/guild/posts/${opening}`, "PUT", { body: "Trocando o texto", revision: topic.posts[0].revision }, 409);
+  ok((await mod("/api/guild/topics?category=taverna")).items.some((t) => t.id === tavern.id && t.held), "staff lists the held topic");
 
   // ---------- Fila de moderação só para a equipe ----------
   await bruno("/api/guild/moderation/reports", "GET", undefined, 403);
@@ -161,9 +170,10 @@ try {
   await bruno(`/api/guild/moderation/topics/${tavern.id}`, "POST", { locked: true, reason: "Tentativa", revision: 1 }, 403);
   await bruno("/api/guild/topics?deleted=true", "GET", undefined, 403);
   await mod("/api/guild/admin/categories", "GET", undefined, 403);
-  check((await chief("/api/guild/admin/categories")).length, 6, "admin manages categories");
+  check((await chief("/api/guild/admin/categories")).length, 9, "admin manages categories");
   let reports = await mod("/api/guild/moderation/reports?status=open");
   check([reports.total, reports.items[0].post.id, reports.items[0].reporter.name, reports.items[0].post.author.name], [2, opening, "Bruno", "Ana"], "open queue oldest first");
+  check([reports.items[0].post.held, reports.items[0].post.topic.held, reports.items[1].post.held], [true, true, true], "queue flags hidden content");
   check((await mod(`/api/guild/topics/${tavern.id}`)).posts[0].openReports, 1, "staff sees open report count");
 
   // ---------- Ocultar e restaurar post (auditado) ----------
@@ -171,7 +181,9 @@ try {
   await mod(`/api/guild/moderation/posts/${opening}/delete`, "POST", { reason: "Conteúdo impróprio" }, 204);
   await mod(`/api/guild/moderation/posts/${opening}/delete`, "POST", { reason: "Conteúdo impróprio" }, 409);
   topic = await bruno(`/api/guild/topics/${tavern.id}`);
-  check([topic.posts[0].removed, topic.posts[0].body, topic.posts[0].canMarkUseful], ["moderation", null, false], "hidden for members");
+  check([topic.posts[0].removed, topic.posts[0].body, topic.posts[0].canMarkUseful, topic.topic.held], ["moderation", null, false, false], "removal settles the hold: topic back, opening removed");
+  check([topic.posts[1].held, topic.posts[1].body], [true, "Bem-vindos, viajantes!"], "author still reads the own hidden reply");
+  check(await dave(`/api/guild/topics/${tavern.id}`).then((t) => [t.posts[1].held, t.posts[1].body]), [true, null], "reported reply stays hidden while its report is open");
   topic = await mod(`/api/guild/topics/${tavern.id}`);
   check([topic.posts[0].removed, topic.posts[0].body.startsWith("<script>")], ["moderation", true], "staff still reads hidden text");
   check((await mod("/api/guild/moderation/reports?status=open")).total, 1, "hiding resolves the post's reports");

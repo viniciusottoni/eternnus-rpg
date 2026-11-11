@@ -469,8 +469,61 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
         Assert.Equal(0, live.GetProperty("resources").GetArrayLength());
         Assert.Equal(409, await Status(() => service.AdjustNpcResourceAsync(id, npcId, new(0, -1), Master, default)));
         db.ChangeTracker.Clear();
-        sheet = JsonSerializer.SerializeToElement(await service.SaveNpcSheetAsync(campaign.Id, npcId, new(null, null, sheet.GetProperty("revision").GetInt32()), Master, default), Web);
+        // Bolhas do mapa: vida e armadura da ficha-modelo chegam ao mestre; o ajuste usa o campo da ficha, nos limites do modelo.
+        var bubble = live.GetProperty("sheet");
+        Assert.Equal("vida", bubble.GetProperty("resources")[0].GetProperty("field").GetString());
+        Assert.Equal("10", bubble.GetProperty("armor").GetProperty("value").GetString());
+        await service.AdjustNpcResourceAsync(id, npcId, new(0, -3, "vida"), Master, default);
+        db.ChangeTracker.Clear();
+        live = (await State(id, Master)).GetProperty("play").GetProperty("npcs").EnumerateArray().Single(n => n.GetProperty("id").GetGuid() == npcId);
+        Assert.Equal(7, live.GetProperty("sheet").GetProperty("resources")[0].GetProperty("value").GetDouble());
+        await service.AdjustNpcResourceAsync(id, npcId, new(0, 50, "vida"), Master, default);
+        db.ChangeTracker.Clear();
+        live = (await State(id, Master)).GetProperty("play").GetProperty("npcs").EnumerateArray().Single(n => n.GetProperty("id").GetGuid() == npcId);
+        Assert.Equal(10, live.GetProperty("sheet").GetProperty("resources")[0].GetProperty("value").GetDouble()); // teto: Vida máxima
+        Assert.Equal(404, await Status(() => service.AdjustNpcResourceAsync(id, npcId, new(0, -1, "armadura"), Master, default)));
+        db.ChangeTracker.Clear();
+        Assert.Equal(403, await Status(() => service.AdjustNpcResourceAsync(id, npcId, new(0, -1, "vida"), Player, default)));
+        db.ChangeTracker.Clear();
+        Assert.Equal(0, (await State(id, Player)).GetProperty("play").GetProperty("npcs").GetArrayLength()); // jogadores não recebem a ficha do NPC
+        var revisionNow = (await db.MasterCharacters.AsNoTracking().SingleAsync(m => m.Id == npcId)).Revision;
+        db.ChangeTracker.Clear();
+        sheet = JsonSerializer.SerializeToElement(await service.SaveNpcSheetAsync(campaign.Id, npcId, new(null, null, revisionNow), Master, default), Web);
         Assert.Equal(4, sheet.GetProperty("simpleResources")[0].GetProperty("value").GetInt32());
+    }
+
+    [Fact]
+    public async Task Master_adjusts_the_grid_of_the_uploaded_map_on_the_table_and_tokens_stay_inside()
+    {
+        var id = await StartAsync(PlayModes.Free);
+        // Mapa oficial não tem grade ajustável.
+        Assert.Equal(409, await Status(() => service.SetMapGridAsync(id, new(64, 0, 0, 1.5m, 1), Master, default)));
+        db.ChangeTracker.Clear();
+        var asset = new CampaignMap { CampaignId = campaign.Id, Name = "Taverna", Width = 640, Height = 640, GridPixels = 64, Content = [0xFF, 0xD8, 0xFF, 0xD9] };
+        db.Add(asset); await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        await service.SetMapAsync(id, new(MapKinds.Tileset, "asset:" + asset.Id), Master, default);
+        db.ChangeTracker.Clear();
+        var token = await TokenOf(id, hero.Id);
+        await service.MoveTokenAsync(id, token.Id, new(9, 9), Master, default);
+        db.ChangeTracker.Clear();
+        Assert.Equal(403, await Status(() => service.SetMapGridAsync(id, new(128, 0, 0, 1.5m, 1), Player, default)));
+        db.ChangeTracker.Clear();
+        Assert.Equal(409, await Status(() => service.SetMapGridAsync(id, new(128, 0, 0, 1.5m, 7), Master, default)));
+        db.ChangeTracker.Clear();
+        Assert.Equal(400, await Status(() => service.SetMapGridAsync(id, new(128, 128, 0, 1.5m, 1), Master, default)));
+        db.ChangeTracker.Clear();
+        var before = (await State(id, Master)).GetProperty("revision").GetInt32();
+        var result = JsonSerializer.SerializeToElement(await service.SetMapGridAsync(id, new(128, 10, 0, 3m, 1), Master, default), Web);
+        Assert.Equal(2, result.GetProperty("revision").GetInt32());
+        Assert.Equal(1, result.GetProperty("moved").GetInt32());
+        var moved = await TokenOf(id, hero.Id);
+        Assert.True(moved.X < 4 && moved.Y < 5); // (640 − 10) / 128 = 4 colunas; 640 / 128 = 5 linhas
+        var state = await State(id, Master);
+        Assert.True(state.GetProperty("revision").GetInt32() > before);
+        Assert.Equal(128, state.GetProperty("map").GetProperty("gridPixels").GetInt32());
+        Assert.Equal(4, state.GetProperty("map").GetProperty("width").GetInt32());
+        Assert.Contains("ajustou a grade", await StateText(id, Master));
+        Assert.DoesNotContain("ajustou a grade", await StateText(id, Player)); // evento privado do mestre
     }
 
     [Fact]

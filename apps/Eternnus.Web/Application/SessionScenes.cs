@@ -8,7 +8,8 @@ public record CaptureSceneInput(Guid SceneId);
 public record ApplySceneInput(Guid SceneId, bool Text, bool Vision, bool Layer, int SceneRevision, string? PrepVersion = null, bool Tokens = false);
 public record SaveSceneAsInput(string Name, string? SharedText = null);
 public record NpcTokenInput(Guid MasterCharacterId, int X, int Y, bool Hidden = false, bool Copy = false);
-public record NpcResourceInput(int Index, int Delta);
+/// <summary><c>Index</c>: recurso simples (NPC sem modelo). <c>Field</c>: recurso da ficha-modelo do NPC (bolhas do mapa).</summary>
+public record NpcResourceInput(int Index, int Delta, string? Field = null);
 public record RecapInput(string? Text, bool Publish);
 
 /// <summary>Cenas, personagens do mestre e resumo durante a sessão. Escritas pelo fluxo comum da mesa.</summary>
@@ -229,7 +230,30 @@ public partial class SessionService
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var a = await LockAsync(sessionId, user, ct); RequireMaster(a);
         var npc = await db.MasterCharacters.SingleOrDefaultAsync(m => m.Id == npcId && m.CampaignId == a.Campaign.Id, ct) ?? throw new RuleException(404, "Personagem do mestre não encontrado.");
-        if (npc.TemplateVersionId != null) throw new RuleException(409, "Este personagem usa modelo de ficha: ajuste os valores pela ficha.");
+        if (npc.TemplateVersionId is { } versionId)
+        {
+            // Ficha-modelo: só campos marcados como recurso (ou o papel Vida), nos limites do modelo, como na ficha dos jogadores.
+            if (string.IsNullOrEmpty(x.Field)) throw new RuleException(409, "Este personagem usa modelo de ficha: ajuste os valores pela ficha.");
+            var version = await db.SheetTemplateVersions.AsNoTracking().SingleAsync(v => v.Id == versionId, ct);
+            var field = SheetSummary.ResourceField(version.Fields, x.Field) ?? throw new RuleException(404, "Esse recurso não existe na ficha.");
+            var stored = CharacterSheets.Complete(version.Fields, CharacterSheets.ParseValues(npc.Values)).Stored;
+            var all = CharacterSheets.All(version.Fields, stored);
+            static double Num(IReadOnlyDictionary<string, string> v, string? k) => k != null && v.TryGetValue(k, out var s) && double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0;
+            var maxField = field.MaxField ?? (field.Role == SheetFieldRoles.Hp ? version.Fields.FirstOrDefault(f => f.Role == SheetFieldRoles.MaxHp)?.Name : null);
+            double? top = maxField != null && all.ContainsKey(maxField) ? Num(all, maxField) : field.Max;
+            var old = Num(all, field.Name);
+            var next = Math.Round(Math.Max(field.Min ?? 0, old + x.Delta));
+            if (top is { } t) next = Math.Min(t, next);
+            if (next == old) { await tx.RollbackAsync(ct); return; }
+            var values = new Dictionary<string, string>(stored, StringComparer.Ordinal) { [field.Name] = Formula.Format(next) };
+            npc.Values = System.Text.Json.JsonSerializer.Serialize(CharacterSheets.Complete(version.Fields, values).Stored);
+            npc.Revision++; npc.UpdatedAt = Now;
+            db.Entry(npc).State = EntityState.Modified;
+            var label = string.IsNullOrWhiteSpace(field.Label) ? field.Name : field.Label;
+            Event(a.Session, user, await NameAsync(user, ct), EventKinds.Sheet, $"{npc.Name}: {label} {Formula.Format(old)} → {Formula.Format(next)}", new { npcId, field = field.Name, before = old, after = next }, masterOnly: true);
+            await CommitAsync(tx, a.Session, ct);
+            return;
+        }
         if (x.Index < 0 || x.Index >= npc.Resources.Count) throw new RuleException(404, "Recurso não encontrado.");
         var r = npc.Resources[x.Index];
         var before = r.Value;
@@ -253,6 +277,8 @@ public partial class SessionService
         a.Session.Recap = text;
         a.Session.RecapPublishedAt = x.Publish ? (a.Session.RecapPublishedAt ?? Now) : null;
         if (x.Publish && !wasPublished) Event(a.Session, user, await NameAsync(user, ct), EventKinds.Note, "Resumo da sessão publicado no diário da campanha", new { recap = true, shared = true });
+        if (x.Publish && !wasPublished) await NoticeService.NotifyAsync(db, a.Session.CampaignId, user, NoticeAreas.Journal, $"live-{sessionId}", NoticeAudience.Players, ct);
+        else if (!x.Publish) await NoticeService.ForgetAsync(db, a.Session.CampaignId, $"live-{sessionId}", ct);
         await CommitAsync(tx, a.Session, ct);
     }
 

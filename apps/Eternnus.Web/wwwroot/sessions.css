@@ -3246,12 +3246,19 @@ a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3
 .known-npc-initial { display: grid; place-items: center; color: #ead6a8; font: normal 26px var(--serif); background: #c6a46314; }
 .known-npc h3 { margin: 0 0 4px; color: #ead6a8; font: normal 17px var(--serif); overflow-wrap: anywhere; }
 .known-npc p { margin: 8px 0 0; }
-/* Tabelas com busca e filtros (data-table.js): controles em linha que quebram no celular. */
-.search-bar.table-controls { grid-template-columns: minmax(180px, 2fr) repeat(auto-fit, minmax(140px, 1fr)); }
+/* Barra padrão de toda lista (data-table.js): busca larga, filtros iguais e "Buscar" no fim da linha, alinhados pela base.
+   Fica logo acima da tabela, sem texto entre as duas; quebra em coluna única no celular. */
+.search-bar.table-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; margin: 0 0 16px; }
+.table-controls > .field { flex: 1 1 150px; min-width: 0; }
+.table-controls > .field:first-child { flex: 2 1 240px; }
 .table-controls .form-help:empty { display: none; }
-.table-controls-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
-.table-controls-actions button { min-height: 44px; }
-@media (max-width: 720px) { .search-bar.table-controls { grid-template-columns: 1fr; } }
+.search-bar.table-controls .search-extra { flex-basis: 100%; margin: 0; }
+.table-controls-actions { flex: none; display: flex; gap: 8px; align-items: flex-end; }
+.table-controls-actions button { min-height: 44px; padding-inline: 18px; }
+@media (max-width: 720px) {
+  .table-controls > .field, .table-controls > .field:first-child { flex-basis: 100%; }
+  .table-controls-actions, .table-controls-actions button { width: 100%; }
+}
 /* Retratos em tabelas (NPCs conhecidos, personagens do mestre, retratos do acervo). */
 .known-npc-table img, .known-npc-table .known-npc-initial { flex: none; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; border: 2px solid #a07b3a; object-fit: cover; object-position: center top; }
 .known-npc-table .known-npc-initial { color: #ead6a8; font: normal 20px var(--serif); background: #c6a46314; }
@@ -3262,8 +3269,122 @@ a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3
 .npc-info-cell small, .npc-table td small { display: block; color: var(--muted); }
 .npc-state { display: flex; flex-wrap: wrap; gap: 4px; }
 .npc-state .chip { white-space: nowrap; }
+/* Estado e ações dos personagens do mestre: a história quebra dentro da coluna, sem invadir as ações. */
+.npc-table td[data-label="Estado"] { min-width: 150px; max-width: 220px; }
+.npc-table td[data-label="Estado"] small { margin-top: 4px; overflow-wrap: anywhere; }
+.npc-table td[data-label="Ações"] { width: 1%; }
+@media (min-width: 721px) { .npc-table td[data-label="Ações"] .scene-actions { flex-wrap: nowrap; } }
+/* Páginas do acervo e notas em tabela. */
+.workspace-table .ws-title { display: block; color: #efdcb1; font: normal 15px var(--serif); overflow-wrap: anywhere; }
+.workspace-table td small { display: block; margin-top: 2px; }
+.workspace-table td[data-label="Ações"] { width: 1%; white-space: nowrap; }
 .search-table td.small { max-width: 52ch; }
 /* Página de história do NPC (ADR-064): link visível dentro de cartões e listas. */
 .lore-link { color: var(--gold); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
 .lore-link:hover { color: var(--bright); }
 @media (pointer: coarse) { .lore-link { display: inline-flex; align-items: center; min-height: 44px; } }
+
+/* ---------- Bandeja de dados, destaque de rolagem e mapa solto na mesa (ADR-070) ---------- */
+.dice-tray {
+  position: absolute;
+  z-index: 3;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border: 1px solid #a07b3a99;
+  border-radius: 10px;
+  background: #0d0c0ad9;
+  backdrop-filter: blur(3px);
+}
+.dice-tray .die {
+  min-width: 40px;
+  min-height: 34px;
+  padding: 0 6px;
+  border: 1px solid #8f7540;
+  border-radius: 6px;
+  background: linear-gradient(#2a251cf2, #17150ff2);
+  color: #ecd8a9;
+  font: 600 13px "Segoe UI", Arial, sans-serif;
+}
+.dice-tray .die:hover:not([aria-disabled="true"]) { border-color: var(--bright); color: #fff3d6; }
+.dice-tray .die[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+.dice-tray .die.more { font-size: 15px; }
+.dice-tray .die.privacy[aria-pressed="true"] { border-color: var(--danger); color: var(--danger); }
+.roll-spotlight {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-width: 180px;
+  max-width: min(86%, 420px);
+  padding: 10px 22px 12px;
+  border: 1px solid var(--gold);
+  border-radius: 12px;
+  background: radial-gradient(ellipse at 50% 0%, #2c2416f2, #0d0c0af2);
+  color: #ecd8a9;
+  text-align: center;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+.roll-spotlight[hidden] { display: none; }
+.roll-spotlight .spot-who { font: 13px var(--serif); color: var(--bright); overflow-wrap: anywhere; }
+.roll-spotlight .spot-total { font: 700 44px/1.05 var(--serif); color: #fff3d6; text-shadow: 0 0 18px #f1d79c66; }
+.roll-spotlight .spot-formula { font-size: 12px; color: var(--muted); }
+.roll-spotlight.crit { border-color: #edc876; box-shadow: 0 0 0 2px #edc87655, var(--shadow); }
+.roll-spotlight.crit .spot-total { color: #ffe39a; }
+.roll-spotlight.fumble { border-color: #d4533f; }
+.roll-spotlight.fumble .spot-total { color: #f0b4a6; text-shadow: none; }
+.roll-spotlight.show { animation: spot-in 3.6s var(--ease-out) both; }
+@keyframes spot-in {
+  0% { opacity: 0; transform: translate(-50%, 10px) scale(.92); }
+  8% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.drop-veil {
+  position: absolute;
+  z-index: 6;
+  inset: 8px;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--bright);
+  border-radius: 12px;
+  background: #0b0a08d0;
+  pointer-events: none;
+}
+.drop-veil[hidden] { display: none; }
+.drop-veil p { display: grid; gap: 6px; margin: 0; padding: 16px; text-align: center; color: var(--bright); }
+.drop-veil strong { font: 22px var(--serif); }
+.drop-veil span { color: #ecd8a9; font-size: 13px; }
+.bubble-now { margin: 0 0 12px; }
+.md-status { min-height: 1.4em; margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+/* A bandeja tem faixa própria: o mapa encolhe em vez de ficar coberto. */
+.stage.has-dice .board { right: 64px; }
+@media (max-width: 900px), (max-width: 1200px) and (pointer: coarse) {
+  /* Celular na horizontal: duas colunas de alvos de 44 px à direita, com rolagem se a altura acabar. */
+  .dice-tray {
+    right: 6px;
+    display: grid;
+    grid-template-columns: repeat(2, 44px);
+    gap: 4px;
+    max-height: calc(100% - 12px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .dice-tray .die { min-width: 44px; min-height: 44px; padding: 0; }
+  .stage.has-dice .board { right: 112px; }
+  .roll-spotlight { top: 12%; }
+  .roll-spotlight .spot-total { font-size: 36px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .roll-spotlight.show { animation: none; }
+}

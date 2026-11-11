@@ -21,7 +21,9 @@ public sealed partial class WorkspaceService
             var m = await db.Set<CampaignMap>().SingleOrDefaultAsync(m => m.CampaignId == campaign && m.Id == id && m.Purpose == CampaignAssetPurposes.Map, ct) ?? throw Missing();
             if (published == null) { published = new AtlasPublication { CampaignId = campaign, SourceMapId = id }; db.Add(published); }
             published.Name = m.Name; published.Content = m.Content.ToArray();
+            await NoticeService.NotifyAsync(db, campaign, user, NoticeAreas.Atlas, published.Id.ToString(), NoticeAudience.Players, ct);
         }
+        if (remove && published != null) await NoticeService.ForgetAsync(db, campaign, published.Id.ToString(), ct);
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
     public async Task<byte[]> AtlasImage(Guid campaign, Guid id, string user, CancellationToken ct)

@@ -637,6 +637,68 @@ function drawToken(g, token, s, opts, t) {
   g.restore();
 }
 
+const BUBBLE_TONE = { healthy: "#7cc35b", wounded: "#d9b44a", critical: "#d4533f", down: "#5d5850" };
+/**
+ * Bolhas de estado sobre o marcador (vida em barra e armadura em escudo). Devolve as áreas clicáveis
+ * da barra de vida, em coordenadas do tabuleiro. Em casas pequenas a barra continua, sem números.
+ */
+function drawBubbles(g, token, s, bubble) {
+  if (!bubble || s < 18) return null;
+  const cx = (token.x + 0.5) * s, cy = (token.y + 0.5) * s, radius = s * 0.4;
+  let hit = null;
+  g.save();
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  const r = bubble.resource;
+  if (r) {
+    // Números a partir de 20 px por casa; a barra cresce para caber o texto e nunca sai pelo topo do mapa.
+    const numbers = s >= 20, text = r.max ? `${r.value}/${r.max}` : String(r.value);
+    const h = numbers ? Math.max(10, s * 0.18) : Math.max(5, s * 0.17);
+    g.font = `700 ${Math.max(8, h * 0.82)}px "Segoe UI", Arial, sans-serif`;
+    const w = numbers ? Math.max(s * 0.92, g.measureText(text).width + 8) : s * 0.92;
+    const x = cx - w / 2, y = Math.max(1, cy - radius - h - s * 0.04);
+    g.fillStyle = "#0b0a08e6";
+    roundRect(g, x - 1, y - 1, w + 2, h + 2, h / 2); g.fill();
+    if (r.max) {
+      const fill = Math.max(0, Math.min(1, r.value / r.max));
+      g.fillStyle = BUBBLE_TONE[r.tone] || BUBBLE_TONE.healthy;
+      if (fill > 0) { roundRect(g, x, y, Math.max(h, w * fill), h, h / 2); g.fill(); }
+    } else {
+      g.fillStyle = "#3b3226";
+      roundRect(g, x, y, w, h, h / 2); g.fill();
+    }
+    g.strokeStyle = bubble.target ? "#f1d79ccc" : "#f1d79c55";
+    g.lineWidth = 1;
+    roundRect(g, x - 0.5, y - 0.5, w + 1, h + 1, h / 2); g.stroke();
+    if (numbers) {
+      g.lineWidth = Math.max(2, h * 0.22);
+      g.strokeStyle = "#0b0a08";
+      g.strokeText(text, cx, y + h / 2 + 0.5);
+      g.fillStyle = "#fff8e8";
+      g.fillText(text, cx, y + h / 2 + 0.5);
+    }
+    // Área de toque maior que a barra: alcança 44 px nos alvos móveis quando a casa permite.
+    if (bubble.target) hit = { x: x - s * 0.05, y: y - s * 0.12, w: w + s * 0.1, h: h + s * 0.24 };
+  }
+  const a = bubble.armor;
+  if (a && s >= 20) {
+    const sr = Math.max(8, s * 0.17), sx = cx + radius * 0.86, sy = cy - radius * 0.32;
+    g.beginPath();
+    g.moveTo(sx, sy - sr);
+    g.lineTo(sx + sr, sy - sr * 0.6);
+    g.quadraticCurveTo(sx + sr, sy + sr * 0.6, sx, sy + sr * 1.05);
+    g.quadraticCurveTo(sx - sr, sy + sr * 0.6, sx - sr, sy - sr * 0.6);
+    g.closePath();
+    g.fillStyle = "#1d2a38f2"; g.fill();
+    g.strokeStyle = "#a9c1dd"; g.lineWidth = Math.max(1, s * 0.03); g.stroke();
+    g.font = `700 ${Math.max(8, sr * (a.value.length > 2 ? 0.75 : 0.95))}px "Segoe UI", Arial, sans-serif`;
+    g.fillStyle = "#eef5ff";
+    g.fillText(a.value, sx, sy + sr * 0.05);
+  }
+  g.restore();
+  return hit;
+}
+
 let boardSequence = 0;
 export function createBoard(host, handlers = {}) {
   const instructionId = `camera-instruction-${++boardSequence}`;
@@ -659,6 +721,7 @@ export function createBoard(host, handlers = {}) {
     dpr = 1;
   const moves = new Map();
   let drag = null, suppressClick = false; // arraste de marcador em andamento
+  let bubbleHits = []; // barras de vida clicáveis desenhadas no último quadro (coordenadas do tabuleiro)
   const rows = () => state?.map?.rows || [];
   const tileset = () => state?.map?.kind === "tileset" && rows().length > 0;
 
@@ -842,6 +905,7 @@ export function createBoard(host, handlers = {}) {
         .filter((p) => p.online)
         .map((p) => p.characterId),
     );
+    bubbleHits = [];
     for (const token of state.tokens || []) {
       if (drag?.moved && drag.token.id === token.id) continue;
       const move = moves.get(token.id);
@@ -865,6 +929,8 @@ export function createBoard(host, handlers = {}) {
         },
         t,
       );
+      const hit = view.bubbles === false ? null : drawBubbles(g, visual, cell, token.bubble);
+      if (hit) bubbleHits.push({ ...hit, token });
     }
     if (drag?.moved) {
       // Boneco arrastado acompanha o ponteiro; a casa de destino fica marcada.
@@ -929,8 +995,10 @@ export function createBoard(host, handlers = {}) {
     if (!cameraDrag || e.pointerId !== cameraDrag.id) return;
     host.scrollLeft = cameraDrag.left + cameraDrag.x - e.clientX;
     host.scrollTop = cameraDrag.top + cameraDrag.y - e.clientY;
+    if (Math.hypot(e.clientX - cameraDrag.x, e.clientY - cameraDrag.y) > 6) cameraDrag.moved = true;
   });
-  const endCameraDrag = () => { cameraDrag = null; };
+  // Arrastar a câmera não conta como toque na barra de vida nem numa casa.
+  const endCameraDrag = () => { if (cameraDrag?.moved) suppressClick = true; cameraDrag = null; };
   host.addEventListener("pointerup", endCameraDrag);
   host.addEventListener("pointercancel", endCameraDrag);
   // Arrastar marcador: o jogador arrasta o próprio boneco no turno; o mestre arrasta qualquer marcador.
@@ -1004,9 +1072,24 @@ export function createBoard(host, handlers = {}) {
   };
   canvas.addEventListener("pointerup", finishStroke);
   canvas.addEventListener("pointercancel", () => { stroke = null; view = { ...view, paint: [] }; draw(); });
+  const bubbleAt = (e) => {
+    if (!handlers.onBubble || !bubbleHits.length) return null;
+    const { px, py } = boardPoint(e);
+    // Último desenhado fica por cima: procura de trás para frente.
+    for (let i = bubbleHits.length - 1; i >= 0; i--) {
+      const b = bubbleHits[i];
+      if (px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h) return b.token;
+    }
+    return null;
+  };
   canvas.addEventListener("click", (e) => {
     if (suppressClick) { suppressClick = false; return; }
-    if (panning || view.mode === "paint") return;
+    if (view.mode === "paint") return;
+    if (view.mode === "fog" || view.mode === "place") { if (!panning) activate(cellAt(e.clientX, e.clientY)); return; }
+    // A barra de vida responde mesmo com "Arrastar mapa" ligado: o toque curto não desloca a câmera.
+    const bubble = bubbleAt(e);
+    if (bubble) { handlers.onBubble(bubble); return; }
+    if (panning) return;
     activate(cellAt(e.clientX, e.clientY));
   });
   canvas.addEventListener("keydown", (e) => {

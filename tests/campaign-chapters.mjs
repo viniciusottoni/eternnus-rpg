@@ -19,7 +19,7 @@ try {
   browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true });
   const errors = []; await mkdir(out, { recursive: true });
   async function ui(client, mobile = false) { const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 }, isMobile: mobile, hasTouch: mobile, serviceWorkers: 'block' }); await context.addCookies(client.cookieHeader().split('; ').filter(Boolean).map(s => { const i = s.indexOf('='); return { name: s.slice(0, i), value: s.slice(i + 1), url: env.origin }; })); const page = await context.newPage(); page.on('pageerror', e => errors.push(e.message)); page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()); }); return page; }
-  async function go(page, route, text) { await page.goto(env.origin + '/#' + route); await page.getByText(text, { exact: true }).first().waitFor(); await page.waitForFunction(() => !document.querySelector('#app').inert); }
+  async function go(page, route, text) { await page.goto(env.origin + '/#' + route); await page.getByText(text, { exact: true }).filter({ visible: true }).first().waitFor(); await page.waitForFunction(() => !document.querySelector('#app').inert); }
 
   // Premissa: trecho no topo com "mais"; popup e Visão geral preservam os parágrafos.
   const page = await ui(master);

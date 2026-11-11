@@ -26,7 +26,7 @@ O editor de modelos permite mover/redimensionar por mouse ou teclado, guias/grad
 
 Biblioteca e PDFs são armazenados no banco, fora de wwwroot, com tamanho/assinatura/tipo/nome/hash e antivírus. A equipe publica diretamente com auditoria. O leitor usa pdf.js sem eval/scripting/XFA; baixar arquivo e registrar o download são operações distintas (GET para bytes e POST para registro). Nenhum arquivo privado entra no cache da PWA.
 
-Guilda possui categorias, tópicos, posts com revisão, cartão de autor, marcações de útil, denúncias e moderação auditada. Níveis podem liberar a criação de certos tópicos; não ampliam quotas de campanhas ou mesas livres. XP tem chaves de origem idempotentes e limites por atividade/dia; nomes, regras e progresso são apresentados em português. Os limites diários usam UTC.
+Guilda possui categorias (nove salões semeados, entre eles Forja de Ideias para sugestões de melhoria da plataforma, Galeria do Artífice e Portal do Aprendiz), tópicos, posts com revisão, cartão de autor, marcações de útil, denúncias e moderação auditada. A primeira denúncia oculta a mensagem (ou o tópico, se for a abertura) até a decisão da moderação (ADR-068). Níveis podem liberar a criação de certos tópicos; não ampliam quotas de campanhas ou mesas livres. XP tem chaves de origem idempotentes e limites por atividade/dia; nomes, regras e progresso são apresentados em português. Os limites diários usam UTC.
 
 ## Onda B
 

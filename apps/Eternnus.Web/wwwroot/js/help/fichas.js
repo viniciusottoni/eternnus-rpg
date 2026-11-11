@@ -27,6 +27,15 @@ const entries = {
     ],
     "audience": "all"
   },
+  "fichas.pdf.importacao": {
+    "title": "Importar PDF preenchido",
+    "summary": "Traz os valores de um PDF editável para a ficha padrão do sistema.",
+    "body": [
+      "Disponível somente quando a ficha usa o modelo padrão do sistema. O arquivo é lido no seu navegador e não é enviado ao servidor.",
+      "Os campos são reconhecidos pela posição na página e, se preciso, pelo nome. Campos vazios, calculados ou com formato inválido não são importados. Revise e salve para gravar."
+    ],
+    "audience": "all"
+  },
   "fichas.acoes.campos": {
     "title": "Ações da ficha",
     "summary": "Tipo, dados e efeito descrevem a ação.",

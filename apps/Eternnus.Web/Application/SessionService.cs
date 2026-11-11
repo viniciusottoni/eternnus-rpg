@@ -191,6 +191,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         var author = await NameAsync(user, ct);
         Event(session, user, author, EventKinds.Start, $"Sessão {number:00} iniciada — {title}", new { map = map.Name, mapKind = map.Kind, playMode });
         if (objective.Length > 0) Event(session, user, author, EventKinds.Note, objective, new { title = "Objetivo inicial" }, masterOnly: true);
+        await NoticeService.NotifyAsync(db, campaignId, user, NoticeAreas.Table, session.Id.ToString(), NoticeAudience.Players, ct);
         try { await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); }
         catch (DbUpdateException) { throw new RuleException(409, "Já existe uma sessão em andamento nesta campanha."); }
         return new { session.Id, session.Number };
@@ -353,6 +354,8 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         var minutes = (int)Math.Round((a.Session.EndedAt.Value - a.Session.StartedAt).TotalMinutes);
         Event(a.Session, user, await NameAsync(user, ct), EventKinds.End, $"Sessão encerrada após {Duration(minutes)}", new { minutes });
         await AwardSessionXpAsync(a, ct);
+        // Mesa fechada deixa de ser novidade.
+        await NoticeService.ForgetAsync(db, a.Session.CampaignId, sessionId.ToString(), ct, NoticeAreas.Table);
         await CommitAsync(tx, a.Session, ct);
     }
 

@@ -70,13 +70,13 @@ try {
   browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true });
   const errors = []; await mkdir(out, { recursive: true });
   async function ui(client, mobile = false) { const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 }, isMobile: mobile, hasTouch: mobile, serviceWorkers: 'block' }); await context.addCookies(client.cookieHeader().split('; ').filter(Boolean).map(s => { const i = s.indexOf('='); return { name: s.slice(0, i), value: s.slice(i + 1), url: env.origin }; })); const page = await context.newPage(); page.on('pageerror', e => errors.push(e.message)); page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()); }); return page; }
-  async function go(page, route, text) { await page.goto(env.origin + '/#' + route); await page.getByText(text, { exact: true }).first().waitFor(); await page.waitForFunction(() => !document.querySelector('#app').inert); }
+  async function go(page, route, text) { await page.goto(env.origin + '/#' + route); await page.getByText(text, { exact: true }).filter({ visible: true }).first().waitFor(); await page.waitForFunction(() => !document.querySelector('#app').inert); }
 
   // Jogador: tabela, busca e leitura.
   const p = await ui(player);
   await go(p, `campaign/${c.id}/journal`, 'Buscar nas sessões');
-  await p.locator('#lg-search').fill('pedra negra'); await p.getByRole('button', { name: 'Buscar', exact: true }).click();
-  await p.getByText('1 sessão encontrada.', { exact: true }).waitFor();
+  await p.locator('#lg-q').fill('pedra negra'); await p.locator('#lg-controls button[type=submit]').click();
+  await p.waitForFunction(() => document.querySelectorAll('.log-table tbody tr').length === 1);
   await p.screenshot({ path: `${out}/log-search-player.png`, fullPage: true, animations: 'disabled' });
   await p.getByRole('button', { name: 'Blackstones', exact: true }).click();
   await p.getByRole('heading', { name: 'Batalha na Floresta', exact: true }).waitFor();
@@ -87,14 +87,13 @@ try {
   const [qBox, qButton] = [await p.locator('#cs-q').boundingBox(), await p.locator('#cs-form button[type=submit]').boundingBox()];
   ok(Math.abs(qBox.y - qButton.y) <= 2 && Math.abs(qBox.height - qButton.height) <= 2, 'Botão Buscar alinhado ao campo');
   await p.locator('#cs-q').fill('goblin'); await p.locator('#cs-form button[type=submit]').click();
-  await p.locator('.search-results a', { hasText: 'Grak' }).waitFor();
+  await p.locator('.search-table tr', { hasText: 'Grak' }).getByRole('link', { name: 'Abrir' }).waitFor();
   await p.screenshot({ path: `${out}/global-search.png`, fullPage: true, animations: 'disabled' });
-  await p.locator('.search-results a', { hasText: 'Grak' }).click();
+  await p.locator('.search-table tr', { hasText: 'Grak' }).getByRole('link', { name: 'Abrir' }).click();
   await p.locator(`#npc-${grak.id}.is-target`).waitFor();
-  await p.locator('.search-results a').count();
   await go(p, `campaign/${c.id}`, 'Premissa');
   await p.locator('#cs-q').fill('pedra negra'); await p.locator('#cs-form button[type=submit]').click();
-  await p.locator('.search-results a', { hasText: 'Blackstones' }).click();
+  await p.locator('.search-table tr', { hasText: 'Blackstones' }).getByRole('link', { name: 'Abrir' }).click();
   await p.getByRole('heading', { name: 'Batalha na Floresta', exact: true }).waitFor();
   await p.keyboard.press('Escape');
 
@@ -114,7 +113,7 @@ try {
   await m.getByRole('button', { name: '<img src=x onerror=alert(1)>', exact: true }).waitFor();
   check((await master(path + '/session-log')).total, 7);
   await go(m, `campaign/${c.id}/sessions/chapter-${act.id}`, 'Buscar nas sessões');
-  check(await m.locator('#lg-chapter').inputValue(), act.id);
+  check(await m.locator('#lg-f-chapter').inputValue(), act.id);
   // Exclusão de registro anterior pela leitura da sessão; sessões do Eternnus não oferecem a ação.
   await go(m, `campaign/${c.id}/journal`, 'Buscar nas sessões');
   await m.getByRole('button', { name: 'O portão', exact: true }).click();

@@ -32,16 +32,18 @@ export function pageSlice(rows, page = 1, size = TABLE_PAGE_SIZE) {
 }
 
 /**
- * Barra de busca geral e filtros por coluna. `filters`: [{name, label, options: [[valor, rótulo]], value}].
- * `live`: tabela filtrada no cliente — sem botão "Filtrar", reage ao digitar (ver {@link bindLiveControls}).
+ * Barra padrão de toda lista: busca geral, filtros por coluna e o botão "Buscar" (secundário, sempre presente).
+ * Não há botão "Limpar": apagar a busca e voltar os filtros para "Todos" já mostra a lista inteira.
+ * `filters`: [{name, label, options: [[valor, rótulo]], value, all}]; `all` troca o rótulo da opção vazia ("Todos").
+ * `search.name` troca o nome do campo de busca (padrão `q`); `search.max`, o limite (padrão 100).
  */
-export function controlsHtml(id, { search = {}, filters = [], live = false } = {}) {
-  const selects = filters.map((f) => `<div class="field"><label for="${id}-f-${esc(f.name)}">${esc(f.label)}</label><select id="${id}-f-${esc(f.name)}" name="${esc(f.name)}">${[["", "Todos"], ...f.options].map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(f.value ?? "") ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>`).join("");
-  return `<form class="search-bar table-controls" role="search" id="${id}-controls"><div class="field"><label for="${id}-q">${esc(search.label || "Buscar na tabela")}</label><input id="${id}-q" name="q" type="search" maxlength="100" value="${esc(search.value || "")}" placeholder="${esc(search.placeholder || "")}" aria-describedby="${id}-q-hint"><small id="${id}-q-hint" class="form-help" aria-live="polite"></small></div>${selects}<div class="table-controls-actions">${live ? "" : '<button type="submit" class="primary small">Filtrar</button>'}<button type="button" class="subtle small" data-table-clear="${id}">Limpar</button></div></form>`;
+export function controlsHtml(id, { search = {}, filters = [] } = {}) {
+  const selects = filters.map((f) => `<div class="field"><label for="${id}-f-${esc(f.name)}">${esc(f.label)}</label><select id="${id}-f-${esc(f.name)}" name="${esc(f.name)}">${[["", f.all || "Todos"], ...f.options].map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(f.value ?? "") ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>`).join("");
+  return `<form class="search-bar table-controls" role="search" id="${id}-controls"><div class="field"><label for="${id}-q">${esc(search.label || "Buscar na tabela")}</label><input id="${id}-q" name="${esc(search.name || "q")}" type="search" maxlength="${Number(search.max) || 100}" value="${esc(search.value || "")}" placeholder="${esc(search.placeholder || "")}" aria-describedby="${id}-q-hint"><small id="${id}-q-hint" class="form-help" aria-live="polite"></small></div>${selects}<div class="table-controls-actions"><button type="submit" class="subtle">Buscar</button></div></form>`;
 }
 
 /**
- * Tabelas no cliente: aplica busca e filtros ao digitar (com espera curta), trocar um select ou limpar.
+ * Tabelas no cliente: aplica busca e filtros ao digitar (com espera curta), ao trocar um select ou em "Buscar".
  * Os ouvintes ficam no próprio formulário (somem com ele). Redesenhe só a área da tabela em `apply({q, filters})`,
  * nunca o formulário, para não perder o cursor de quem digita.
  */
@@ -49,26 +51,18 @@ export function bindLiveControls(form, apply, wait = 200) {
   if (!form) return;
   let timer;
   const run = () => { clearTimeout(timer); apply(readControls(form)); };
-  form.addEventListener("input", (e) => { if (e.target.name === "q") { clearTimeout(timer); timer = setTimeout(run, wait); } });
+  form.addEventListener("input", (e) => { if (e.target.type === "search") { clearTimeout(timer); timer = setTimeout(run, wait); } });
   form.addEventListener("change", (e) => { if (e.target.tagName === "SELECT") run(); });
   form.addEventListener("submit", (e) => { e.preventDefault(); run(); });
-  form.addEventListener("click", (e) => {
-    if (!e.target.closest("[data-table-clear]")) return;
-    form.reset();
-    // reset() volta aos valores do HTML; a tabela limpa precisa de tudo vazio.
-    form.querySelectorAll("input[name='q']").forEach((i) => { i.value = ""; });
-    form.querySelectorAll("select").forEach((s) => { s.value = ""; });
-    run();
-    form.querySelector("input[name='q']")?.focus();
-  });
 }
 
 /** Lê os valores da barra de controles (busca e filtros). */
 export function readControls(form) {
   const data = new FormData(form);
+  const searchName = form.querySelector("input[type='search']")?.name || "q";
   const filters = {};
-  for (const [key, value] of data.entries()) if (key !== "q") filters[key] = String(value);
-  return { q: String(data.get("q") || "").trim(), filters };
+  for (const [key, value] of data.entries()) if (key !== searchName) filters[key] = String(value);
+  return { q: String(data.get(searchName) || "").trim(), filters };
 }
 
 /** Paginação de 15 itens; `action` vai no data-action dos botões e o número da página em data-id. */
@@ -84,7 +78,7 @@ export function pagerHtml({ page, pages, total }, action, label = "itens") {
  */
 export function mountClientTable(box, { id, rows, fields, filters = [], search = {}, table, unit = "itens", emptyText = "", afterPaint = () => {} }) {
   const view = { q: "", filters: {}, page: 1 };
-  box.innerHTML = `${controlsHtml(id, { live: true, search, filters })}<div id="${id}-results"></div>`;
+  box.innerHTML = `${controlsHtml(id, { search, filters })}<div id="${id}-results"></div>`;
   const results = box.querySelector(`#${id}-results`);
   const paint = (focusSel = "") => {
     const list = filterRows(rows, { q: view.q, fields, filters: view.filters });
@@ -106,4 +100,4 @@ export function mountClientTable(box, { id, rows, fields, filters = [], search =
 
 /** Mensagem de resultado vazio com e sem filtros aplicados. */
 export const emptyTableHtml = (filtered, emptyText) =>
-  `<p class="muted small" role="status">${filtered ? "Nenhum resultado com estes filtros. Ajuste a busca ou clique em Limpar." : esc(emptyText)}</p>`;
+  `<p class="muted small" role="status">${filtered ? "Nenhum resultado com estes filtros. Ajuste a busca ou volte os filtros para “Todos”." : esc(emptyText)}</p>`;

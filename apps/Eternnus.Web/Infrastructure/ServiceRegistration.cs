@@ -26,9 +26,14 @@ public static class ServiceRegistration
         });
         builder.Services.AddIdentityCore<AppUser>(o =>
         {
-            o.User.RequireUniqueEmail = true; o.Password.RequiredLength = 10;
+            o.User.RequireUniqueEmail = true;
+            // Comprimento e tipos de caractere ficam em PasswordPolicyValidator (8 a 128, dois tipos distintos).
+            o.Password.RequiredLength = PasswordPolicy.MinLength;
+            o.Password.RequireDigit = false; o.Password.RequireLowercase = false;
+            o.Password.RequireUppercase = false; o.Password.RequireNonAlphanumeric = false;
             o.Lockout.MaxFailedAccessAttempts = 5; o.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
-        }).AddEntityFrameworkStores<GameDb>().AddSignInManager().AddDefaultTokenProviders();
+        }).AddEntityFrameworkStores<GameDb>().AddSignInManager().AddDefaultTokenProviders()
+          .AddPasswordValidator<PasswordPolicyValidator>();
         builder.Services.Configure<DataProtectionTokenProviderOptions>(o => o.TokenLifespan = TimeSpan.FromHours(1));
         builder.Services.Configure<SecurityStampValidatorOptions>(o =>
         {
@@ -99,7 +104,7 @@ public static class ServiceRegistration
         builder.Services.AddScoped<IDocumentScanner, ClamAvDocumentScanner>(); builder.Services.AddScoped<DocumentFiles>(); builder.Services.AddSingleton<RemoteImageFetcher>();
         builder.Services.AddScoped<AuditService>(); builder.Services.AddScoped<AdminService>(); builder.Services.AddScoped<RpgSystemService>();
         builder.Services.AddScoped<SupportService>(); builder.Services.AddScoped<LibraryService>(); builder.Services.AddScoped<SheetTemplateService>();
-        builder.Services.AddScoped<GuildService>(); builder.Services.AddScoped<ProgressionService>();
+        builder.Services.AddScoped<GuildService>(); builder.Services.AddScoped<ProgressionService>(); builder.Services.AddScoped<NoticeService>();
         builder.Services.AddScoped<SessionService>(); builder.Services.AddScoped<CharacterSheetService>(); builder.Services.AddSingleton<SessionSignals>(); builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddHostedService<MailWorker>();
         builder.Services.AddSingleton<TemporaryImageRelay>();

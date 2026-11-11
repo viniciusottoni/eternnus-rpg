@@ -8,6 +8,7 @@ import { editableValues, ownActions, downloadName } from "./character-policy.js"
 import { withLoading } from "./loading.js";
 import { keepMasterPresence } from "./session-presence.js";
 import { formulaSuggestOn } from "./formula-suggest.js";
+import { canImportPdf, matchPdfValues } from "./pdf-import-policy.js";
 
 const KINDS = [["ataque", "Ataque"], ["habilidade", "Habilidade"], ["magia", "Magia"], ["item", "Item"]];
 function actionRow(a = {}) {
@@ -29,7 +30,7 @@ function accessibleFields(fields, values) {
     if (f.type === "select") control = `<select id="${esc(id)}" data-cs-field="${esc(f.name)}"><option value="">—</option>${(f.options || []).map(o => `<option value="${esc(o)}" ${value === o ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
     else if (f.type === "textarea") control = `<textarea id="${esc(id)}" data-cs-field="${esc(f.name)}" maxlength="${Number(f.maxLength) || 2000}">${esc(value)}</textarea>`;
     else control = `<input id="${esc(id)}" data-cs-field="${esc(f.name)}" type="${f.type === "checkbox" ? "checkbox" : "text"}" ${f.type === "computed" ? 'readonly aria-readonly="true"' : ""} ${f.type === "number" ? 'inputmode="decimal"' : ""} ${f.type === "checkbox" && value === "true" ? "checked" : ""} value="${esc(value)}" maxlength="${Number(f.maxLength) || 2000}">`;
-    return `<div class="field"><label for="${esc(id)}">${esc(f.label || f.name)}${f.type === "computed" ? " (calculado)" : ""}</label>${control}</div>`;
+    return `<div class="field${f.type === "textarea" ? " field-wide" : ""}"><label for="${esc(id)}">${esc(f.label || f.name)}${f.type === "computed" ? " (calculado)" : ""}</label>${control}</div>`;
   }).join("");
 }
 export async function renderCharacterPage(id, context) {
@@ -58,7 +59,7 @@ export async function renderCharacterPage(id, context) {
     controller?.destroy();
     const version = sheet.version;
     const canEdit = fresh || sheet.canEdit;
-    root.innerHTML = `<a class="back-link" href="${returnCampaignId ? "#table/" + esc(returnCampaignId) : campaignId ? "#campaign/" + esc(campaignId) : "#characters"}">← Voltar</a><div class="page-heading"><div><span class="eyebrow">SUA LENDA, SEUS CAPÍTULOS</span><h1>${fresh ? "Criar personagem" : "Sua ficha"}${helpButton("fichas.versao.migracao", "Versão da ficha")}</h1><p>${esc(sheet.template.name)} · versão ${version.number}${sheet.legacy ? " · ficha antiga, preservada no Sistema livre" : ""}</p></div></div>${fresh ? `<div class="field"><label for="cs-template">Ficha-modelo</label><select id="cs-template" ${campaignId ? "disabled" : ""}></select></div>` : ""}${sheet.newerVersion ? `<section class="notice-box"><strong>Nova versão do modelo disponível: v${sheet.newerVersion.number}.</strong><p>Sua ficha continua na versão atual até você revisar a migração.</p>${button("Revisar migração", "cs-migrate", "", "subtle")}</section>` : ""}<form id="cs-form" class="cs-form"><div class="field-label"><span>Visibilidade da ficha</span>${helpButton("fichas.visibilidade.privacidade", "Ficha compartilhada ou privada")}</div>${fresh || sheet.canChangeVisibility ? `<label class="field"><span><input id="cs-private" type="checkbox" ${sheet.private ? "checked" : ""}> Ficha privada: somente você e o mestre</span></label><p class="form-help">Desmarcada: os participantes da mesa podem ler a ficha. Histórico e edição ficam com o dono e o mestre.</p>` : `<p>${sheet.private ? "Ficha privada." : "Ficha compartilhada."} ${canEdit ? "Somente o dono pode alterar a visibilidade." : "Somente leitura."}</p>`}${fresh && !version.fields.some(f => f.role === "name") ? field("name", "Nome do personagem", "", "text", 'required maxlength="100"') : ""}<div class="cs-toolbar">${helpButton("fichas.pdf.exportacao", "PDF preenchido")}${button("− Zoom", "cs-zoom-out", "", "subtle")}${button("+ Zoom", "cs-zoom-in", "", "subtle")}${!fresh ? button("Baixar PDF preenchido", "cs-pdf", "", "subtle") + button("Histórico por campo", "cs-history", "", "subtle") : ""}<button type="submit" class="primary">${fresh ? "Criar personagem" : "Salvar ficha"}</button></div><p id="cs-saved" class="form-help" role="status">${fresh ? "Preencha sua ficha. Campos calculados são atualizados automaticamente." : "Ficha carregada. O PDF usa os últimos valores salvos."}</p>${formError()}<details class="cs-accessible metal"><summary>Preencher em formulário acessível</summary><p>Os mesmos valores da ficha, com campos maiores para teclado e celular.</p><div id="cs-accessible">${accessibleFields(version.fields, { ...sheet.values, ...sheet.computed })}</div></details><div id="cs-pages" class="cs-pages"></div><section class="metal cs-actions"><h2>Ações do modelo</h2>${version.actions.length ? version.actions.map(a => `<p><strong>${esc(a.name)}</strong> · ${esc(a.formula || "Narrativa")}<br>${esc(a.description)}</p>`).join("") : "<p>Este modelo não define ações.</p>"}<h2>Suas ações</h2><p class="form-help">Use fórmulas em inglês e campos como @nome_do_campo. Até 16 ações pessoais.</p><div id="cs-actions">${ownActions(sheet).map(actionRow).join("")}</div>${button("+ Adicionar ação", "cs-add", "", "subtle")}</section></form><section id="cs-history" class="metal cs-history" hidden></section>`;
+    root.innerHTML = `<a class="back-link" href="${returnCampaignId ? "#table/" + esc(returnCampaignId) : campaignId ? "#campaign/" + esc(campaignId) : "#characters"}">← Voltar</a><div class="page-heading"><div><span class="eyebrow">SUA LENDA, SEUS CAPÍTULOS</span><h1>${fresh ? "Criar personagem" : "Sua ficha"}${helpButton("fichas.versao.migracao", "Versão da ficha")}</h1><p>${esc(sheet.template.name)} · versão ${version.number}${sheet.legacy ? " · ficha antiga, preservada no Sistema livre" : ""}</p></div></div>${fresh ? `<div class="field"><label for="cs-template">Ficha-modelo</label><select id="cs-template" ${campaignId ? "disabled" : ""}></select></div>` : ""}${sheet.newerVersion ? `<section class="notice-box"><strong>Nova versão do modelo disponível: v${sheet.newerVersion.number}.</strong><p>Sua ficha continua na versão atual até você revisar a migração.</p>${button("Revisar migração", "cs-migrate", "", "subtle")}</section>` : ""}<form id="cs-form" class="cs-form"><div class="field-label"><span>Visibilidade da ficha</span>${helpButton("fichas.visibilidade.privacidade", "Ficha compartilhada ou privada")}</div>${fresh || sheet.canChangeVisibility ? `<label class="field"><span><input id="cs-private" type="checkbox" ${sheet.private ? "checked" : ""}> Ficha privada: somente você e o mestre</span></label><p class="form-help">Desmarcada: os participantes da mesa podem ler a ficha. Histórico e edição ficam com o dono e o mestre.</p>` : `<p>${sheet.private ? "Ficha privada." : "Ficha compartilhada."} ${canEdit ? "Somente o dono pode alterar a visibilidade." : "Somente leitura."}</p>`}${fresh && !version.fields.some(f => f.role === "name") ? field("name", "Nome do personagem", "", "text", 'required maxlength="100"') : ""}<div class="cs-toolbar">${helpButton("fichas.pdf.exportacao", "PDF preenchido")}${button("− Zoom", "cs-zoom-out", "", "subtle")}${button("+ Zoom", "cs-zoom-in", "", "subtle")}${canImportPdf(sheet, canEdit) ? helpButton("fichas.pdf.importacao", "Importar PDF preenchido") + button("Importar PDF preenchido", "cs-import", "", "subtle") + '<input id="cs-import-file" type="file" accept="application/pdf,.pdf" hidden>' : ""}${!fresh ? button("Baixar PDF preenchido", "cs-pdf", "", "subtle") + button("Histórico por campo", "cs-history", "", "subtle") : ""}<button type="submit" class="primary">${fresh ? "Criar personagem" : "Salvar ficha"}</button></div><p id="cs-saved" class="form-help" role="status">${fresh ? "Preencha sua ficha. Campos calculados são atualizados automaticamente." : "Ficha carregada. O PDF usa os últimos valores salvos."}</p>${formError()}<details class="cs-accessible metal"><summary>Preencher em formulário acessível</summary><p>Os mesmos valores da ficha, com campos maiores para teclado e celular.</p><div id="cs-accessible">${accessibleFields(version.fields, { ...sheet.values, ...sheet.computed })}</div></details><div id="cs-pages" class="cs-pages"></div><section class="metal cs-actions"><h2>Ações do modelo</h2>${version.actions.length ? version.actions.map(a => `<p><strong>${esc(a.name)}</strong> · ${esc(a.formula || "Narrativa")}<br>${esc(a.description)}</p>`).join("") : "<p>Este modelo não define ações.</p>"}<h2>Suas ações</h2><p class="form-help">Use fórmulas em inglês e campos como @nome_do_campo. Até 16 ações pessoais.</p><div id="cs-actions">${ownActions(sheet).map(actionRow).join("")}</div>${button("+ Adicionar ação", "cs-add", "", "subtle")}</section></form><section id="cs-history" class="metal cs-history" hidden></section>`;
     controller = renderSheet(root.querySelector("#cs-pages"), { pdfUrl: version.pdfUrl, pages: version.pages, fields: version.fields, mode: canEdit ? "fill" : "view", values: { ...sheet.values, ...sheet.computed }, onChange: () => { mark(); syncAccessible(); } });
     if (!canEdit) {
       const hint = document.createElement('p'); hint.id = 'cs-readonly'; hint.className = 'form-help'; hint.textContent = 'Somente leitura. A edição e o histórico exigem o dono ou o Mestre autorizado.';
@@ -69,7 +70,10 @@ export async function renderCharacterPage(id, context) {
       }
     }
     if (fresh) await fillTemplates();
+    const importInput = root.querySelector("#cs-import-file");
+    if (importInput) importInput.onchange = () => importPdf(importInput);
     root.querySelector("#cs-form").addEventListener("input", event => {
+      if (event.target.id === "cs-import-file") return;
       const input = event.target.closest("[data-cs-field]");
       if (input && !input.readOnly) {
         controller.setValues({ ...controller.values(), [input.dataset.csField]: input.type === "checkbox" ? String(input.checked) : input.value });
@@ -96,6 +100,27 @@ export async function renderCharacterPage(id, context) {
       });
     };
     await controller.ready;
+  }
+  // Importação local: lê o PDF preenchido no navegador e só preenche a ficha; o servidor valida ao salvar.
+  async function importPdf(input) {
+    const file = input.files?.[0]; input.value = "";
+    if (!file || !controller) return;
+    try {
+      let result;
+      await withLoading(async () => {
+        const { readPdfWidgets } = await import("./pdf-import.js");
+        const widgets = await readPdfWidgets(file, opts);
+        if (!widgets.length) throw new Error("Este PDF não tem campos editáveis. Use a versão preenchível da ficha oficial do sistema.");
+        result = matchPdfValues(sheet.version.fields, widgets);
+        if (!result.imported) throw new Error("Nenhum campo preenchido deste PDF corresponde à ficha padrão do sistema.");
+      });
+      if (dead || !result) return;
+      if (!fresh && !confirm(`Substituir ${result.imported} campo(s) da ficha pelos valores do PDF? Nada é salvo até você confirmar em “Salvar ficha”.`)) return;
+      controller.setValues({ ...controller.values(), ...result.values }); syncAccessible(); mark();
+      const skipped = result.rejected.length ? ` Não importados por formato inválido: ${result.rejected.slice(0, 8).join(", ")}${result.rejected.length > 8 ? "…" : ""}.` : "";
+      root.querySelector("#cs-saved").textContent = `${result.imported} campo(s) importado(s) do PDF. Revise e ${fresh ? "crie o personagem" : "salve a ficha"}.${skipped}`;
+      toast(`${result.imported} campo(s) importado(s). Revise antes de salvar.`);
+    } catch (error) { if (!dead && error.name !== "AbortError") toast(error.message); }
   }
   let templates = [];
   async function loadTemplate(template) {
@@ -140,6 +165,7 @@ export async function renderCharacterPage(id, context) {
         root.querySelector("#cs-actions").insertAdjacentHTML("beforeend", actionRow()); mark();
       }
       if (action === "cs-remove") { b.closest(".cs-action").remove(); mark(); }
+      if (action === "cs-import") root.querySelector("#cs-import-file")?.click();
       if (action === "cs-zoom-in") controller.zoom(controller.zoom() + 0.1);
       if (action === "cs-zoom-out") controller.zoom(controller.zoom() - 0.1);
       if (action === "cs-history-prev") { historyPage--; await history(); }

@@ -126,21 +126,37 @@ export function removedLabel(removed) {
   return "";
 }
 
+/** Aviso de mensagem em análise (ADR-068): oculta para todos, exceto equipe e autor, até a decisão da moderação. */
+export function heldLabel(post, { staff = false, mine = false } = {}) {
+  if (!post?.held || post.removed) return "";
+  if (staff) return "Oculta por denúncia, aguardando sua decisão — texto visível só para a equipe e o autor:";
+  if (mine) return "Sua mensagem recebeu uma denúncia e está oculta para os demais até a decisão da moderação:";
+  return "Mensagem oculta: em análise pela moderação";
+}
+
+/** Toast após denunciar, conforme o servidor ocultou a mensagem, o tópico ou nada (mensagem da equipe ou já mantida). */
+export function reportOutcome(result) {
+  if (result?.topicHidden) return "Denúncia enviada. O tópico ficou oculto até a decisão da moderação.";
+  if (result?.hidden) return "Denúncia enviada. A mensagem ficou oculta até a decisão da moderação.";
+  return "Denúncia enviada à moderação. A mensagem segue visível enquanto a equipe analisa.";
+}
+
 /**
  * Botões de um post. Combina as capacidades devolvidas pelo servidor (autoridade) com o estado da tela.
  * ctx: { staff, canReply }.
  */
 export function postButtons(post, ctx = {}) {
   const deleted = !!post.removed;
+  const held = !!post.held && !deleted;
   const staff = !!ctx.staff;
   return {
     useful: {
-      show: !deleted,
+      show: !deleted && !held,
       disabled: !post.canMarkUseful,
       pressed: !!post.markedUseful,
       count: Number(post.usefulCount) || 0,
     },
-    reply: !deleted && !!ctx.canReply,
+    reply: !deleted && !held && !!ctx.canReply,
     edit: !!post.canEdit,
     delete: !!post.canDelete,
     report: !!post.canReport,

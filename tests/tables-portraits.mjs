@@ -1,7 +1,7 @@
 import { startEnvironment } from './support/harness.mjs';
 import { chromium } from '../artifacts/qa-runtime/node_modules/playwright/index.mjs';
 import { mkdir, readFile } from 'node:fs/promises';
-// Tabelas com busca e filtros (15 por página) e retratos de NPC isolados dos mapas, sob PostgreSQL real.
+// Tabelas com a barra padrão de busca (15 por página) e retratos de NPC isolados dos mapas, sob PostgreSQL real.
 const env = await startEnvironment({ port: 5272 }); let browser;
 const { check, ok } = env;
 const out = 'artifacts/qa/tables';
@@ -77,10 +77,16 @@ try {
   await m.locator('#npc-q').fill('mordomo');
   await m.waitForFunction(() => document.querySelectorAll('.npc-table tbody tr').length === 1);
   check(await m.evaluate(() => document.activeElement?.id), 'npc-q', 'foco continua na busca ao digitar');
-  await m.locator('[data-table-clear="npc"]').click();
+  // Barra padrão: "Buscar" presente, sem "Limpar" e sem texto entre a busca e a tabela.
+  check(await m.locator('#npc-controls button[type=submit]').textContent(), 'Buscar', 'botão Buscar na barra');
+  check(await m.getByRole('button', { name: /^Limpar/ }).count(), 0, 'sem botão Limpar');
+  ok(await m.evaluate(() => document.querySelector('#npc-results').firstElementChild?.classList.contains('data-table-wrap')), 'tabela logo abaixo da busca');
+  await m.locator('#npc-q').fill('');
+  await m.waitForFunction(() => document.querySelectorAll('.npc-table tbody tr').length === 15);
   await m.locator('#npc-f-side').selectOption('ally');
   await m.waitForFunction(() => document.querySelectorAll('.npc-table tbody tr').length === 6);
-  await m.locator('[data-table-clear="npc"]').click();
+  await m.locator('#npc-f-side').selectOption('');
+  await m.waitForFunction(() => document.querySelectorAll('.npc-table tbody tr').length === 15);
   await m.getByRole('button', { name: 'Próxima →' }).first().click();
   check(await rows(m, '.npc-table'), 5, 'personagens: página 2');
   const portraitBox = await m.locator('.npc-table img.npc-thumb').first().boundingBox().catch(() => null);
@@ -95,14 +101,11 @@ try {
   await m.locator('#cs-kind').selectOption('npc');
   await m.getByText('Página 1 de 2 · 20 resultados para “rosered”').first().waitFor();
 
-  // Acervo: retrato na própria seção; o Atlas do Eternnus lista só cenários oficiais.
-  await go(m, `campaign/${c.id}/maps`, '.portrait-section');
-  await m.locator('.portrait-table').waitFor();
-  await m.locator('.portrait-table').scrollIntoViewIfNeeded();
-  await m.waitForFunction(() => [...document.querySelectorAll('.portrait-table img')].every((i) => i.complete && i.naturalWidth > 0));
+  // Mapas e cenários: retratos de NPC não aparecem (ficam na ficha do personagem); o atlas lista só cenários oficiais.
+  await go(m, `campaign/${c.id}/maps`, '.fx-section');
+  check(await m.locator('.portrait-section, .portrait-table').count(), 0, 'mapas sem seção de retratos');
   const atlasCards = await m.locator('.official-atlas .atlas-card h3').allTextContents();
   ok(!atlasCards.some((t) => /Imagem —|Vale do Norte/.test(t)), 'atlas oficial sem imagens da campanha');
-  check(await rows(m, '.portrait-table'), 2, 'retratos no acervo');
   await m.screenshot({ path: `${out}/acervo.png`, fullPage: true, animations: 'disabled' });
 
   // Jogador: NPCs conhecidos em tabela, com busca no servidor.

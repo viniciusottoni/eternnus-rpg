@@ -11,6 +11,27 @@ const entries = {
     ],
     "audience": "all"
   },
+  "mesa.dados.bandeja": {
+    "title": "Dados rápidos",
+    "summary": "Um clique rola um dado de 4 a 20 faces; o resultado aparece em destaque sobre o mapa.",
+    "body": [
+      "Cada botão rola um único dado, sem modificador, no servidor. O resultado entra em Rolagens e aparece por alguns segundos sobre o mapa para quem pode vê-lo. Um resultado máximo ou mínimo de um dado só ganha destaque próprio.",
+      "Jogadores: quem vê segue a regra que o Mestre definiu na configuração da mesa. Mestre: o botão de olho alterna entre rolar para a mesa inteira ou só para você.",
+      "Para quantidade, modificador, fórmulas com atributos da ficha e favoritas, use o botão ⬡ ou “Rolar dados”. Com a partida pausada, só o Mestre rola."
+    ],
+    "audience": "all"
+  },
+  "mesa.mapa.soltar": {
+    "title": "Soltar mapa na mesa",
+    "summary": "Arraste uma imagem ou um arquivo UVTT para o mapa, ou use “Enviar mapa ou UVTT”.",
+    "body": [
+      "Imagem PNG, JPEG ou WebP vira um mapa do acervo da campanha (Mapas e cenários) com uma grade sugerida. Depois de mostrar na mesa, o ajuste da grade abre em seguida; “Ajustar grade do mapa” continua disponível durante a sessão.",
+      "Arquivo Universal VTT (.dd2vtt do Dungeondraft, .uvtt, .df2vtt) traz imagem, grade, paredes, portas e luzes. As paredes do arquivo são linhas e a mesa usa casas: a conversão fica do lado de fora das salas quando o desenho fecha a sala. Confira em “Paredes e portas” na interface Completa.",
+      "Imagens acima de 4.096 pixels por lado, 8 milhões de pixels ou 10 MB são reduzidas no seu aparelho antes do envio, mantendo a grade inteira. Usar na mesa agora troca o cenário: criaturas do mapa atual saem e os aventureiros vão aos pontos de entrada.",
+      "Ajustar a grade com o mapa na mesa mantém paredes, névoa e luzes nas mesmas casas; marcadores fora da nova grade vão para a casa livre mais próxima."
+    ],
+    "audience": "master"
+  },
   "mesa.tela.horizontal": {
     "title": "Mesa na horizontal",
     "summary": "No celular, vire a tela para usar o mapa e os comandos lado a lado.",
@@ -177,6 +198,7 @@ const entries = {
     "summary": "O mapa e o grupo usam texto junto das cores.",
     "body": [
       "Aliados usam verde, inimigos vermelho e a vez atual recebe destaque dourado. A barra de vida mostra o valor e o máximo quando a ficha permite a leitura.",
+      "No mapa, cada marcador pode mostrar uma barra de vida (o primeiro recurso da ficha) e um escudo com a armadura. Toque na barra para ajustar: o dono da ficha e o Mestre podem; os demais só leem. NPCs e criaturas mostram as bolhas só para o Mestre. O botão ♥ das ferramentas mostra ou oculta as bolhas só na sua tela.",
       "A presença vem da renovação de conexão. Uma pessoa sem renovação por 45 segundos aparece ausente; isso não encerra uma campanha persistente."
     ],
     "audience": "all"

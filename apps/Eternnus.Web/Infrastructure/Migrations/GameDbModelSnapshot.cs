@@ -991,6 +991,36 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             Order = 5,
                             Slug = "fichas-e-biblioteca",
                             StaffOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000207"),
+                            Description = "Sugestões de melhorias e novos recursos para a plataforma.",
+                            MinLevelToPost = 1,
+                            Name = "Forja de Ideias",
+                            Order = 6,
+                            Slug = "forja-de-ideias",
+                            StaffOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000208"),
+                            Description = "Mapas, retratos, tokens e artes criadas pela comunidade.",
+                            MinLevelToPost = 1,
+                            Name = "Galeria do Artífice",
+                            Order = 7,
+                            Slug = "galeria-do-artifice",
+                            StaffOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000209"),
+                            Description = "Dúvidas de quem está começando no RPG ou na Eternnus.",
+                            MinLevelToPost = 1,
+                            Name = "Portal do Aprendiz",
+                            Order = 8,
+                            Slug = "portal-do-aprendiz",
+                            StaffOnly = false
                         });
                 });
 
@@ -1023,6 +1053,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasColumnType("character varying(450)");
 
                     b.Property<DateTime?>("EditedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("HeldAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("TopicId")
@@ -1124,6 +1157,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("HeldAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("LastPostAt")
@@ -1431,6 +1467,44 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.ToTable("MusicTracks");
                 });
 
+            modelBuilder.Entity("Eternnus.Web.Notice", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Area")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ItemKey")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignId", "ItemKey");
+
+                    b.HasIndex("UserId", "CampaignId", "Area");
+
+                    b.ToTable("Notices", (string)null);
+                });
+
             modelBuilder.Entity("Eternnus.Web.OneShotParticipation", b =>
                 {
                     b.Property<string>("UserId")
@@ -1488,6 +1562,27 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("PastSession");
+                });
+
+            modelBuilder.Entity("Eternnus.Web.ReadMark", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("Scope")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("Key")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("SeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId", "Scope", "Key");
+
+                    b.ToTable("ReadMarks", (string)null);
                 });
 
             modelBuilder.Entity("Eternnus.Web.RollRequest", b =>
@@ -2842,6 +2937,21 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Eternnus.Web.Notice", b =>
+                {
+                    b.HasOne("Eternnus.Web.Campaign", null)
+                        .WithMany()
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Eternnus.Web.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Eternnus.Web.OneShotParticipation", b =>
                 {
                     b.HasOne("Eternnus.Web.AppUser", null)
@@ -2892,6 +3002,15 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         });
 
                     b.Navigation("Scenes");
+                });
+
+            modelBuilder.Entity("Eternnus.Web.ReadMark", b =>
+                {
+                    b.HasOne("Eternnus.Web.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Eternnus.Web.RollRequest", b =>

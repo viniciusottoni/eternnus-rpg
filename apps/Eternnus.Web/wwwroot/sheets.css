@@ -1120,6 +1120,13 @@
 .cs-accessible { padding:16px; margin:18px 0; }
 .cs-accessible summary { min-height:44px; cursor:pointer; display:flex; align-items:center; }
 .cs-accessible input,.cs-accessible select { min-height:44px; }
+/* Formulário acessível: três colunas no desktop, duas no tablet e uma no celular. */
+#cs-accessible { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px 16px; align-items:end; }
+#cs-accessible .field { min-width:0; }
+#cs-accessible .field-wide { grid-column:1 / -1; }
+#cs-accessible input[type="checkbox"] { align-self:flex-start; width:28px; height:28px; min-height:28px; margin:8px auto 8px 0; }
+@media (max-width: 1100px) { #cs-accessible { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width: 760px) { #cs-accessible { grid-template-columns:1fr; } }
 
 /* A ficha do jogador mantém o conteúdo de todos os campos à esquerda. */
 .cs-pages .ps-field,
