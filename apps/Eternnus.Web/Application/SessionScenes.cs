@@ -229,6 +229,7 @@ public partial class SessionService
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var a = await LockAsync(sessionId, user, ct); RequireMaster(a);
         var npc = await db.MasterCharacters.SingleOrDefaultAsync(m => m.Id == npcId && m.CampaignId == a.Campaign.Id, ct) ?? throw new RuleException(404, "Personagem do mestre não encontrado.");
+        if (npc.TemplateVersionId != null) throw new RuleException(409, "Este personagem usa modelo de ficha: ajuste os valores pela ficha.");
         if (x.Index < 0 || x.Index >= npc.Resources.Count) throw new RuleException(404, "Recurso não encontrado.");
         var r = npc.Resources[x.Index];
         var before = r.Value;

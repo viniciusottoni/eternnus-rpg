@@ -4,12 +4,23 @@ import { simpleTemplateFormulaFields } from "./sheet-editor-policy.js";
 // Preparação e continuidade da campanha (carregado sob demanda): cenas, personagens do mestre, diário e modelos simples.
 import { api } from "./api.js";
 import { $, esc, button, modal, formError, submitForm, toast, empty } from "./ui.js";
-import { VISION_MODES, localDateTime, toLocalInput, browserZone } from "./play-policy.js";
+import { VISION_MODES, localDateTime, toLocalInput, browserZone, safeImageUrl } from "./play-policy.js";
 
 import { sceneKindLabel } from "./scene-policy.js";
 import { mapThumbnail } from "./table-map.js";
 const SIDES = [["enemy", "Inimigo"], ["neutral", "Neutro"], ["ally", "Aliado"]];
+/** Selo do lado (inimigo, neutro, aliado) com a cor do marcador no mapa; a classe vem só da lista fixa. */
+const sideChip = (side) => {
+  const [value, label] = SIDES.find(([v]) => v === side) || SIDES[0];
+  return ` <span class="chip side-chip side-${value}">${label}</span>`;
+};
 const options = (list, current) => list.map(([v, l]) => `<option value="${esc(v)}" ${v === current ? "selected" : ""}>${esc(l)}</option>`).join("");
+/** Miniatura do personagem na lista da Preparação: prévia da imagem (acervo ou https) ou a inicial do nome. */
+const npcThumb = (n) => {
+  const initial = esc((n.name || "?").trim().charAt(0).toUpperCase());
+  const src = safeImageUrl(n.imagePreview);
+  return src ? `<img class="npc-thumb" src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" decoding="async" data-initial="${initial}">` : `<span class="npc-thumb" aria-hidden="true">${initial}</span>`;
+};
 
 // ---------- Cenas e personagens do mestre ----------
 /** Cena como ponto de entrada da preparação: cartões com miniatura; o editor único abre a preparação privada. */
@@ -29,8 +40,9 @@ export async function renderPrep(d, target) {
   ${scenes.items.length ? `<ul class="scene-cards">${scenes.items.map(card).join("")}</ul>` : empty("Nenhuma cena ainda.", "Uma cena pode ser um mapa com grade, uma imagem ou só um texto para ler à mesa.", d.archived ? "" : "pp-scene", "+ Nova cena")}
   <div class="section-title"><h2>Personagens do mestre${helpButton("campanhas.preparo.personagens", "Personagens do Mestre")}</h2>${button("+ Novo personagem", "pp-npc", "", "primary small", d.archived ? "disabled" : "")}</div>
   <p class="muted small">Reutilize aliados e inimigos. Na mesa, use “Cópia para o encontro” para mexer nos recursos sem alterar o original. Marque “Visível para os jogadores” para apresentar o personagem em <a href="#campaign/${esc(d.id)}/npcs">NPCs conhecidos</a>. Use “+ História” para escrever a história dele em Páginas.</p>
-  ${npcs.items.length ? `<ul class="npc-list">${npcs.items.map((n) => `<li class="metal"><div><strong>${esc(n.name)}</strong> <span class="chip">${n.kind === "creature" ? "criatura" : "personagem"}</span>${n.copy ? ' <span class="chip">cópia</span>' : ""}${n.sharedWithPlayers ? ' <span class="chip">visível ao grupo</span>' : ""}${n.templateName ? ` <span class="chip">ficha: ${esc(n.templateName)}</span>` : ""}<small>${esc(n.summary || "")}</small><small>${n.resources.map((r) => `${esc(r.label)} ${r.value}${r.max != null ? "/" + r.max : ""}`).join(" · ")}</small>${n.page ? `<small>História: <a class="lore-link" href="#campaign/${esc(d.id)}/world/${esc(n.page.id)}">${esc(n.page.title)}</a></small>` : ""}</div><div class="scene-actions">${button("Editar", "pp-npc", n.id, "subtle small")}${n.page || n.copy ? "" : button("+ História", "pp-npc-lore", n.id, "subtle small", d.archived ? "disabled" : `aria-label="Escrever a história de ${esc(n.name)} em Páginas"`)}${button("Ficha", "pp-npc-sheet", n.id, "subtle small")}${button("Copiar", "pp-npc-copy", n.id, "subtle small")}${button("Excluir", "pp-npc-delete", n.id, "text-button small")}</div></li>`).join("")}</ul>` : empty("Nenhum personagem do mestre.", "Crie um com nome, resumo e recursos como vida, moral ou munição.")}`;
+  ${npcs.items.length ? `<ul class="npc-list">${npcs.items.map((n) => `<li class="metal">${npcThumb(n)}<div class="npc-info"><strong>${esc(n.name)}</strong> <span class="chip">${n.kind === "creature" ? "criatura" : "personagem"}</span>${sideChip(n.side)}${n.copy ? ' <span class="chip">cópia</span>' : ""}${n.sharedWithPlayers ? ' <span class="chip">visível ao grupo</span>' : ""}${n.templateName ? ` <span class="chip">ficha: ${esc(n.templateName)}</span>` : ""}<small>${esc(n.summary || "")}</small>${n.templateName || !n.resources.length ? "" : `<small>${n.resources.map((r) => `${esc(r.label)} ${r.value}${r.max != null ? "/" + r.max : ""}`).join(" · ")}</small>`}${n.page ? `<small>História: <a class="lore-link" href="#campaign/${esc(d.id)}/world/${esc(n.page.id)}">${esc(n.page.title)}</a></small>` : ""}</div><div class="scene-actions">${button("Editar", "pp-npc", n.id, "subtle small")}${n.page || n.copy ? "" : button("+ História", "pp-npc-lore", n.id, "subtle small", d.archived ? "disabled" : `aria-label="Escrever a história de ${esc(n.name)} em Páginas"`)}${button("Ficha", "pp-npc-sheet", n.id, "subtle small")}${button("Copiar", "pp-npc-copy", n.id, "subtle small")}${button("Excluir", "pp-npc-delete", n.id, "text-button small")}</div></li>`).join("")}</ul>` : empty("Nenhum personagem do mestre.", "Crie um com nome e resumo. Depois, em “Ficha”, escolha um modelo ou recursos simples como vida e moral.")}`;
   target.querySelectorAll("[data-scene-map]").forEach((el) => mapThumbnail(el, mapOf(el.dataset.sceneMap)));
+  target.querySelectorAll("img.npc-thumb").forEach((img) => img.addEventListener("error", () => img.replaceWith(Object.assign(document.createElement("span"), { className: "npc-thumb", textContent: img.dataset.initial, ariaHidden: "true" })), { once: true }));
   target.onclick = async (e) => {
     const b = e.target.closest("[data-action^='pp-']");
     if (!b || b.disabled) return;
@@ -54,18 +66,19 @@ export async function renderPrep(d, target) {
 async function npcModal(d, npc, done) {
   const sheets = await import("./npc-sheet.js");
   const images = await sheets.imageChoices(d.id);
-  const rows = (npc?.resources?.length ? npc.resources : [{ label: "Vida", value: 10, max: 10 }]).concat([{ label: "", value: 0, max: null }]);
   modal(
     npc ? "Editar personagem do mestre" : "Novo personagem do mestre",
-    `<form id="npc-form"><div class="field"><label for="np-name">Nome</label><input id="np-name" name="name" maxlength="40" required value="${esc(npc?.name || "")}"></div><div class="form-grid two"><div class="field"><label for="np-kind">Tipo</label><select id="np-kind" name="kind">${options([["npc", "Personagem"], ["creature", "Criatura"]], npc?.kind || "npc")}</select></div><div class="field"><label for="np-side">Lado</label><select id="np-side" name="side">${options(SIDES, npc?.side || "enemy")}</select></div></div><div class="field"><label for="np-sum">Resumo curto</label><input id="np-sum" name="summary" maxlength="500" value="${esc(npc?.summary || "")}"></div><fieldset><legend>Recursos (deixe o nome vazio para não usar)</legend>${rows.map((r, i) => `<div class="form-grid three"><div class="field"><label for="np-l${i}">Nome</label><input id="np-l${i}" name="l${i}" maxlength="40" value="${esc(r.label)}" placeholder="Moral"></div><div class="field"><label for="np-v${i}">Valor</label><input id="np-v${i}" name="v${i}" type="number" min="0" max="100000" value="${r.value ?? 0}"></div><div class="field"><label for="np-m${i}">Máximo</label><input id="np-m${i}" name="m${i}" type="number" min="0" max="100000" value="${r.max ?? ""}"></div></div>`).join("")}</fieldset>${sheets.imageFields("np-img", npc?.imageUrl || "", images)}<div class="field"><label for="np-notes">Notas privadas</label><textarea id="np-notes" name="notes" maxlength="4000" rows="3">${esc(npc?.notes || "")}</textarea></div><label class="check"><input type="checkbox" name="sharedWithPlayers" ${npc?.sharedWithPlayers ? "checked" : ""} aria-describedby="np-shared-hint"> Visível para os jogadores</label><small id="np-shared-hint" class="form-help">O grupo vê nome, tipo, resumo curto e imagem em “NPCs conhecidos”. Lado, recursos, ficha e notas continuam só com você.</small>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">Salvar</button></div></form>`,
+    `<form id="npc-form"><div class="field"><label for="np-name">Nome</label><input id="np-name" name="name" maxlength="40" required value="${esc(npc?.name || "")}"></div><div class="form-grid two"><div class="field"><label for="np-kind">Tipo</label><select id="np-kind" name="kind">${options([["npc", "Personagem"], ["creature", "Criatura"]], npc?.kind || "npc")}</select></div><div class="field"><label for="np-side">Lado</label><select id="np-side" name="side">${options(SIDES, npc?.side || "enemy")}</select></div></div><div class="field"><label for="np-sum">Resumo curto</label><input id="np-sum" name="summary" maxlength="500" value="${esc(npc?.summary || "")}"></div>${sheets.imageFields("np-img", npc?.imageUrl || "", images)}<div class="field"><label for="np-notes">Notas privadas</label><textarea id="np-notes" name="notes" maxlength="4000" rows="3">${esc(npc?.notes || "")}</textarea></div><label class="check"><input type="checkbox" name="sharedWithPlayers" ${npc?.sharedWithPlayers ? "checked" : ""} aria-describedby="np-shared-hint"> Visível para os jogadores</label><small id="np-shared-hint" class="form-help">O grupo vê nome, tipo, resumo curto e imagem em “NPCs conhecidos”. Lado, recursos, ficha e notas continuam só com você.</small>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">Salvar</button></div></form>`,
   );
   $("#npc-form").onsubmit = (e) => {
     e.preventDefault();
     submitForm(e.currentTarget, async (data) => {
-      const resources = rows.map((_, i) => ({ label: (data["l" + i] || "").trim(), value: Number(data["v" + i]) || 0, max: data["m" + i] === "" ? null : Number(data["m" + i]) })).filter((r) => r.label);
-      await api(`/campaigns/${d.id}/npcs${npc ? "/" + npc.id : ""}`, npc ? "PUT" : "POST", { name: data.name, summary: data.summary, notes: data.notes, side: data.side, resources, revision: npc?.revision || 0, kind: data.kind, imageUrl: await sheets.imageFromUpload(data, d.id, data.name), sharedWithPlayers: data.sharedWithPlayers === "on" });
+      // Vida e recursos ficam na ficha (modelo ou recursos simples); o cadastro não os envia e o servidor mantém os atuais.
+      const saved = await api(`/campaigns/${d.id}/npcs${npc ? "/" + npc.id : ""}`, npc ? "PUT" : "POST", { name: data.name, summary: data.summary, notes: data.notes, side: data.side, revision: npc?.revision || 0, kind: data.kind, imageUrl: await sheets.imageFromUpload(data, d.id, data.name), sharedWithPlayers: data.sharedWithPlayers === "on" });
       $("#modal").close();
       await done();
+      // Personagem novo segue direto para a ficha: modelo ou recursos simples.
+      if (!npc && saved?.id) await sheets.openNpcSheet({ campaignId: d.id, npcId: saved.id, onSaved: done }).catch((error) => toast(error.message));
     });
   };
 }

@@ -488,3 +488,10 @@ Sem aparelho físico, Safari/iOS, carga medida ou publicação.
 - Suíte C# completa: 752 aprovados. `tests/*.test.mjs` aprovados.
 - Verificação no navegador (Chrome headless, PostgreSQL do harness, roteiro avulso fora do repositório): Preparação com “História:” e “+ História” (abre página nova ligada, privada e sem o tipo NPC); NPCs conhecidos do mestre com aviso de página privada; do jogador com “Ler página”, que abre a leitura sem segredos; lista de Páginas com selo “NPC: nome” e filtro sem NPC; celular 390 px sem overflow e link com alvo de toque ≥ 44 px. Nenhum erro de página.
 - Não medido: Safari/iOS e aparelho físico.
+
+### Vida e recursos de NPCs na ficha (ADR-065, v43)
+
+- `TablePlayServiceTests.Simple_npc_resources_live_in_the_sheet_and_step_aside_when_a_template_is_chosen`: cadastro sem recursos cria vazio e edição sem recursos mantém os atuais; `PUT /sheet` grava recursos simples só sem modelo (com modelo 400, valor acima do máximo 400) e registra evento privado; na mesa, sem modelo o ajuste funciona; com modelo `resources` vem vazio e o ajuste dá 409; voltar a “Sem ficha” devolve os recursos guardados.
+- Suíte C# completa: 753 aprovados. `tests/*.test.mjs`: 143 aprovados.
+- Verificação no navegador (Chrome, PostgreSQL do harness, roteiro avulso fora do repositório), desktop 1440×900 e celular 390×844: cadastro sem “Recursos”; a ficha abre ao criar, com “Recursos simples” sugerindo Vida; salvar reexibe os valores e a API guarda 8/8; escolher modelo troca para os campos do modelo; voltar a “Sem ficha” traz os recursos; botão de salvar com 44 px no celular; sem erros no console.
+- Não medido: `tests/modals-ui.mjs` completo, Safari/iOS e aparelho físico.

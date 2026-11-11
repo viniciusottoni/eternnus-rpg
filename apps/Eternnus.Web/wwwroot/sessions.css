@@ -2509,6 +2509,16 @@ dialog.fog-editor-modal {
 .scene-row, .npc-list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 10px 12px; }
 .scene-row.current { border-color: var(--gold); }
 .scene-row small, .npc-list small { display: block; color: var(--muted); }
+/* Miniatura do personagem do mestre no início da linha; recorte pelo topo para não cortar o rosto. */
+.npc-list li { align-items: center; }
+.npc-list .npc-info { flex: 1 1 220px; min-width: 0; }
+/* Lado do personagem do mestre: mesmas cores dos marcadores no mapa (table-map.js); o texto acompanha a cor.
+   O vermelho do texto é mais claro que --enemy para manter contraste de 4,5:1 em 12 px. */
+.side-chip { font-weight: 600; }
+.side-chip.side-enemy { color: #ec7a66; border-color: color-mix(in srgb, var(--enemy) 60%, transparent); }
+.side-chip.side-ally { color: var(--online); border-color: color-mix(in srgb, var(--online) 60%, transparent); }
+.side-chip.side-neutral { color: #c9c2a6; border-color: #c9c2a699; }
+.npc-thumb { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 2px solid #a07b3a; object-fit: cover; object-position: center top; color: #ead6a8; font: normal 19px var(--serif); background: #c6a46314; }
 .scene-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .npc-live li { padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .npc-pick li { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; }
@@ -3219,7 +3229,7 @@ a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3
 .known-npcs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 .known-npc { display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; }
 .known-npc.is-target { outline: 2px solid var(--gold); outline-offset: 2px; }
-.known-npc img, .known-npc-initial { flex: none; width: 64px; height: 64px; border-radius: 50%; border: 2px solid #a07b3a; object-fit: cover; }
+.known-npc img, .known-npc-initial { flex: none; width: 64px; height: 64px; border-radius: 50%; border: 2px solid #a07b3a; object-fit: cover; object-position: center top; }
 .known-npc-initial { display: grid; place-items: center; color: #ead6a8; font: normal 26px var(--serif); background: #c6a46314; }
 .known-npc h3 { margin: 0 0 4px; color: #ead6a8; font: normal 17px var(--serif); overflow-wrap: anywhere; }
 .known-npc p { margin: 8px 0 0; }

@@ -82,7 +82,8 @@ public partial class SessionService
                     var (resources, stats) = SheetSummary.Build(version.Fields, all);
                     sheet = new { resources, stats };
                 }
-                npcs.Add(new { r.tokenId, r.Id, r.Name, r.Summary, r.Resources, r.SourceId, r.Kind, r.Revision, image = PortraitUrl(s.Id, r.tokenId, r.ImageUrl), hasSheet = sheet != null, sheet });
+                // Com ficha, os recursos simples ficam guardados mas não aparecem nem são ajustados na mesa (ADR-065).
+                npcs.Add(new { r.tokenId, r.Id, r.Name, r.Summary, resources = sheet == null ? r.Resources : [], r.SourceId, r.Kind, r.Revision, image = PortraitUrl(s.Id, r.tokenId, r.ImageUrl), hasSheet = sheet != null, sheet });
             }
         }
         return new
