@@ -90,7 +90,7 @@ export function queryString(params) {
 }
 
 // ---------- Apresentação ----------
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 15;
 let generation = 0;
 const filters = {
   users: { q: "", role: "", status: "", page: 1 },
@@ -341,7 +341,7 @@ async function renderCampaigns(ctx) {
     systems = [];
   }
   if (!ctx.alive()) return;
-  ctx.view.innerHTML = `<form id="admin-campaigns-filter" class="admin-filters" role="search"><div class="field"><label for="f-q">Nome da campanha</label><input id="f-q" name="q" maxlength="100" value="${esc(f.q)}" placeholder="Buscar campanha…"></div><div class="field"><label for="f-system">Sistema</label><select id="f-system" name="systemId"><option value="">Todos</option>${systems
+  ctx.view.innerHTML = `<form id="admin-campaigns-filter" class="admin-filters" role="search"><div class="field"><label for="f-q">Campanha ou mestre</label><input id="f-q" name="q" maxlength="100" value="${esc(f.q)}" placeholder="Nome da campanha ou do mestre…"></div><div class="field"><label for="f-system">Sistema</label><select id="f-system" name="systemId"><option value="">Todos</option>${systems
     .filter((s) => isAdminGuid(s.id))
     .map((s) => `<option value="${s.id}" ${f.systemId === s.id ? "selected" : ""}>${esc(s.name)}${s.active ? "" : " (inativo)"}</option>`)
     .join("")}</select></div><div class="field"><label for="f-online">Mesa</label><select id="f-online" name="online">${[["", "Todas"], ["true", "Online agora"], ["false", "Offline"]].map(([key, label]) => `<option value="${key}" ${f.online === key ? "selected" : ""}>${label}</option>`).join("")}</select></div><button type="submit" class="primary">Filtrar</button></form><div id="admin-list"></div>`;

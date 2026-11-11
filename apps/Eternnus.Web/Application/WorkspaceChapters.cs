@@ -23,16 +23,27 @@ public sealed partial class WorkspaceService
     }
 
     /// <summary>
-    /// Sem <paramref name="page"/>: todos (até 200, para seletores). Com página: vinte por vez, para a tabela.
+    /// Sem <paramref name="page"/>: todos (até 200, para seletores). Com página: quinze por vez, para a tabela.
+    /// Filtros da tabela: <paramref name="q"/> no título e no resumo, <paramref name="kind"/> (capítulo, ato, arco) e,
+    /// só para o mestre, <paramref name="published"/>.
     /// Jogador: só capítulos visíveis, e as contagens consideram apenas sessões publicadas; sessões em capítulo oculto contam como avulsas.
     /// </summary>
-    public async Task<object> ChapterList(Guid campaign, string user, CancellationToken ct, int? page = null)
+    public async Task<object> ChapterList(Guid campaign, string user, CancellationToken ct, int? page = null, string? q = null, string? kind = null, bool? published = null)
     {
         var c = await Access(campaign, user, false, ct);
         var master = c.OwnerId == user;
-        var ordered = Chapters.AsNoTracking().Where(x => x.CampaignId == campaign && (master || x.Published)).OrderBy(x => x.Order).ThenBy(x => x.CreatedAt);
+        var filtered = Chapters.AsNoTracking().Where(x => x.CampaignId == campaign && (master || x.Published));
+        if (TextSearch.Term(q) is { } term) filtered = filtered.Where(TextSearch.AnyField<StoryChapter>(db, TextSearch.Pattern(term), x => x.Title, x => x.Summary));
+        if (!string.IsNullOrWhiteSpace(kind))
+        {
+            var k = kind.Trim();
+            if (!ChapterKinds.All.Contains(k)) throw new RuleException(400, "Escolha capítulo, ato ou arco.");
+            filtered = filtered.Where(x => x.Kind == k);
+        }
+        if (master && published is { } shownOnly) filtered = filtered.Where(x => x.Published == shownOnly);
+        var ordered = filtered.OrderBy(x => x.Order).ThenBy(x => x.CreatedAt);
         var total = await ordered.CountAsync(ct);
-        var current = Math.Clamp(page ?? 1, 1, 100000);
+        var current = Math.Clamp(page ?? 1, 1, Math.Max(1, (total + LogPageSize - 1) / LogPageSize));
         var live = db.Sessions.Where(s => master || s.RecapPublishedAt != null);
         var past = db.Set<PastSession>().Where(s => master || s.Published);
         var items = await (page == null ? ordered.Take(ChapterModel.MaxPerCampaign) : ordered.Skip((current - 1) * LogPageSize).Take(LogPageSize))

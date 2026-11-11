@@ -40,6 +40,15 @@ public class CampaignMap
     public int Height { get; set; }
     public byte[] Content { get; set; } = [];
     public int Revision { get; set; } = 1;
+    /// <summary>Categoria isolada no acervo: <see cref="CampaignAssetPurposes.Map"/> (cenas, atlas, mesa) ou
+    /// <see cref="CampaignAssetPurposes.Portrait"/> (imagem de NPC; nunca listada como mapa).</summary>
+    [MaxLength(16)] public string Purpose { get; set; } = CampaignAssetPurposes.Map;
+}
+/// <summary>Categorias de imagem do acervo da campanha.</summary>
+public static class CampaignAssetPurposes
+{
+    public const string Map = "map", Portrait = "portrait";
+    public static string Normalize(string? v) => v switch { null or "" => Map, Map or Portrait => v, _ => throw new RuleException(400, "Categoria de imagem inválida.") };
 }
 /// <summary>Névoa, paredes, portas, luzes e explorações de um mapa da campanha (oficial ou enviado), contínuos entre sessões.</summary>
 public class CampaignMapLayer

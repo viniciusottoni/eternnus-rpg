@@ -6,6 +6,7 @@ import { state } from "./state.js";
 import { shell } from "./layout.js";
 import { $, esc, button, modal, toast, formError, submitForm, formatDate, navigate } from "./ui.js";
 import { isStaff, isAdmin } from "./policy.js";
+import { controlsHtml, readControls, pagerHtml, mountClientTable } from "./data-table.js";
 import {
   LIMITS,
   DEFAULT_AVATAR,
@@ -31,7 +32,7 @@ let route = { view: "hall" };
 let topicData = null;
 let pendingScroll = null;
 const listState = { slug: "", q: "", systemId: "", page: 1 };
-const modState = { page: 1 };
+const modState = { page: 1, q: "", resolution: "", focus: "" };
 
 export async function renderGuild(segments = []) {
   shell("guild");
@@ -486,7 +487,7 @@ async function renderModeration(request) {
   }
   const admin = isAdmin(state.user);
   const tab = route.tab === "categories" && !admin ? "open" : route.tab;
-  if (modState.tab !== tab) Object.assign(modState, { tab, page: 1 });
+  if (modState.tab !== tab) Object.assign(modState, { tab, page: 1, q: "", resolution: "" });
   const tabs = [
     ["open", "Denúncias abertas"],
     ["resolved", "Resolvidas"],
@@ -499,10 +500,37 @@ async function renderModeration(request) {
   else body = await reportsPanel(tab);
   if (stale(request)) return;
   main.innerHTML = `<a class="back-link" href="#guild">← Salão da Guilda</a><div class="page-heading"><div><span class="eyebrow">GUARDIÕES DO SALÃO</span><h1>Moderação da Guilda${helpButton("guilda.equipe.moderacao", "Papéis e moderação")}</h1><p>Denúncias, tópicos removidos e categorias. Toda decisão exige motivo e fica na auditoria.</p></div></div><nav class="page-tabs" aria-label="Seções da moderação">${tabs.map(([key, label]) => `<a href="#guild/moderation/${key}" ${key === tab ? 'aria-current="page" class="active"' : ""}>${label}</a>`).join("")}</nav>${body}`;
+  if (tab === "categories") mountCategories();
+  if (tab === "open" || tab === "resolved") bindReportControls();
+  if (modState.focus) { main.querySelector(modState.focus)?.focus(); modState.focus = ""; }
+}
+/** Busca (motivo, mensagem, tópico) e, nas resolvidas, filtro de resultado: no servidor, antes da paginação de 15. */
+function bindReportControls() {
+  const form = $("#gr-controls");
+  if (!form) return;
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const { q, filters } = readControls(form);
+    if (q.length === 1) { $("#gr-q-hint").textContent = "Digite ao menos 2 caracteres ou deixe vazio."; $("#gr-q").focus(); return; }
+    Object.assign(modState, { q, resolution: filters.resolution || "", page: 1, focus: "#gr-q" });
+    show();
+  };
+  form.querySelector("[data-table-clear]")?.addEventListener("click", () => { Object.assign(modState, { q: "", resolution: "", page: 1, focus: "#gr-q" }); show(); });
 }
 async function reportsPanel(status) {
-  const data = await api(`/guild/moderation/reports?status=${status}&page=${modState.page}`);
+  const params = new URLSearchParams({ status, page: String(modState.page) });
+  if (modState.q) params.set("q", modState.q);
+  if (status === "resolved" && modState.resolution) params.set("resolution", modState.resolution);
+  const data = await api(`/guild/moderation/reports?${params}`);
   modState.reports = data.items;
+  modState.page = data.page;
+  const filtered = Boolean(modState.q || (status === "resolved" && modState.resolution));
+  const controls = controlsHtml("gr", {
+    search: { label: "Buscar denúncias", placeholder: "Motivo, mensagem ou tópico", value: modState.q },
+    filters: status === "resolved" ? [{ name: "resolution", label: "Resultado", options: [["dismissed", "Arquivada"], ["removed", "Mensagem removida"]], value: modState.resolution }] : [],
+  });
+  if (!data.items.length && filtered)
+    return `${controls}<p class="muted small" role="status">Nenhuma denúncia com estes filtros. Ajuste a busca ou clique em Limpar.</p>`;
   if (!data.items.length)
     return `<div class="empty"><span class="empty-sigil" aria-hidden="true">⚖</span><h3>${status === "open" ? "Nenhuma denúncia aguardando." : "Nenhuma denúncia resolvida ainda."}</h3><p>${status === "open" ? "O salão está em paz. Volte mais tarde." : "Decisões aparecem aqui com quem decidiu e quando."}</p></div>`;
   const rows = data.items
@@ -514,7 +542,7 @@ async function reportsPanel(status) {
       }</td></tr>`,
     )
     .join("");
-  return `<p class="list-summary">${esc(data.total)} ${data.total === 1 ? "denúncia" : "denúncias"}</p><div class="data-table-wrap"><table class="data-table guild-reports"><caption class="sr-only">Denúncias ${status === "open" ? "abertas" : "resolvidas"}</caption><thead><tr><th scope="col">Mensagem</th><th scope="col">Denunciante</th><th scope="col">Motivo</th><th scope="col">Denúncias do post</th><th scope="col">${status === "open" ? "Decisão" : "Resultado"}</th></tr></thead><tbody>${rows}</tbody></table></div><nav class="pagination" aria-label="Páginas de denúncias">${pager(data.page, data.total, "guild-mod-page")}</nav>`;
+  return `${controls}<p class="list-summary">${esc(data.total)} ${data.total === 1 ? "denúncia" : "denúncias"}</p><div class="data-table-wrap" tabindex="0" role="region" aria-label="Denúncias"><table class="data-table guild-reports"><caption class="sr-only">Denúncias ${status === "open" ? "abertas" : "resolvidas"}</caption><thead><tr><th scope="col">Mensagem</th><th scope="col">Denunciante</th><th scope="col">Motivo</th><th scope="col">Denúncias do post</th><th scope="col">${status === "open" ? "Decisão" : "Resultado"}</th></tr></thead><tbody>${rows}</tbody></table></div>${pagerHtml({ page: data.page, pages: Math.max(1, Math.ceil(data.total / data.pageSize)), total: data.total }, "guild-mod-page", "denúncias")}`;
 }
 function resolveReport(value) {
   const [id, resolution] = String(value).split(":");
@@ -557,12 +585,33 @@ function restoreTopic(id) {
 async function categoriesPanel() {
   const items = await api("/guild/admin/categories");
   modState.categories = items;
+  return `<div class="section-title"><h2>Categorias</h2>${button("+ Nova categoria", "guild-cat-new", "", "primary")}</div><div data-guild-categories></div><p class="muted small">Categorias com tópicos não podem ser excluídas: arquive para tirá-las do salão sem perder o histórico.</p>`;
+}
+/** Busca por nome, slug e descrição; filtros de estado e "só equipe"; 15 por página. Ações seguem no clique delegado. */
+function mountCategories() {
+  const box = $("[data-guild-categories]");
+  if (!box) return;
+  mountClientTable(box, {
+    id: "gc",
+    rows: (modState.categories || []).map((c) => ({ ...c, state: c.archived ? "archived" : "active", staff: c.staffOnly ? "yes" : "no" })),
+    fields: ["name", "slug", "description"],
+    search: { label: "Buscar categorias", placeholder: "Nome, identificador ou descrição" },
+    filters: [
+      { name: "state", label: "Estado", options: [["active", "Ativa"], ["archived", "Arquivada"]] },
+      { name: "staff", label: "Só equipe", options: [["yes", "Sim"], ["no", "Não"]] },
+    ],
+    unit: "categorias",
+    emptyText: "Nenhuma categoria.",
+    table: categoriesTable,
+  });
+}
+function categoriesTable(items) {
   const rows = items
     .map(
       (c) => `<tr><td class="num">${esc(c.order)}</td><td><strong>${esc(c.name)}</strong><br><span class="muted small">${esc(c.slug)}</span></td><td>${esc(c.description)}</td><td class="num">${esc(c.minLevelToPost)}</td><td>${c.staffOnly ? '<span class="status-chip warn">Sim</span>' : '<span class="status-chip quiet">Não</span>'}</td><td class="num">${esc(c.topicCount)}</td><td>${c.archived ? '<span class="status-chip quiet">Arquivada</span>' : '<span class="status-chip good">Ativa</span>'}</td><td><div class="guild-report-actions">${button("Editar", "guild-cat-edit", c.id, "subtle small")}${button(c.archived ? "Reativar" : "Arquivar", "guild-cat-archive", c.id, "subtle small")}${button("Excluir", "guild-cat-delete", c.id, "danger small", c.topicCount ? 'aria-disabled="true" data-tip="Tem tópicos: arquive em vez de excluir"' : "")}</div></td></tr>`,
     )
     .join("");
-  return `<div class="section-title"><h2>Categorias</h2>${button("+ Nova categoria", "guild-cat-new", "", "primary")}</div><div class="data-table-wrap"><table class="data-table"><caption class="sr-only">Categorias da Guilda</caption><thead><tr><th scope="col">Ordem</th><th scope="col">Nome</th><th scope="col">Descrição</th><th scope="col">Nível mín.</th><th scope="col">Só equipe</th><th scope="col">Tópicos</th><th scope="col">Estado</th><th scope="col">Ações</th></tr></thead><tbody>${rows}</tbody></table></div><p class="muted small">Categorias com tópicos não podem ser excluídas: arquive para tirá-las do salão sem perder o histórico.</p>`;
+  return `<div class="data-table-wrap" tabindex="0" role="region" aria-label="Categorias da Guilda"><table class="data-table"><caption class="sr-only">Categorias da Guilda</caption><thead><tr><th scope="col">Ordem</th><th scope="col">Nome</th><th scope="col">Descrição</th><th scope="col">Nível mín.</th><th scope="col">Só equipe</th><th scope="col">Tópicos</th><th scope="col">Estado</th><th scope="col">Ações</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function categoryInput(c, overrides = {}) {
   return {
@@ -648,6 +697,7 @@ function onClick(event) {
       return run(show());
     case "guild-mod-page":
       modState.page = Math.max(1, Number(id) || 1);
+      modState.focus = ".data-table-wrap";
       return run(show());
     case "guild-useful":
       return run(toggleUseful(target));

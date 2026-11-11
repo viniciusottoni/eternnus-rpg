@@ -54,12 +54,12 @@ public static class WorkspaceEndpoints
         api.MapDelete("/past-sessions/{id:guid}", async (Guid campaign, Guid id, int revision, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeletePast(campaign, id, User(u), revision, ct); return Results.NoContent(); });
         // Capítulos/atos/arcos: organização privada do mestre para agrupar sessões.
         var chapters = app.MapGroup("/api/campaigns/{campaign:guid}/chapters").RequireAuthorization("Verified");
-        chapters.MapGet("", (Guid campaign, int? page, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.ChapterList(campaign, User(u), ct, page));
+        chapters.MapGet("", (Guid campaign, int? page, string? q, string? kind, bool? published, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.ChapterList(campaign, User(u), ct, page, q, kind, published));
         // Tabela única de sessões (Eternnus + anteriores) e busca geral: mestre e jogadores, com filtragem por papel no serviço.
         var campaignApi = app.MapGroup("/api/campaigns/{campaign:guid}").RequireAuthorization("Verified");
-        campaignApi.MapGet("/session-log", (Guid campaign, string? search, string? chapter, string? source, int? page, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.Log(campaign, User(u), search, chapter, source, page ?? 1, ct));
+        campaignApi.MapGet("/session-log", (Guid campaign, string? search, string? chapter, string? source, string? state, int? page, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.Log(campaign, User(u), search, chapter, source, page ?? 1, ct, state));
         campaignApi.MapGet("/session-log/{key}", (Guid campaign, string key, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.LogEntry(campaign, key, User(u), ct));
-        campaignApi.MapGet("/search", (Guid campaign, string? q, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.Search(campaign, User(u), q, ct));
+        campaignApi.MapGet("/search", (Guid campaign, string? q, string? kind, int? page, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.Search(campaign, User(u), q, kind, page ?? 1, ct));
         // Importação em lote: modelo estático e envio multipart (prévia sem gravar; confirm=true grava tudo ou nada).
         app.MapGet("/api/session-import/template", () => Results.File(SessionImportFormat.Template(), "text/csv; charset=utf-8", SessionImportFormat.FileName)).RequireAuthorization("Verified");
         campaignApi.MapPost("/session-import", async (Guid campaign, bool? confirm, HttpRequest request, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) =>

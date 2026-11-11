@@ -72,6 +72,7 @@ Auditoria inicial: 59 conceitos e 202 linhas de controles/opções, antes de edi
 | Modelos privados | `campaign-prep.js` | ⓘ | `campanhas.preparo.modelos-privados` | O Mestre cria modelos próprios para sua campanha. | Aplicado |
 | Textos antigos (Bibliotecas) | `campaign-assets.js` | ⓘ | `campanhas.acervo.publicacao` | Textos de antes das Páginas; o Mestre converte cada um em página. | Aplicado |
 | Mapas e escala | `campaign-assets.js` | ⓘ | `campanhas.acervo.mapas` | A grade e a escala ligam o mapa ao deslocamento. | Aplicado |
+| Retratos de NPC | `campaign-assets.js` | ⓘ | `campanhas.acervo.retratos` | Imagens dos personagens do mestre, separadas dos mapas. | Aplicado |
 | Preparar e apresentar | `scene-editor.js`; `table-scenes.js` | ⓘ | `campanhas.cenas.preparacao` | Salvar a preparação não apresenta a cena aos jogadores. | Aplicado |
 | Aplicar à cena atual | `scene-editor.js` | ⓘ | `campanhas.cenas.aplicar` | Você escolhe quais partes salvas passam a valer agora. | Aplicado |
 | Alcance da preparação | `scene-editor.js` | ⓘ | `campanhas.cenas.alcance` | A preparação pode pertencer ao mapa ou só à cena. | Aplicado |

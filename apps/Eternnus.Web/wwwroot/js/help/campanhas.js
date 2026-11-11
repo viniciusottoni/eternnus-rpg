@@ -117,6 +117,15 @@ const entries = {
     ],
     "audience": "master"
   },
+  "campanhas.acervo.retratos": {
+    "title": "Retratos de NPC",
+    "summary": "Imagens dos personagens do mestre, separadas dos mapas.",
+    "body": [
+      "Imagens enviadas pela ficha de um personagem do mestre ficam nesta categoria. Elas não aparecem em cenas, na mesa, no atlas nem na publicação de mapas.",
+      "O seletor “Do acervo da campanha” da ficha do personagem mostra só retratos. Excluir um retrato remove a imagem de quem a usava; o personagem passa a mostrar a inicial do nome."
+    ],
+    "audience": "master"
+  },
   "campanhas.cenas.preparacao": {
     "title": "Preparar e apresentar",
     "summary": "Salvar a preparação não apresenta a cena aos jogadores.",

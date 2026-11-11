@@ -8,19 +8,21 @@ import { safeImageUrl } from "./play-policy.js";
 import { initials } from "./session-policy.js";
 export { safeImageUrl };
 
-/** Imagens do acervo da campanha (mapas sem ou com grade) que podem servir de retrato. */
+/** Retratos de NPC do acervo (categoria isolada dos mapas). */
 export async function imageChoices(campaignId) {
-  const maps = await api(`/campaigns/${campaignId}/maps`);
-  return (maps.items || []).filter((m) => String(m.key || "").startsWith("asset:")).map((m) => ({ value: m.key, label: m.name }));
+  const r = await api(`/campaigns/${campaignId}/assets/portraits`);
+  return (r.items || []).filter((m) => String(m.key || "").startsWith("asset:")).map((m) => ({ value: m.key, label: m.name }));
 }
 
 /** Campos de imagem: do acervo (recomendado) ou link https. `current` é asset:{id}, https://… ou vazio. */
 export function imageFields(prefix, current = "", assets = []) {
   const isAsset = String(current || "").startsWith("asset:");
+  // Imagem atual vinda de outra categoria (ex.: um mapa escolhido antes da separação): continua selecionada.
+  if (isAsset && !assets.some((a) => a.value === current)) assets = [{ value: current, label: "Imagem atual" }, ...assets];
   return `<fieldset class="npc-image"><legend>Imagem (opcional)${helpButton("mesa.npcs.imagem", "Imagem de NPC ou criatura")}</legend>
     <div class="field"><label for="${prefix}-asset">Do acervo da campanha</label><select id="${prefix}-asset" name="imageAsset"><option value="">Nenhuma</option>${assets.map((a) => `<option value="${esc(a.value)}" ${isAsset && a.value === current ? "selected" : ""}>${esc(a.label)}</option>`).join("")}</select></div>
     <div class="field"><label for="${prefix}-link">Ou link https</label><input id="${prefix}-link" name="imageLink" type="url" inputmode="url" maxlength="500" placeholder="https://…" value="${isAsset ? "" : esc(current || "")}" aria-describedby="${prefix}-link-hint"><small class="form-help" id="${prefix}-link-hint">O site do link vê o endereço IP de quem abre a imagem e pode trocar o conteúdo depois. Prefira o acervo.</small></div>
-    <div class="field"><label for="${prefix}-file">Ou enviar do aparelho (PNG ou JPEG, até 10 MB)</label><input id="${prefix}-file" name="imageFile" type="file" accept="image/png,image/jpeg" aria-describedby="${prefix}-file-hint"><small class="form-help" id="${prefix}-file-hint">A imagem fica guardada no Eternnus, em Mapas e cenários como “Apenas imagem”, e pode ser usada de novo.</small></div>
+    <div class="field"><label for="${prefix}-file">Ou enviar do aparelho (PNG ou JPEG, até 10 MB)</label><input id="${prefix}-file" name="imageFile" type="file" accept="image/png,image/jpeg" aria-describedby="${prefix}-file-hint"><small class="form-help" id="${prefix}-file-hint">A imagem fica guardada no acervo da campanha, em Retratos de NPC (separada dos mapas), e pode ser usada de novo.</small></div>
   </fieldset>`;
 }
 
@@ -36,6 +38,7 @@ export async function imageFromUpload(data, campaignId, name) {
   upload.append("folderId", ""); upload.append("file", file);
   upload.append("gridPixels", "64"); upload.append("scaleMeters", "1.5");
   upload.append("hasGrid", "false"); upload.append("gridOffsetX", "0"); upload.append("gridOffsetY", "0");
+  upload.append("purpose", "portrait");
   const map = await api(`/campaigns/${campaignId}/assets/maps`, "POST", upload);
   return `asset:${map.id}`;
 }

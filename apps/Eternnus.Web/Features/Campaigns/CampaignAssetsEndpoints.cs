@@ -13,7 +13,9 @@ public static class CampaignAssetsEndpoints
         // Textos antigos: não há mais criação/edição; o mestre converte cada um em página do Mundo (ADR-063).
         api.MapPost("/library/{id:guid}/convert", (Guid campaignId, Guid id, CampaignTextConvertInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.ConvertTextAsync(campaignId, id, Id(u), x, ct));
         api.MapDelete("/library/{id:guid}", async (Guid campaignId, Guid id, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeleteTextAsync(campaignId, id, Id(u), ct); return Results.NoContent(); });
-        api.MapGet("/maps", (Guid campaignId, Guid? folderId, int? page, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.MapTreeAsync(campaignId, Id(u), folderId, page ?? 1, ct));
+        api.MapGet("/maps", (Guid campaignId, Guid? folderId, int? page, string? purpose, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.MapTreeAsync(campaignId, Id(u), folderId, page ?? 1, ct, purpose));
+        // Retratos de NPC: categoria isolada dos mapas, para o seletor de imagem do personagem.
+        api.MapGet("/portraits", (Guid campaignId, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.PortraitChoicesAsync(campaignId, Id(u), ct));
         api.MapPost("/folders", (Guid campaignId, CampaignFolderInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.CreateFolderAsync(campaignId, Id(u), x, ct));
         api.MapPut("/folders/{id:guid}", (Guid campaignId, Guid id, CampaignFolderNameInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.RenameFolderAsync(campaignId, id, Id(u), x, ct));
         api.MapDelete("/folders/{id:guid}", async (Guid campaignId, Guid id, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeleteFolderAsync(campaignId, id, Id(u), ct); return Results.NoContent(); });
@@ -22,9 +24,9 @@ public static class CampaignAssetsEndpoints
             await s.EnsureMasterAsync(campaignId, Id(u), ct);
             if (!request.HasFormContentType) throw new RuleException(400, "Envie a imagem pelo formulário.");
             IFormCollection form;
-            try { form = await request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = CampaignAssetsService.MaxImageBytes, ValueLengthLimit = 512, ValueCountLimit = 8, KeyLengthLimit = 32, MultipartHeadersLengthLimit = 4096, MultipartHeadersCountLimit = 8 }, ct); }
+            try { form = await request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = CampaignAssetsService.MaxImageBytes, ValueLengthLimit = 512, ValueCountLimit = 9, KeyLengthLimit = 32, MultipartHeadersLengthLimit = 4096, MultipartHeadersCountLimit = 8 }, ct); }
             catch (InvalidDataException) { throw new RuleException(413, "Formulário inválido ou imagem acima de 10 MB."); }
-            string[] fields = ["name", "folderId", "gridPixels", "scaleMeters", "hasGrid", "gridOffsetX", "gridOffsetY"];
+            string[] fields = ["name", "folderId", "gridPixels", "scaleMeters", "hasGrid", "gridOffsetX", "gridOffsetY", "purpose"];
             if (form.Files.Count != 1 || form.Files[0].Name != "file" || form.Keys.Any(k => !fields.Contains(k))) throw new RuleException(400, "Envie uma imagem e os campos do mapa.");
             if (form.Files[0].Length > CampaignAssetsService.MaxImageBytes) throw new RuleException(413, "Envie imagem de até 10 MB.");
             Guid? folder = null;
@@ -34,7 +36,7 @@ public static class CampaignAssetsEndpoints
             var hasGrid = form["hasGrid"].ToString() is not ("false" or "0");
             static int Offset(string text) => text.Length == 0 ? 0 : int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : throw new RuleException(400, "Deslocamento da grade inválido.");
             var document = await files.ReadAsync(form.Files[0], new[] { DocumentKinds.Png, DocumentKinds.Jpeg }, ct);
-            return Results.Ok(await s.SaveMapAsync(campaignId, null, Id(u), new(form["name"].ToString(), folder, grid, scale, 0, hasGrid, Offset(form["gridOffsetX"].ToString()), Offset(form["gridOffsetY"].ToString())), document, ct));
+            return Results.Ok(await s.SaveMapAsync(campaignId, null, Id(u), new(form["name"].ToString(), folder, grid, scale, 0, hasGrid, Offset(form["gridOffsetX"].ToString()), Offset(form["gridOffsetY"].ToString()), CampaignAssetPurposes.Normalize(form["purpose"].ToString())), document, ct));
         }).RequireRateLimiting("upload");
         api.MapPost("/maps/import", async (Guid campaignId, CampaignMapImportInput x, RemoteImageFetcher remote, DocumentFiles files, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
         {

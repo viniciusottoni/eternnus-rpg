@@ -8,6 +8,7 @@ import { state } from "./state.js";
 import { shell } from "./layout.js";
 import { $, esc, button, formError, modal, toast, empty, formatDate, navigate, submitForm } from "./ui.js";
 import { isAdmin } from "./policy.js";
+import { mountClientTable } from "./data-table.js";
 import { isGuid } from "./session-policy.js";
 import { renderSheet, clampZoom } from "./pdf-sheet.js";
 import { validate, validateFields, rollPreview, computeSheet, sheetScope } from "./formula.js";
@@ -320,13 +321,12 @@ async function renderTemplatePage(gen, id) {
 <section class="tpl-section"><div class="section-title"><h2>Versões${helpButton("modelos.versao.publicacao", "Rascunho e publicação")}</h2><span>PUBLICADAS SÃO IMUTÁVEIS</span></div>
 ${
   versions.length
-    ? `<div class="data-table-wrap"><table class="data-table tpl-versions"><thead><tr><th scope="col">Versão</th><th scope="col">Situação</th><th scope="col">Criada</th><th scope="col">Publicada</th><th scope="col">PDF</th><th scope="col" class="num">Fichas</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead><tbody>${versions
-        .map((v) => versionRow(t, v, !!draft, admin))
-        .join("")}</tbody></table></div>`
+    ? `<div data-tpl-versions></div>`
     : empty("Nenhuma versão.", "Crie um rascunho para começar a marcar os campos.", "tpl-version-new", "+ Criar rascunho")
 }
 <p class="tpl-help">Fichas de jogadores ficam presas à versão em que nasceram e migram para a nova com um clique. Campos são casados pelo <strong>nome</strong>: renomear ou remover um campo descarta o valor nas fichas migradas.</p>
 </section>`;
+  mountVersions(main, t, versions, !!draft, admin);
   main.onclick = (e) => {
     const b = e.target.closest("[data-action]");
     if (!b) return;
@@ -336,6 +336,20 @@ ${
     if (action === "tpl-version-discard") discardDraft(gen, t, b.dataset.id);
     if (action === "tpl-version-republish") republish(gen, t, b.dataset.id);
   };
+}
+/** Versões em tabela: busca no número e nas notas, filtro de situação; 15 por página. Ações seguem no clique delegado. */
+function mountVersions(root, t, versions, hasDraft, admin) {
+  const box = root.querySelector("[data-tpl-versions]");
+  if (!box) return;
+  mountClientTable(box, {
+    id: "tv",
+    rows: versions.map((v) => ({ ...v, label: `v${Number(v.number)}`, situation: v.isDraft ? "draft" : v.isCurrent ? "current" : "archived" })),
+    fields: ["label", "notes"],
+    search: { label: "Buscar versões", placeholder: "Número ou notas" },
+    filters: [{ name: "situation", label: "Situação", options: [["draft", "Rascunho"], ["current", "Publicada · atual"], ["archived", "Arquivada"]] }],
+    unit: "versões",
+    table: (items) => `<div class="data-table-wrap" tabindex="0" role="region" aria-label="Versões da ficha-modelo"><table class="data-table tpl-versions"><thead><tr><th scope="col">Versão</th><th scope="col">Situação</th><th scope="col">Criada</th><th scope="col">Publicada</th><th scope="col">PDF</th><th scope="col" class="num">Fichas</th><th scope="col"><span class="sr-only">Ações</span></th></tr></thead><tbody>${items.map((v) => versionRow(t, v, hasDraft, admin)).join("")}</tbody></table></div>`,
+  });
 }
 function versionRow(t, v, hasDraft, admin) {
   const s = versionStatus(v);

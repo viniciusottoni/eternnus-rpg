@@ -2,6 +2,7 @@
 import { api } from "./api.js";
 import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
 import { helpButton } from "./help.js";
+import { controlsHtml, readControls, pagerHtml } from "./data-table.js";
 
 export const CHAPTER_KINDS = Object.freeze([["chapter", "Capítulo"], ["act", "Ato"], ["arc", "Arco"]]);
 export const chapterKindLabel = (kind) => (CHAPTER_KINDS.find(([k]) => k === kind) || CHAPTER_KINDS[0])[1];
@@ -65,13 +66,22 @@ function range(c) {
 }
 
 /** Bloco do Diário. Mestre: lista ordenada com criar, editar, mover e excluir. Jogador: só leitura dos capítulos visíveis (bloco some se não houver). */
-export async function renderChapters(d, target, onChange, page = 1) {
+export async function renderChapters(d, target, onChange, page = 1, focusSel = "") {
   // Outros blocos do Diário (registro anterior, importação) avisam por evento quando mudam contagens ou criam capítulo.
   if (!target.dataset.listening) { target.dataset.listening = "1"; target.addEventListener("chapters-changed", () => target.onchapterschanged()); }
   target.onchapterschanged = () => renderChapters(d, target, onChange, page);
+  // Busca e filtros por coluna ficam no próprio bloco e sobrevivem às recargas (mover, editar, importar).
+  const filter = target.chapterFilter || (target.chapterFilter = { q: "", kind: "", published: "" });
+  const filtered = Boolean(filter.q || filter.kind || filter.published);
   target.innerHTML = '<p class="loading-line" role="status">Consultando capítulos…</p>';
   let result;
-  try { result = await api(`/campaigns/${d.id}/chapters?page=${page}`); }
+  try {
+    const params = new URLSearchParams({ page: String(page) });
+    if (filter.q) params.set("q", filter.q);
+    if (filter.kind) params.set("kind", filter.kind);
+    if (filter.published) params.set("published", filter.published);
+    result = await api(`/campaigns/${d.id}/chapters?${params}`);
+  }
   catch (error) {
     if (!target.isConnected) return;
     target.innerHTML = `<p role="alert">${esc(error.message)}</p>${button("Tentar novamente", "ch-retry", "", "subtle small")}`;
@@ -81,26 +91,43 @@ export async function renderChapters(d, target, onChange, page = 1) {
   if (!target.isConnected) return;
   const items = result.items;
   const master = Boolean(result.isMaster);
-  target.hidden = !master && !result.total;
+  target.hidden = !master && !result.total && !filtered;
   if (target.hidden) { target.innerHTML = ""; return; }
   const editable = master && !d.archived;
   const full = result.total >= result.max;
   const pages = Math.max(1, Math.ceil(result.total / result.pageSize));
+  // Com filtro, a posição na lista não é a ordem da história: o mestre vê a ordem real; mover fica para a lista completa.
   const row = (c, i) => {
     const n = result.offset + i;
-    return `<tr><td class="num" data-label="Ordem">${n + 1}</td><td data-label="Tipo">${esc(chapterKindLabel(c.kind))}</td><td data-label="Título"><a href="#campaign/${esc(d.id)}/sessions/chapter-${esc(c.id)}" class="chapter-link">${esc(c.title)}</a>${master ? (c.published ? ' <span class="status-chip">visível ao grupo</span>' : ' <span class="chip">oculto</span>') : ""}${c.summary ? `<p class="log-excerpt chapter-summary">${esc(c.summary)}</p>` : ""}</td><td data-label="Sessões">${esc(range(c))}</td>${editable ? `<td data-label="Ações"><div class="chapter-tools">${button("↑", "ch-up", c.id, "subtle small icon-button", `aria-label="Subir ${esc(c.title)}"${n === 0 ? " disabled" : ""}`)}${button("↓", "ch-down", c.id, "subtle small icon-button", `aria-label="Descer ${esc(c.title)}"${n === result.total - 1 ? " disabled" : ""}`)}${button("Editar", "ch-edit", c.id, "subtle small", `aria-label="Editar ${esc(c.title)}"`)}${button("Excluir", "ch-delete", c.id, "text-button small", `aria-label="Excluir ${esc(c.title)}"`)}</div></td>` : ""}</tr>`;
+    const position = filtered ? (master ? c.order + 1 : "—") : n + 1;
+    return `<tr><td class="num" data-label="Ordem">${position}</td><td data-label="Tipo">${esc(chapterKindLabel(c.kind))}</td><td data-label="Título"><a href="#campaign/${esc(d.id)}/sessions/chapter-${esc(c.id)}" class="chapter-link">${esc(c.title)}</a>${master ? (c.published ? ' <span class="status-chip">visível ao grupo</span>' : ' <span class="chip">oculto</span>') : ""}${c.summary ? `<p class="log-excerpt chapter-summary">${esc(c.summary)}</p>` : ""}</td><td data-label="Sessões">${esc(range(c))}</td>${editable ? `<td data-label="Ações"><div class="chapter-tools">${filtered ? "" : button("↑", "ch-up", c.id, "subtle small icon-button", `aria-label="Subir ${esc(c.title)}"${n === 0 ? " disabled" : ""}`)}${filtered ? "" : button("↓", "ch-down", c.id, "subtle small icon-button", `aria-label="Descer ${esc(c.title)}"${n === result.total - 1 ? " disabled" : ""}`)}${button("Editar", "ch-edit", c.id, "subtle small", `aria-label="Editar ${esc(c.title)}"`)}${button("Excluir", "ch-delete", c.id, "text-button small", `aria-label="Excluir ${esc(c.title)}"`)}</div></td>` : ""}</tr>`;
   };
-  target.innerHTML = `<div class="section-title"><h2 id="cp-chapters-title">Capítulos, atos e arcos${helpButton("campanhas.capitulos.organizacao", "Capítulos, atos e arcos")}</h2>${editable ? button("+ Novo capítulo", "ch-new", "", "subtle small", full ? `disabled aria-describedby="ch-full"` : "") : ""}</div><p class="muted small section-lead">${master ? "Organize a história antes de abrir as sessões e escolha o capítulo ao iniciar cada uma; sessões avulsas continuam permitidas. Novos capítulos ficam ocultos: marque “Visível para os jogadores” ao editar para revelá-los ao grupo." : "Partes da história que o mestre já revelou. Abra uma para ver suas sessões publicadas."}${full ? ` <span id="ch-full">Limite de ${result.max} capítulos atingido.</span>` : ""}</p>${
+  target.innerHTML = `<div class="section-title"><h2 id="cp-chapters-title">Capítulos, atos e arcos${helpButton("campanhas.capitulos.organizacao", "Capítulos, atos e arcos")}</h2>${editable ? button("+ Novo capítulo", "ch-new", "", "subtle small", full ? `disabled aria-describedby="ch-full"` : "") : ""}</div><p class="muted small section-lead">${master ? "Organize a história antes de abrir as sessões e escolha o capítulo ao iniciar cada uma; sessões avulsas continuam permitidas. Novos capítulos ficam ocultos: marque “Visível para os jogadores” ao editar para revelá-los ao grupo." : "Partes da história que o mestre já revelou. Abra uma para ver suas sessões publicadas."}${full ? ` <span id="ch-full">Limite de ${result.max} capítulos atingido.</span>` : ""}</p>${controlsHtml("ch", {
+    search: { label: "Buscar capítulos", placeholder: "Título ou resumo", value: filter.q },
+    filters: [{ name: "kind", label: "Tipo", options: CHAPTER_KINDS, value: filter.kind }, ...(master ? [{ name: "published", label: "Visível ao grupo", options: [["true", "Sim"], ["false", "Não"]], value: filter.published }] : [])],
+  })}${filtered && editable ? '<p class="muted small table-note">Limpe os filtros para mudar a ordem com ↑ e ↓.</p>' : ""}${
     items.length
-      ? `<div class="data-table-wrap"><table class="data-table chapter-table"><caption class="sr-only">Capítulos da campanha, página ${result.page} de ${pages}</caption><thead><tr><th scope="col">Ordem</th><th scope="col">Tipo</th><th scope="col">Título</th><th scope="col">Sessões</th>${editable ? '<th scope="col">Ações</th>' : ""}</tr></thead><tbody>${items.map(row).join("")}</tbody></table></div>${result.looseSessions ? `<p class="muted small table-note">${result.looseSessions} ${result.looseSessions === 1 ? "sessão" : "sessões"} sem capítulo${master ? " (avulsas)" : ""}. <a href="#campaign/${esc(d.id)}/sessions/chapter-none">${master ? "Ver avulsas" : "Ver sessões"}</a></p>` : ""}${pages > 1 ? `<div class="pagination">${button("← Anterior", "ch-page", page - 1, "subtle", page <= 1 ? "disabled" : "")}<span>Página ${page} de ${pages} · ${result.total} capítulos</span>${button("Próxima →", "ch-page", page + 1, "subtle", page >= pages ? "disabled" : "")}</div>` : ""}`
+      ? `<div class="data-table-wrap" tabindex="0" role="region" aria-label="Capítulos da campanha"><table class="data-table chapter-table"><caption class="sr-only">Capítulos da campanha, página ${result.page} de ${pages}</caption><thead><tr><th scope="col">Ordem</th><th scope="col">Tipo</th><th scope="col">Título</th><th scope="col">Sessões</th>${editable ? '<th scope="col">Ações</th>' : ""}</tr></thead><tbody>${items.map(row).join("")}</tbody></table></div>${result.looseSessions ? `<p class="muted small table-note">${result.looseSessions} ${result.looseSessions === 1 ? "sessão" : "sessões"} sem capítulo${master ? " (avulsas)" : ""}. <a href="#campaign/${esc(d.id)}/sessions/chapter-none">${master ? "Ver avulsas" : "Ver sessões"}</a></p>` : ""}${pagerHtml({ page: result.page, pages, total: result.total }, "ch-page", "capítulos")}`
+      : filtered ? '<p class="muted small" role="status">Nenhum capítulo com estes filtros. Ajuste a busca ou clique em Limpar.</p>'
       : `<p class="muted small">Nenhum capítulo criado.${editable ? " Crie o primeiro antes de abrir a próxima sessão — por exemplo, “Ato I — A Chegada” — ou importe vários de uma vez pela tabela de sessões." : ""}</p>`
   }`;
+  if (focusSel) target.querySelector(focusSel)?.focus();
+  target.onsubmit = (e) => {
+    if (e.target.id !== "ch-controls") return;
+    e.preventDefault();
+    const { q, filters } = readControls(e.target);
+    const hint = target.querySelector("#ch-q-hint");
+    if (q.length === 1) { if (hint) hint.textContent = "Digite ao menos 2 caracteres ou deixe vazio."; target.querySelector("#ch-q")?.focus(); return; }
+    target.chapterFilter = { q, kind: filters.kind || "", published: filters.published || "" };
+    renderChapters(d, target, onChange, 1, "#ch-q");
+  };
   target.onclick = async (e) => {
+    if (e.target.closest("[data-table-clear='ch']")) { target.chapterFilter = { q: "", kind: "", published: "" }; return renderChapters(d, target, onChange, 1, "#ch-q"); }
     const b = e.target.closest("[data-action^='ch-']");
     if (!b || b.disabled || b.getAttribute("aria-disabled") === "true") return;
     const chapter = items.find((c) => c.id === b.dataset.id);
     try {
-      if (b.dataset.action === "ch-page") return renderChapters(d, target, onChange, Number(b.dataset.id));
+      if (b.dataset.action === "ch-page") return renderChapters(d, target, onChange, Number(b.dataset.id), ".data-table-wrap");
       if (b.dataset.action === "ch-new") chapterEditor(d, null, onChange);
       if (b.dataset.action === "ch-edit" && chapter) chapterEditor(d, chapter, onChange);
       if ((b.dataset.action === "ch-up" || b.dataset.action === "ch-down") && chapter) {

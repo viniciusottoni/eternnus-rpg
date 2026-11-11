@@ -470,7 +470,7 @@ public static class CharacterSheets
 /// mudanças com sessão ativa entram na linha do tempo da sessão por <see cref="SessionService.WriteCharacterAsync"/>.</summary>
 public class CharacterSheetService(GameDb db, SessionService sessions, ProgressionService progression, TimeProvider clock)
 {
-    public const int PageSize = 20;
+    public const int PageSize = 15;
     DateTime Now => clock.GetUtcNow().UtcDateTime;
     static RuleException NotFound() => new(404, "Ficha não encontrada.");
     static RuleException Stale() => new(409, "A ficha mudou em outra janela. Feche e abra novamente antes de editar.");

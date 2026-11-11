@@ -12,7 +12,7 @@ public record TicketQueueQuery(string? Status, string? Priority, string? Categor
 /// <summary>Regras puras de suporte (espelhadas para UX em <c>wwwroot/js/support-policy.js</c>).</summary>
 public static class SupportRules
 {
-    public const int PageSize = 20, MaxOpenPerUser = 5, ReopenDays = 30, MaxMessages = 300, NumberAttempts = 5;
+    public const int PageSize = 15, MaxOpenPerUser = 5, ReopenDays = 30, MaxMessages = 300, NumberAttempts = 5;
     /// <summary>Filtro de lista que reúne os estados ainda não concluídos.</summary>
     public const string ActiveFilter = "active";
 

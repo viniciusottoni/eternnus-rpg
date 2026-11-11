@@ -5,6 +5,7 @@ import { api } from "./api.js";
 import { state } from "./state.js";
 import { shell } from "./layout.js";
 import { $, esc, button, empty } from "./ui.js";
+import { mountClientTable } from "./data-table.js";
 import {
   levelProgress,
   formatXp,
@@ -46,10 +47,12 @@ export async function renderProgress(segments = []) {
       const data = await api("/progress/leaderboard?period=" + period);
       if (request !== generation) return;
       target.innerHTML = rankingView(data, period);
+      mountRanking(target, data, period);
     } else {
       const data = await api("/progress/me");
       if (request !== generation) return;
       target.innerHTML = overviewView(data);
+      mountRules(target, data.rules);
       syncUser(data);
     }
     applyBars(target);
@@ -71,7 +74,7 @@ function overviewView(d) {
   <div class="progress-columns">
     <section class="progress-panel metal" aria-labelledby="xp-rules-title">
       <div class="section-title"><h2 id="xp-rules-title">Como ganhar XP${helpButton("progresso.jornada.pontos", "Pontos e limites diários")}</h2><span>TETOS DE RECOMPENSA · DIA UTC</span></div>
-      ${rulesTable(d.rules)}
+      <div data-xp-rules></div>
     </section>
     <section class="progress-panel metal" aria-labelledby="unlocks-title">
       <div class="section-title"><h2 id="unlocks-title">Próximos desbloqueios</h2></div>
@@ -110,8 +113,23 @@ function heroView(d, progress, unlocked) {
   </section>`;
 }
 
+/** Regras de XP em tabela com busca (atividade) e filtro de limite diário; 15 por página. */
+function mountRules(root, rules) {
+  const box = root.querySelector("[data-xp-rules]");
+  if (!box) return;
+  mountClientTable(box, {
+    id: "xr",
+    rows: rules.map((r) => ({ ...r, limited: r.dailyLimit == null ? "no" : "yes" })),
+    fields: ["label", "hint"],
+    search: { label: "Buscar atividade", placeholder: "Sessão, ficha, Guilda…" },
+    filters: [{ name: "limited", label: "Limite diário", options: [["yes", "Com limite"], ["no", "Sem limite"]] }],
+    unit: "atividades",
+    table: rulesTable,
+  });
+}
+
 function rulesTable(rules) {
-  return `<div class="data-table-wrap"><table class="data-table xp-rules"><caption class="sr-only">XP concedido por atividade, limite diário e uso de hoje</caption>
+  return `<div class="data-table-wrap" tabindex="0" role="region" aria-label="Como ganhar XP"><table class="data-table xp-rules"><caption class="sr-only">XP concedido por atividade, limite diário e uso de hoje</caption>
     <thead><tr><th scope="col">Atividade</th><th scope="col" class="num">XP</th><th scope="col">Limite</th></tr></thead>
     <tbody>${rules
       .map((r) => {
@@ -173,15 +191,36 @@ function rankingView(data, period) {
     .join("")}</nav>`;
   if (!data.items.length)
     return `${periods}${empty(period === "week" ? "Ninguém pontuou nos últimos 7 dias." : "O ranking ainda está vazio.", "Jogue uma sessão, crie uma ficha ou participe da Guilda para abrir o placar.")}`;
-  return `${periods}<div class="data-table-wrap ranking metal"><table class="data-table"><caption class="sr-only">${period === "week" ? "Ranking dos últimos 7 dias" : "Ranking geral"}: 20 primeiros aventureiros</caption>
+  return `${periods}<div data-ranking></div>
+    <p class="muted small">Contas não verificadas não aparecem. ${period === "week" ? "Soma do XP recebido nos últimos 7 dias." : "XP acumulado desde o início."}</p>`;
+}
+
+/** Ranking em tabela com busca por nome e filtro de nível; 15 por página sobre os primeiros colocados. */
+function mountRanking(root, data, period) {
+  const box = root.querySelector("[data-ranking]");
+  if (!box || !data.items.length) return;
+  const levels = [...new Set(data.items.map((r) => String(r.level)))].sort((a, b) => Number(a) - Number(b));
+  mountClientTable(box, {
+    id: "rk",
+    rows: data.items.map((r) => ({ ...r, level: String(r.level) })),
+    fields: ["name"],
+    search: { label: "Buscar aventureiro", placeholder: "Nome" },
+    filters: [{ name: "level", label: "Nível", options: levels.map((l) => [l, `Nível ${l}`]) }],
+    unit: "aventureiros",
+    table: (items) => rankingTable(items, period),
+    afterPaint: guardImages,
+  });
+}
+
+function rankingTable(items, period) {
+  return `<div class="data-table-wrap ranking metal" tabindex="0" role="region" aria-label="Ranking"><table class="data-table"><caption class="sr-only">${period === "week" ? "Ranking dos últimos 7 dias" : "Ranking geral"}</caption>
     <thead><tr><th scope="col" class="num">#</th><th scope="col">Aventureiro</th><th scope="col" class="num">Nível</th><th scope="col" class="num">${period === "week" ? "XP na semana" : "XP total"}</th></tr></thead>
-    <tbody>${data.items
+    <tbody>${items
       .map(
         (r) =>
           `<tr${r.isMe ? ' class="is-me"' : ""}><td class="num"><span class="rank rank-${r.rank <= 3 ? r.rank : "n"}">${r.rank}</span></td><td><span class="ranking-user"><img class="avatar" src="${esc(r.avatarUrl)}" alt="" referrerpolicy="no-referrer" loading="lazy"><span>${esc(r.name)}${r.isMe ? ' <span class="badge">Você</span>' : ""}</span></span></td><td class="num">${esc(r.level)}</td><td class="num">${esc(formatXp(r.xp))}</td></tr>`,
       )
-      .join("")}</tbody></table></div>
-    <p class="muted small">Contas não verificadas não aparecem. ${period === "week" ? "Soma do XP recebido nos últimos 7 dias." : "XP acumulado desde o início."}</p>`;
+      .join("")}</tbody></table></div>`;
 }
 
 // ---------- Auxiliares ----------

@@ -7,7 +7,8 @@ namespace Eternnus.Web;
 public record CampaignTextConvertInput(int Revision);
 public record CampaignFolderInput(string Name, Guid? ParentId);
 public record CampaignFolderNameInput(string Name);
-public record CampaignMapInput(string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int Revision = 0, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0);
+/// <summary><c>Purpose</c>: <c>map</c> ou <c>portrait</c> (ver <see cref="CampaignAssetPurposes"/>); nulo mantém a categoria atual (novo = mapa).</summary>
+public record CampaignMapInput(string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int Revision = 0, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, string? Purpose = null);
 /// <summary>Mapa importado de um link https: o servidor baixa uma vez e trata como upload (ver RemoteImageFetcher).</summary>
 public record CampaignMapImportInput(string Url, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0);
 /// <summary>Preparação de névoa/luz de um mapa: estado completo editado no editor e a revisão lida.</summary>
@@ -41,7 +42,7 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
     public const int MaxImageBytes = 10 * 1024 * 1024;
     public const int MaxImageRequestBytes = MaxImageBytes + 64 * 1024;
     const long MaxStorage = 250L * 1024 * 1024;
-    public const int PageSize = 20;
+    public const int PageSize = 20, MaxMaps = 50, MaxPortraits = PreparationService.MaxNpcs;
     static readonly SemaphoreSlim Images = new(2);
     IQueryable<CampaignLibraryEntry> Texts => db.Set<CampaignLibraryEntry>();
     IQueryable<CampaignMap> Maps => db.Set<CampaignMap>();
@@ -111,22 +112,35 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
     static CampaignMapView View(CampaignMap m) => new(m.Id, m.Name, m.FolderId, m.GridPixels, m.ScaleMeters, m.Width, m.Height, m.Revision, $"/api/campaigns/{m.CampaignId}/assets/maps/{m.Id}/image", m.HasGrid, m.GridOffsetX, m.GridOffsetY);
     static IQueryable<CampaignMapView> Views(IQueryable<CampaignMap> query, Guid campaign) =>
         query.Select(m => new CampaignMapView(m.Id, m.Name, m.FolderId, m.GridPixels, m.ScaleMeters, m.Width, m.Height, m.Revision, $"/api/campaigns/{campaign}/assets/maps/{m.Id}/image", m.HasGrid, m.GridOffsetX, m.GridOffsetY));
-    public async Task<object> MapTreeAsync(Guid campaign, string user, Guid? folderId, int page, CancellationToken ct)
+    /// <summary>Acervo por categoria isolada: mapas (com pastas) ou retratos de NPC; uma categoria nunca aparece na outra.</summary>
+    public async Task<object> MapTreeAsync(Guid campaign, string user, Guid? folderId, int page, CancellationToken ct, string? purpose = null)
     {
         await Access(campaign, user, true, ct); page = Math.Clamp(page, 1, 100000);
+        var category = CampaignAssetPurposes.Normalize(purpose);
         await CheckFolder(campaign, folderId, ct);
         var folders = await Folders.AsNoTracking().Where(x => x.CampaignId == campaign).OrderBy(x => x.Name).Take(100).ToListAsync(ct);
-        var query = Maps.AsNoTracking().Where(x => x.CampaignId == campaign && x.FolderId == folderId);
+        var query = Maps.AsNoTracking().Where(x => x.CampaignId == campaign && x.Purpose == category && x.FolderId == folderId);
         var total = await query.CountAsync(ct);
         var items = await Views(query.OrderBy(x => x.Name).ThenBy(x => x.Id).Skip((page - 1) * PageSize).Take(PageSize), campaign).ToListAsync(ct);
-        return new { folders, items, total, page, pageSize = PageSize, maxBytes = MaxImageBytes };
+        var portraits = await Maps.CountAsync(x => x.CampaignId == campaign && x.Purpose == CampaignAssetPurposes.Portrait, ct);
+        return new { folders, items, total, page, pageSize = PageSize, maxBytes = MaxImageBytes, purpose = category, portraits };
     }
+    /// <summary>Mapas para cenas, mesa e atlas: retratos de NPC ficam de fora.</summary>
     public async Task<List<CampaignMapView>> MapChoicesAsync(Guid campaign, CancellationToken ct) =>
-        await Views(Maps.AsNoTracking().Where(m => m.CampaignId == campaign).OrderBy(m => m.Name).Take(50), campaign).ToListAsync(ct);
+        await Views(Maps.AsNoTracking().Where(m => m.CampaignId == campaign && m.Purpose == CampaignAssetPurposes.Map).OrderBy(m => m.Name).Take(MaxMaps), campaign).ToListAsync(ct);
+    /// <summary>Retratos para o seletor de imagem de NPC (só o mestre): chave, nome e a rota da imagem.</summary>
+    public async Task<object> PortraitChoicesAsync(Guid campaign, string user, CancellationToken ct)
+    {
+        await Access(campaign, user, true, ct);
+        var rows = await Maps.AsNoTracking().Where(m => m.CampaignId == campaign && m.Purpose == CampaignAssetPurposes.Portrait).OrderBy(m => m.Name).ThenBy(m => m.Id).Take(MaxPortraits)
+            .Select(m => new { m.Id, m.Name }).ToListAsync(ct);
+        return new { items = rows.Select(m => new { key = "asset:" + m.Id, m.Id, m.Name, imageUrl = $"/api/campaigns/{campaign}/assets/maps/{m.Id}/image" }) };
+    }
+    /// <summary>Mapa da campanha por chave <c>asset:{id}</c>; retrato de NPC não é mapa e responde nulo.</summary>
     public async Task<CampaignMapView?> ResolveMapAsync(Guid campaign, string key, CancellationToken ct)
     {
         if (!key.StartsWith("asset:") || !Guid.TryParse(key[6..], out var id)) return null;
-        return await Views(Maps.AsNoTracking().Where(m => m.CampaignId == campaign && m.Id == id), campaign).SingleOrDefaultAsync(ct);
+        return await Views(Maps.AsNoTracking().Where(m => m.CampaignId == campaign && m.Id == id && m.Purpose == CampaignAssetPurposes.Map), campaign).SingleOrDefaultAsync(ct);
     }
     public async Task<CampaignMapFolder> CreateFolderAsync(Guid campaign, string user, CampaignFolderInput x, CancellationToken ct)
     {
@@ -163,7 +177,19 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
         var map = id is { } key ? await Maps.SingleOrDefaultAsync(m => m.Id == key && m.CampaignId == campaign, ct) ?? throw Missing() : new CampaignMap { CampaignId = campaign };
         if (id != null && map.Revision != x.Revision) throw Stale();
         if (id != null) await EnsureMapIdleAsync(campaign, map.Id, ct);
-        if (id == null && (normalized == null || await Maps.CountAsync(m => m.CampaignId == campaign, ct) >= 50)) throw new RuleException(409, "Selecione a imagem; limite de 50 mapas por campanha.");
+        var purpose = x.Purpose == null ? map.Purpose : CampaignAssetPurposes.Normalize(x.Purpose);
+        var portrait = purpose == CampaignAssetPurposes.Portrait;
+        // Retrato é só imagem: nunca tem grade.
+        if (portrait) x = x with { HasGrid = false, GridOffsetX = 0, GridOffsetY = 0 };
+        if (id != null && portrait && map.Purpose != purpose) await EnsureNotUsedAsMapAsync(campaign, map.Id, ct);
+        if (id == null && normalized == null) throw new RuleException(409, "Selecione a imagem.");
+        if (id == null || map.Purpose != purpose)
+        {
+            // Limites por categoria: mapas e retratos não disputam a mesma cota (o espaço total continua comum).
+            var limit = portrait ? MaxPortraits : MaxMaps;
+            if (await Maps.CountAsync(m => m.CampaignId == campaign && m.Purpose == purpose && m.Id != map.Id, ct) >= limit)
+                throw new RuleException(409, portrait ? $"Limite de {MaxPortraits} retratos de NPC por campanha." : $"Limite de {MaxMaps} mapas por campanha.");
+        }
         if (normalized is { } n)
         {
             var stored = await Maps.Where(m => m.CampaignId == campaign).SumAsync(m => (long)m.Content.Length, ct);
@@ -183,9 +209,17 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
             if (scenes > 0) throw new RuleException(409, $"{scenes} cena(s) usam este mapa com grade. Troque o cenário delas antes de deixar só a imagem.");
         }
         map.Name = name; map.FolderId = x.FolderId; map.GridPixels = x.GridPixels; map.ScaleMeters = x.ScaleMeters;
-        map.HasGrid = x.HasGrid; map.GridOffsetX = x.HasGrid ? x.GridOffsetX : 0; map.GridOffsetY = x.HasGrid ? x.GridOffsetY : 0;
+        map.HasGrid = x.HasGrid; map.GridOffsetX = x.HasGrid ? x.GridOffsetX : 0; map.GridOffsetY = x.HasGrid ? x.GridOffsetY : 0; map.Purpose = purpose;
         if (id == null) db.Add(map); else map.Revision++;
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return View(map);
+    }
+    /// <summary>Virar retrato tira a imagem das listas de mapas: cenas e atlas que a usam trocam de mapa antes.</summary>
+    async Task EnsureNotUsedAsMapAsync(Guid campaign, Guid id, CancellationToken ct)
+    {
+        var key = "asset:" + id;
+        if (await db.Scenes.AnyAsync(s => s.CampaignId == campaign && s.MapKey == key, ct)
+            || await db.Set<AtlasPublication>().AnyAsync(a => a.CampaignId == campaign && a.SourceMapId == id, ct))
+            throw new RuleException(409, "Esta imagem é usada como mapa em uma cena ou no atlas. Troque o mapa antes de movê-la para Retratos de NPC.");
     }
     public async Task DeleteMapAsync(Guid campaign, Guid id, string user, CancellationToken ct)
     {

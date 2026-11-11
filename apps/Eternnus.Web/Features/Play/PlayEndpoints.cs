@@ -45,7 +45,7 @@ public static class PlayEndpoints
         campaign.MapPost("/scenes/{sceneId:guid}/duplicate", (Guid campaignId, Guid sceneId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.DuplicateSceneAsync(campaignId, sceneId, Id(u), ct));
         campaign.MapDelete("/scenes/{sceneId:guid}", async (Guid campaignId, Guid sceneId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => { await p.DeleteSceneAsync(campaignId, sceneId, Id(u), ct); return Ok(); });
         campaign.MapGet("/npcs", (Guid campaignId, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.NpcsAsync(campaignId, Id(u), ct));
-        campaign.MapGet("/known-npcs", (Guid campaignId, int? page, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.KnownNpcsAsync(campaignId, Id(u), page ?? 1, ct));
+        campaign.MapGet("/known-npcs", (Guid campaignId, string? q, string? kind, int? page, Guid? focus, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.KnownNpcsAsync(campaignId, Id(u), q, kind, page ?? 1, ct, focus));
         campaign.MapGet("/known-npcs/{npcId:guid}/portrait", async (Guid campaignId, Guid npcId, HttpContext http, PreparationService p, ClaimsPrincipal u, CancellationToken ct) =>
         {
             var bytes = await p.KnownPortraitAsync(campaignId, npcId, Id(u), ct);

@@ -69,7 +69,7 @@ public sealed class SessionLogTests : IAsyncLifetime
         Assert.All(log.GetProperty("items").EnumerateArray(), i => { Assert.Equal(JsonValueKind.Null, i.GetProperty("chapterTitle").ValueKind); Assert.Equal(JsonValueKind.Null, i.GetProperty("chapterId").ValueKind); });
         Assert.Equal(0, Json(await service.Log(campaign.Id, "player", null, act.Id.ToString(), null, 1, default)).GetProperty("total").GetInt32());
         Assert.Equal(3, Json(await service.Log(campaign.Id, "player", null, "none", null, 1, default)).GetProperty("total").GetInt32());
-        Assert.DoesNotContain(Json(await service.Search(campaign.Id, "player", "Trevas", default)).GetProperty("items").EnumerateArray(), i => i.GetProperty("kind").GetString() == "chapter");
+        Assert.DoesNotContain(Json(await service.Search(campaign.Id, "player", "Trevas", null, 1, default)).GetProperty("items").EnumerateArray(), i => i.GetProperty("kind").GetString() == "chapter");
 
         // Mestre revela o ato; o arco continua oculto. Publicar não muda nada sem o campo (nulo mantém).
         act = await service.SaveChapter(campaign.Id, act.Id, "master", new("Trevas", "act", "Começo sombrio.", act.Revision, Published: true), default);
@@ -92,8 +92,8 @@ public sealed class SessionLogTests : IAsyncLifetime
         Assert.Equal(JsonValueKind.Null, entry.GetProperty("chapterTitle").ValueKind);
         Assert.Equal(JsonValueKind.Null, entry.GetProperty("chapterId").ValueKind);
         Assert.Equal("Segredo", Json(await service.LogEntry(campaign.Id, rows[7].GetProperty("key").GetString()!, "master", default)).GetProperty("chapterTitle").GetString());
-        Assert.Contains(Json(await service.Search(campaign.Id, "player", "sombrio", default)).GetProperty("items").EnumerateArray(), i => i.GetProperty("kind").GetString() == "chapter");
-        Assert.DoesNotContain(Json(await service.Search(campaign.Id, "player", "rei trai", default)).GetProperty("items").EnumerateArray(), i => i.GetProperty("kind").GetString() == "chapter");
+        Assert.Contains(Json(await service.Search(campaign.Id, "player", "sombrio", null, 1, default)).GetProperty("items").EnumerateArray(), i => i.GetProperty("kind").GetString() == "chapter");
+        Assert.DoesNotContain(Json(await service.Search(campaign.Id, "player", "rei trai", null, 1, default)).GetProperty("items").EnumerateArray(), i => i.GetProperty("kind").GetString() == "chapter");
         Assert.Equal(2, Json(await service.ChapterList(campaign.Id, "master", default)).GetProperty("total").GetInt32());
     }
 
@@ -142,12 +142,12 @@ public sealed class SessionLogTests : IAsyncLifetime
         db.AddRange(new MasterCharacter { CampaignId = campaign.Id, Name = "Grak", Summary = "Chefe goblin", SharedWithPlayers = true },
             new MasterCharacter { CampaignId = campaign.Id, Name = "Vulto", Summary = "Espião goblin" });
         await db.SaveChangesAsync();
-        var player = Json(await service.Search(campaign.Id, "player", "goblin", default)).GetProperty("items").EnumerateArray().Select(i => i.GetProperty("title").GetString()).ToList();
+        var player = Json(await service.Search(campaign.Id, "player", "goblin", null, 1, default)).GetProperty("items").EnumerateArray().Select(i => i.GetProperty("title").GetString()).ToList();
         Assert.Contains("Goblins do norte", player); Assert.Contains("Grak", player); Assert.Contains("Sessão 03 — A cripta", player);
         Assert.DoesNotContain("Plano secreto", player); Assert.DoesNotContain("Vulto", player); Assert.DoesNotContain("Sessão 04 — Rascunho", player);
-        var master = Json(await service.Search(campaign.Id, "master", "goblin", default)).GetProperty("items").EnumerateArray().Select(i => i.GetProperty("route").GetString()).ToList();
+        var master = Json(await service.Search(campaign.Id, "master", "goblin", null, 1, default)).GetProperty("items").EnumerateArray().Select(i => i.GetProperty("route").GetString()).ToList();
         Assert.Contains($"campaign/{campaign.Id:D}/prep", master);
-        var premise = Json(await service.Search(campaign.Id, "player", "entidades", default)).GetProperty("items")[0];
+        var premise = Json(await service.Search(campaign.Id, "player", "entidades", null, 1, default)).GetProperty("items")[0];
         Assert.Equal($"campaign/{campaign.Id:D}/overview/premise", premise.GetProperty("route").GetString());
     }
 
@@ -218,12 +218,12 @@ public sealed class SessionLogTests : IAsyncLifetime
         db.AddRange(new MasterCharacter { CampaignId = campaign.Id, Name = "Grak", Summary = "Chefe", Notes = "Traidor", SharedWithPlayers = true, ImageUrl = "https://example.test/grak.png" },
             new MasterCharacter { CampaignId = campaign.Id, Name = "Vulto", Notes = "Espião" });
         await db.SaveChangesAsync();
-        var known = Json(await prep.KnownNpcsAsync(campaign.Id, "player", 1, default));
+        var known = Json(await prep.KnownNpcsAsync(campaign.Id, "player", null, null, 1, default));
         var item = Assert.Single(known.GetProperty("items").EnumerateArray());
         Assert.Equal("Grak", item.GetProperty("name").GetString());
         Assert.False(item.TryGetProperty("notes", out _));
         Assert.Equal("https://example.test/grak.png", item.GetProperty("image").GetString());
-        await Assert.ThrowsAsync<RuleException>(() => prep.KnownNpcsAsync(campaign.Id, "outsider", 1, default));
+        await Assert.ThrowsAsync<RuleException>(() => prep.KnownNpcsAsync(campaign.Id, "outsider", null, null, 1, default));
         var hidden = await db.MasterCharacters.SingleAsync(m => m.Name == "Vulto");
         Assert.Equal(404, (await Assert.ThrowsAsync<RuleException>(() => prep.KnownPortraitAsync(campaign.Id, hidden.Id, "player", default))).Status);
     }
@@ -235,7 +235,7 @@ public sealed class SessionLogTests : IAsyncLifetime
         var grak = new MasterCharacter { CampaignId = campaign.Id, Name = "Grak", SharedWithPlayers = true };
         var vulto = new MasterCharacter { CampaignId = campaign.Id, Name = "Vulto" };
         db.AddRange(grak, vulto); await db.SaveChangesAsync();
-        async Task<JsonElement> Page(string user) => Json(await prep.KnownNpcsAsync(campaign.Id, user, 1, default)).GetProperty("items")[0].GetProperty("page");
+        async Task<JsonElement> Page(string user) => Json(await prep.KnownNpcsAsync(campaign.Id, user, null, null, 1, default)).GetProperty("items")[0].GetProperty("page");
 
         // Página privada: só o mestre vê o vínculo; o jogador não sabe que ela existe.
         var lore = await service.Save(campaign.Id, null, "master", new("Grak, o chefe", "Nasceu nas montanhas.", "text", "self", Secrets: "Trai o rei", NpcId: grak.Id), default);
@@ -251,7 +251,7 @@ public sealed class SessionLogTests : IAsyncLifetime
 
         // NPC oculto não aparece, mesmo com página legível ligada a ele.
         await service.Save(campaign.Id, null, "master", new("Vulto", "Espião.", "text", "table", NpcId: vulto.Id), default);
-        Assert.Single(Json(await prep.KnownNpcsAsync(campaign.Id, "player", 1, default)).GetProperty("items").EnumerateArray());
+        Assert.Single(Json(await prep.KnownNpcsAsync(campaign.Id, "player", null, null, 1, default)).GetProperty("items").EnumerateArray());
 
         // Lixeira esconde o vínculo; a Preparação do mestre mostra a página ligada.
         await service.Delete(campaign.Id, lore.Id, "master", lore.Revision, false, default);
@@ -280,5 +280,70 @@ public sealed class SessionLogTests : IAsyncLifetime
         db.Add(legacy); await db.SaveChangesAsync();
         var saved = await service.Save(campaign.Id, legacy.Id, "master", new("Antigo", "novo texto", "npc", Revision: legacy.Revision), default);
         Assert.Equal("npc", saved.Kind);
+    }
+
+    [Fact]
+    public async Task Chapters_and_session_log_filter_by_their_columns()
+    {
+        await Seed();
+        await service.SaveChapter(campaign.Id, null, "master", new("Arco do Norte", "arc", "Gelo e lobos"), default);
+        static string[] Titles(JsonElement e) => e.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("title").GetString()!).ToArray();
+        Assert.Equal(["Arco do Norte"], Titles(Json(await service.ChapterList(campaign.Id, "master", default, 1, kind: "arc"))));
+        Assert.Equal(["Arco do Norte"], Titles(Json(await service.ChapterList(campaign.Id, "master", default, 1, q: "lobos"))));
+        Assert.Equal(["Trevas"], Titles(Json(await service.ChapterList(campaign.Id, "master", default, 1, q: "trevas"))));
+        Assert.Empty(Titles(Json(await service.ChapterList(campaign.Id, "master", default, 1, published: true))));
+        Assert.Equal(2, Json(await service.ChapterList(campaign.Id, "master", default, 1, published: false)).GetProperty("total").GetInt32());
+        // Jogador não filtra por visibilidade: só vê os visíveis de qualquer jeito.
+        Assert.Equal(0, Json(await service.ChapterList(campaign.Id, "player", default, 1, published: false)).GetProperty("total").GetInt32());
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => service.ChapterList(campaign.Id, "master", default, 1, kind: "saga"))).Status);
+
+        static int[] Numbers(JsonElement e) => e.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("number").GetInt32()).ToArray();
+        Assert.Equal(new[] { 3, 1 }, Numbers(Json(await service.Log(campaign.Id, "master", null, null, null, 1, default, "published"))));
+        Assert.Equal(new[] { 4, 2 }, Numbers(Json(await service.Log(campaign.Id, "master", null, null, null, 1, default, "draft"))));
+        Assert.Equal(new[] { 3, 1 }, Numbers(Json(await service.Log(campaign.Id, "player", null, null, null, 1, default, "draft"))));
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => service.Log(campaign.Id, "master", null, null, null, 1, default, "secreta"))).Status);
+    }
+
+    [Fact]
+    public async Task Search_returns_every_hit_paginated_by_fifteen_with_kind_filter()
+    {
+        // 20 NPCs e 1 capítulo com "goblin": antes a busca parava em 8 por tipo.
+        for (var i = 1; i <= 20; i++) db.Add(new MasterCharacter { CampaignId = campaign.Id, Name = $"Goblin {i:00}", SharedWithPlayers = i % 2 == 0 });
+        await db.SaveChangesAsync();
+        await service.SaveChapter(campaign.Id, null, "master", new("Covil goblin", "act"), default);
+        var page1 = Json(await service.Search(campaign.Id, "master", "goblin", null, 1, default));
+        Assert.Equal(21, page1.GetProperty("total").GetInt32());
+        Assert.Equal(15, page1.GetProperty("items").GetArrayLength());
+        Assert.Equal(15, page1.GetProperty("pageSize").GetInt32());
+        Assert.False(page1.GetProperty("truncated").GetBoolean());
+        var page2 = Json(await service.Search(campaign.Id, "master", "goblin", null, 2, default));
+        Assert.Equal(6, page2.GetProperty("items").GetArrayLength());
+        // Página além da última volta para a última.
+        Assert.Equal(2, Json(await service.Search(campaign.Id, "master", "goblin", null, 99, default)).GetProperty("page").GetInt32());
+        // Filtro de tipo antes da paginação; jogador só vê os compartilhados.
+        var npcs = Json(await service.Search(campaign.Id, "master", "goblin", "npc", 1, default));
+        Assert.Equal(20, npcs.GetProperty("total").GetInt32());
+        Assert.All(npcs.GetProperty("items").EnumerateArray(), i => Assert.Equal("npc", i.GetProperty("kind").GetString()));
+        Assert.Equal(10, Json(await service.Search(campaign.Id, "player", "goblin", "npc", 1, default)).GetProperty("total").GetInt32());
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => service.Search(campaign.Id, "master", "goblin", "segredo", 1, default))).Status);
+    }
+
+    [Fact]
+    public async Task Known_npcs_filter_by_name_and_kind_and_open_on_the_focused_page()
+    {
+        var prep = new PreparationService(db, TimeProvider.System);
+        for (var i = 1; i <= 18; i++) db.Add(new MasterCharacter { CampaignId = campaign.Id, Name = $"Aliado {i:00}", Summary = i == 3 ? "Ferreiro da vila" : "", Kind = i <= 2 ? NpcKinds.Creature : NpcKinds.Npc, SharedWithPlayers = true });
+        await db.SaveChangesAsync();
+        var all = Json(await prep.KnownNpcsAsync(campaign.Id, "player", null, null, 1, default));
+        Assert.Equal(18, all.GetProperty("total").GetInt32());
+        Assert.Equal(15, all.GetProperty("items").GetArrayLength());
+        Assert.Equal("Aliado 03", Assert.Single(Json(await prep.KnownNpcsAsync(campaign.Id, "player", "ferreiro", null, 1, default)).GetProperty("items").EnumerateArray()).GetProperty("name").GetString());
+        Assert.Equal(2, Json(await prep.KnownNpcsAsync(campaign.Id, "player", null, NpcKinds.Creature, 1, default)).GetProperty("total").GetInt32());
+        // Link da busca: o NPC 17 está na página 2.
+        var focus = await db.MasterCharacters.Where(m => m.Name == "Aliado 17").Select(m => m.Id).SingleAsync();
+        var focused = Json(await prep.KnownNpcsAsync(campaign.Id, "player", null, null, 1, default, focus));
+        Assert.Equal(2, focused.GetProperty("page").GetInt32());
+        Assert.Contains(focused.GetProperty("items").EnumerateArray(), i => i.GetProperty("id").GetGuid() == focus);
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => prep.KnownNpcsAsync(campaign.Id, "player", "a", null, 1, default))).Status);
     }
 }

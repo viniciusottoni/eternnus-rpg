@@ -215,6 +215,11 @@ public sealed class GuildTests : IAsyncLifetime
         Assert.Equal("Bruno", item.GetProperty("reporter").GetProperty("name").GetString());
         Assert.Equal(2, item.GetProperty("postReports").GetInt32());
         Assert.Equal("Mensagem ofensiva", item.GetProperty("post").GetProperty("excerpt").GetString());
+        Assert.Equal(15, queue.GetProperty("pageSize").GetInt32());
+        Assert.Equal(1, Json(await guild.ReportsAsync(Ambassador, "open", 1, default, "desrespeito")).GetProperty("total").GetInt32());
+        Assert.Equal(2, Json(await guild.ReportsAsync(Ambassador, "open", 1, default, "ofensiva")).GetProperty("total").GetInt32());
+        Assert.Equal(0, Json(await guild.ReportsAsync(Ambassador, "open", 1, default, "inexistente")).GetProperty("total").GetInt32());
+        Assert.Equal(400, await StatusAsync(() => guild.ReportsAsync(Ambassador, "open", 1, default, null, "removed")));
 
         Assert.Equal(400, await StatusAsync(() => guild.ResolveAsync(report, new("banned", "Motivo"), Ambassador, default)));
         Assert.Equal(400, await StatusAsync(() => guild.ResolveAsync(report, new("removed", ""), Ambassador, default)));
@@ -239,6 +244,8 @@ public sealed class GuildTests : IAsyncLifetime
         Assert.Equal("Mensagem ofensiva", staff.GetProperty("body").GetString());
         Assert.Equal(0, Json(await guild.ReportsAsync(Admin, "open", 1, default)).GetProperty("total").GetInt32());
         Assert.Equal(2, Json(await guild.ReportsAsync(Admin, "resolved", 1, default)).GetProperty("total").GetInt32());
+        Assert.Equal(2, Json(await guild.ReportsAsync(Admin, "resolved", 1, default, null, "removed")).GetProperty("total").GetInt32());
+        Assert.Equal(0, Json(await guild.ReportsAsync(Admin, "resolved", 1, default, null, "dismissed")).GetProperty("total").GetInt32());
 
         // Restaurar volta o texto; mensagens removidas pelo autor não podem ser restauradas.
         await guild.ModerateRestorePostAsync(post, new("Contexto esclarecido"), Admin, default);

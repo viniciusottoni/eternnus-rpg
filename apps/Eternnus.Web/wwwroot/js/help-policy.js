@@ -62,6 +62,7 @@ export const HELP_KEYS = Object.freeze({
   "campanhas.preparo.personagens": "master",
   "campanhas.preparo.modelos-privados": "master",
   "campanhas.acervo.publicacao": "all",
+  "campanhas.acervo.retratos": "master",
   "campanhas.acervo.mapas": "master",
   "sessoes.abertura.unica": "master",
   "sessoes.historico.alteracoes": "master",

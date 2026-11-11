@@ -430,6 +430,39 @@ public sealed class SceneEditorTests : IAsyncLifetime
         Assert.Null((await db.Users.SingleAsync(u => u.Id == Master)).InterfaceMode);
     }
 
+    [Fact]
+    public async Task Npc_portraits_are_an_isolated_category_never_listed_as_maps()
+    {
+        static JsonElement Json(object o) => JsonSerializer.SerializeToElement(o, Web);
+        var map = new CampaignMap { CampaignId = campaign.Id, Name = "Vale", Width = 640, Height = 640, GridPixels = 64, HasGrid = false, Content = [1] };
+        var portrait = new CampaignMap { CampaignId = campaign.Id, Name = "Imagem — Jarvis", Width = 64, Height = 64, HasGrid = false, Purpose = CampaignAssetPurposes.Portrait, Content = [2] };
+        db.AddRange(map, portrait); await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+
+        // Cenas, mesa e atlas: só mapas.
+        var choices = await assets.MapChoicesAsync(campaign.Id, default);
+        Assert.Contains(choices, m => m.Id == map.Id);
+        Assert.DoesNotContain(choices, m => m.Id == portrait.Id);
+        Assert.Null(await assets.ResolveMapAsync(campaign.Id, "asset:" + portrait.Id, default));
+        Assert.Equal(400, await Status(() => service.StartAsync(campaign.Id, new("Sessão", "", MapKinds.Cartographic, "asset:" + portrait.Id), Master, default)));
+
+        // Acervo por categoria e seletor de retratos (só o mestre).
+        var maps = Json(await assets.MapTreeAsync(campaign.Id, Master, null, 1, default)).GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToList();
+        var portraits = Json(await assets.MapTreeAsync(campaign.Id, Master, null, 1, default, CampaignAssetPurposes.Portrait)).GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToList();
+        Assert.Equal([map.Id], maps);
+        Assert.Equal([portrait.Id], portraits);
+        var picker = Json(await assets.PortraitChoicesAsync(campaign.Id, Master, default)).GetProperty("items");
+        Assert.Equal("asset:" + portrait.Id, Assert.Single(picker.EnumerateArray()).GetProperty("key").GetString());
+        Assert.Equal(403, await Status(() => assets.PortraitChoicesAsync(campaign.Id, Player, default)));
+        Assert.Equal(400, await Status(() => assets.MapTreeAsync(campaign.Id, Master, null, 1, default, "token")));
+
+        // Retrato nunca tem grade; mapa publicado no atlas não vira retrato.
+        var kept = await assets.SaveMapAsync(campaign.Id, portrait.Id, Master, new("Jarvis", null, 64, 1.5m, 1, true), null, default);
+        Assert.False(kept.HasGrid);
+        db.Add(new AtlasPublication { CampaignId = campaign.Id, SourceMapId = map.Id, Name = "Vale", Content = [1] });
+        await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        Assert.Equal(409, await Status(() => assets.SaveMapAsync(campaign.Id, map.Id, Master, new("Vale", null, 64, 1.5m, 1, false, Purpose: CampaignAssetPurposes.Portrait), null, default)));
+    }
+
     sealed class Clock(DateTimeOffset start) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => start;
