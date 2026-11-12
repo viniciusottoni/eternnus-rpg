@@ -6,6 +6,7 @@ import { decodeBits, MARK_KINDS } from "./fog-policy.js";
 import { helpButton } from "./help.js";
 import { mountMapGestures } from "./map-gestures.js";
 import { safeImageUrl } from "./play-policy.js";
+import { finePoint, isFreeMap, tokenAtPoint, tokenCenter } from "./free-move-policy.js";
 
 const reduceMotion = () =>
   matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -726,6 +727,13 @@ export function createBoard(host, handlers = {}) {
   const tileset = () => state?.map?.kind === "tileset" && rows().length > 0;
 
   const uploaded = () => Number(state?.map?.gridPixels) >= 8;
+  // Movimentação livre: o marcador fica no ponto fino; as contas de desenho usam o canto da "casa" fracionária.
+  const free = () => tileset() && isFreeMap(state?.map);
+  const visualOf = (token) => {
+    if (!free()) return token;
+    const c = tokenCenter(token, true);
+    return { ...token, x: c.x - 0.5, y: c.y - 0.5 };
+  };
   const compact = matchMedia("(max-width: 900px), (max-width: 1200px) and (pointer: coarse)");
   let enlarged = !!handlers.camera && compact.matches, panning = enlarged, cameraDrag = null;
   let zoomLevel = null, currentZoom = 1, maxZoom = 3;
@@ -794,8 +802,9 @@ export function createBoard(host, handlers = {}) {
     canvas.height = Math.max(1, Math.round(height * dpr));
     if (resetCamera) {
       const mine = (state?.tokens || []).find(t => t.characterId && t.characterId === state?.me?.characterId);
-      centerX = mine && tileset() ? (mine.x + .5) / rows()[0].length : .5;
-      centerY = mine && tileset() ? (mine.y + .5) / rows().length : .5;
+      const at = mine && tileset() ? tokenCenter(mine, free()) : null;
+      centerX = at ? at.x / rows()[0].length : .5;
+      centerY = at ? at.y / rows().length : .5;
       resetCamera = false;
     }
     host.scrollLeft = centerX * width - host.clientWidth / 2;
@@ -848,7 +857,7 @@ export function createBoard(host, handlers = {}) {
       drawLights(g, r, cell, t, animate);
     }
     drawFog(g, state, view, cell, t, animate);
-    for (const token of state.tokens || []) if (token.light > 0 && !token.hidden) drawGlow(g, token.x, token.y, token.light, cell, t, animate);
+    for (const token of state.tokens || []) if (token.light > 0 && !token.hidden) { const v = visualOf(token); drawGlow(g, v.x, v.y, token.light, cell, t, animate); }
     if (view.paint?.length) {
       g.fillStyle = "rgba(241,215,156,.28)";
       for (const c of view.paint) g.fillRect(c.x * cell + 1, c.y * cell + 1, cell - 2, cell - 2);
@@ -882,6 +891,18 @@ export function createBoard(host, handlers = {}) {
         g.strokeRect(c.x * cell + 2.5, c.y * cell + 2.5, cell - 5, cell - 5);
       }
     }
+    if (view.reachCircle) {
+      // Movimentação livre: o alcance em linha reta aparece como círculo em volta do marcador.
+      const rc = view.reachCircle;
+      g.save();
+      g.setLineDash([cell * 0.18, cell * 0.12]);
+      g.strokeStyle = "rgba(241,215,156,.7)";
+      g.lineWidth = Math.max(1.5, cell * 0.05);
+      g.beginPath();
+      g.arc(rc.x * cell, rc.y * cell, rc.r * cell, 0, Math.PI * 2);
+      g.stroke();
+      g.restore();
+    }
     if (view.attack?.length) {
       // Alcance de ataque: área avermelhada com contorno só na borda externa.
       const inside = new Set(view.attack.map((c) => c.x + ":" + c.y));
@@ -911,7 +932,8 @@ export function createBoard(host, handlers = {}) {
       const move = moves.get(token.id);
       const fraction = !animate || !move ? 1 : Math.min(1, (t - move.started) / 180);
       const eased = 1 - (1 - fraction) ** 3;
-      const visual = move && fraction < 1 ? { ...token, x: move.x + (token.x - move.x) * eased, y: move.y + (token.y - move.y) * eased } : token;
+      const placed = visualOf(token);
+      const visual = move && fraction < 1 ? { ...placed, x: move.x + (placed.x - move.x) * eased, y: move.y + (placed.y - move.y) * eased } : placed;
       if (fraction >= 1) moves.delete(token.id);
       drawToken(
         g,
@@ -936,7 +958,7 @@ export function createBoard(host, handlers = {}) {
       // Boneco arrastado acompanha o ponteiro; a casa de destino fica marcada.
       g.strokeStyle = "#f1d79c";
       g.lineWidth = 2;
-      if (drag.cell) g.strokeRect(drag.cell.x * cell + 2, drag.cell.y * cell + 2, cell - 4, cell - 4);
+      if (drag.cell && !free()) g.strokeRect(drag.cell.x * cell + 2, drag.cell.y * cell + 2, cell - 4, cell - 4);
       g.save();
       g.globalAlpha = 0.85;
       drawToken(g, { ...drag.token, x: drag.px / cell - 0.5, y: drag.py / cell - 0.5 }, cell, { mine: true, selected: true, animate: false, portrait: portraitFor(drag.token.image) }, t);
@@ -978,9 +1000,25 @@ export function createBoard(host, handlers = {}) {
       ? { x, y }
       : null;
   }
+  /**
+   * Ponto do ponteiro. Com grade: a casa. Movimentação livre: a casa + posição fina (fx/fy) e o ponto
+   * fracionário (cx/cy) para achar o marcador mais próximo.
+   */
+  function pointAt(clientX, clientY) {
+    if (!free()) return cellAt(clientX, clientY);
+    if (cell <= 0) return null;
+    const rect = canvas.getBoundingClientRect();
+    const cx = ((clientX - rect.left) * dpr - ox) / cell, cy = ((clientY - rect.top) * dpr - oy) / cell;
+    const p = finePoint(cx, cy, rows()[0].length, rows().length);
+    return p && { ...p, cx, cy };
+  }
+  // Teclado (sem cx/cy) continua por casa também no modo livre.
+  const tokenAt = (c) => free() && c.cx != null
+    ? tokenAtPoint(state.tokens, c.cx, c.cy, true)
+    : (state.tokens || []).find((t) => t.x === c.x && t.y === c.y);
   function activate(c) {
     if (!c) return;
-    const token = (state.tokens || []).find((t) => t.x === c.x && t.y === c.y);
+    const token = tokenAt(c);
     if (token) handlers.onToken?.(token, c);
     else handlers.onCell?.(c);
   }
@@ -1009,8 +1047,8 @@ export function createBoard(host, handlers = {}) {
   canvas.addEventListener("pointerdown", (e) => {
     suppressClick = false;
     if (panning || view.mode === "paint" || !view.draggable || !tileset()) return;
-    const c = cellAt(e.clientX, e.clientY);
-    const token = c && (state.tokens || []).find((t) => t.x === c.x && t.y === c.y);
+    const c = pointAt(e.clientX, e.clientY);
+    const token = c && tokenAt(c);
     if (!token || (view.draggable !== "*" && view.draggable !== token.id)) return;
     drag = { token, start: c, cell: c, moved: false, pointer: e.pointerId, ...boardPoint(e) };
   });
@@ -1019,7 +1057,7 @@ export function createBoard(host, handlers = {}) {
     const p = boardPoint(e);
     if (!drag.moved && Math.hypot(p.px - drag.px, p.py - drag.py) < cell * 0.25) return;
     if (!drag.moved) { drag.moved = true; canvas.setPointerCapture?.(e.pointerId); canvas.style.touchAction = "none"; }
-    Object.assign(drag, p, { cell: cellAt(e.clientX, e.clientY) });
+    Object.assign(drag, p, { cell: pointAt(e.clientX, e.clientY) });
     draw();
   });
   const endDrag = (e, cancel = false) => {
@@ -1030,7 +1068,8 @@ export function createBoard(host, handlers = {}) {
     if (!moved) return;
     suppressClick = true;
     draw();
-    if (!cancel && target && (target.x !== start.x || target.y !== start.y)) {
+    // Livre: qualquer arraste muda o ponto, mesmo dentro da mesma casa.
+    if (!cancel && target && (free() || target.x !== start.x || target.y !== start.y)) {
       status.textContent = `${token.label} solto na coluna ${target.x + 1}, linha ${target.y + 1}.`;
       handlers.onDrop?.(token, target);
     }
@@ -1085,12 +1124,14 @@ export function createBoard(host, handlers = {}) {
   canvas.addEventListener("click", (e) => {
     if (suppressClick) { suppressClick = false; return; }
     if (view.mode === "paint") return;
-    if (view.mode === "fog" || view.mode === "place") { if (!panning) activate(cellAt(e.clientX, e.clientY)); return; }
+    // Névoa, paredes, luzes e marcas continuam por casa; posicionar usa o ponto fino no modo livre.
+    if (view.mode === "fog") { if (!panning) activate(cellAt(e.clientX, e.clientY)); return; }
+    if (view.mode === "place") { if (!panning) activate(pointAt(e.clientX, e.clientY)); return; }
     // A barra de vida responde mesmo com "Arrastar mapa" ligado: o toque curto não desloca a câmera.
     const bubble = bubbleAt(e);
     if (bubble) { handlers.onBubble(bubble); return; }
     if (panning) return;
-    activate(cellAt(e.clientX, e.clientY));
+    activate(pointAt(e.clientX, e.clientY));
   });
   canvas.addEventListener("keydown", (e) => {
     if (!tileset()) return;
@@ -1148,7 +1189,11 @@ export function createBoard(host, handlers = {}) {
         const now = performance.now();
         for (const token of next.tokens || []) {
           const old = previous.get(token.id);
-          if (old && (old.x !== token.x || old.y !== token.y)) moves.set(token.id, { x: old.x, y: old.y, started: now });
+          // Mesmo mapa: anima da posição desenhada anterior (inclui a posição fina no modo livre).
+          if (old && (old.x !== token.x || old.y !== token.y || old.fx !== token.fx || old.fy !== token.fy)) {
+            const from = visualOf(old);
+            moves.set(token.id, { x: from.x, y: from.y, started: now });
+          }
         }
         for (const id of moves.keys()) if (!(next.tokens || []).some(token => token.id === id)) moves.delete(id);
       }
@@ -1157,7 +1202,9 @@ export function createBoard(host, handlers = {}) {
       const isTile = tileset();
       canvas.hidden = !isTile && !uploaded();
       image.hidden = isTile || uploaded();
-      canvas.setAttribute("aria-label", uploaded() ? `Mapa tático ${state.map.name}. Cada quadrado representa ${state.map.scaleMeters} metros. Use as setas para escolher uma casa e Enter para confirmar.` : "Mapa tático. Use as setas para escolher uma casa e Enter para confirmar.");
+      canvas.setAttribute("aria-label", free()
+        ? `Mapa com movimentação livre ${state.map.name}. Toque ou arraste para posicionar em qualquer ponto; cada quadrado de referência representa ${state.map.scaleMeters} metros. Pelo teclado, as setas escolhem uma área e Enter confirma no centro dela.`
+        : uploaded() ? `Mapa tático ${state.map.name}. Cada quadrado representa ${state.map.scaleMeters} metros. Use as setas para escolher uma casa e Enter para confirmar.` : "Mapa tático. Use as setas para escolher uma casa e Enter para confirmar.");
       const src = state.map.imageUrl || "";
       if (uploaded()) loadBackground(src);
       else if (src && image.getAttribute("src") !== src) image.src = src;

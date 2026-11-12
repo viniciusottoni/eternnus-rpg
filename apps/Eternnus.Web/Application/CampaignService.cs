@@ -29,7 +29,7 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
         page = Math.Max(1, Math.Min(100000, page));
         var query = db.Campaigns.AsNoTracking().Where(c => c.OwnerId == user || db.Members.Any(m => m.CampaignId == c.Id && m.UserId == user));
         if (oneShot is { } kind) query = query.Where(c => c.IsOneShot == kind);
-        if (!string.IsNullOrWhiteSpace(search)) { var term = search.Trim().ToLowerInvariant(); query = query.Where(x => x.Name.ToLower().Contains(term)); }
+        if (!string.IsNullOrWhiteSpace(search)) query = query.Where(TextSearch.AnyField<Campaign>(db, TextSearch.Pattern(search.Trim()), x => x.Name));
         var total = await query.CountAsync(ct);
         var ordered = sort == "name" ? query.OrderBy(x => x.Name).ThenBy(x => x.Id) : query.OrderByDescending(x => x.LastActivityAt).ThenBy(x => x.Id);
         var items = await ordered.Skip((page - 1) * 20).Take(20).Select(c => new
@@ -48,7 +48,8 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
             isMaster = c.OwnerId == user,
             playerCount = db.Members.Count(m => m.CampaignId == c.Id),
             canDelete = c.OwnerId == user && !db.Members.Any(m => m.CampaignId == c.Id),
-            activeSessionId = db.Sessions.Where(s => s.CampaignId == c.Id && s.EndedAt == null).Select(s => (Guid?)s.Id).FirstOrDefault()
+            activeSessionId = db.Sessions.Where(s => s.CampaignId == c.Id && s.EndedAt == null).Select(s => (Guid?)s.Id).FirstOrDefault(),
+            activeSessionPaused = db.Sessions.Any(s => s.CampaignId == c.Id && s.EndedAt == null && s.PausedAt != null)
         }).ToListAsync(ct);
         var account = await db.Users.AsNoTracking().SingleAsync(u => u.Id == user, ct);
         return new { items, total, page, pageSize = 20, limits = await AccountLimits.SummaryAsync(db, account, ct) };

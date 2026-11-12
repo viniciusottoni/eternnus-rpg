@@ -256,6 +256,45 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Empty_table_is_paused_automatically_after_the_grace_but_not_while_someone_is_present()
+    {
+        var id = await StartAsync(PlayModes.Free);
+        var start = clock.Now;
+        // Ainda dentro da folga: nada muda.
+        clock.Now = start + TableRules.EmptyTableGrace - TimeSpan.FromSeconds(1);
+        Assert.Equal(0, await service.PauseEmptyAsync(default));
+        // Um jogador renova a presença: a mesa não está vazia.
+        await service.HeartbeatAsync(id, Player, default);
+        db.ChangeTracker.Clear();
+        clock.Now = start + TableRules.EmptyTableGrace + TimeSpan.FromSeconds(30);
+        Assert.Equal(0, await service.PauseEmptyAsync(default));
+        // Todos sumiram além da folga: pausa uma única vez, com evento e nova revisão.
+        var revision = await db.Sessions.Where(s => s.Id == id).Select(s => s.Revision).SingleAsync();
+        clock.Now = start + TableRules.EmptyTableGrace * 3;
+        Assert.Equal(1, await service.PauseEmptyAsync(default));
+        Assert.Equal(0, await service.PauseEmptyAsync(default));
+        var session = await db.Sessions.AsNoTracking().SingleAsync(s => s.Id == id);
+        Assert.NotNull(session.PausedAt);
+        Assert.Null(session.EndedAt);
+        Assert.True(session.Revision > revision);
+        var pause = await db.Events.Where(e => e.SessionId == id && e.Kind == EventKinds.Pause).SingleAsync();
+        Assert.Equal("Mesa", pause.Author);
+        Assert.Equal(Master, pause.UserId);
+        Assert.Contains("automatic", pause.Data);
+        // Continua a única sessão ativa; jogador não age, mestre retoma ao voltar.
+        Assert.Equal(409, await Status(() => service.StartAsync(campaign.Id, new("Outra", "", MapKinds.Tileset, "crypt"), Master, default)));
+        await service.JoinAsync(id, hero.Id, Player, default);
+        Assert.Equal(409, await Status(() => service.RollAsync(id, new("1d20", null), Player, default)));
+        await service.JoinAsync(id, null, Master, default);
+        await service.PauseAsync(id, new(false), Master, default);
+        await service.UseActionAsync(id, new("ataque", "golpe", null), Player, default);
+        // Sessão encerrada nunca é pausada.
+        await service.EndAsync(id, Master, default);
+        clock.Now += TableRules.EmptyTableGrace * 2;
+        Assert.Equal(0, await service.PauseEmptyAsync(default));
+    }
+
+    [Fact]
     public async Task Undo_restores_moves_and_resources_once_and_never_rerolls()
     {
         var id = await StartAsync(PlayModes.Free);
@@ -527,6 +566,79 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Free_movement_maps_place_tokens_anywhere_share_cells_and_measure_in_a_straight_line()
+    {
+        var id = await StartAsync(PlayModes.Tactical);
+        var asset = new CampaignMap { CampaignId = campaign.Id, Name = "Clareira", Width = 640, Height = 640, GridPixels = 64, FreeMovement = true, Content = [0xFF, 0xD8, 0xFF, 0xD9] };
+        db.Add(asset); await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        await service.SetMapAsync(id, new(MapKinds.Tileset, "asset:" + asset.Id), Master, default);
+        db.ChangeTracker.Clear();
+        var hero0 = await TokenOf(id, hero.Id);
+        var rogue0 = await TokenOf(id, rogue.Id);
+        // O mestre solta um marcador na mesma casa de outro, em um ponto fino.
+        await service.MoveTokenAsync(id, rogue0.Id, new(hero0.X, hero0.Y, 100, 900), Master, default);
+        db.ChangeTracker.Clear();
+        var shared = await TokenOf(id, rogue.Id);
+        Assert.Equal((hero0.X, hero0.Y, 100, 900), (shared.X, shared.Y, shared.Fx!.Value, shared.Fy!.Value));
+        Assert.Equal(400, await Status(() => service.MoveTokenAsync(id, rogue0.Id, new(2, 2, 1000, 0), Master, default)));
+        db.ChangeTracker.Clear();
+        // Mestre também cria marcador em ponto fino de uma casa ocupada.
+        await service.AddTokenAsync(id, new("Lobo", "enemy", hero0.X, hero0.Y, Fx: 250, Fy: 250), Master, default);
+        db.ChangeTracker.Clear();
+        var state = await State(id, Player);
+        Assert.True(state.GetProperty("map").GetProperty("freeMovement").GetBoolean());
+        var lobo = state.GetProperty("tokens").EnumerateArray().Single(t => t.GetProperty("label").GetString() == "Lobo");
+        Assert.Equal(250, lobo.GetProperty("fx").GetInt32());
+
+        // Tática: 9 m / 1,5 m = 6 quadrados em linha reta (a diagonal 5×5 passaria pela contagem de casas, mas são 7,07).
+        await service.SetTurnAsync(id, new(hero.Id), Master, default);
+        db.ChangeTracker.Clear();
+        Assert.Equal(400, await Status(() => service.MoveTokenAsync(id, hero0.Id, new(hero0.X + 5, hero0.Y + 5, 500, 500), Player, default)));
+        db.ChangeTracker.Clear();
+        await service.MoveTokenAsync(id, hero0.Id, new(hero0.X + 4, hero0.Y + 4, 200, 700), Player, default);
+        db.ChangeTracker.Clear();
+        var moved = await TokenOf(id, hero.Id);
+        Assert.Equal((hero0.X + 4, hero0.Y + 4, 200, 700), (moved.X, moved.Y, moved.Fx!.Value, moved.Fy!.Value));
+        Assert.Equal(409, await Status(() => service.MoveTokenAsync(id, hero0.Id, new(hero0.X + 4, hero0.Y + 4, 300, 700), Player, default)));
+        db.ChangeTracker.Clear();
+
+        // Desfazer devolve casa e ponto fino anteriores (centro, sem posição fina).
+        var move = await db.Events.AsNoTracking().Where(e => e.SessionId == id && e.Kind == EventKinds.Move).OrderByDescending(e => e.Id).FirstAsync();
+        db.ChangeTracker.Clear();
+        await service.UndoAsync(id, new(move.Id), Player, default);
+        db.ChangeTracker.Clear();
+        var back = await TokenOf(id, hero.Id);
+        Assert.Equal((hero0.X, hero0.Y, (int?)null, (int?)null), (back.X, back.Y, back.Fx, back.Fy));
+
+        // Mapa com grade ignora a posição fina e volta a exigir uma casa por marcador.
+        db.ChangeTracker.Clear();
+        await service.SetMapAsync(id, new(MapKinds.Tileset, "crypt"), Master, default);
+        db.ChangeTracker.Clear();
+        var crypt = await TokenOf(id, hero.Id);
+        var other = await TokenOf(id, rogue.Id);
+        Assert.Equal(409, await Status(() => service.MoveTokenAsync(id, other.Id, new(crypt.X, crypt.Y), Master, default)));
+        db.ChangeTracker.Clear();
+        var free = await FreeCell(id, crypt, 1);
+        await service.MoveTokenAsync(id, other.Id, free with { Fx = 10, Fy = 10 }, Master, default);
+        db.ChangeTracker.Clear();
+        Assert.Null((await TokenOf(id, rogue.Id)).Fx);
+    }
+
+    [Fact]
+    public void Scene_arrangement_shares_cells_and_keeps_fine_points_only_on_free_movement_maps()
+    {
+        var grid = new FogGrid(4, 4, ["....", "....", "....", "...."]);
+        List<SceneTokenInput> input = [new(null, null, "Lobo", "enemy", 1, 1, Fx: 200, Fy: 800), new(null, null, "Urso", "enemy", 1, 1)];
+        var free = ScenePrep.ValidateTokens(input, grid, new HashSet<Guid>(), new Dictionary<Guid, string>(), new HashSet<Guid>(), free: true);
+        Assert.Equal((200, 800), (free[0].Fx!.Value, free[0].Fy!.Value));
+        Assert.Null(free[1].Fx);
+        Assert.Equal(400, Assert.Throws<RuleException>(() => ScenePrep.ValidateTokens(input, grid, new HashSet<Guid>(), new Dictionary<Guid, string>(), new HashSet<Guid>())).Status);
+        var grid1 = ScenePrep.ValidateTokens([input[0]], grid, new HashSet<Guid>(), new Dictionary<Guid, string>(), new HashSet<Guid>());
+        Assert.Null(grid1[0].Fx);
+        Assert.Equal(400, Assert.Throws<RuleException>(() => ScenePrep.ValidateTokens([input[0] with { Fx = -1 }], grid, new HashSet<Guid>(), new Dictionary<Guid, string>(), new HashSet<Guid>(), free: true)).Status);
+    }
+
+    [Fact]
     public async Task Creature_images_reach_players_only_while_the_token_is_visible()
     {
         await SheetTemplateService.EnsureFreeTemplateAsync(db, default);
@@ -602,6 +714,7 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
 
     sealed class Clock(DateTimeOffset start) : TimeProvider
     {
-        public override DateTimeOffset GetUtcNow() => start;
+        public DateTimeOffset Now { get; set; } = start;
+        public override DateTimeOffset GetUtcNow() => Now;
     }
 }

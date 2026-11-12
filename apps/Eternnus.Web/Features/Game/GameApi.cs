@@ -44,7 +44,7 @@ public static class GameApi
                 inviteCode = master ? c.InviteCode : null,
                 members,
                 sessionCount = master ? await db.Sessions.CountAsync(x => x.CampaignId == id) : (int?)null,
-                activeSession = await db.Sessions.Where(x => x.CampaignId == id && x.EndedAt == null).Select(x => new { x.Id, x.Number, x.Title, x.StartedAt }).SingleOrDefaultAsync(),
+                activeSession = await db.Sessions.Where(x => x.CampaignId == id && x.EndedAt == null).Select(x => new { x.Id, x.Number, x.Title, x.StartedAt, paused = x.PausedAt != null }).SingleOrDefaultAsync(),
                 resources = await db.Resources.Where(x => x.CampaignId == id && (master || x.Shared)).ToListAsync(),
                 characters = await db.CampaignCharacters.Where(x => x.CampaignId == id).Join(db.Characters.Where(ch => master || ch.OwnerId == user || !ch.Private), x => x.CharacterId, x => x.Id, (link, character) => new { character.Id, character.OwnerId, character.Name, character.Archetype, character.Level, character.Hp, character.MaxHp }).Take(200).ToListAsync()
             });

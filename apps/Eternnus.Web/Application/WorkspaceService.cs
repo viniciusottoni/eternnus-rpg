@@ -36,7 +36,7 @@ public sealed partial class WorkspaceService(GameDb db)
         var q = Visible(campaign, user, c.OwnerId).AsNoTracking().Where(p => trash ? p.DeletedAt != null && (p.OwnerId == user || p.Kind != "note" && c.OwnerId == user) : p.DeletedAt == null);
         if (mine) q = q.Where(p => p.OwnerId == user);
         if (!string.IsNullOrWhiteSpace(kind)) q = q.Where(p => p.Kind == kind);
-        if (!string.IsNullOrWhiteSpace(search)) q = q.Where(p => p.Title.Contains(search) || p.Content.Contains(search) || p.Collection.Contains(search) || p.Tags.Contains(search));
+        if (!string.IsNullOrWhiteSpace(search)) q = q.Where(TextSearch.AnyField<WorkspacePage>(db, TextSearch.Pattern(search.Trim()), p => p.Title, p => p.Content, p => p.Collection, p => p.Tags));
         var total = await q.CountAsync(ct);
         var items = await q.OrderByDescending(p => p.Pinned).ThenBy(p => p.Collection).ThenBy(p => p.Order).ThenBy(p => p.Title).ThenBy(p => p.Id).Skip((page - 1) * 20).Take(20)
             .Select(p => new { p.Id, p.Title, p.Kind, p.Collection, p.Tags, p.Visibility, p.Status, p.ParentId, p.Order, p.Pinned, p.Revision, p.UpdatedAt, canEdit = p.OwnerId == user || p.Kind != "note" && c.OwnerId == user,

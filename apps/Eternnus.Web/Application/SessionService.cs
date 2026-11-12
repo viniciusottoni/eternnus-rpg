@@ -11,9 +11,10 @@ public record SessionRollInput(string? Formula, string? Label, DiceSpec? Spec = 
 public record TurnInput(Guid? CharacterId, string? Key = null);
 public record ActionInput(string Kind, string? ActionId, string? Target);
 public record MapInput(string MapKind, string MapKey);
-public record MoveInput(int X, int Y);
+/// <summary>Destino: casa (X, Y) e, em mapas de movimentação livre, o ponto dentro dela (<c>Fx</c>/<c>Fy</c>, 0–999; nulo = centro).</summary>
+public record MoveInput(int X, int Y, int? Fx = null, int? Fy = null);
 /// <summary>Novo marcador. Com <c>TemplateId</c> ou <c>ImageUrl</c>, nasce uma criatura do mestre com ficha/imagem ligada ao marcador.</summary>
-public record MapTokenInput(string Label, string Side, int X, int Y, bool Hidden = false, int? Light = null, Guid? TemplateId = null, string? ImageUrl = null);
+public record MapTokenInput(string Label, string Side, int X, int Y, bool Hidden = false, int? Light = null, Guid? TemplateId = null, string? ImageUrl = null, int? Fx = null, int? Fy = null);
 public record HpInput(int Delta, string? Reason);
 
 /// <summary>
@@ -570,7 +571,13 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         var scene = await RequireSceneAsync(a, ct);
         var grid = scene.Grid;
         var token = scene.Raw.GetValueOrDefault(tokenId) ?? throw new RuleException(404, "Marcador não encontrado.");
-        var occupant = scene.Raw.Values.FirstOrDefault(t => t.Id != tokenId && t.X == x.X && t.Y == x.Y);
+        // Movimentação livre: qualquer ponto da casa e casas compartilhadas; a casa continua valendo para paredes e névoa.
+        var free = scene.Map.Free;
+        var (fx, fy) = FinePositions.Clean(free, x.Fx, x.Fy);
+        var occupant = free ? null : scene.Raw.Values.FirstOrDefault(t => t.Id != tokenId && t.X == x.X && t.Y == x.Y);
+        bool InReach(int limit) => free
+            ? FinePositions.Within(FinePositions.Distance(token.X, token.Fx, token.Y, token.Fy, x.X, fx, x.Y, fy), limit)
+            : TableRules.Distance(token.X, token.Y, x.X, x.Y) <= limit;
         var author = await NameAsync(user, ct);
         int? movedTurn = null;
         if (!a.IsMaster)
@@ -590,12 +597,13 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
                 if (!Known(x.X, x.Y)) throw new RuleException(400, Unavailable);
                 if (grid.BlocksMove(x.X, x.Y)) throw new RuleException(400, "Esse ponto do mapa está bloqueado.");
                 if (occupant != null) throw view.Tokens.Contains(occupant.Id) ? new RuleException(409, "Já existe alguém nesse ponto.") : new RuleException(400, Unavailable);
-                if (limited && TableRules.Distance(token.X, token.Y, x.X, x.Y) > limit) throw new RuleException(400, $"Seu deslocamento alcança {limit} quadrados por turno.");
+                if (limited && !InReach(limit)) throw new RuleException(400, $"Seu deslocamento alcança {limit} quadrados por turno.");
                 if (tactical && token.LastMovedTurn == a.Session.TurnNumber) throw new RuleException(409, "Você já se moveu neste turno.");
                 if (tactical && scene.Settings.PathMovement)
                 {
-                    var occupied = scene.Raw.Values.Where(t => t.Id != tokenId).Select(t => (t.X, t.Y)).ToHashSet();
-                    if (FogRules.PathLength(grid, token.X, token.Y, x.X, x.Y, limit, (cx, cy) => Known(cx, cy) && !occupied.Contains((cx, cy))) == null)
+                    // Livre: marcadores não bloqueiam a passagem e a casa de destino pode estar uma além do raio em linha reta.
+                    var occupied = free ? new HashSet<(int, int)>() : scene.Raw.Values.Where(t => t.Id != tokenId).Select(t => (t.X, t.Y)).ToHashSet();
+                    if (FogRules.PathLength(grid, token.X, token.Y, x.X, x.Y, free ? limit + 1 : limit, (cx, cy) => Known(cx, cy) && !occupied.Contains((cx, cy))) == null)
                         throw new RuleException(400, Unavailable);
                 }
             }
@@ -603,7 +611,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
             {
                 if (!grid.Inside(x.X, x.Y) || grid.BlocksMove(x.X, x.Y)) throw new RuleException(400, "Esse ponto do mapa está bloqueado.");
                 if (occupant != null) throw new RuleException(409, "Já existe alguém nesse ponto.");
-                if (limited && TableRules.Distance(token.X, token.Y, x.X, x.Y) > limit) throw new RuleException(400, $"Seu deslocamento alcança {limit} quadrados por turno.");
+                if (limited && !InReach(limit)) throw new RuleException(400, $"Seu deslocamento alcança {limit} quadrados por turno.");
                 if (tactical && token.LastMovedTurn == a.Session.TurnNumber) throw new RuleException(409, "Você já se moveu neste turno.");
             }
             movedTurn = token.LastMovedTurn;
@@ -614,9 +622,9 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
             if (!grid.Inside(x.X, x.Y) || grid.BlocksMove(x.X, x.Y)) throw new RuleException(400, "Esse ponto do mapa está bloqueado.");
             if (occupant != null) throw new RuleException(409, "Já existe alguém nesse ponto.");
         }
-        var from = new { x = token.X, y = token.Y };
-        token.X = x.X; token.Y = x.Y;
-        Event(a.Session, user, author, EventKinds.Move, $"{token.Label} se moveu", new { tokenId, from, to = new { x = x.X, y = x.Y }, movedTurn, undoable = true }, masterOnly: Secret(scene, token));
+        var from = new { x = token.X, y = token.Y, fx = free ? token.Fx : null, fy = free ? token.Fy : null };
+        token.X = x.X; token.Y = x.Y; token.Fx = fx; token.Fy = fy;
+        Event(a.Session, user, author, EventKinds.Move, $"{token.Label} se moveu", new { tokenId, from, to = new { x = x.X, y = x.Y, fx, fy }, movedTurn, undoable = true }, masterOnly: Secret(scene, token));
         await RefreshFogAsync(a, user, ct);
         await CommitAsync(tx, a.Session, ct);
     }
@@ -641,10 +649,11 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var a = await LockAsync(sessionId, user, ct); RequireMaster(a);
         var scene = await RequireSceneAsync(a, ct);
+        var (fx, fy) = FinePositions.Clean(scene.Map.Free, x.Fx, x.Fy);
         if (!scene.Grid.Inside(x.X, x.Y) || scene.Grid.BlocksMove(x.X, x.Y)) throw new RuleException(400, "Esse ponto do mapa está bloqueado.");
-        if (scene.Raw.Values.Any(t => t.X == x.X && t.Y == x.Y)) throw new RuleException(409, "Já existe alguém nesse ponto.");
+        if (!scene.Map.Free && scene.Raw.Values.Any(t => t.X == x.X && t.Y == x.Y)) throw new RuleException(409, "Já existe alguém nesse ponto.");
         if (scene.Raw.Count >= 60) throw new RuleException(409, "Limite de 60 marcadores no mapa.");
-        var token = new SessionToken { SessionId = sessionId, Label = label, Side = x.Side, X = x.X, Y = x.Y, Hidden = x.Hidden, Light = x.Light };
+        var token = new SessionToken { SessionId = sessionId, Label = label, Side = x.Side, X = x.X, Y = x.Y, Fx = fx, Fy = fy, Hidden = x.Hidden, Light = x.Light };
         if (x.TemplateId != null || !string.IsNullOrWhiteSpace(x.ImageUrl))
         {
             // Criatura com ficha e/ou imagem: vira personagem do mestre da campanha, acompanhável pela ficha.
@@ -760,7 +769,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         events.Reverse();
         var tokens = s.MapKind == MapKinds.Tileset
             ? await db.SessionTokens.AsNoTracking().Where(t => t.SessionId == sessionId).OrderBy(t => t.Label)
-                .Select(t => new { t.Id, t.CharacterId, t.Label, t.Side, t.X, t.Y, t.LastMovedTurn }).ToListAsync(ct)
+                .Select(t => new { t.Id, t.CharacterId, t.Label, t.Side, t.X, t.Y, t.Fx, t.Fy, t.LastMovedTurn }).ToListAsync(ct)
             : [];
         object map = await LiveMapAsync(s, ct);
         object boardTokens = tokens; object? fog = null;
@@ -845,11 +854,10 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         }
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var term = search.Trim().ToLower();
-            query = query.Where(e => e.Content.ToLower().Contains(term) || e.Author.ToLower().Contains(term));
+            query = query.Where(TextSearch.AnyField<TableEvent>(db, TextSearch.Pattern(search.Trim()), e => e.Content, e => e.Author));
         }
         var total = await query.CountAsync(ct);
-        var events = await query.OrderBy(e => e.Id).Skip((page - 1) * 50).Take(50)
+        var events = await query.OrderBy(e => e.Id).Skip((page - 1) * PageSize).Take(PageSize)
             .Select(e => new { e.Id, e.Kind, e.Author, e.Content, e.Data, e.CreatedAt, e.MasterOnly }).ToListAsync(ct);
         var counts = await all.GroupBy(e => e.Kind).Select(g => new { kind = g.Key, count = g.Count() }).ToListAsync(ct);
         var people = await db.SessionParticipants.AsNoTracking().Where(p => p.SessionId == sessionId && !p.IsMaster)
@@ -862,7 +870,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         {
             session = new { s.Id, s.Number, s.Title, s.Objective, s.StartedAt, s.EndedAt, active = s.EndedAt == null, durationMinutes = (int)Math.Round((end - s.StartedAt).TotalMinutes), map = await MapNameAsync(s, ct) },
             campaign = new { a.Campaign.Id, a.Campaign.Name },
-            counts, participants = people, events, total, page, pageSize = 50
+            counts, participants = people, events, total, page, pageSize = PageSize
         };
     }
 }

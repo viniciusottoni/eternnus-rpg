@@ -6,6 +6,7 @@ import { ensureNotices, keepHighlighted, markSeen } from "./notices.js";
 import { shell } from "./layout.js";
 import { $, esc, button, field, formError, submitForm, modal, toast, empty, formatDate } from "./ui.js";
 import { guardAvatars } from "./sheet.js";
+import { highlightIn } from "./data-table.js";
 import * as P from "./support-policy.js";
 
 const mine = { status: "", page: 1 };
@@ -321,6 +322,7 @@ async function loadQueue(ctx) {
           ? "A fila está em dia. Novos chamados aparecem aqui."
           : "Ajuste a busca ou os filtros para ver outros chamados.",
       );
+  highlightIn(list.querySelector(".support-queue"), filters.q);
   q(ctx, "#adm-t-pages").innerHTML = pagination(data.total, data.page, "adm-t-page");
 }
 

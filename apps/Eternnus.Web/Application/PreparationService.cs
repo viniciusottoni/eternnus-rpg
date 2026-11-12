@@ -152,7 +152,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         var prep = TableFogService.PreparedOf(row, state, map, settings);
         var characters = await CampaignCharactersAsync(campaignId, ct);
         var npcs = (await db.MasterCharacters.AsNoTracking().Where(m => m.CampaignId == campaignId).Select(m => m.Id).ToListAsync(ct)).ToHashSet();
-        return ScenePrep.ValidateTokens(input, new FogGrid(map.Width, map.Height, prep.Cells), characters.Select(c => c.Id).ToHashSet(), characters.ToDictionary(c => c.Id, c => c.Name), npcs);
+        return ScenePrep.ValidateTokens(input, new FogGrid(map.Width, map.Height, prep.Cells), characters.Select(c => c.Id).ToHashSet(), characters.ToDictionary(c => c.Id, c => c.Name), npcs, map.Free);
     }
 
     public async Task<object> DuplicateSceneAsync(Guid campaignId, Guid id, string user, CancellationToken ct)
@@ -164,7 +164,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         {
             CampaignId = campaignId, Name = Cut(s.Name, 72) + " (cópia)", Description = s.Description, Kind = s.Kind, MapKind = s.MapKind, MapKey = s.MapKey,
             SharedText = s.SharedText, PrivateNotes = s.PrivateNotes, VisionMode = s.VisionMode, LayerMode = s.LayerMode, Order = s.Order + 1, UpdatedAt = Now,
-            Prepared = s.Prepared.Select(t => new SceneToken { CharacterId = t.CharacterId, MasterCharacterId = t.MasterCharacterId, Label = t.Label, Side = t.Side, X = t.X, Y = t.Y, Hidden = t.Hidden, Light = t.Light }).ToList(),
+            Prepared = s.Prepared.Select(t => new SceneToken { CharacterId = t.CharacterId, MasterCharacterId = t.MasterCharacterId, Label = t.Label, Side = t.Side, X = t.X, Y = t.Y, Fx = t.Fx, Fy = t.Fy, Hidden = t.Hidden, Light = t.Light }).ToList(),
         };
         db.Scenes.Add(copy);
         // Preparação própria: a cópia recebe a preparação do mapa (sem explorações) e segue independente.
@@ -246,8 +246,8 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
     }
 
     /// <summary>NPCs que o mestre compartilhou: nome, tipo, resumo, imagem e a página de lore quando quem lê pode abri-la; paginado em vinte.</summary>
-    /// <summary>NPCs conhecidos por página: tabela de 15 itens.</summary>
-    public const int KnownNpcPageSize = 15;
+    /// <summary>NPCs conhecidos por página: tabela de 20 itens.</summary>
+    public const int KnownNpcPageSize = 20;
 
     /// <remarks><paramref name="focus"/>: id de um NPC compartilhado (link da busca); sem filtros, a resposta abre na página dele.</remarks>
     public async Task<object> KnownNpcsAsync(Guid campaignId, string user, string? q, string? kind, int page, CancellationToken ct, Guid? focus = null)

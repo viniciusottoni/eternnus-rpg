@@ -107,6 +107,16 @@ const entries = {
     ],
     "audience": "all"
   },
+  "campanhas.acervo.linha-do-tempo": {
+    "title": "Linha do tempo",
+    "summary": "A história da campanha em ordem, com relato completo ao abrir cada ponto.",
+    "body": [
+      "O Mestre cria cada ponto à mão: título, quando aconteceu (texto livre, como “Ano 1042 da Era do Fogo”), descrição curta e relato completo. Nada é preenchido a partir de sessões ou capítulos.",
+      "A ordem é a escolhida pelo Mestre, não pela data. Início e fim são opcionais; sem eles, a linha fica com as pontas abertas.",
+      "O grupo vê apenas os pontos marcados como “Mostrar ao grupo”. Rascunhos ficam visíveis só para o Mestre."
+    ],
+    "audience": "all"
+  },
   "campanhas.acervo.mapas": {
     "title": "Mapas e escala",
     "summary": "A grade e a escala ligam o mapa ao deslocamento.",
@@ -114,6 +124,16 @@ const entries = {
       "O Mestre organiza mapas em pastas e configura grade e escala. Os alcances em metros da ficha são convertidos em casas pela escala do mapa.",
       "A imagem pode vir do aparelho ou de um link https. Com link, o Eternnus baixa uma cópia uma única vez; depois ela é tratada como um envio e os jogadores não acessam o site de origem.",
       "Os cenários do atlas são públicos e não exigem nível. Mapas enviados e suas imagens mascaradas exigem acesso à campanha."
+    ],
+    "audience": "master"
+  },
+  "campanhas.acervo.movimentacao": {
+    "title": "Movimentação livre",
+    "summary": "Personagens e criaturas ficam em qualquer ponto da imagem, sem se prender às casas.",
+    "body": [
+      "Apenas imagem serve para mostrar ao grupo, sem marcadores. Usar grade faz cada personagem ocupar uma casa. Movimentação livre deixa arrastar e soltar em qualquer ponto, e vários marcadores podem ficar próximos ou dividir a mesma área.",
+      "A grade continua como referência: a escala converte o deslocamento da ficha em distância, e paredes, portas, luz e névoa seguem as áreas da grade. Na mesa a grade fica oculta; use Mostrar grade para vê-la.",
+      "Na forma tática, o alcance aparece como um círculo em volta do personagem e é medido em linha reta. Pelo teclado, as setas escolhem uma área e Enter posiciona no centro dela."
     ],
     "audience": "master"
   },

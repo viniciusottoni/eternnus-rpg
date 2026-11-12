@@ -120,7 +120,7 @@ function heroView(d, progress, unlocked) {
   </section>`;
 }
 
-/** Regras de XP em tabela com busca (atividade) e filtro de limite diário; 15 por página. */
+/** Regras de XP em tabela com busca (atividade) e filtro de limite diário; 20 por página. */
 function mountRules(root, rules) {
   const box = root.querySelector("[data-xp-rules]");
   if (!box) return;
@@ -202,7 +202,7 @@ function rankingView(data, period) {
     <p class="muted small">Contas não verificadas não aparecem. ${period === "week" ? "Soma do XP recebido nos últimos 7 dias." : "XP acumulado desde o início."}</p>`;
 }
 
-/** Ranking em tabela com busca por nome e filtro de nível; 15 por página sobre os primeiros colocados. */
+/** Ranking em tabela com busca por nome e filtro de nível; 20 por página sobre os primeiros colocados. */
 function mountRanking(root, data, period) {
   const box = root.querySelector("[data-ranking]");
   if (!box || !data.items.length) return;

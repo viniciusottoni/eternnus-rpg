@@ -20,7 +20,7 @@ public static class InterfaceModes
 public record PreferencesInput(string? InterfaceMode);
 
 /// <summary>Marcador enviado pelo editor de preparação (posições privadas, sem apresentar a cena).</summary>
-public record SceneTokenInput(Guid? CharacterId, Guid? MasterCharacterId, string? Label, string? Side, int X, int Y, bool Hidden = false, int? Light = null);
+public record SceneTokenInput(Guid? CharacterId, Guid? MasterCharacterId, string? Label, string? Side, int X, int Y, bool Hidden = false, int? Light = null, int? Fx = null, int? Fy = null);
 
 /// <summary>
 /// Regras puras da preparação de cenas: chave da camada, separação entre preparação e estado ao vivo, aplicação explícita e reinício.
@@ -123,10 +123,11 @@ public static class ScenePrep
     };
 
     /// <summary>
-    /// Valida o arranjo preparado: até 60 marcadores, dentro da grade, fora de casas que bloqueiam movimento e sem dois na mesma casa.
+    /// Valida o arranjo preparado: até 60 marcadores, dentro da grade, fora de casas que bloqueiam movimento e sem dois na mesma casa
+    /// (em mapas de movimentação livre, <paramref name="free"/>, a casa pode ser dividida e a posição fina é guardada).
     /// Personagens precisam estar vinculados à campanha; personagens do mestre, pertencer a ela.
     /// </summary>
-    public static List<SceneToken> ValidateTokens(IReadOnlyList<SceneTokenInput>? input, FogGrid grid, IReadOnlySet<Guid> characters, IReadOnlyDictionary<Guid, string> characterNames, IReadOnlySet<Guid> npcs)
+    public static List<SceneToken> ValidateTokens(IReadOnlyList<SceneTokenInput>? input, FogGrid grid, IReadOnlySet<Guid> characters, IReadOnlyDictionary<Guid, string> characterNames, IReadOnlySet<Guid> npcs, bool free = false)
     {
         var list = input ?? [];
         if (list.Count > MaxTokens) throw new RuleException(400, $"Use até {MaxTokens} marcadores por cena.");
@@ -137,14 +138,15 @@ public static class ScenePrep
         {
             if (!grid.Inside(t.X, t.Y)) throw new RuleException(400, "Há um marcador fora do mapa. Mova-o para dentro da grade.");
             if (grid.BlocksMove(t.X, t.Y)) throw new RuleException(400, $"A casa {t.X + 1}, {t.Y + 1} bloqueia movimento. Escolha outra casa.");
-            if (!taken.Add((t.X, t.Y))) throw new RuleException(400, $"Há dois marcadores na casa {t.X + 1}, {t.Y + 1}.");
+            if (!taken.Add((t.X, t.Y)) && !free) throw new RuleException(400, $"Há dois marcadores na casa {t.X + 1}, {t.Y + 1}.");
+            var (fx, fy) = FinePositions.Clean(free, t.Fx, t.Fy);
             if (t.Light is < 0 or > TableFog.MaxRadius) throw new RuleException(400, $"A luz vai de 0 a {TableFog.MaxRadius} casas.");
             if (t.CharacterId is { } cid)
             {
                 if (!characters.Contains(cid)) throw new RuleException(400, "Escolha personagens vinculados à campanha.");
                 if (!people.Add(cid)) throw new RuleException(400, "Cada personagem aparece uma vez na cena.");
                 var name = characterNames.GetValueOrDefault(cid) ?? "Personagem";
-                result.Add(new SceneToken { CharacterId = cid, Label = name.Length > 40 ? name[..40] : name, Side = "ally", X = t.X, Y = t.Y });
+                result.Add(new SceneToken { CharacterId = cid, Label = name.Length > 40 ? name[..40] : name, Side = "ally", X = t.X, Y = t.Y, Fx = fx, Fy = fy });
                 continue;
             }
             var label = LibraryService.Clean(t.Label ?? "", false).Trim();
@@ -152,7 +154,7 @@ public static class ScenePrep
             var side = t.Side ?? "enemy";
             if (!Sides.Contains(side)) throw new RuleException(400, "Escolha aliado, inimigo ou neutro.");
             if (t.MasterCharacterId is { } npc && !npcs.Contains(npc)) throw new RuleException(400, "Personagem do mestre não encontrado.");
-            result.Add(new SceneToken { MasterCharacterId = t.MasterCharacterId, Label = label, Side = side, X = t.X, Y = t.Y, Hidden = t.Hidden, Light = t.Light });
+            result.Add(new SceneToken { MasterCharacterId = t.MasterCharacterId, Label = label, Side = side, X = t.X, Y = t.Y, Fx = fx, Fy = fy, Hidden = t.Hidden, Light = t.Light });
         }
         return result;
     }

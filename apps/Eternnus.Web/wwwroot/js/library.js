@@ -8,6 +8,7 @@ import { shell } from "./layout.js";
 import { $, esc, button, field, formError, modal, toast, empty, formatDate } from "./ui.js";
 import { isStaff, isAdmin } from "./policy.js";
 import { isGuid } from "./session-policy.js";
+import { highlightIn } from "./data-table.js";
 
 export const CATEGORIES = Object.freeze({
   rules: ["Regras", "▤"],
@@ -181,6 +182,7 @@ async function load() {
         : isStaff(state.user)
           ? empty("A estante ainda está vazia.", "Publique o primeiro material para toda a guilda.", "lib-add", "+ Adicionar material")
           : empty("A estante ainda está vazia.", "Em breve a equipe publicará regras, mapas e aventuras aqui.");
+  grid.querySelectorAll(".lib-title").forEach((title) => highlightIn(title, filters.q));
   const pages = Math.ceil(result.total / PAGE_SIZE);
   $("#lib-pagination").innerHTML =
     pages > 1

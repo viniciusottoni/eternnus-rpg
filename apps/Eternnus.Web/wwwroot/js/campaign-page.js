@@ -14,6 +14,7 @@ import {
   empty,
   formatDate,
   navigate,
+  liveBadge,
 } from "./ui.js";
 import { campaignForm, confirmCampaign } from "./campaigns.js";
 import { isGuid, sessionLabel } from "./session-policy.js";
@@ -35,7 +36,7 @@ const TABS = [
 ];
 // Subpáginas com submenu sempre visível na aba-mãe: [chave, rótulo, só mestre].
 const SUBPAGES = {
-  world: [["world", "Páginas", false], ["npcs", "NPCs conhecidos", false], ["atlas", "Atlas compartilhado", false], ["resources", "Bibliotecas", false], ["maps", "Mapas e cenários", true]],
+  world: [["world", "Páginas", false], ["timeline", "Linha do tempo", false], ["npcs", "NPCs conhecidos", false], ["atlas", "Atlas compartilhado", false], ["resources", "Bibliotecas", false], ["maps", "Mapas e cenários", true]],
   settings: [["settings", "Campanha", true], ["table", "Mesa", true]],
 };
 // Seções do Diário com endereço próprio (links antigos e atalhos): abrem o Diário já na seção.
@@ -63,7 +64,7 @@ function subnav(d, parent, tab, news) {
 let generation = 0;
 
 // Novidades (ADR-069): cada área aparece na aba onde o conteúdo é lido.
-const AREA_TAB = { table: "overview", schedule: "journal", journal: "journal", players: "players", pages: "world", npcs: "npcs", atlas: "atlas" };
+const AREA_TAB = { table: "overview", schedule: "journal", journal: "journal", players: "players", pages: "world", npcs: "npcs", atlas: "atlas", timeline: "timeline" };
 const tabOfRoute = (tab) => (JOURNAL_SECTIONS[tab] ? "journal" : tab);
 /** Quantidade de novidades de uma aba principal (soma das subpáginas) ou de uma subpágina. */
 function tabNews(news, key, sub = false) {
@@ -89,11 +90,11 @@ export async function renderCampaignPage(id, tab = "overview", item = "") {
   const masterName = detail.masterName || "o mestre";
   $("#main").innerHTML =
     `${detail.isOneShot ? '<a class="back-link" href="#one-shot">← One-shots</a>' : '<a class="back-link" href="#campaigns">← Minhas campanhas</a>'}
-  <section class="campaign-hero metal"><div class="campaign-hero-copy"><span class="eyebrow">${esc(detail.system)}</span><h1>${esc(detail.name)}</h1>${detail.archived ? '<p class="notice-box">Campanha arquivada: conteúdo e histórico preservados, sem novas partidas até ser restaurada.</p>' : ""}${heroPremise(detail)}<div class="hero-meta"><span>♛ <b>Mestre:</b> ${esc(masterName)}</span><span>♙ <b>${detail.members.length}</b> ${detail.members.length === 1 ? "jogador" : "jogadores"}</span>${detail.isMaster && !detail.isOneShot ? `<span>▣ <b>${detail.sessionCount}</b> ${detail.sessionCount === 1 ? "sessão" : "sessões"}</span>` : ""}${online ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>ONLINE</span>' : ""}</div></div>${online ? `<a class="button primary enter-table" href="#table/${esc(id)}">▶ ${detail.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>` : ""}</section>
+  <section class="campaign-hero metal"><div class="campaign-hero-copy"><span class="eyebrow">${esc(detail.system)}</span><h1>${esc(detail.name)}</h1>${detail.archived ? '<p class="notice-box">Campanha arquivada: conteúdo e histórico preservados, sem novas partidas até ser restaurada.</p>' : ""}${heroPremise(detail)}<div class="hero-meta"><span>♛ <b>Mestre:</b> ${esc(masterName)}</span><span>♙ <b>${detail.members.length}</b> ${detail.members.length === 1 ? "jogador" : "jogadores"}</span>${detail.isMaster && !detail.isOneShot ? `<span>▣ <b>${detail.sessionCount}</b> ${detail.sessionCount === 1 ? "sessão" : "sessões"}</span>` : ""}${online ? liveBadge(true, detail.activeSession.paused) : ""}</div></div>${online ? `<a class="button primary enter-table" href="#table/${esc(id)}">▶ ${detail.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>` : ""}</section>
   <nav class="page-tabs" aria-label="Seções da campanha">${visible.map(([key, label]) => `<a href="#campaign/${esc(id)}/${key}" ${key === parent ? 'aria-current="page" class="active"' : ""}>${label}${newsBadge(tabNews(news, key), label)}</a>`).join("")}</nav>
   <div class="campaign-page-grid"><section id="campaign-tab" class="campaign-tab" aria-live="polite">${subnav(detail, parent, tab, news)}<div id="campaign-tab-body" class="campaign-tab-body"></div></section>${overviewCard(detail)}</div>`;
-  await renderTab(detail, tab, item);
-  if (request !== generation) return;
+  const releaseTab = await renderTab(detail, tab, item);
+  if (request !== generation) { if (typeof releaseTab === "function") releaseTab(); return; }
   const releaseNews = showNews(detail, tab, news);
   const anchor = JOURNAL_SECTIONS[tab];
   if (anchor) document.getElementById(anchor)?.scrollIntoView({ block: "start" });
@@ -101,7 +102,7 @@ export async function renderCampaignPage(id, tab = "overview", item = "") {
   guardAvatars($("#main"));
   if (detail.isOneShot) $(".campaign-hero-copy").insertAdjacentHTML("beforeend", `<p class="notice-box">One-shot: se o mestre se desconectar, a mesa espera ${detail.recoveryMinutes || 10} minutos antes de ser removida. Encerrar apaga os dados; converter em campanha preserva tudo. Prazo máximo: ${esc(new Date(detail.expiresAt).toLocaleString("pt-BR"))}.</p>`);
   const releasePresence = keepMasterPresence(detail);
-  return () => { ++generation; releasePresence(); releaseNews(); };
+  return () => { ++generation; releasePresence(); releaseNews(); if (typeof releaseTab === "function") releaseTab(); };
 }
 
 /** Destaca os itens novos da aba aberta e registra "visto" das áreas dela. Os destaques ficam até sair da aba. */
@@ -129,7 +130,7 @@ function heroPremise(d) {
 
 function overviewCard(d) {
   const online = !!d.activeSession;
-  return `<aside class="campaign-aside metal" aria-label="Visão da campanha"><h2>Visão da campanha</h2><dl><div><dt>Estado atual</dt><dd>${online ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>Online</span>' : '<span class="offline-badge" data-tip="Nenhuma sessão está aberta nesta campanha.">Offline</span>'}</dd></div>${d.isMaster && !d.isOneShot ? `<div><dt>Sessões realizadas</dt><dd>${String(d.sessionCount).padStart(2, "0")} ${d.sessionCount === 1 ? "sessão" : "sessões"}</dd></div>` : ""}<div><dt>Participantes</dt><dd>${d.members.length} ${d.members.length === 1 ? "aventureiro" : "aventureiros"}</dd></div>${online ? `<div><dt>Sessão em andamento</dt><dd>${esc(sessionLabel(d.activeSession.number, d.activeSession.title))}</dd></div>` : ""}<div><dt>Seu acesso</dt><dd>${d.isMaster ? "Mestre · histórico e notas" : "Jogador · mesa e ficha"}</dd></div></dl>${online ? `<a class="button primary" href="#table/${esc(d.id)}">▶ ${d.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>` : d.isOneShot ? '<p class="muted small waiting-note">Mesa fechada: a sessão única desta one-shot não está aberta.</p>' : d.isMaster ? button("✦ Iniciar nova sessão", "cp-start", d.id, "primary") : '<p class="muted small waiting-note">⌛ Aguardando o mestre abrir a próxima sessão.</p>'}${d.isMaster ? `<a class="button subtle" href="#campaign/${esc(d.id)}/players">⚑ Gerenciar jogadores</a>` : ""}</aside>`;
+  return `<aside class="campaign-aside metal" aria-label="Visão da campanha"><h2>Visão da campanha</h2><dl><div><dt>Estado atual</dt><dd>${liveBadge(online, d.activeSession?.paused, "Offline", "Online")}</dd></div>${d.isMaster && !d.isOneShot ? `<div><dt>Sessões realizadas</dt><dd>${String(d.sessionCount).padStart(2, "0")} ${d.sessionCount === 1 ? "sessão" : "sessões"}</dd></div>` : ""}<div><dt>Participantes</dt><dd>${d.members.length} ${d.members.length === 1 ? "aventureiro" : "aventureiros"}</dd></div>${online ? `<div><dt>Sessão em andamento</dt><dd>${esc(sessionLabel(d.activeSession.number, d.activeSession.title))}</dd></div>` : ""}<div><dt>Seu acesso</dt><dd>${d.isMaster ? "Mestre · histórico e notas" : "Jogador · mesa e ficha"}</dd></div></dl>${online ? `<a class="button primary" href="#table/${esc(d.id)}">▶ ${d.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>` : d.isOneShot ? '<p class="muted small waiting-note">Mesa fechada: a sessão única desta one-shot não está aberta.</p>' : d.isMaster ? button("✦ Iniciar nova sessão", "cp-start", d.id, "primary") : '<p class="muted small waiting-note">⌛ Aguardando o mestre abrir a próxima sessão.</p>'}${d.isMaster ? `<a class="button subtle" href="#campaign/${esc(d.id)}/players">⚑ Gerenciar jogadores</a>` : ""}</aside>`;
 }
 
 function openPremise(d) {
@@ -161,6 +162,7 @@ async function renderTab(d, tab, item = "") {
   }
   if (tab === "world" || tab === "notes") return (await import("./campaign-workspace.js")).renderWorkspace(d, target, tab === "notes", undefined, /^[0-9a-f-]{36}$/i.test(item) ? item : "");
   if (tab === "atlas") return (await import("./campaign-workspace.js")).renderAtlas(d, target);
+  if (tab === "timeline") return (await import("./campaign-timeline.js")).renderTimeline(d, target);
   if (tab === "resources") return renderCampaignLibrary(d, target);
   if (tab === "prep") return (await import("./campaign-prep.js")).renderPrep(d, target);
   if (tab === "maps") return renderCampaignMaps(d, target);
@@ -177,7 +179,7 @@ async function renderTab(d, tab, item = "") {
   const search = await import("./campaign-search.js");
   target.innerHTML = `${search.searchForm(d)}${d.continuity || d.currentArc ? `<article class="metal overview-story"><h3>Onde paramos${d.currentArc ? " — " + esc(d.currentArc) : ""}</h3><p class="workspace-prose">${esc(d.continuity || "O resumo ainda será escrito.")}</p></article>` : ""}${firstSteps}${d.isMaster ? "" : `<a class="button primary" href="#character/new/${esc(d.id)}">+ Criar ficha com o modelo da campanha</a>`}${next}<div class="section-title"><h2>Visão geral</h2></div><article class="overview-story metal"><h3>Premissa</h3><p class="workspace-prose">${esc(d.description || "A premissa desta campanha ainda será escrita.")}</p></article>${
     d.activeSession
-      ? `<article class="live-callout metal"><span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>Sessão em andamento</span><h3>${esc(sessionLabel(d.activeSession.number, d.activeSession.title))}</h3><p class="muted small">Iniciada em ${formatDate(d.activeSession.startedAt)}.</p><a class="button primary" href="#table/${esc(d.id)}">▶ ${d.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a></article>`
+      ? `<article class="live-callout metal">${liveBadge(true, d.activeSession.paused, "", "Sessão em andamento")}<h3>${esc(sessionLabel(d.activeSession.number, d.activeSession.title))}</h3><p class="muted small">Iniciada em ${formatDate(d.activeSession.startedAt)}.</p><a class="button primary" href="#table/${esc(d.id)}">▶ ${d.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a></article>`
       : d.isOneShot
         ? `<article class="live-callout metal offline"><h3>Mesa fechada</h3><p class="muted small">A one-shot tem sessão única, aberta na criação. Sem ela, a mesa não volta a abrir.</p></article>`
         : `<article class="live-callout metal offline"><h3>Campanha offline</h3><p class="muted small">${d.isMaster ? "Inicie uma sessão para colocar a campanha online e receber os jogadores." : "Quando o mestre iniciar uma sessão, a campanha aparecerá como ONLINE e você entrará direto na mesa."}</p></article>`

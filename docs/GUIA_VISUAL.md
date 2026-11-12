@@ -62,7 +62,7 @@ Texto funcional usa fontes do sistema. O produto não depende de serviço extern
 | Componente | Fonte | Contrato de reutilização |
 | --- | --- | --- |
 | Loading universal | `js/loading.js` / `#splash` | Mesmo cenário, logotipo e círculo rúnico da abertura em toda espera em primeiro plano, inclusive formulários e SSO. Abertura de 3.000 ms; demais esperas duram a operação, sem atraso mínimo. Sobrepõe modais, torna o conteúdo inerte e restaura foco. Atualização automática em segundo plano não interrompe tarefas. |
-| Listas e tabelas | `js/data-table.js` / `sessions.css` | Cabeçalho com título e o botão de adicionar dourado (“+ …”, `primary small`); texto curto de orientação; barra `controlsHtml` (busca, filtros, “Buscar” secundário; nunca “Limpar”); tabela logo abaixo, sem contagem entre as duas; paginação de 15 com o total. No celular, `.stack-table` vira cartões. (ADR-067) |
+| Listas e tabelas | `js/data-table.js` / `sessions.css` | Cabeçalho com título e o botão de adicionar dourado (“+ …”, `primary small`); texto curto de orientação; barra `controlsHtml` (busca, filtros, “Buscar” secundário; nunca “Limpar”); tabela logo abaixo, sem contagem entre as duas; paginação de 20 com o total; termos da busca em negrito dourado (`highlightIn`, `mark.search-hit`). No celular, `.stack-table` vira cartões. (ADR-067, ADR-073) |
 | Shell | `js/layout.js` | Renderiza menu, perfil, contexto, `#main` e rodapé. Uma funcionalidade não deve criar outro menu. |
 | Navegação inferior móvel | `js/layout.js` / `styles.css` | Barra fixa com ícone e nome do destino, estado ativo e bloqueio coerente com a conta. Reserva espaço no conteúdo e respeita a área segura. |
 | Instalação PWA | `js/pwa.js` | Ação discreta: usa o prompt capturado quando disponível e oferece instruções manuais nos demais casos, incluindo iPhone. Não bloquear a navegação nem repetir prompts forçadamente. |
@@ -227,6 +227,7 @@ Celular (≤ 900 px): o selo ocupa linha própria no topo; alvos de 44 px no sel
 
 - **Altura única:** controles de uma linha (texto, data/hora, select) têm 44 px. Botões em linha com campos usam a mesma altura.
 - **Barras de filtro:** levam `role="search"`, alinham pela base e não recebem dicas automáticas. Os botões descem juntos quando não cabem.
+- **Quatro ou mais ações:** usar `actionBar(tools, main)` de `js/ui.js`. Ferramentas à esquerda; perigo e primária à direita, primária por último. Sem espaço, cada grupo vai para sua linha (nunca um botão órfão). Em modal, a barra fica fixa no rodapé da rolagem (ADR-071).
 - **Dicas automáticas:** só em campos obrigatórios, com mínimo, faixa numérica ou texto longo. Campo curto opcional não mostra “Até N caracteres”.
 - **Foco em campos de texto:** fica por dentro (borda clara + anel interno de 1 px). Nunca vaza nem é cortado.
 - **Foco em botões, links, caixas e opções:** contorno de 2 px colado (deslocamento de 2 px).

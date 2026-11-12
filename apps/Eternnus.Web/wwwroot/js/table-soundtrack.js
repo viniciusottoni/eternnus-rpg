@@ -3,6 +3,7 @@
 // as chamadas HTTP em soundtrack-api.js; as regras em soundtrack-policy.js. O servidor revalida cada comando.
 import { esc, toast } from "./ui.js";
 import { helpButton } from "./help.js";
+import { highlightIn } from "./data-table.js";
 import { createSessionAudio } from "./session-audio.js";
 import { searchCatalog, soundtrackCommand } from "./soundtrack-api.js";
 import { formatTime, statusOf } from "./soundtrack-policy.js";
@@ -213,6 +214,7 @@ export function mountSoundtrack({ sessionId, campaignId, chipHost, onOpen = () =
         ? `<div class="pagination"><button type="button" class="subtle small" data-action="st-page" data-id="${list.page - 1}"${list.page <= 1 ? ' aria-disabled="true" data-tip="Você está no início da lista."' : ""}>← Anterior</button><span>Página ${list.page} de ${pages}</span><button type="button" class="subtle small" data-action="st-page" data-id="${list.page + 1}"${list.page >= pages ? ' aria-disabled="true" data-tip="Você está no fim da lista."' : ""}>Próxima →</button></div>`
         : ""
     }`;
+    host.querySelectorAll(".st-track-row strong").forEach((title) => highlightIn(title, search));
   }
 
   async function loadList() {

@@ -148,6 +148,7 @@ O filtro de eventos do estado ao vivo e do histórico já aplica `MasterOnly`/`V
 | --- | --- |
 | **Sair da tela** (mestre) | Navega para fora. Em one-shot, a presença do mestre deixa de ser renovada e a mesa entra em espera. Nada é apagado. |
 | **Pausar** | `GameSession.PausedAt`. A sessão continua sendo a única ativa da campanha (índice filtrado intacto). Bloqueia ações, rolagens, movimento e respostas dos jogadores; a conversa continua. |
+| **Mesa vazia** | Sem presença de ninguém (mestre ou jogador) por `TableRules.EmptyTableGrace` (3 min), o `EmptyTableWorker` (a cada 30 s) pausa a sessão pelo `SessionService`: bloqueio, reconferência da presença, evento "Partida pausada automaticamente" e revisão. Listas mostram **Pausada** em vez de ONLINE. O mestre retoma ao voltar. |
 | **Encerrar** | Campanha: sessão termina e o histórico fica. One-shot: apaga a mesa (como antes), preservando fichas, XP e o recibo de participação. |
 | **Excluir** | Campanha sem jogadores (regra existente). |
 

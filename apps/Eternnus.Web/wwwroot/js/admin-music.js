@@ -2,6 +2,7 @@
 // mestres apenas buscam e reproduzem na mesa. Reutiliza modal, formulários e loading comuns; HTTP em soundtrack-api.js.
 import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
 import { helpButton } from "./help.js";
+import { highlightIn } from "./data-table.js";
 import { adminDeleteTrack, adminListTracks, adminRenameTrack, adminUploadTrack } from "./soundtrack-api.js";
 import { AUDIO_ACCEPT, MUSIC_LIMITS, formatBytes, formatTime, titleFromFile, validateAudioFile } from "./soundtrack-policy.js";
 
@@ -113,6 +114,8 @@ export function renderMusicCatalog(view) {
       return;
     }
     list.innerHTML = rows(result.items) + pager();
+    // A busca é pelo nome: destaca só os títulos.
+    list.querySelectorAll(".ml-info strong").forEach((title) => highlightIn(title, search));
   }
   async function load() {
     const request = ++seq;

@@ -64,7 +64,7 @@ public sealed class MusicCatalogService(GameDb db, MusicStorage storage, AuditSe
     }
 
     IQueryable<MusicTrack> Search(string term) =>
-        term.Length == 0 ? Tracks.AsNoTracking() : Tracks.AsNoTracking().Where(t => t.Title.ToLower().Contains(term.ToLower()));
+        term.Length == 0 ? Tracks.AsNoTracking() : Tracks.AsNoTracking().Where(TextSearch.AnyField<MusicTrack>(db, TextSearch.Pattern(term), t => t.Title));
 
     /// <summary>Busca por nome para o mestre escolher a trilha. Só metadados de apresentação; nenhum byte ou detalhe interno.</summary>
     public async Task<object> SearchAsync(string? search, int page, CancellationToken ct)

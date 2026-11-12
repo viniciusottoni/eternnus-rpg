@@ -4,7 +4,7 @@ import { helpButton } from "./help.js";
 import { api } from "./api.js";
 import { newsSlot } from "./notices.js";
 import { shell } from "./layout.js";
-import { $, esc, button, field, formError, submitForm, modal, toast, empty, formatDate, navigate } from "./ui.js";
+import { $, esc, button, field, formError, submitForm, modal, toast, empty, formatDate, navigate, liveBadge } from "./ui.js";
 import { loadSystems, limitText } from "./campaigns.js";
 import { isGuid } from "./session-policy.js";
 
@@ -25,7 +25,7 @@ function row(c) {
       ? button("Encerrar", "os-end", c.id, "danger")
       : button("Excluir", "os-delete", c.id, "danger")
     : button("Sair", "os-leave", c.id, "subtle");
-  return `<article class="campaign-row metal ${online ? "is-online" : ""}"><div class="campaign-cover" aria-hidden="true"><span>${c.isMaster ? "⬡" : "⚔"}</span></div><div class="campaign-info"><div class="campaign-name"><h2>${esc(c.name)}</h2>${newsSlot(`campaign:${c.id}`, c.name)}<span class="badge ${c.isMaster ? "" : "participant"}" data-tip="${c.isMaster ? "Você conduz e administra esta campanha." : "Você participa como Jogador nesta campanha."}">${c.isMaster ? "♛ Mestre" : "♟ Participante"}</span>${online ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>ONLINE</span>' : '<span class="offline-badge" data-tip="Nenhuma sessão está aberta nesta campanha.">Fechada</span>'}</div><div class="campaign-meta"><span>▤ ${esc(c.system)}</span><span>♧ ${c.playerCount} ${c.playerCount === 1 ? "jogador" : "jogadores"}</span><span>◷ Expira em ${formatDate(c.expiresAt)}</span></div><p>${esc(c.description || "Uma noite, uma história.")}</p></div><div class="campaign-row-actions">${enter}${prepare}${close}</div></article>`;
+  return `<article class="campaign-row metal ${online && !c.activeSessionPaused ? "is-online" : ""}"><div class="campaign-cover" aria-hidden="true"><span>${c.isMaster ? "⬡" : "⚔"}</span></div><div class="campaign-info"><div class="campaign-name"><h2>${esc(c.name)}</h2>${newsSlot(`campaign:${c.id}`, c.name)}<span class="badge ${c.isMaster ? "" : "participant"}" data-tip="${c.isMaster ? "Você conduz e administra esta campanha." : "Você participa como Jogador nesta campanha."}">${c.isMaster ? "♛ Mestre" : "♟ Participante"}</span>${liveBadge(online, c.activeSessionPaused, "Fechada")}</div><div class="campaign-meta"><span>▤ ${esc(c.system)}</span><span>♧ ${c.playerCount} ${c.playerCount === 1 ? "jogador" : "jogadores"}</span><span>◷ Expira em ${formatDate(c.expiresAt)}</span></div><p>${esc(c.description || "Uma noite, uma história.")}</p></div><div class="campaign-row-actions">${enter}${prepare}${close}</div></article>`;
 }
 
 export async function renderOneShots() {

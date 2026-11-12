@@ -1,6 +1,7 @@
 import { helpButton } from "./help.js";
 import { api } from "./api.js";
 import { newsSlot } from "./notices.js";
+import { highlightIn } from "./data-table.js";
 import { state } from "./state.js";
 import { shell } from "./layout.js";
 import {
@@ -15,6 +16,7 @@ import {
   empty,
   formatDate,
   navigate,
+  liveBadge,
 } from "./ui.js";
 import { campaignActions } from "./policy.js";
 import { PLAY_MODES } from "./play-policy.js";
@@ -33,7 +35,7 @@ function row(c) {
     online && c.isMaster
       ? `<a class="button primary enter-table" href="#table/${esc(c.id)}">▶ Mesa ao vivo</a>`
       : "";
-  return `<article class="campaign-row metal ${online ? "is-online" : ""}"><div class="campaign-cover" aria-hidden="true"><span>${c.isMaster ? "⚑" : "⚔"}</span></div><div class="campaign-info"><div class="campaign-name"><h2>${esc(c.name)}</h2>${newsSlot(`campaign:${c.id}`, c.name)}<span class="badge ${c.isMaster ? "" : "participant"}" data-tip="${c.isMaster ? "Você conduz e administra esta campanha." : "Você participa como Jogador nesta campanha."}">${c.isMaster ? "♛ Mestre" : "♟ Participante"}</span>${c.isOneShot ? '<span class="badge" data-tip="Mesa temporária com uma única sessão.">One-shot</span>' : ""}${c.archivedAt ? '<span class="badge archived" data-tip="Conteúdo preservado; novas partidas estão bloqueadas.">Arquivada</span>' : ""}${online ? '<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>ONLINE</span>' : '<span class="offline-badge" data-tip="Nenhuma sessão está aberta nesta campanha.">Offline</span>'}</div><div class="campaign-meta"><span>▤ ${esc(c.system)}</span><span>♧ ${c.playerCount} ${c.playerCount === 1 ? "jogador" : "jogadores"}</span><span>◷ Atualizada em ${formatDate(c.lastActivityAt)}</span></div><p>${esc(c.description || "Uma nova história aguarda seu primeiro capítulo.")}</p>${c.isOneShot ? `<p class="form-help">Dados temporários até ${formatDate(c.expiresAt)}. Se o mestre se desconectar, a mesa espera alguns minutos; ao encerrar, tudo da mesa é removido.</p>` : ""}</div><div class="campaign-row-actions">${live}${open}${actions.edit ? button("Editar", "campaign-edit", c.id, "subtle") : ""}${actions.edit ? button("Excluir", "campaign-delete", c.id, "danger", actions.delete ? "" : 'aria-disabled="true" data-tip="Não disponível com jogadores vinculados"') : button("Sair", "campaign-leave", c.id, "subtle")}<small>${actions.edit && !actions.delete ? "Exclusão bloqueada: há jogadores vinculados." : online && !c.isMaster ? "Sessão em andamento: entre direto na mesa." : ""}</small></div></article>`;
+  return `<article class="campaign-row metal ${online && !c.activeSessionPaused ? "is-online" : ""}"><div class="campaign-cover" aria-hidden="true"><span>${c.isMaster ? "⚑" : "⚔"}</span></div><div class="campaign-info"><div class="campaign-name"><h2>${esc(c.name)}</h2>${newsSlot(`campaign:${c.id}`, c.name)}<span class="badge ${c.isMaster ? "" : "participant"}" data-tip="${c.isMaster ? "Você conduz e administra esta campanha." : "Você participa como Jogador nesta campanha."}">${c.isMaster ? "♛ Mestre" : "♟ Participante"}</span>${c.isOneShot ? '<span class="badge" data-tip="Mesa temporária com uma única sessão.">One-shot</span>' : ""}${c.archivedAt ? '<span class="badge archived" data-tip="Conteúdo preservado; novas partidas estão bloqueadas.">Arquivada</span>' : ""}${liveBadge(online, c.activeSessionPaused)}</div><div class="campaign-meta"><span>▤ ${esc(c.system)}</span><span>♧ ${c.playerCount} ${c.playerCount === 1 ? "jogador" : "jogadores"}</span><span>◷ Atualizada em ${formatDate(c.lastActivityAt)}</span></div><p>${esc(c.description || "Uma nova história aguarda seu primeiro capítulo.")}</p>${c.isOneShot ? `<p class="form-help">Dados temporários até ${formatDate(c.expiresAt)}. Se o mestre se desconectar, a mesa espera alguns minutos; ao encerrar, tudo da mesa é removido.</p>` : ""}</div><div class="campaign-row-actions">${live}${open}${actions.edit ? button("Editar", "campaign-edit", c.id, "subtle") : ""}${actions.edit ? button("Excluir", "campaign-delete", c.id, "danger", actions.delete ? "" : 'aria-disabled="true" data-tip="Não disponível com jogadores vinculados"') : button("Sair", "campaign-leave", c.id, "subtle")}<small>${actions.edit && !actions.delete ? "Exclusão bloqueada: há jogadores vinculados." : online && !c.isMaster ? (c.activeSessionPaused ? "Sessão pausada: entre na mesa e aguarde o mestre retomar." : "Sessão em andamento: entre direto na mesa.") : ""}</small></div></article>`;
 }
 export async function renderCampaigns() {
   shell("campaigns");
@@ -88,6 +90,8 @@ async function load() {
         "campaign-create",
         "+ Criar minha campanha",
       );
+  // A busca é pelo nome da campanha: destaca só os nomes.
+  document.querySelectorAll("#campaign-list .campaign-name h2").forEach((name) => highlightIn(name, search));
   $("#pagination").innerHTML =
     result.total > 20
       ? `${button("← Anterior", "campaign-page", state.page - 1, "subtle", state.page === 1 ? "disabled" : "")}<span>Página ${state.page} de ${Math.ceil(result.total / 20)}</span>${button("Próxima →", "campaign-page", state.page + 1, "subtle", state.page * 20 >= result.total ? "disabled" : "")}`

@@ -337,7 +337,7 @@ ${
     if (action === "tpl-version-republish") republish(gen, t, b.dataset.id);
   };
 }
-/** Versões em tabela: busca no número e nas notas, filtro de situação; 15 por página. Ações seguem no clique delegado. */
+/** Versões em tabela: busca no número e nas notas, filtro de situação; 20 por página. Ações seguem no clique delegado. */
 function mountVersions(root, t, versions, hasDraft, admin) {
   const box = root.querySelector("[data-tpl-versions]");
   if (!box) return;

@@ -8,6 +8,7 @@ import { shell } from "./layout.js";
 import { $, esc, button, field, formError, submitForm, modal, toast, navigate } from "./ui.js";
 import { isAdmin } from "./policy.js";
 import { guardAvatars } from "./sheet.js";
+import { highlightIn, TABLE_PAGE_SIZE } from "./data-table.js";
 
 // ---------- Regras puras (testadas em tests/frontend.test.mjs) ----------
 export const ADMIN_TABS = Object.freeze([
@@ -91,7 +92,7 @@ export function queryString(params) {
 }
 
 // ---------- Apresentação ----------
-const PAGE_SIZE = 15;
+const PAGE_SIZE = TABLE_PAGE_SIZE;
 let generation = 0;
 const filters = {
   users: { q: "", role: "", status: "", page: 1 },
@@ -249,6 +250,7 @@ async function listUsers(ctx) {
           )
         : blank("Ninguém por aqui.", "Nenhuma pessoa corresponde aos filtros. Limpe a busca ou escolha outra situação.")
     }${pager(r, "admin-users-page")}`;
+    highlightIn(target.querySelector("table"), f.q);
     guardAvatars(target);
   } catch (error) {
     if (ctx.alive()) target.innerHTML = failure(error, "admin-users-retry");
@@ -372,6 +374,7 @@ async function listCampaigns(ctx) {
           )
         : blank("Nenhuma campanha encontrada.", "Ajuste a busca, o sistema ou o estado da mesa.")
     }${pager(r, "admin-campaigns-page")}`;
+    highlightIn(target.querySelector("table"), filters.campaigns.q);
   } catch (error) {
     if (ctx.alive()) target.innerHTML = failure(error, "admin-campaigns-retry");
   }
@@ -385,7 +388,7 @@ async function renderCampaign(ctx) {
       c.sessions.length
         ? table(
             ["Nº", "Título", "Início", "Fim"],
-            c.sessions.map((s) => `<tr><td class="num">${number(s.number)}</td><td>${esc(s.title)}</td><td>${esc(when(s.startedAt))}</td><td>${s.endedAt ? esc(when(s.endedAt)) : onlineChip(true)}</td></tr>`),
+            c.sessions.map((s) => `<tr><td class="num">${number(s.number)}</td><td>${esc(s.title)}</td><td>${esc(when(s.startedAt))}</td><td>${s.endedAt ? esc(when(s.endedAt)) : s.paused ? '<span class="status-chip">⏸ Pausada</span>' : onlineChip(true)}</td></tr>`),
             "Sessões recentes da campanha",
           )
         : '<p class="muted small">Nenhuma sessão realizada.</p>'
@@ -561,6 +564,7 @@ async function listAudit(ctx) {
     target.innerHTML = `<p class="list-summary" role="status">${number(r.total)} ${r.total === 1 ? "registro" : "registros"}. Para reverter uma ação, abra o alvo e use a tela correspondente.</p>${
       r.items.length ? auditTable(r.items, "Trilha de auditoria") : blank("Nenhum registro.", "Nenhuma ação corresponde aos filtros escolhidos.")
     }${pager(r, "admin-audit-page")}`;
+    highlightIn(target.querySelector("table"), `${filters.audit.action || ""} ${filters.audit.actor || ""}`);
     fillAuditData(target, r.items);
   } catch (error) {
     if (ctx.alive()) target.innerHTML = failure(error, "admin-audit-retry");

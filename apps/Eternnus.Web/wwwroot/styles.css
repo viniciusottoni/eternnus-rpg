@@ -1543,6 +1543,12 @@ textarea::placeholder {
   min-height: 36px;
   font-size: 11px;
 }
+/* Termos da busca destacados nas listas (data-table.js: highlightIn/highlightHtml). */
+mark.search-hit {
+  background: transparent;
+  color: var(--gold);
+  font-weight: 700;
+}
 .empty {
   padding: 45px 25px;
   border: 1px dashed #aa8a494f;
@@ -2840,6 +2846,21 @@ legend { padding: 0 6px; color: var(--gold); font-size: 12px; font-weight: 600; 
 .form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 10px; }
 .modal-lead { margin-top: 0; }
 
+/* ---------- Barra de ações agrupada (actionBar em ui.js) ----------
+   Muitos botões numa linha quebravam sem critério e deixavam um botão sozinho à direita.
+   Ferramentas ficam à esquerda; ações principais (perigo + primária) à direita. Se não couber, cada grupo
+   ocupa sua linha. Em modal, a barra fica no rodapé da rolagem: textos longos não escondem "Editar". */
+.action-bar { justify-content: space-between; align-items: flex-end; gap: 10px 16px; }
+.action-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.action-main { margin-left: auto; justify-content: flex-end; }
+.action-bar .danger-text { color: var(--danger); border-color: #e2a18c55; }
+.action-bar .danger-text:hover { border-color: var(--danger); }
+#modal-body .action-bar { position: sticky; bottom: -6px; z-index: 1; margin: 18px 0 -6px; padding: 14px 0 10px; border-top: 1px solid #c6a46333; background: #0f1817; box-shadow: 0 -14px 14px -6px #0f1817; }
+@media (max-width: 560px) {
+  .action-group { flex: 1 1 100%; }
+  .action-group > :is(button, .button) { flex: 1 1 auto; min-height: 44px; }
+}
+
 /* Modelo simples da campanha: seção = cartão; campo = linha nome/tipo/remover + opções abaixo. */
 .pt-form > .field { margin-bottom: 6px; }
 .pt-section { display: grid; gap: 12px; margin: 0 0 12px; padding: 14px; border: 1px solid #a07b3a44; border-radius: 6px; background: #0d100f80; }
@@ -3057,3 +3078,50 @@ tr.is-new { box-shadow: none; }
   .news-badge { animation: news-pop var(--motion-fast) var(--ease-out); }
   @keyframes news-pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 }
+
+/* Linha do tempo da campanha (Mundo e acervo › Linha do tempo, ADR-072): serpente desenhada em SVG atrás dos pontos.
+   A grade e a posição de cada ponto vêm de campaign-timeline.js; no celular vira uma linha vertical. */
+.tl-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.tl-wrap { position: relative; padding: 18px 0 8px; }
+.tl-path { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.tl-track { fill: none; stroke: #c6a46322; stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; }
+.tl-line { fill: none; stroke: var(--gold); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 5px #c6a46366); }
+.tl-open { fill: none; stroke: var(--gold); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 2 9; opacity: .55; }
+.tl-serpent { position: relative; list-style: none; margin: 0; padding: 0 28px; display: grid; grid-template-columns: repeat(var(--tl-cols, 3), minmax(0, 1fr)); row-gap: 44px; align-items: start; }
+.tl-node { display: flex; justify-content: center; min-width: 0; }
+.tl-spot, .tl-spot:hover, .tl-spot:active { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 8px; border: 0; background: none; box-shadow: none; color: inherit; font: inherit; text-align: center; cursor: pointer; transform: none; }
+.tl-dot { position: relative; z-index: 1; display: grid; place-items: center; flex: 0 0 auto; width: 44px; height: 44px; border: 2px solid var(--gold); border-radius: 50%; background: radial-gradient(circle at 35% 30%, #3b3424, #15140f); color: var(--bright); font: 700 15px/1 var(--serif); box-shadow: 0 0 0 5px var(--bg), 0 6px 16px #0009; transition: transform var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out); }
+.tl-start .tl-dot, .tl-end .tl-dot { width: 52px; height: 52px; margin-top: -4px; background: linear-gradient(145deg, var(--bright), var(--gold)); color: #1b1710; font-size: 20px; }
+.tl-draft .tl-dot { border-style: dashed; color: var(--muted); }
+.tl-add .tl-dot { border-style: dashed; background: var(--bg); color: var(--gold); font-size: 22px; }
+.tl-card { display: flex; flex-direction: column; gap: 4px; width: 100%; max-width: 240px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-raised); box-shadow: 0 10px 26px #0006; transition: border-color var(--motion-fast) var(--ease-out); }
+.tl-add .tl-card { border-style: dashed; background: transparent; box-shadow: none; }
+.tl-kind { color: var(--gold); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.tl-when { color: var(--bright); font-size: 12px; font-style: italic; }
+.tl-title { color: var(--text); font: 600 1.05rem/1.25 var(--serif); overflow-wrap: anywhere; }
+.tl-summary { color: var(--muted); font-size: .86rem; line-height: 1.45; overflow-wrap: anywhere; }
+.tl-more { color: var(--gold); font-size: .78rem; }
+.tl-badge { align-self: center; padding: 1px 8px; border: 1px dashed var(--muted); border-radius: 999px; color: var(--muted); font-size: 11px; }
+.tl-spot:hover .tl-card, .tl-spot:focus-visible .tl-card { border-color: var(--gold); }
+.tl-spot:hover .tl-dot, .tl-spot:focus-visible .tl-dot { transform: scale(1.08); box-shadow: 0 0 0 5px var(--bg), 0 0 18px #c6a46399; }
+.tl-spot:focus-visible { outline: none; }
+.tl-spot:focus-visible .tl-card { outline: 2px solid var(--bright); outline-offset: 2px; }
+.tl-serpent.tl-single { padding: 0 0 0 4px; row-gap: 18px; }
+.tl-single .tl-node { justify-content: flex-start; }
+.tl-single .tl-spot { flex-direction: row; align-items: flex-start; padding: 0; text-align: left; }
+.tl-single .tl-start .tl-dot, .tl-single .tl-end .tl-dot { margin: -4px -4px 0; }
+.tl-single .tl-card { max-width: none; }
+.tl-single .tl-badge { align-self: flex-start; }
+.tl-lead { color: var(--bright); font: italic 1.05rem/1.5 var(--serif); }
+@media (prefers-reduced-motion: no-preference) {
+  .tl-line.tl-draw { stroke-dasharray: calc(var(--tl-length) * 1px); stroke-dashoffset: calc(var(--tl-length) * 1px); animation: tl-draw 1.4s var(--ease-out) forwards; }
+  @keyframes tl-draw { to { stroke-dashoffset: 0; } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-dot { transition: none; }
+}
+/* Novidade (ADR-069) na linha do tempo: o destaque vai para o cartão, não para a coluna inteira da grade. */
+.tl-node.is-new { box-shadow: none; }
+.tl-node.is-new .tl-card { box-shadow: inset 3px 0 #c8352b, 0 0 0 1px #c8352b55; }
+.tl-card .new-pill { align-self: center; margin: 2px 0; }
+.tl-single .tl-card .new-pill { align-self: flex-start; }

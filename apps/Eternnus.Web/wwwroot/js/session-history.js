@@ -5,6 +5,7 @@ import { state } from "./state.js";
 import { shell } from "./layout.js";
 import { $, esc, button, formError, submitForm, toast, empty } from "./ui.js";
 import { guardAvatars } from "./sheet.js";
+import { highlightIn } from "./data-table.js";
 import {
   eventData,
   eventMeta,
@@ -54,10 +55,14 @@ export async function renderHistory(sessionId, tab = "timeline") {
     h.counts
       .filter((c) => (Array.isArray(k) ? k.includes(c.kind) : c.kind === k))
       .reduce((a, c) => a + c.count, 0);
-  const notes =
-    tab === "notes"
-      ? h.events
-      : (await api(`/sessions/${sessionId}/history?kind=note`)).events;
+  // A nota mais recente fica na última página (ordem cronológica, 20 por página).
+  const lastPage = (r) => Math.max(1, Math.ceil(r.total / r.pageSize));
+  const latestNotes = async () => {
+    const first = await api(`/sessions/${sessionId}/history?kind=note`);
+    const last = lastPage(first);
+    return last > 1 ? (await api(`/sessions/${sessionId}/history?kind=note&page=${last}`)).events : first.events;
+  };
+  const notes = tab === "notes" && !search && h.page === lastPage(h) ? h.events : await latestNotes();
   if (request !== generation) return;
   const latestNote = notes.at(-1);
   $("#main").innerHTML =
@@ -69,6 +74,7 @@ export async function renderHistory(sessionId, tab = "timeline") {
   <article class="metal aside-card"><h2>▤ Alterações da sessão${helpButton("sessoes.historico.alteracoes", "Antes e depois")}</h2><ul class="change-summary"><li><b>${count("sheet")}</b> mudanças em fichas</li><li><b>${count(["roll", "action"])}</b> rolagens e ações</li><li><b>${count("map")}</b> alterações no mapa</li><li><b>${count("note")}</b> notas do mestre</li><li><b>${count("message")}</b> mensagens</li></ul></article>
   <a class="button subtle" href="#campaign/${esc(h.campaign.id)}/sessions">↩ Voltar às sessões</a></aside></div>`;
   guardAvatars($("#main"));
+  highlightIn($("#main ol.timeline"), search);
   const form = $("#history-search");
   if (form)
     form.onsubmit = (e) => {

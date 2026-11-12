@@ -75,3 +75,23 @@ public sealed class OneShotWorker(IServiceScopeFactory scopes, ILogger<OneShotWo
         }
     }
 }
+
+/// <summary>Pausa sessões ativas que ficaram sem ninguém presente; o estado autoritativo continua no banco.</summary>
+public sealed class EmptyTableWorker(IServiceScopeFactory scopes, ILogger<EmptyTableWorker> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                using var scope = scopes.CreateScope();
+                await scope.ServiceProvider.GetRequiredService<SessionService>().PauseEmptyAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (Exception ex) { logger.LogError(ex, "Falha ao pausar mesas vazias."); }
+            if (!await timer.WaitForNextTickAsync(stoppingToken)) break;
+        }
+    }
+}

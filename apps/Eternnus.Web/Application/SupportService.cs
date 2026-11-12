@@ -12,7 +12,7 @@ public record TicketQueueQuery(string? Status, string? Priority, string? Categor
 /// <summary>Regras puras de suporte (espelhadas para UX em <c>wwwroot/js/support-policy.js</c>).</summary>
 public static class SupportRules
 {
-    public const int PageSize = 15, MaxOpenPerUser = 5, ReopenDays = 30, MaxMessages = 300, NumberAttempts = 5;
+    public const int PageSize = 20, MaxOpenPerUser = 5, ReopenDays = 30, MaxMessages = 300, NumberAttempts = 5;
     /// <summary>Filtro de lista que reúne os estados ainda não concluídos.</summary>
     public const string ActiveFilter = "active";
 
@@ -328,10 +328,10 @@ public class SupportService(GameDb db, AuditService audit, TimeProvider clock)
         if (term.Length > 0)
         {
             var digits = term.TrimStart('#');
-            var lower = term.ToLowerInvariant();
+            var subject = TextSearch.AnyField<SupportTicket>(db, TextSearch.Pattern(term), t => t.Subject);
             query = digits.Length is > 0 and <= 9 && digits.All(char.IsAsciiDigit) && int.TryParse(digits, out var number)
-                ? query.Where(t => t.Number == number || t.Subject.ToLower().Contains(lower))
-                : query.Where(t => t.Subject.ToLower().Contains(lower));
+                ? query.Where(TextSearch.Or(subject, t => t.Number == number))
+                : query.Where(subject);
         }
         var total = await query.CountAsync(ct);
         var items = await query

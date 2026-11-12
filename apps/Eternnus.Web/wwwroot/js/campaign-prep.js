@@ -5,7 +5,7 @@ import { simpleTemplateFormulaFields } from "./sheet-editor-policy.js";
 import { api } from "./api.js";
 import { $, esc, button, modal, formError, submitForm, toast, empty } from "./ui.js";
 import { VISION_MODES, localDateTime, toLocalInput, browserZone, safeImageUrl } from "./play-policy.js";
-import { controlsHtml, bindLiveControls, pagerHtml, emptyTableHtml, filterRows, pageSlice } from "./data-table.js";
+import { controlsHtml, bindLiveControls, pagerHtml, emptyTableHtml, filterRows, pageSlice, highlightIn } from "./data-table.js";
 
 import { sceneKindLabel } from "./scene-policy.js";
 import { mapThumbnail } from "./table-map.js";
@@ -40,7 +40,7 @@ function npcControls() {
   });
 }
 
-/** Tabela de 15 por página a partir da lista já carregada (até MaxNpcs): filtrar e paginar não chamam a API. */
+/** Tabela de 20 por página a partir da lista já carregada (até MaxNpcs): filtrar e paginar não chamam a API. */
 function npcResults(d, items) {
   const view = npcView;
   const rows = filterRows(items, { q: view.q, fields: ["name", "summary", "templateName"], filters: { side: view.side, kind: view.kind, sharedWithPlayers: view.sharedWithPlayers } });
@@ -58,6 +58,7 @@ function paintNpcResults(d, target, items, focusSel = "") {
   const box = target.querySelector("#npc-results");
   if (!box) return;
   box.innerHTML = npcResults(d, items);
+  highlightIn(box.querySelector(".data-table-wrap"), npcView.q);
   box.querySelectorAll("img.npc-thumb").forEach((img) => img.addEventListener("error", () => img.replaceWith(Object.assign(document.createElement("span"), { className: "npc-thumb", textContent: img.dataset.initial, ariaHidden: "true" })), { once: true }));
   if (focusSel) box.querySelector(focusSel)?.focus();
 }
@@ -152,6 +153,7 @@ export async function renderJournal(d, targets, page = 1, search = "") {
     ? `<div class="pagination">${button("← Anterior", "jr-page", page - 1, "subtle", page <= 1 ? "disabled" : "")}<span>Página ${page}</span>${button("Próxima →", "jr-page", page + 1, "subtle", page * 20 >= j.recapTotal ? "disabled" : "")}</div>`
     : "";
   if (recaps) recaps.innerHTML = `<div class="section-title"><h2 id="jr-recaps-title">Resumos das sessões</h2></div><p class="muted small section-lead">${master ? "O que o grupo pode ler sobre cada sessão. Escreva pelo botão “Resumo” em Sessões no Eternnus ou ao encerrar uma partida." : "O que aconteceu em cada sessão, publicado pelo mestre."}</p><form id="jr-search" class="search-bar" role="search"><div class="field"><label for="jr-search-text">Buscar nos resumos</label><input id="jr-search-text" name="search" maxlength="100" value="${esc(search)}"></div><button type="submit" class="subtle">Buscar</button></form>${j.recaps.length ? `<ul class="journal-list">${j.recaps.map((r) => `<li class="metal"><strong>Sessão ${String(r.number).padStart(2, "0")} — ${esc(r.title)}</strong>${master && !r.published ? ' <span class="chip">não publicado</span>' : ""}<p class="small recap">${esc(r.recap)}</p>${master ? button("Editar resumo", "jr-recap", r.id, "text-button small") : ""}</li>`).join("")}</ul>` : `<p class="muted small">${search ? "Nenhum resumo encontrado para esta busca." : master ? "Nenhum resumo escrito ainda." : "Os resumos publicados pelo mestre aparecem aqui."}</p>`}${pages}`;
+  if (recaps) highlightIn(recaps.querySelector(".journal-list"), search);
   const reload = () => renderJournal(d, targets);
   if ($("#jr-search")) $("#jr-search").onsubmit = (e) => { e.preventDefault(); renderJournal(d, targets, 1, new FormData(e.currentTarget).get("search")); };
   main.onclick = async (e) => {

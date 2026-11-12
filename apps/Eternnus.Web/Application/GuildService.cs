@@ -163,8 +163,7 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
         if (systemId is { } system) query = query.Where(t => t.RpgSystemId == system);
         if (!string.IsNullOrWhiteSpace(q))
         {
-            var term = q.Trim().ToLowerInvariant();
-            query = query.Where(t => t.Title.ToLower().Contains(term));
+            query = query.Where(TextSearch.AnyField<GuildTopic>(db, TextSearch.Pattern(q.Trim()), t => t.Title));
         }
         var total = await query.CountAsync(ct);
         var joined = from t in query join u in db.Users on t.AuthorId equals u.Id select new { t, u };
@@ -536,8 +535,8 @@ public partial class GuildService(GameDb db, AuditService audit, ProgressionServ
         if (!(await ViewerAsync(userId, ct)).Staff) throw new RuleException(403, "Somente a moderação da Guilda pode fazer isso.");
     }
 
-    /// <summary>Denúncias por página (tabela de 15); os tópicos seguem com <see cref="PageSize"/>.</summary>
-    public const int ReportPageSize = 15;
+    /// <summary>Denúncias por página (tabela de 20, igual às demais listas); os tópicos seguem com <see cref="PageSize"/>.</summary>
+    public const int ReportPageSize = 20;
 
     /// <summary>Fila da moderação. <paramref name="q"/> busca no motivo, na mensagem e no título do tópico;
     /// <paramref name="resolution"/> (só nas resolvidas) separa arquivadas de removidas.</summary>

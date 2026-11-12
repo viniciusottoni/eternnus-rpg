@@ -713,3 +713,79 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 - **UVTT** (.dd2vtt/.uvtt/.df2vtt): lido no navegador; imagem e `pixels_per_grid` viram o mapa (a redução mantém o quadrado inteiro em pixels); paredes, portas e luzes viram a preparação do mapa via `PUT /assets/layers`. A camada da mesa é por casas: paredes sobre linhas da grade marcam a casa do lado de fora da sala quando o desenho fecha a sala (empate: direita/baixo); portas viram `d`/`o`; luzes viram focos (raio em casas, até 100). Importação também no acervo (“Importar UVTT”).
 
 **Consequências:** nenhuma tabela nova. A conversão de paredes é aproximada; o mestre confere em “Paredes e portas”. O arquivo UVTT (até 60 MB) é lido no aparelho; só a imagem preparada e as marcas são enviadas. Exportar mapas fica fora desta etapa.
+
+## ADR-071 — Ordem dos salões da Guilda e barra de ações agrupada (11/11/2026)
+
+**Contexto:** a ordem dos salões não seguia a jornada de quem chega (avisos, iniciantes, sugestões, conversa). Modais de leitura com cinco ações quebravam a linha sem critério, deixando um botão isolado à direita, e o texto longo empurrava “Editar” para o fim da rolagem.
+
+**Decisão:**
+- Ordem dos salões: Avisos da Guilda, Portal do Aprendiz, Forja de Ideias, Taverna, Procura-se grupo, Mestres e campanhas, Galeria do Artífice, Regras e sistemas, Fichas e biblioteca. A migração `GuildHallOrder` atualiza só a coluna `Order` dos nove salões semeados, por `Id`; salões criados pela administração não mudam. Substitui a nota do ADR-068 de que ordens existentes não seriam alteradas.
+- `actionBar(tools, main)` em `js/ui.js`: ferramentas à esquerda, ações principais à direita (perigo antes da primária, primária por último). Sem espaço, cada grupo ocupa sua linha; no celular os botões preenchem a linha com 44 px. Dentro do modal a barra fica fixa no rodapé da rolagem, com filete dourado.
+- Aplicada ao modal de leitura de “Mundo e acervo” e ao ajuste de vida da mesa (Dano/Cura × Editar ficha/Conceder turno). Linhas com até três botões continuam em `.form-actions`; ações raras seguem em “Mais opções”.
+
+**Consequências:** nova linha de ações com quatro ou mais botões deve usar `actionBar`. Bancos com ordem personalizada dos salões semeados recebem a nova ordem.
+
+## ADR-072 — Linha do tempo da campanha em Mundo e acervo (11/11/2026)
+
+**Contexto:** o grupo precisava ler a história da campanha em ordem, num só lugar, e o mestre precisava inserir acontecimentos sem montar páginas soltas.
+
+**Decisão:**
+
+- Nova subpágina “Linha do tempo” em Mundo e acervo (`#campaign/{id}/timeline`, módulo `js/campaign-timeline.js` carregado sob demanda). Tabela própria `TimelineEvent`; migração `CampaignTimeline`.
+- Pontos criados somente à mão pelo mestre. Nada é derivado de sessões, capítulos, diário ou páginas. Cada ponto tem título, “quando” em texto livre (até 60; sem formato de data, não ordena), descrição curta (até 280, mostrada na linha) e relato completo (até 10.000, entregue só ao abrir o ponto).
+- Ordem manual (`Position`), escolhida no editor (“No início” / “Depois de …”) ou por “Inserir depois” no ponto aberto. Início e fim são marcos opcionais, no máximo um de cada (índice único filtrado); sem eles, as pontas da linha ficam abertas (tracejadas).
+- Visibilidade segue ADR-061/062: jogador recebe só pontos publicados (“Mostrar ao grupo”); rascunho nunca sai do servidor para ele. A lista não traz o relato longo. Escritas bloqueiam a campanha, conferem `Revision` e renumeram as posições na mesma transação. Publicar gera novidade na área `timeline` (ADR-069).
+- Limite de 300 acontecimentos por campanha; a linha é devolvida inteira, sem paginação, porque a serpente precisa da sequência completa.
+- Visual: SVG atrás dos pontos desenha a serpente — fileiras alternam de direção e curvas ligam uma fileira à outra; 2 a 5 colunas conforme a largura; abaixo de 640 px vira linha vertical. Pontos são botões de 44 px ou mais. O traço anima uma vez só sem `prefers-reduced-motion`; o redesenho por `ResizeObserver` é descartado ao sair da aba (o roteador da campanha agora chama o descarte devolvido pela aba).
+
+**Consequências:** service worker `v51` com `js/campaign-timeline.js` na lista permitida. A ajuda `campanhas.acervo.linha-do-tempo` explica autoria, ordem manual e publicação. Não há edição colaborativa pelos jogadores nem importação automática.
+
+## ADR-073 — Listas com 20 itens por página e termos da busca destacados (11/11/2026)
+
+**Contexto:** as listas usavam tamanhos diferentes (15 nas tabelas, 20 em campanhas, Guilda e biblioteca, 50 no histórico da sessão), e o resultado de uma busca não mostrava onde o termo aparecia.
+
+**Decisão:**
+- Toda lista paginada usa 20 itens por página, no cliente (`TABLE_PAGE_SIZE` em `js/data-table.js`, `support-policy.js`, painel admin) e no servidor: administração (usuários, campanhas, auditoria), histórico de campos da ficha, denúncias da Guilda, NPCs conhecidos, tabela de sessões e capítulos, fichas-modelo, suporte, busca geral da campanha e histórico da sessão (antes 50). A biblioteca continua aceitando `pageSize` menor, mas o teto passa de 50 para 20. Substitui o tamanho de 15 do ADR-067; as demais regras daquele ADR continuam.
+- Quando a lista está filtrada por texto, os termos buscados aparecem em `<mark class="search-hit">` (negrito, dourado `--gold`, sem fundo). O destaque ignora caixa e acento, aceita várias palavras e funde trechos sobrepostos.
+- Um único auxiliar em `js/data-table.js`: `highlightIn(raiz, busca)` percorre só nós de texto já renderizados e cria a marcação com `createElement`/`textContent`, sem `innerHTML`; `highlightHtml(texto, busca)` escapa o texto antes de marcar. A busca nunca é inserida como HTML nem como expressão regular. Campos, botões de ação, paginação, código e texto só para leitor de tela não recebem destaque; títulos clicáveis (`.text-button`) recebem. `mountClientTable` aplica o destaque sozinho; as listas paginadas no servidor chamam `highlightIn` na área da tabela ou nos títulos quando a busca é só pelo nome (campanhas, biblioteca, músicas, seletor de cenários).
+- O cartão “Notas do mestre” do histórico da sessão passa a buscar a última página de notas, para continuar mostrando a nota mais recente com páginas de 20.
+
+**Consequências:** service worker `v52`, sem arquivo novo na lista. Testes de serviço, `data-table.test.mjs` e `tables-portraits.mjs` passam a esperar 20 por página e conferem o destaque. Listas sem campo de busca (fichas-modelo, meus chamados) só mudam o tamanho da página.
+
+## ADR-074 — Mapas com movimentação livre (12/11/2026)
+
+**Contexto:** cenas e mapas só ofereciam "Apenas imagem" (sem marcadores) e "Usar grade" (um marcador por casa, no centro). Mapas desenhados à mão ou cartográficos pedem que personagens e criaturas fiquem em qualquer ponto da imagem.
+
+**Decisão:**
+- Terceira opção por mapa enviado: **Movimentação livre** (`CampaignMap.FreeMovement`, exige `HasGrid`). O mapa continua tático (`tileset`) e a grade vira referência: escala, paredes, portas, luz, névoa, exploração e máscara da imagem seguem por casa, sem duplicar o motor de visibilidade.
+- Posição fina: `SessionToken`/`SceneToken` ganham `Fx`/`Fy` (milésimos da casa, 0–999; nulo = centro). A casa `(X, Y)` continua sendo a unidade autoritativa para paredes e visão. Contas iguais em `Domain/FinePositions.cs` e `js/free-move-policy.js`. Em mapa com grade, `Fx`/`Fy` são descartados.
+- Sem casa exclusiva no modo livre (mesa, preparo da cena, recolocar, desfazer). Na forma tática, o alcance é a distância em linha reta entre os pontos, com o mesmo limite em quadrados da ficha; com movimento por caminho, marcadores não bloqueiam e a casa de destino pode ficar um passo além do raio. Um deslocamento por turno e as recusas que não revelam terreno continuam iguais.
+- Mesa: a grade fica oculta por padrão (Mostrar grade continua disponível), o alcance aparece como círculo, o toque escolhe o marcador mais próximo do ponto e o arraste solta no ponto exato. Teclado: setas escolhem uma casa e Enter posiciona no centro dela.
+- Tilesets oficiais e mapas sem grade não mudam. Trocar um mapa de livre para grade preserva as posições finas guardadas nas cenas, mas a mesa e o preparo passam a usar o centro da casa e voltam a exigir uma casa por marcador.
+
+**Consequências:** migração `FreeMovementMaps` (colunas anuláveis; bancos antigos preservados; cenas guardam marcadores em JSON). Service worker `v53` com `js/free-move-policy.js`. Ajuda `campanhas.acervo.movimentacao`. Limitação: faixas da imagem menores que uma casa de referência nas bordas ficam fora da área jogável, como no mapa com grade; a simulação "Ver como jogador" do editor usa a casa do marcador.
+
+## ADR-075 — Mesa vazia é pausada automaticamente (12/11/2026)
+
+**Contexto:** uma sessão aberta só terminava quando o mestre a encerrava. Mesas abandonadas apareciam como ONLINE para sempre nas listas e no painel administrativo.
+
+**Decisão:**
+- Sessão ativa sem presença de ninguém (`SessionParticipant.LastSeenAt`) por `TableRules.EmptyTableGrace` (3 min) é pausada pelo `EmptyTableWorker` (a cada 30 s), via `SessionService.PauseEmptyAsync`: bloqueio da sessão, reconferência no banco, evento `pause` (`automatic: true`, autor "Mesa" em nome do dono), revisão e sinal após o commit.
+- A folga de 3 min cobre o heartbeat espaçado pelo navegador em aba oculta (até 1 por minuto).
+- A sessão continua a única ativa da campanha; não há encerramento automático nem retomada automática. O mestre retoma ao voltar.
+- Listas (`activeSessionPaused`, `activeSession.paused`) mostram **Pausada**; o painel administrativo conta como online só sessões ativas não pausadas.
+
+**Consequências:** sem migração (usa `PausedAt`). One-shots mantêm o prazo de recuperação e o limite de 72 h. Service worker `v55`. Mensagens de pausa deixam de dizer "pelo mestre", porque a pausa pode ser automática.
+
+## ADR-076 — Toda busca ignora maiúsculas e acentos (12/11/2026)
+
+**Contexto:** parte das buscas no servidor usava `ToLower().Contains` ou `Contains` simples (sensível a acento e, em alguns casos, a maiúsculas); a busca geral da campanha usava ILIKE, que ignora caixa mas não acento. "gargula" não encontrava "Gárgula".
+
+**Decisão:**
+- Todas as buscas textuais do servidor passam por `Application/TextSearch.cs`: o termo é dobrado em C# (`TextSearch.Fold`: minúsculas, sem marcas diacríticas) e enviado como parâmetro com curingas escapados; a coluna é dobrada no banco.
+- PostgreSQL: `unaccent(coluna) ILIKE unaccent(@padrão)`. A extensão `unaccent` (contrib, confiável desde o PostgreSQL 13) é criada pela migração `SearchUnaccent`.
+- SQLite (testes e desenvolvimento local): `eternnus_fold(coluna) LIKE @padrão`, função registrada na conexão com a mesma regra de `Fold`.
+- `TextSearch.Excerpt` localiza o trecho sem diferenciar caixa nem acento e devolve o texto original.
+- Migradas para o auxiliar: administração (usuários, campanhas, auditoria por nome do autor), lista de campanhas, tópicos da Guilda, biblioteca, catálogo de músicas, diário de resumos, histórico da sessão, suporte e páginas do acervo. O cliente já normalizava (`normalizeText` em `js/data-table.js`, filtro de cenários em `js/scene-policy.js`).
+
+**Consequências:** a migração exige que o usuário de migração possa criar extensões confiáveis no banco (privilégio `CREATE` no banco). As consultas não usam índice na coluna dobrada; as listas continuam paginadas e limitadas. Nenhum contrato HTTP muda além da regra de comparação.

@@ -63,14 +63,14 @@ try {
     categories.items.map((c) => [c.slug, c.staffOnly, c.minLevelToPost]),
     [
       ["avisos", true, 1],
+      ["portal-do-aprendiz", false, 1],
+      ["forja-de-ideias", false, 1],
       ["taverna", false, 1],
       ["procura-se-grupo", false, 1],
-      ["regras-e-sistemas", false, 2],
       ["mestres-e-campanhas", false, 2],
-      ["fichas-e-biblioteca", false, 1],
-      ["forja-de-ideias", false, 1],
       ["galeria-do-artifice", false, 1],
-      ["portal-do-aprendiz", false, 1],
+      ["regras-e-sistemas", false, 2],
+      ["fichas-e-biblioteca", false, 1],
     ],
     "seeded categories in order",
   );

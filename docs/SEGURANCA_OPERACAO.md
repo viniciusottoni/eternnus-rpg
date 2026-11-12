@@ -81,7 +81,7 @@ Login persistente: a escolha explícita permite 14 dias fixos; login comum tem o
 
 Na primeira publicação desta política, cookies anteriores sem início protegido são recusados e exigem novo login. Não há migração de dados. As chaves continuam em `App_Data/keys` (ou diretório privado configurado), excluídas do pacote pelo `.csproj`; o upload FTPS não apaga arquivos remotos. Preservar ACL, diretório e nome de aplicação entre deploys. O cliente fecha recursos contínuos após detectar perda de autenticação, sem reenviar escritas. Operações HTTP já autorizadas podem terminar; a revogação é observada em nova requisição. O fluxo não persiste rascunhos de formulários.
 
-Manter backup do PostgreSQL e das chaves, testar restauração, controlar acesso ao servidor e separar permissões de migração e de runtime quando a hospedagem permitir. Monitorar `/health`, falhas de login, fila, consumo de recursos e erros inesperados, sem capturar senha ou códigos de e-mail. Atualizar dependências com testes de regressão e análise de vulnerabilidades. Publicação, SMTP real e OAuth real dependem de validação na conta da hospedagem.
+Manter backup do PostgreSQL e das chaves, testar restauração, controlar acesso ao servidor e separar permissões de migração e de runtime quando a hospedagem permitir. A migração `SearchUnaccent` cria a extensão `unaccent` (busca sem acento, ADR-076): o usuário de migração precisa do privilégio `CREATE` no banco. Monitorar `/health`, falhas de login, fila, consumo de recursos e erros inesperados, sem capturar senha ou códigos de e-mail. Atualizar dependências com testes de regressão e análise de vulnerabilidades. Publicação, SMTP real e OAuth real dependem de validação na conta da hospedagem.
 
 
 ## Segurança de avatares

@@ -92,7 +92,7 @@ export const HELP = Object.freeze({
 
 /** Tipos de cena em linguagem simples. */
 export const SCENE_KINDS = Object.freeze([
-  ["map", "Mapa com grade", "Personagens andam por casas; dá para usar paredes, luz e névoa."],
+  ["map", "Mapa tático", "Com grade (personagens andam por casas) ou com movimentação livre (em qualquer ponto), conforme o mapa; dá para usar paredes, luz e névoa."],
   ["image", "Imagem sem grade", "Uma imagem para o grupo ver, sem casas nem movimento."],
   ["text", "Apresentação textual", "Só o texto da cena, sem trocar o mapa."],
 ]);
@@ -101,6 +101,7 @@ export const sceneKindLabel = (kind) => (SCENE_KINDS.find((k) => k[0] === kind) 
 /** Tipo do cenário explicado para quem não conhece o termo técnico. */
 export function mapTypeLabel(map) {
   if (!map) return "";
+  if (map.kind === "tileset" && map.freeMovement) return "Imagem com movimentação livre (enviada por você)";
   if (map.kind === "tileset") return map.key?.startsWith("asset:") ? "Imagem com grade (enviada por você)" : "Mapa pronto com grade";
   return map.key?.startsWith("asset:") ? "Imagem sem grade (enviada por você)" : map.key?.startsWith("resource:") ? "Imagem por link da campanha" : "Cenário pronto sem grade";
 }
@@ -211,11 +212,12 @@ export function hiddenCustomizations({ layer = null, scene = null, tokens = [], 
  * Pré-validação do arranjo (o servidor confere de novo): casa dentro da grade, livre para movimento e sem outro marcador.
  * Devolve a mensagem de recusa ou "" quando a casa serve.
  */
-export function placementProblem(cells, width, height, tokens, x, y, ignoreIndex = -1) {
+export function placementProblem(cells, width, height, tokens, x, y, ignoreIndex = -1, free = false) {
   if (x < 0 || y < 0 || x >= width || y >= height) return "Escolha uma casa dentro do mapa.";
   const c = cells?.[y]?.[x];
   if (c === "m" || c === "#" || c === "d") return "Essa casa bloqueia movimento. Escolha outra.";
-  if (tokens.some((t, i) => i !== ignoreIndex && t.x === x && t.y === y)) return "Já há um marcador nessa casa.";
+  // Movimentação livre: vários marcadores podem dividir a casa (ScenePrep.ValidateTokens com free).
+  if (!free && tokens.some((t, i) => i !== ignoreIndex && t.x === x && t.y === y)) return "Já há um marcador nessa casa.";
   if (ignoreIndex < 0 && tokens.length >= 60) return "Use até 60 marcadores por cena.";
   return "";
 }

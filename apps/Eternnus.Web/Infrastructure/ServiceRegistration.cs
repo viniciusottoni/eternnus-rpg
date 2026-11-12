@@ -116,6 +116,7 @@ public static class ServiceRegistration
         OneShotLifecycleService.Configure(builder.Configuration.GetValue<int?>("OneShots:RecoveryMinutes"));
         builder.Services.AddScoped<PreparationService>(); builder.Services.AddScoped<PlayPreferences>();
         builder.Services.AddHostedService<OneShotWorker>();
+        builder.Services.AddHostedService<EmptyTableWorker>();
         builder.Services.AddRateLimiter(o =>
         {
             o.RejectionStatusCode = 429;

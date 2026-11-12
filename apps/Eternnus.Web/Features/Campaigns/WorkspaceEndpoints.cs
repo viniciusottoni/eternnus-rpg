@@ -48,7 +48,14 @@ public static class WorkspaceEndpoints
         app.MapGet("/api/notebook/{id:guid}", (Guid id, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.OwnNote(id, User(u), ct)).RequireAuthorization("Verified");
         api.MapGet("/pages/{id:guid}/versions", (Guid campaign, Guid id, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.Versions(campaign, id, User(u), ct));
         api.MapPost("/pages/{id:guid}/trash", async (Guid campaign, Guid id, PageState x, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => { await s.Delete(campaign, id, User(u), x.Revision, x.Restore, ct); return Results.NoContent(); });
-        api.MapGet("/past-sessions", (Guid campaign, int? page, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.Past(campaign, User(u), page ?? 1, ct));
+        // Linha do tempo da história: mestre escreve; membros leem só pontos publicados.
+        api.MapGet("/timeline", (Guid campaign, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.TimelineList(campaign, User(u), ct));
+        api.MapGet("/timeline/{id:guid}", (Guid campaign, Guid id, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.TimelineRead(campaign, id, User(u), ct));
+        api.MapPost("/timeline", (Guid campaign, TimelineInput x, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.TimelineSave(campaign, null, User(u), x, ct));
+        api.MapPut("/timeline/{id:guid}", (Guid campaign, Guid id, TimelineInput x, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.TimelineSave(campaign, id, User(u), x, ct));
+        api.MapPost("/timeline/{id:guid}/move", async (Guid campaign, Guid id, TimelineMove x, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => { await s.TimelineMoveTo(campaign, id, User(u), x, ct); return Results.NoContent(); });
+        api.MapDelete("/timeline/{id:guid}", async (Guid campaign, Guid id, int revision, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => { await s.TimelineDelete(campaign, id, User(u), revision, ct); return Results.NoContent(); });
+        api.MapGet("/past-sessions",(Guid campaign, int? page, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.Past(campaign, User(u), page ?? 1, ct));
         api.MapPost("/past-sessions", (Guid campaign, PastSessionInput x, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.SavePast(campaign, null, User(u), x, ct));
         api.MapPut("/past-sessions/{id:guid}", (Guid campaign, Guid id, PastSessionInput x, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.SavePast(campaign, id, User(u), x, ct));
         api.MapDelete("/past-sessions/{id:guid}", async (Guid campaign, Guid id, int revision, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeletePast(campaign, id, User(u), revision, ct); return Results.NoContent(); });
