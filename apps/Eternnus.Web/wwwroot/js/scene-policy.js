@@ -101,6 +101,7 @@ export const sceneKindLabel = (kind) => (SCENE_KINDS.find((k) => k[0] === kind) 
 /** Tipo do cenário explicado para quem não conhece o termo técnico. */
 export function mapTypeLabel(map) {
   if (!map) return "";
+  if (map.isTileMap) return "Mapa criado com tiles";
   if (map.kind === "tileset" && map.freeMovement) return "Imagem com movimentação livre (enviada por você)";
   if (map.kind === "tileset") return map.key?.startsWith("asset:") ? "Imagem com grade (enviada por você)" : "Mapa pronto com grade";
   return map.key?.startsWith("asset:") ? "Imagem sem grade (enviada por você)" : map.key?.startsWith("resource:") ? "Imagem por link da campanha" : "Cenário pronto sem grade";
@@ -115,7 +116,7 @@ const normalize = (text) => String(text ?? "").normalize("NFD").replace(/[̀-ͯ]
  */
 export function acceptsMap(sceneKind, map) {
   if (sceneKind === "map") return map.kind === "tileset";
-  if (sceneKind === "image") return map.kind === "cartographic" || map.key?.startsWith("asset:");
+  if (sceneKind === "image") return map.kind === "cartographic" || (map.key?.startsWith("asset:") && !map.isTileMap);
   return true;
 }
 

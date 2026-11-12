@@ -1,276 +1,25 @@
 // Tabuleiro da mesa: tileset desenhado em canvas a partir da grade oficial do servidor, ou imagem cartográfica.
 // Camada estática em cache; luzes, água e marcadores animados respeitam prefers-reduced-motion e abas ocultas.
 // Névoa: o servidor envia as máscaras (visível/explorado); aqui só se desenha. O mestre vê um véu translúcido e as marcas.
+import { drawTile } from "./tile-art.js";
 import { initials } from "./session-policy.js";
 import { decodeBits, MARK_KINDS } from "./fog-policy.js";
 import { helpButton } from "./help.js";
 import { mountMapGestures } from "./map-gestures.js";
 import { safeImageUrl } from "./play-policy.js";
-import { finePoint, isFreeMap, tokenAtPoint, tokenCenter } from "./free-move-policy.js";
+import { finePoint, isFreeMap, tokenCenter } from "./free-move-policy.js";
+import { drawOrder, imageBox, isImageLook, sizeFromHandle, tokenHalf, tokenScale, tokenUnder } from "./token-look.js";
 
 const reduceMotion = () =>
   matchMedia("(prefers-reduced-motion: reduce)").matches;
 const SIDE = { ally: "#7cc35b", enemy: "#d4533f", neutral: "#c9c2a6" };
 const LIGHTS = "Tb";
 
-function hash(x, y, seed = 0) {
-  let h = (x * 374761393 + y * 668265263 + seed * 2147483647) | 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
-}
 function hueOf(text) {
   let h = 0;
   for (const c of String(text)) h = (h * 31 + c.charCodeAt(0)) % 360;
   return h;
 }
-const at = (rows, x, y) =>
-  y >= 0 && y < rows.length && x >= 0 && x < rows[y].length ? rows[y][x] : "#";
-const blocks = (c) => "#T".includes(c);
-
-/** Desenha uma célula do tileset na camada estática. */
-function drawTile(g, rows, x, y, s, outdoor, timber) {
-  const c = at(rows, x, y);
-  // Entry rings inherit the adjacent surface instead of painting grass over a paved road.
-  const surface = c === "S" ? [...rows[y].slice(0, x)].reverse().find(tile => tile !== "S") || "." : c;
-  const px = x * s,
-    py = y * s,
-    r = hash(x, y);
-  // Casa nunca vista pelo jogador: o servidor nem envia o terreno.
-  if (c === "?") {
-    g.fillStyle = "#050403";
-    g.fillRect(px, py, s, s);
-    return;
-  }
-  const ground = () => {
-    if (surface === "d" || (timber && "ShTb".includes(c))) {
-      g.fillStyle = `hsl(29 31% ${24 + r * 7}%)`;
-      g.fillRect(px, py, s, s);
-      for (let i = 0; i < 4; i++) {
-        g.fillStyle = "#17120d88";
-        g.fillRect(px, py + i * s / 4, s, Math.max(1, s / 35));
-        g.fillStyle = "#e3c39325";
-        g.fillRect(px + s * .12, py + i * s / 4 + s * .1, s * .65, Math.max(.5, s / 65));
-      }
-    } else if (surface === ":") {
-      g.fillStyle = `hsl(37 30% ${35 + r * 8}%)`;
-      g.fillRect(px, py, s, s);
-      for (let i = 0; i < 7; i++) {
-        g.fillStyle = i % 2 ? "#ddc69c44" : "#52432b44";
-        g.fillRect(px + hash(x,y,i+3)*s, py + hash(x,y,i+9)*s, Math.max(1,s/24), Math.max(1,s/30));
-      }
-    } else if (surface === "," || (outdoor && "trb".includes(c))) {
-      g.fillStyle = `hsl(${92 + r * 18} ${26 + r * 10}% ${17 + r * 6}%)`;
-      g.fillRect(px, py, s, s);
-      g.strokeStyle = `hsla(${80 + r * 30} 40% 38% / .35)`;
-      g.lineWidth = Math.max(1, s / 28);
-      for (let i = 0; i < 4; i++) {
-        const bx = px + hash(x, y, i + 3) * s,
-          by = py + hash(x, y, i + 9) * s;
-        g.beginPath();
-        g.moveTo(bx, by);
-        g.lineTo(bx + (hash(x, y, i) - 0.5) * s * 0.15, by - s * 0.14);
-        g.stroke();
-      }
-    } else {
-      g.fillStyle = `hsl(${32 + r * 8} ${14 + r * 6}% ${21 + r * 7}%)`;
-      g.fillRect(px, py, s, s);
-      g.fillStyle = "#ffffff0d";
-      g.fillRect(px + 1, py + 1, s - 2, Math.max(1, s * 0.06));
-      g.fillStyle = "#0000003a";
-      g.fillRect(px, py + s - Math.max(1, s * 0.07), s, Math.max(1, s * 0.07));
-      if (r > 0.82) {
-        g.strokeStyle = "#00000055";
-        g.lineWidth = 1;
-        g.beginPath();
-        g.moveTo(px + s * 0.2, py + s * 0.3);
-        g.lineTo(px + s * 0.45, py + s * 0.55);
-        g.lineTo(px + s * 0.4, py + s * 0.8);
-        g.stroke();
-      }
-    }
-  };
-  if (blocks(c)) {
-    g.fillStyle = `hsl(28 12% ${9 + r * 4}%)`;
-    g.fillRect(px, py, s, s);
-    g.strokeStyle = "#ffffff12";
-    g.lineWidth = 1;
-    const off = y % 2 ? s / 2 : 0;
-    g.beginPath();
-    g.moveTo(px, py + s / 2);
-    g.lineTo(px + s, py + s / 2);
-    g.moveTo(px + ((off + s / 2) % s), py);
-    g.lineTo(px + ((off + s / 2) % s), py + s / 2);
-    g.moveTo(px + (off % s), py + s / 2);
-    g.lineTo(px + (off % s), py + s);
-    g.stroke();
-    if (!blocks(at(rows, x, y + 1))) {
-      // Face frontal da parede: sugere profundidade sem perspectiva real.
-      const grad = g.createLinearGradient(0, py + s * 0.62, 0, py + s);
-      grad.addColorStop(0, "#5a4a36");
-      grad.addColorStop(1, "#2a221a");
-      g.fillStyle = grad;
-      g.fillRect(px, py + s * 0.62, s, s * 0.38);
-      g.fillStyle = "#c6a46333";
-      g.fillRect(px, py + s * 0.62, s, Math.max(1, s * 0.04));
-    }
-    if (c === "T") {
-      g.fillStyle = "#3b2a18";
-      g.fillRect(px + s * 0.44, py + s * 0.5, s * 0.12, s * 0.32);
-      g.fillStyle = "#6d5434";
-      g.fillRect(px + s * 0.36, py + s * 0.46, s * 0.28, s * 0.08);
-    }
-    return;
-  }
-  if (c === "~") {
-    g.fillStyle = `hsl(${192 + r * 10} 38% ${17 + r * 5}%)`;
-    g.fillRect(px, py, s, s);
-    // Shoreline shadows follow the actual collision grid, never decorative obstacles.
-    g.strokeStyle = "#c5c5a84a";
-    g.lineWidth = Math.max(1, s * .055);
-    g.beginPath();
-    if (at(rows,x,y-1) !== "~") { g.moveTo(px,py+1); g.lineTo(px+s,py+1); }
-    if (at(rows,x-1,y) !== "~") { g.moveTo(px+1,py); g.lineTo(px+1,py+s); }
-    if (at(rows,x+1,y) !== "~") { g.moveTo(px+s-1,py); g.lineTo(px+s-1,py+s); }
-    if (at(rows,x,y+1) !== "~") { g.moveTo(px,py+s-1); g.lineTo(px+s,py+s-1); }
-    g.stroke();
-    return;
-  }
-  ground();
-  if (c === "h") {
-    g.fillStyle = "#0008";
-    g.fillRect(px+s*.12, py+s*.22, s*.86, s*.76);
-    const wood = g.createLinearGradient(px,py,px+s,py+s);
-    wood.addColorStop(0,"#946b3d"); wood.addColorStop(1,"#49301e");
-    g.fillStyle = wood;
-    g.fillRect(px+s*.06, py+s*.08, s*.84, s*.74);
-    g.strokeStyle = "#d9af6b88"; g.lineWidth = Math.max(1,s/30);
-    g.strokeRect(px+s*.12, py+s*.14, s*.72, s*.62);
-    g.strokeStyle = "#2e1d15";
-    for (let i=1;i<4;i++) { g.beginPath(); g.moveTo(px+s*.08,py+s*(.08+i*.18)); g.lineTo(px+s*.88,py+s*(.08+i*.18)); g.stroke(); }
-  }
-  if (c === "+") {
-    g.fillStyle = "#4a3320";
-    g.fillRect(px + s * 0.08, py + s * 0.08, s * 0.84, s * 0.84);
-    g.strokeStyle = "#24170d";
-    g.lineWidth = Math.max(1, s / 22);
-    for (let i = 1; i < 4; i++) {
-      g.beginPath();
-      g.moveTo(px + s * 0.08 + (s * 0.84 * i) / 4, py + s * 0.08);
-      g.lineTo(px + s * 0.08 + (s * 0.84 * i) / 4, py + s * 0.92);
-      g.stroke();
-    }
-    g.fillStyle = "#c6a463";
-    g.beginPath();
-    g.arc(px + s * 0.72, py + s * 0.5, s * 0.05, 0, Math.PI * 2);
-    g.fill();
-  }
-  if (c === "=") {
-    for (let i = 0; i < 4; i++) {
-      g.fillStyle = `hsl(32 12% ${30 - i * 5}%)`;
-      g.fillRect(px + s * 0.06, py + s * (0.08 + i * 0.22), s * 0.88, s * 0.18);
-    }
-  }
-  if (c === "r")
-    for (let i = 0; i < 5; i++) {
-      g.fillStyle = `hsl(30 8% ${22 + hash(x, y, i) * 18}%)`;
-      g.beginPath();
-      g.arc(
-        px + hash(x, y, i + 1) * s,
-        py + hash(x, y, i + 7) * s,
-        s * (0.05 + hash(x, y, i + 2) * 0.07),
-        0,
-        Math.PI * 2,
-      );
-      g.fill();
-    }
-  if (c === "S") {
-    g.strokeStyle = "#c6a4632e";
-    g.lineWidth = Math.max(1, s / 30);
-    g.beginPath();
-    g.arc(px + s / 2, py + s / 2, s * 0.32, 0, Math.PI * 2);
-    g.stroke();
-  }
-  if (c === "o") {
-    g.fillStyle = "#00000066";
-    g.beginPath();
-    g.ellipse(
-      px + s * 0.56,
-      py + s * 0.62,
-      s * 0.4,
-      s * 0.3,
-      0,
-      0,
-      Math.PI * 2,
-    );
-    g.fill();
-    const grad = g.createRadialGradient(
-      px + s * 0.42,
-      py + s * 0.38,
-      s * 0.05,
-      px + s / 2,
-      py + s / 2,
-      s * 0.4,
-    );
-    grad.addColorStop(0, "#8b7a5e");
-    grad.addColorStop(1, "#3d3326");
-    g.fillStyle = grad;
-    g.beginPath();
-    g.arc(px + s / 2, py + s / 2, s * 0.36, 0, Math.PI * 2);
-    g.fill();
-  }
-  if (c === "A") {
-    g.fillStyle = "#00000070";
-    g.fillRect(px + s * 0.12, py + s * 0.2, s * 0.86, s * 0.78);
-    g.fillStyle = "#5b4c39";
-    g.fillRect(px + s * 0.08, py + s * 0.12, s * 0.84, s * 0.72);
-    g.strokeStyle = "#c6a463";
-    g.lineWidth = Math.max(1, s / 18);
-    g.beginPath();
-    g.moveTo(px + s / 2, py + s * 0.24);
-    g.lineTo(px + s * 0.7, py + s * 0.48);
-    g.lineTo(px + s / 2, py + s * 0.72);
-    g.lineTo(px + s * 0.3, py + s * 0.48);
-    g.closePath();
-    g.stroke();
-  }
-  if (c === "b") {
-    g.fillStyle = "#00000066";
-    g.beginPath();
-    g.ellipse(px + s / 2, py + s * 0.62, s * 0.36, s * 0.2, 0, 0, Math.PI * 2);
-    g.fill();
-    g.fillStyle = "#4b3a28";
-    g.beginPath();
-    g.ellipse(px + s / 2, py + s * 0.55, s * 0.3, s * 0.18, 0, 0, Math.PI * 2);
-    g.fill();
-  }
-  if (c === "t") {
-    g.fillStyle = "#00000059";
-    g.beginPath();
-    g.ellipse(
-      px + s * 0.6,
-      py + s * 0.66,
-      s * 0.46,
-      s * 0.34,
-      0,
-      0,
-      Math.PI * 2,
-    );
-    g.fill();
-    for (let i = 0; i < 3; i++) {
-      g.fillStyle = `hsl(${118 + i * 6} 30% ${14 + i * 5 + r * 4}%)`;
-      g.beginPath();
-      g.arc(
-        px + s * (0.42 + i * 0.05),
-        py + s * (0.44 - i * 0.04),
-        s * (0.44 - i * 0.1),
-        0,
-        Math.PI * 2,
-      );
-      g.fill();
-    }
-  }
-}
-
 function buildStatic(rows, s) {
   const w = rows[0].length,
     h = rows.length;
@@ -292,7 +41,7 @@ function buildStatic(rows, s) {
     Math.max(layer.width, layer.height) * 0.75,
   );
   v.addColorStop(0, "#00000000");
-  v.addColorStop(1, "#000000aa");
+  v.addColorStop(1, "#07111766");
   g.fillStyle = v;
   g.fillRect(0, 0, layer.width, layer.height);
   return layer;
@@ -311,7 +60,7 @@ export function mapThumbnail(el, map) {
     return;
   }
   const canvas = document.createElement("canvas");
-  const s = 10;
+  const s = 24;
   const layer = buildStatic(map.rows, s);
   canvas.width = layer.width;
   canvas.height = layer.height;
@@ -333,7 +82,7 @@ function drawLights(g, rows, s, t, animate) {
           0.06 * Math.sin(t / 710 + x * 3.1 + y) * Math.sin(t / 470 + y * 1.7)
         : 1;
       const cx = (x + 0.5) * s,
-        cy = (y + (c === "T" ? 0.7 : 0.45)) * s;
+        cy = (y + (c === "T" ? 0.5 : 0.43)) * s;
       const glow = g.createRadialGradient(cx, cy, 0, cx, cy, s * 3.2 * flicker);
       glow.addColorStop(0, "rgba(255,170,70,.34)");
       glow.addColorStop(0.4, "rgba(255,120,40,.12)");
@@ -355,7 +104,11 @@ function drawLights(g, rows, s, t, animate) {
       flame.addColorStop(1, "rgba(200,60,20,0)");
       g.fillStyle = flame;
       g.beginPath();
-      g.ellipse(cx, cy - fh * 0.3, fh * 0.55, fh, 0, 0, Math.PI * 2);
+      g.moveTo(cx - fh * .48, cy);
+      g.bezierCurveTo(cx - fh * .72, cy - fh * .5, cx - fh * .1, cy - fh * .65, cx, cy - fh * 1.5);
+      g.bezierCurveTo(cx + fh * .55, cy - fh * .9, cx + fh * .16, cy - fh * .5, cx + fh * .4, cy - fh * .7);
+      g.bezierCurveTo(cx + fh * .8, cy - fh * .1, cx + fh * .25, cy + fh * .25, cx - fh * .48, cy);
+      g.closePath();
       g.fill();
     }
   g.restore();
@@ -541,10 +294,71 @@ function drawPortrait(g, img, cx, cy, radius) {
   return true;
 }
 
+/** Nome sob o marcador, a partir de 26 px por casa. */
+function drawLabel(g, token, s, cx, top) {
+  if (s < 26) return;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = `600 ${Math.max(9, s * 0.2)}px "Segoe UI", Arial, sans-serif`;
+  const label = token.label.length > 14 ? token.label.slice(0, 13) + "…" : token.label;
+  const w = g.measureText(label).width + s * 0.24;
+  g.fillStyle = "#0b0a08d9";
+  roundRect(g, cx - w / 2, top, w, s * 0.28, s * 0.08);
+  g.fill();
+  g.fillStyle = token.side === "enemy" ? "#f0b4a6" : "#efe6cf";
+  g.fillText(label, cx, top + s * 0.14);
+}
+
+/**
+ * Imagem livre (PNG com transparência): sem moldura redonda; a sombra segue o recorte. O lado aparece num anel aos pés,
+ * e oculto/percebido/selecionado usam contorno tracejado retangular. Falso se a imagem ainda não pode ser desenhada.
+ */
+function drawFreeImage(g, token, s, opts, t, cx, cy) {
+  const img = opts.portrait;
+  const width = img.naturalWidth || img.width, height = img.naturalHeight || img.height;
+  if (!width || !height) return false;
+  const box = imageBox(cx, cy, s * tokenScale(token), width, height);
+  g.save();
+  if (opts.offline) g.globalAlpha = 0.42;
+  if (token.hidden || token.perceived) g.globalAlpha = 0.55;
+  g.fillStyle = (SIDE[token.side] || SIDE.neutral) + "99";
+  g.beginPath();
+  g.ellipse(cx, box.y + box.h - s * 0.04, Math.max(s * 0.18, box.w * 0.34), Math.max(s * 0.05, box.w * 0.08), 0, 0, Math.PI * 2);
+  g.fill();
+  if (opts.active) {
+    const pulse = opts.animate ? 0.5 + 0.5 * Math.sin(t / 260) : 0.7;
+    g.shadowColor = "#f1d79c";
+    g.shadowBlur = s * (0.25 + pulse * 0.35);
+  } else {
+    g.shadowColor = "#000000a6";
+    g.shadowBlur = s * 0.12;
+    g.shadowOffsetY = s * 0.05;
+  }
+  g.drawImage(img, box.x, box.y, box.w, box.h);
+  g.shadowColor = "transparent";
+  g.shadowBlur = 0;
+  g.shadowOffsetY = 0;
+  const outline = (color, width, dash) => {
+    g.strokeStyle = color;
+    g.lineWidth = width;
+    g.setLineDash(dash);
+    g.strokeRect(box.x - s * 0.06, box.y - s * 0.06, box.w + s * 0.12, box.h + s * 0.12);
+    g.setLineDash([]);
+  };
+  if (token.hidden || token.perceived) outline(SIDE[token.side] || SIDE.neutral, Math.max(2, s * 0.05), [s * 0.1, s * 0.07]);
+  if (opts.mine) outline("#f1d79caa", Math.max(1, s * 0.025), []);
+  if (opts.selected) outline("#ffffff", Math.max(1, s * 0.04), [s * 0.12, s * 0.08]);
+  drawLabel(g, token, s, cx, box.y + box.h + s * 0.04);
+  g.restore();
+  return true;
+}
+
 function drawToken(g, token, s, opts, t) {
   const cx = (token.x + 0.5) * s,
     cy = (token.y + 0.5) * s,
-    radius = s * 0.4;
+    radius = s * 0.4 * tokenScale(token);
+  // Imagem livre ainda carregando (ou com falha): desenha o redondo com as iniciais.
+  if (isImageLook(token) && opts.portrait && drawFreeImage(g, token, s, opts, t, cx, cy)) return;
   g.save();
   if (opts.offline) g.globalAlpha = 0.42;
   if (token.hidden || token.perceived) g.globalAlpha = 0.55;
@@ -621,20 +435,10 @@ function drawToken(g, token, s, opts, t) {
   g.textAlign = "center";
   g.textBaseline = "middle";
   if (!pictured) {
-    g.font = `600 ${Math.max(9, s * 0.3)}px Georgia, serif`;
+    g.font = `600 ${Math.max(9, s * 0.3 * Math.min(2, tokenScale(token)))}px Georgia, serif`;
     g.fillText(initials(token.label), cx, cy + s * 0.01);
   }
-  if (s >= 26) {
-    g.font = `600 ${Math.max(9, s * 0.2)}px "Segoe UI", Arial, sans-serif`;
-    const label =
-      token.label.length > 14 ? token.label.slice(0, 13) + "…" : token.label;
-    const w = g.measureText(label).width + s * 0.24;
-    g.fillStyle = "#0b0a08d9";
-    roundRect(g, cx - w / 2, cy + radius + s * 0.04, w, s * 0.28, s * 0.08);
-    g.fill();
-    g.fillStyle = token.side === "enemy" ? "#f0b4a6" : "#efe6cf";
-    g.fillText(label, cx, cy + radius + s * 0.18);
-  }
+  drawLabel(g, token, s, cx, cy + radius + s * 0.04);
   g.restore();
 }
 
@@ -645,7 +449,7 @@ const BUBBLE_TONE = { healthy: "#7cc35b", wounded: "#d9b44a", critical: "#d4533f
  */
 function drawBubbles(g, token, s, bubble) {
   if (!bubble || s < 18) return null;
-  const cx = (token.x + 0.5) * s, cy = (token.y + 0.5) * s, radius = s * 0.4;
+  const cx = (token.x + 0.5) * s, cy = (token.y + 0.5) * s, radius = s * tokenHalf(token);
   let hit = null;
   g.save();
   g.textAlign = "center";
@@ -721,6 +525,14 @@ export function createBoard(host, handlers = {}) {
     cursor = null,
     dpr = 1;
   const moves = new Map();
+  // Marcador solto aguardando o servidor: fica desenhado no destino (sem voltar à origem) até o estado novo chegar.
+  // Recusa ou falta de confirmação devolve o marcador com a mesma animação curta.
+  const landing = new Map();
+  const placeKey = (t) => `${t.x}:${t.y}:${t.fx ?? ""}:${t.fy ?? ""}`;
+  // Tamanho escolhido na alça aguardando o servidor (mesma ideia de `landing`).
+  const sizing = new Map();
+  const sized = (t) => (sizing.has(t.id) ? { ...t, size: sizing.get(t.id).size } : t);
+  let resize = null, handleHit = null; // alça de redimensionar (mestre) em andamento / desenhada no último quadro
   let drag = null, suppressClick = false; // arraste de marcador em andamento
   let bubbleHits = []; // barras de vida clicáveis desenhadas no último quadro (coordenadas do tabuleiro)
   const rows = () => state?.map?.rows || [];
@@ -927,12 +739,15 @@ export function createBoard(host, handlers = {}) {
         .map((p) => p.characterId),
     );
     bubbleHits = [];
-    for (const token of state.tokens || []) {
-      if (drag?.moved && drag.token.id === token.id) continue;
-      const move = moves.get(token.id);
+    // Maiores primeiro: marcadores pequenos ficam por cima de uma criatura grande.
+    for (const raw of drawOrder(state.tokens)) {
+      if (drag?.moved && drag.token.id === raw.id) continue;
+      const token = resize?.token.id === raw.id ? { ...raw, size: resize.size } : sized(raw);
+      const land = landing.get(token.id);
+      const move = land ? null : moves.get(token.id);
       const fraction = !animate || !move ? 1 : Math.min(1, (t - move.started) / 180);
       const eased = 1 - (1 - fraction) ** 3;
-      const placed = visualOf(token);
+      const placed = land ? { ...token, x: land.x, y: land.y } : visualOf(token);
       const visual = move && fraction < 1 ? { ...placed, x: move.x + (placed.x - move.x) * eased, y: move.y + (placed.y - move.y) * eased } : placed;
       if (fraction >= 1) moves.delete(token.id);
       drawToken(
@@ -954,6 +769,7 @@ export function createBoard(host, handlers = {}) {
       const hit = view.bubbles === false ? null : drawBubbles(g, visual, cell, token.bubble);
       if (hit) bubbleHits.push({ ...hit, token });
     }
+    drawHandle();
     if (drag?.moved) {
       // Boneco arrastado acompanha o ponteiro; a casa de destino fica marcada.
       g.strokeStyle = "#f1d79c";
@@ -974,6 +790,47 @@ export function createBoard(host, handlers = {}) {
         cell - 2,
       );
     }
+  }
+  /** Alça no canto do marcador selecionado: o mestre arrasta para mudar o tamanho (o modal "Aparência" tem o campo numérico). */
+  function drawHandle() {
+    handleHit = null;
+    if (!view.resizable || !view.selected || drag?.moved || !state.tokens) return;
+    const raw = state.tokens.find((t) => t.id === view.selected);
+    if (!raw) return;
+    const token = resize ? { ...raw, size: resize.size } : sized(raw);
+    const land = landing.get(token.id);
+    const v = land ? { x: land.x, y: land.y } : visualOf(token);
+    const half = tokenHalf(token) * cell;
+    let x = (v.x + 0.5) * cell + half, y = (v.y + 0.5) * cell + half;
+    // Imagem livre: alça no canto da figura (proporção da imagem), não do quadrado.
+    const img = isImageLook(token) ? portraitFor(token.image) : null;
+    if (img) {
+      const box = imageBox((v.x + 0.5) * cell, (v.y + 0.5) * cell, cell * tokenScale(token), img.naturalWidth || img.width, img.naturalHeight || img.height);
+      x = box.x + box.w; y = box.y + box.h;
+    }
+    const r = Math.max(7, cell * 0.14) * Math.max(1, dpr * 0.75);
+    g.save();
+    g.fillStyle = "#f1d79c";
+    g.strokeStyle = "#0b0a08";
+    g.lineWidth = Math.max(1.5, dpr);
+    g.beginPath();
+    g.rect(x - r / 2, y - r / 2, r, r);
+    g.fill();
+    g.stroke();
+    if (resize) {
+      g.font = `700 ${Math.max(11, cell * 0.22)}px "Segoe UI", Arial, sans-serif`;
+      g.textAlign = "left";
+      g.textBaseline = "middle";
+      const text = `${resize.size}%`, w = g.measureText(text).width + 10;
+      g.fillStyle = "#0b0a08e6";
+      roundRect(g, x + r, y - r, w, r * 2, 4);
+      g.fill();
+      g.fillStyle = "#f6ead0";
+      g.fillText(text, x + r + 5, y);
+    }
+    g.restore();
+    // Alvo de toque com folga (dedo): ao menos 22 px de raio em pixels de tela.
+    handleHit = { x, y, r: Math.max(r, 22 * dpr), token: raw, center: { x: (v.x + 0.5), y: (v.y + 0.5) } };
   }
   // Retrato que terminou de carregar: redesenha uma vez.
   let destroyed = false;
@@ -996,8 +853,9 @@ export function createBoard(host, handlers = {}) {
     const rect = canvas.getBoundingClientRect();
     const x = Math.floor(((clientX - rect.left) * dpr - ox) / cell),
       y = Math.floor(((clientY - rect.top) * dpr - oy) / cell);
+    // cx/cy (fracionários) ajudam a achar marcadores maiores que uma casa; escritas usam só x/y.
     return x >= 0 && y >= 0 && x < rows()[0].length && y < rows().length
-      ? { x, y }
+      ? { x, y, cx: ((clientX - rect.left) * dpr - ox) / cell, cy: ((clientY - rect.top) * dpr - oy) / cell }
       : null;
   }
   /**
@@ -1012,9 +870,9 @@ export function createBoard(host, handlers = {}) {
     const p = finePoint(cx, cy, rows()[0].length, rows().length);
     return p && { ...p, cx, cy };
   }
-  // Teclado (sem cx/cy) continua por casa também no modo livre.
-  const tokenAt = (c) => free() && c.cx != null
-    ? tokenAtPoint(state.tokens, c.cx, c.cy, true)
+  // Teclado (sem cx/cy) continua por casa; o ponteiro acha também marcadores maiores que uma casa (o menor fica por cima).
+  const tokenAt = (c) => c.cx != null
+    ? tokenUnder((state.tokens || []).map(sized), c.cx, c.cy, (t) => tokenCenter(t, free()), free())
     : (state.tokens || []).find((t) => t.x === c.x && t.y === c.y);
   function activate(c) {
     if (!c) return;
@@ -1046,21 +904,41 @@ export function createBoard(host, handlers = {}) {
   };
   canvas.addEventListener("pointerdown", (e) => {
     suppressClick = false;
-    if (panning || view.mode === "paint" || !view.draggable || !tileset()) return;
+    if (panning || view.mode === "paint" || !tileset()) return;
+    const p = boardPoint(e);
+    if (handleHit && handlers.onResize && Math.hypot(p.px - handleHit.x, p.py - handleHit.y) <= handleHit.r) {
+      e.preventDefault();
+      resize = { token: handleHit.token, center: handleHit.center, size: sized(handleHit.token).size ?? 100, pointer: e.pointerId };
+      canvas.setPointerCapture?.(e.pointerId);
+      canvas.style.touchAction = "none";
+      return;
+    }
+    if (!view.draggable) return;
     const c = pointAt(e.clientX, e.clientY);
     const token = c && tokenAt(c);
     if (!token || (view.draggable !== "*" && view.draggable !== token.id)) return;
-    drag = { token, start: c, cell: c, moved: false, pointer: e.pointerId, ...boardPoint(e) };
+    // Pega o marcador onde foi tocado: o centro acompanha o ponteiro com a mesma distância (importa em marcadores grandes).
+    const center = tokenCenter(token, free());
+    const grab = { x: (p.px - center.x * cell) / dpr, y: (p.py - center.y * cell) / dpr };
+    drag = { token, start: c, cell: c, moved: false, pointer: e.pointerId, grab, ...p };
   });
   canvas.addEventListener("pointermove", (e) => {
+    if (resize && e.pointerId === resize.pointer) {
+      const p = boardPoint(e);
+      const next = sizeFromHandle(resize.center, { x: p.px / cell, y: p.py / cell }, sized(resize.token));
+      if (next !== resize.size) { resize.size = next; draw(); }
+      return;
+    }
     if (!drag || e.pointerId !== drag.pointer) return;
     const p = boardPoint(e);
     if (!drag.moved && Math.hypot(p.px - drag.px, p.py - drag.py) < cell * 0.25) return;
     if (!drag.moved) { drag.moved = true; canvas.setPointerCapture?.(e.pointerId); canvas.style.touchAction = "none"; }
-    Object.assign(drag, p, { cell: pointAt(e.clientX, e.clientY) });
+    const gx = drag.grab.x * dpr, gy = drag.grab.y * dpr;
+    Object.assign(drag, { px: p.px - gx, py: p.py - gy, cell: pointAt(e.clientX - drag.grab.x, e.clientY - drag.grab.y) });
     draw();
   });
   const endDrag = (e, cancel = false) => {
+    if (resize && e.pointerId === resize.pointer) return finishResize(cancel);
     if (!drag || e.pointerId !== drag.pointer) return;
     const { token, start, cell: target, moved } = drag;
     drag = null;
@@ -1069,11 +947,45 @@ export function createBoard(host, handlers = {}) {
     suppressClick = true;
     draw();
     // Livre: qualquer arraste muda o ponto, mesmo dentro da mesma casa.
-    if (!cancel && target && (free() || target.x !== start.x || target.y !== start.y)) {
+    if (!cancel && target && handlers.onDrop && (free() || target.x !== start.x || target.y !== start.y)) {
       status.textContent = `${token.label} solto na coluna ${target.x + 1}, linha ${target.y + 1}.`;
-      handlers.onDrop?.(token, target);
+      const entry = free() && target.cx != null
+        ? { x: target.cx - 0.5, y: target.cy - 0.5, key: placeKey(token) }
+        : { x: target.x, y: target.y, key: placeKey(token) };
+      landing.set(token.id, entry);
+      draw();
+      // onDrop devolve false quando a jogada foi recusada; sem estado novo em alguns segundos, o marcador volta.
+      Promise.resolve(handlers.onDrop(token, target))
+        .then((ok) => ok === false ? settle(token.id, entry) : setTimeout(() => settle(token.id, entry), 5000))
+        .catch(() => settle(token.id, entry));
     }
   };
+  /** Solta a alça: o tamanho fica desenhado até o servidor confirmar; recusa ou silêncio devolvem o anterior. */
+  function finishResize(cancel) {
+    const { token, size } = resize;
+    resize = null;
+    canvas.style.touchAction = view.mode === "paint" ? "none" : "";
+    suppressClick = true;
+    if (cancel || size === (sized(token).size ?? 100)) { draw(); return; }
+    const entry = { size };
+    sizing.set(token.id, entry);
+    status.textContent = `${token.label}: tamanho ${size}% da casa.`;
+    draw();
+    Promise.resolve(handlers.onResize(token, size))
+      .then((ok) => ok === false ? unsize(token.id, entry) : setTimeout(() => unsize(token.id, entry), 5000))
+      .catch(() => unsize(token.id, entry));
+  }
+  function unsize(id, entry) {
+    if (destroyed || sizing.get(id) !== entry) return;
+    sizing.delete(id);
+    draw();
+  }
+  function settle(id, entry) {
+    if (destroyed || landing.get(id) !== entry) return;
+    landing.delete(id);
+    if (!reduceMotion()) moves.set(id, { x: entry.x, y: entry.y, started: performance.now() });
+    draw();
+  }
   canvas.addEventListener("pointerup", (e) => endDrag(e));
   canvas.addEventListener("pointercancel", (e) => endDrag(e, true));
 
@@ -1099,15 +1011,15 @@ export function createBoard(host, handlers = {}) {
   });
   const disposeGestures = camera ? mountMapGestures(host, {
     scale: () => currentZoom, zoom: zoomAt,
-    cancel: () => { drag = null; stroke = null; cameraDrag = null; suppressClick = true; view = { ...view, paint: [] }; draw(); },
+    cancel: () => { drag = null; resize = null; stroke = null; cameraDrag = null; suppressClick = true; view = { ...view, paint: [] }; draw(); },
   }) : () => {};
-  const finishStroke = () => {
+  const finishStroke = (e) => {
     if (!stroke) return;
     const cells = [...stroke.values()];
     stroke = null;
     view = { ...view, paint: [] };
     draw();
-    handlers.onPaint?.(cells);
+    handlers.onPaint?.(cells, cellAt(e.clientX, e.clientY));
   };
   canvas.addEventListener("pointerup", finishStroke);
   canvas.addEventListener("pointercancel", () => { stroke = null; view = { ...view, paint: [] }; draw(); });
@@ -1183,11 +1095,21 @@ export function createBoard(host, handlers = {}) {
   return {
     update(next, nextView = view) {
       const previousKey = state?.map?.key;
-      if (previousKey !== next.map.key) { moves.clear(); resetCamera = true; }
-      else if (!reduceMotion()) {
+      if (previousKey !== next.map.key) { moves.clear(); landing.clear(); sizing.clear(); resize = null; resetCamera = true; }
+      else {
         const previous = new Map((state?.tokens || []).map(token => [token.id, token]));
         const now = performance.now();
         for (const token of next.tokens || []) {
+          const land = landing.get(token.id);
+          if (land) {
+            // Estado sem a jogada ainda (outra escrita da mesa): continua no ponto solto.
+            if (placeKey(token) === land.key) continue;
+            // Jogada confirmada: só o ajuste fino até o centro oficial, sem passar pela origem.
+            landing.delete(token.id);
+            if (!reduceMotion()) moves.set(token.id, { x: land.x, y: land.y, started: now });
+            continue;
+          }
+          if (reduceMotion()) continue;
           const old = previous.get(token.id);
           // Mesmo mapa: anima da posição desenhada anterior (inclui a posição fina no modo livre).
           if (old && (old.x !== token.x || old.y !== token.y || old.fx !== token.fx || old.fy !== token.fy)) {
@@ -1196,6 +1118,9 @@ export function createBoard(host, handlers = {}) {
           }
         }
         for (const id of moves.keys()) if (!(next.tokens || []).some(token => token.id === id)) moves.delete(id);
+        for (const id of landing.keys()) if (!(next.tokens || []).some(token => token.id === id)) landing.delete(id);
+        // Tamanho confirmado (ou marcador removido): para de sobrepor o valor do servidor.
+        for (const [id, entry] of sizing) if (!(next.tokens || []).some(token => token.id === id && token.size !== entry.size)) sizing.delete(id);
       }
       state = next;
       view = { ...view, ...nextView };
@@ -1235,6 +1160,8 @@ export function createBoard(host, handlers = {}) {
     destroy() {
       destroyed = true;
       moves.clear();
+      landing.clear();
+      sizing.clear();
       cancelAnimationFrame(frame);
       pendingSrc = "";
       image.onload = null; image.onerror = null;

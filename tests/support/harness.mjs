@@ -24,7 +24,7 @@ export function totp(secret, now = Date.now()) {
   return ((digest.readUInt32BE(digest[19] & 15) & 0x7fffffff) % 1000000).toString().padStart(6, "0");
 }
 
-export async function startEnvironment({ port = 5191, initialAdminPassword = "" } = {}) {
+export async function startEnvironment({ port = 5191, initialAdminPassword = "", startupTimeoutMs = 30000 } = {}) {
   const temp = await mkdtemp(join(tmpdir(), "eternnus-integration-"));
   const database = "eternnus_test_" + randomUUID().replaceAll("-", ""),
     container = process.env.ETERNNUS_TEST_CONTAINER || "eternnus-postgres-dev",
@@ -227,7 +227,7 @@ export async function startEnvironment({ port = 5191, initialAdminPassword = "" 
     server.stdout.on("data", (x) => (logs += x));
     server.stderr.on("data", (x) => (logs += x));
     let ready = false;
-    for (let i = 0; i < 150; i++) {
+    for (let i = 0; i < Math.ceil(startupTimeoutMs / 200); i++) {
       try {
         ready = (await fetch(origin + "/health")).ok;
       } catch {}

@@ -1,5 +1,17 @@
 // Texto público estático; catálogos avaliados sob demanda.
 const entries = {
+  "campanhas.mapas.tiles": {
+    "title": "Criar mapas com tiles",
+    "summary": "Monte seu cenário, salve no acervo e escolha quando mostrar ao grupo.",
+    "body": [
+      "Só o Mestre cria e edita mapas. Comece vazio ou copie um cenário pronto. Escolha tiles no catálogo: cada peça indica se permite passagem ou bloqueia passagem e visão. Lava e água profunda bloqueiam; o fundo submerso permite movimento.",
+      "Use pincel, retângulo preenchido ou preenchimento de área ligada. Capturar tile escolhe a peça de uma casa. Setas e Enter pintam pelo teclado; arrastar mapa e zoom ajudam a percorrer o desenho. Desfazer e Refazer guardam até 30 etapas nesta edição.",
+      "Use de 8 a 64 casas por lado e marque pelo menos seis entradas para os aventureiros. A escala define quantos metros uma casa representa. Os mapas de tiles compartilham o limite de 50 mapas da campanha.",
+      "Salvar não apresenta o mapa. Ele passa a aparecer no acervo e na escolha de cenários das cenas e sessões. Névoa, luz e personagens são preparados depois, pelos controles existentes.",
+      "Troque o mapa que está na mesa antes de editar. Alterar terreno já preparado exige confirmar a recriação da névoa, paredes, luzes e marcas e a remoção dos marcadores preparados/salvos nas cenas. Textos e fichas de personagens continuam; posicione os marcadores novamente. Salvar cópia preserva o original. Mapas de tiles são táticos, não imagens para retratos ou publicação no atlas."
+    ],
+    "audience": "master"
+  },
   "campanhas.continuidade.origem": {title:"Origem e continuidade", summary:"Continue uma campanha sem reconstruir todas as sessões.", body:["Escolha se a história começa agora ou se veio de outra mesa. Onde paramos e o arco atual são compartilhados com o grupo.","A numeração mínima vale para próximas sessões e não renumera registros existentes. Corrigir a origem preserva o acervo."], audience:"all"},
   "campanhas.acervo.cadernos": {title:"Acervo e cadernos", summary:"Páginas do mundo e notas pessoais têm acesso próprio.", body:["O mestre organiza o mundo. Cada pessoa escreve seu caderno. Só eu exclui inclusive o mestre; compartilhar permite leitura.","Segredos e versões anteriores ficam com quem pode editar. Capítulos podem pertencer a um livro. A lixeira permite recuperar páginas."], audience:"all"},
   "campanhas.continuidade.historico": {title:"Histórico anterior", summary:"Registre partidas jogadas antes de chegar ao Eternnus.", body:["O mestre informa número, título, resumo e, se souber, a data. Só registros publicados aparecem aos jogadores.","Opcionalmente, registre cada cena separadamente, com título e o que aconteceu, na ordem da sessão.","Esses registros não criam presença, rolagens ou XP retroativo. A próxima sessão continua depois do maior número conhecido."], audience:"all"},

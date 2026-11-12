@@ -7,7 +7,7 @@ export const ACTION_KINDS = Object.freeze([
   ["magia", "✦", "Magia"],
   ["item", "◈", "Item"],
 ]);
-const WALKABLE = ".,+=rSd:";
+const WALKABLE = ".,+=rSd:nsevufcw";
 
 /** Destino ao abrir uma campanha da lista: mesa ao vivo para jogador com sessão ativa; página da campanha nos demais casos. */
 export function campaignRoute(c) {

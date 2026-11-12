@@ -28,6 +28,7 @@ public partial class SessionService
             : await db.Set<CampaignMap>().SingleOrDefaultAsync(m => m.Id == mapId && m.CampaignId == campaignId, ct);
         if (map == null || !map.HasGrid) throw new RuleException(404, "Mapa com grade não encontrado.");
         if (map.Revision != x.Revision) throw new RuleException(409, "O mapa mudou em outra tela. Recarregue a mesa antes de ajustar a grade.");
+        if (map.TileData != null) throw new RuleException(409, "A grade deste mapa é editada em Mapas e cenários.");
         if (x.GridPixels > Math.Min(map.Width, map.Height)) throw new RuleException(400, "O quadrado deve caber na imagem.");
         var rows = CampaignMapView.Grid(map.Width, map.Height, x.GridPixels, x.GridOffsetX, x.GridOffsetY);
         if (map.GridPixels == x.GridPixels && map.GridOffsetX == x.GridOffsetX && map.GridOffsetY == x.GridOffsetY && map.ScaleMeters == x.ScaleMeters)

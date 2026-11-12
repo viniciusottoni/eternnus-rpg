@@ -7,7 +7,7 @@ public record CaptureSceneInput(Guid SceneId);
 /// <summary>Partes da preparação a aplicar. <c>Tokens</c> recoloca os marcadores no arranjo preparado (opcional, desmarcado por padrão).</summary>
 public record ApplySceneInput(Guid SceneId, bool Text, bool Vision, bool Layer, int SceneRevision, string? PrepVersion = null, bool Tokens = false);
 public record SaveSceneAsInput(string Name, string? SharedText = null);
-public record NpcTokenInput(Guid MasterCharacterId, int X, int Y, bool Hidden = false, bool Copy = false, int? Fx = null, int? Fy = null);
+public record NpcTokenInput(Guid MasterCharacterId, int X, int Y, bool Hidden = false, bool Copy = false, int? Fx = null, int? Fy = null, string? Appearance = null, int? Size = null);
 /// <summary><c>Index</c>: recurso simples (NPC sem modelo). <c>Field</c>: recurso da ficha-modelo do NPC (bolhas do mapa).</summary>
 public record NpcResourceInput(int Index, int Delta, string? Field = null);
 public record RecapInput(string? Text, bool Publish);
@@ -120,12 +120,13 @@ public partial class SessionService
         if (a.Session.SceneId != null) throw new RuleException(409, "Esta cena já está salva. Para outra versão, duplique-a na preparação.");
         if (await db.Scenes.CountAsync(s => s.CampaignId == a.Campaign.Id, ct) >= PreparationService.MaxScenes) throw new RuleException(409, $"A campanha aceita até {PreparationService.MaxScenes} cenas.");
         var tactical = a.Session.MapKind == MapKinds.Tileset;
-        var tokens = tactical ? (await db.SessionTokens.AsNoTracking().Where(t => t.SessionId == sessionId).ToListAsync(ct)).Select(ToSceneToken).ToList() : [];
+        var raw = tactical ? await db.SessionTokens.AsNoTracking().Where(t => t.SessionId == sessionId).ToListAsync(ct) : [];
+        var tokens = raw.Select(ToSceneToken).ToList();
         var order = (await db.Scenes.Where(s => s.CampaignId == a.Campaign.Id).MaxAsync(s => (int?)s.Order, ct) ?? 0) + 1;
         var scene = new Scene
         {
             CampaignId = a.Campaign.Id, Name = name, Kind = tactical ? SceneKinds.Map : SceneKinds.Image, MapKind = a.Session.MapKind, MapKey = a.Session.MapKey,
-            SharedText = text, Prepared = tokens, Saved = tokens.Select(t => new SceneToken { CharacterId = t.CharacterId, MasterCharacterId = t.MasterCharacterId, Label = t.Label, Side = t.Side, X = t.X, Y = t.Y, Fx = t.Fx, Fy = t.Fy, Hidden = t.Hidden, Light = t.Light }).ToList(),
+            SharedText = text, Prepared = tokens, Saved = raw.Select(ToSceneToken).ToList(),
             HasSaved = true, Order = Math.Min(order, 10000), UpdatedAt = Now,
         };
         db.Scenes.Add(scene);
@@ -147,6 +148,7 @@ public partial class SessionService
     static SceneToken ToSceneToken(SessionToken t) => new()
     {
         CharacterId = t.CharacterId, MasterCharacterId = t.MasterCharacterId, Label = t.Label, Side = t.Side, X = t.X, Y = t.Y, Fx = t.Fx, Fy = t.Fy, Hidden = t.Hidden, Light = t.Light,
+        Appearance = t.Appearance, Size = t.Size, ImageUrl = t.ImageUrl,
     };
 
     /// <summary>Recoloca marcadores da cena. Posições inválidas ou ocupadas são descartadas (criaturas) ou trocadas pelo ponto de entrada (personagens).</summary>
@@ -171,7 +173,8 @@ public partial class SessionService
             if (saved != null && Free(saved.X, saved.Y))
             {
                 taken.Add((saved.X, saved.Y));
-                db.SessionTokens.Add(new() { SessionId = s.Id, CharacterId = c.Id, Label = c.Name.Length > 40 ? c.Name[..40] : c.Name, Side = "ally", X = saved.X, Y = saved.Y, Fx = Fine(saved.Fx), Fy = Fine(saved.Fy) });
+                db.SessionTokens.Add(new() { SessionId = s.Id, CharacterId = c.Id, Label = c.Name.Length > 40 ? c.Name[..40] : c.Name, Side = "ally", X = saved.X, Y = saved.Y, Fx = Fine(saved.Fx), Fy = Fine(saved.Fy),
+                    Appearance = TokenLooks.Clean(saved.Appearance), Size = TokenLooks.CleanSize(saved.Size ?? TokenLooks.DefaultSize), ImageUrl = saved.ImageUrl });
             }
         }
         foreach (var t in source.Where(t => t.CharacterId == null).Take(60))
@@ -182,6 +185,7 @@ public partial class SessionService
             {
                 SessionId = s.Id, Label = t.Label, Side = Sides.Contains(t.Side) ? t.Side : "enemy", X = t.X, Y = t.Y, Fx = Fine(t.Fx), Fy = Fine(t.Fy), Hidden = t.Hidden,
                 Light = t.Light is >= 0 and <= TableFog.MaxRadius ? t.Light : null, MasterCharacterId = t.MasterCharacterId is { } m && npcs.Contains(m) ? m : null,
+                Appearance = TokenLooks.Clean(t.Appearance), Size = TokenLooks.CleanSize(t.Size ?? TokenLooks.DefaultSize), ImageUrl = t.ImageUrl,
             });
         }
         // Personagens sem posição salva entram pelos pontos de entrada, como na troca de mapa.
@@ -205,6 +209,8 @@ public partial class SessionService
     /// <summary>Coloca um personagem do mestre no mapa; <c>Copy</c> cria uma cópia de encontro sem alterar o original.</summary>
     public async Task<object> AddNpcTokenAsync(Guid sessionId, NpcTokenInput x, string user, CancellationToken ct)
     {
+        var appearance = x.Appearance == null ? TokenLooks.Round : TokenLooks.Require(x.Appearance);
+        var size = x.Size is { } chosen ? TokenLooks.RequireSize(chosen) : TokenLooks.DefaultSize;
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var a = await LockAsync(sessionId, user, ct); RequireMaster(a);
         var npc = await db.MasterCharacters.SingleOrDefaultAsync(m => m.Id == x.MasterCharacterId && m.CampaignId == a.Campaign.Id, ct) ?? throw new RuleException(404, "Personagem do mestre não encontrado.");
@@ -219,7 +225,7 @@ public partial class SessionService
             npc = PreparationService.CopyOf(npc, Now);
             db.MasterCharacters.Add(npc);
         }
-        var token = new SessionToken { SessionId = sessionId, Label = npc.Name, Side = npc.Side, X = x.X, Y = x.Y, Fx = fx, Fy = fy, Hidden = x.Hidden, MasterCharacterId = npc.Id };
+        var token = new SessionToken { SessionId = sessionId, Label = npc.Name, Side = npc.Side, X = x.X, Y = x.Y, Fx = fx, Fy = fy, Hidden = x.Hidden, MasterCharacterId = npc.Id, Appearance = appearance, Size = size };
         db.SessionTokens.Add(token);
         Event(a.Session, user, await NameAsync(user, ct), EventKinds.Token, $"{npc.Name} surgiu no mapa", new { tokenId = token.Id, side = npc.Side, x = x.X, y = x.Y }, masterOnly: Secret(scene, token));
         await RefreshFogAsync(a, user, ct);

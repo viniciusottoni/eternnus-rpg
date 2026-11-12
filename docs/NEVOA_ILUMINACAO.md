@@ -95,7 +95,7 @@ Todas as rotas exigem `Verified`. As escritas usam antiforgery comum e `js/api.j
 | `POST …/fog/marks`, `DELETE …/fog/marks/{id}` | Mestre | `{ id?, x, y, kind: trap\|door\|clue, label, dc?, sense?, maxDistance? }` |
 | `POST …/fog/marks/{id}/reveal` | Mestre | `{ all, userIds }` (somente jogadores da sessão) |
 | `POST …/tokens` | Mestre | Aceita também `hidden` e `light`. |
-| `POST …/tokens/{id}/settings` | Mestre | Estado completo: `{ light, vision, perception, senses, hidden, dc, detectSense, detectRange }`. Nulo = ficha/configuração. |
+| `POST …/tokens/{id}/settings` | Mestre | Estado completo: `{ light, vision, perception, senses, hidden, dc, detectSense, detectRange, label?, side?, templateId? }`. Nulo = ficha/configuração. ADR-080: `label` (1–40) e `side` (`ally`/`enemy`/`neutral`) valem só para criaturas; ausentes mantêm o atual. `templateId` (modelo permitido à campanha) vincula uma ficha a criatura que ainda não tem personagem do mestre; marcador já vinculado responde 409. Personagem de jogador com nome, lado ou ficha diferentes responde 409. Renomear atualiza o nome guardado na ordem de turnos. |
 | `POST …/tokens/{id}/reveal` | Mestre | `{ all, userIds }`. `all` deixa a criatura visível; o contrário a mantém oculta para quem não está na lista. |
 | `GET /api/campaigns/{id}/assets/maps/{mapId}/image?as=` | Mestre/jogador | Jogador com névoa ativa recebe só os pixels das casas exploradas (o resto em preto). O mestre recebe a imagem completa, ou a do jogador indicado em `as`. |
 

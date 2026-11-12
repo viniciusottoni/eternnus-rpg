@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 namespace Eternnus.Tests;
 
-public sealed class CampaignAssetsTests : IAsyncLifetime
+public sealed partial class CampaignAssetsTests : IAsyncLifetime
 {
     readonly SqliteConnection connection = new("Data Source=:memory:");
     GameDb db = null!;

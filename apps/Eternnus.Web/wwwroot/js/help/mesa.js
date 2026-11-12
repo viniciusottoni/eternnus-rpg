@@ -123,6 +123,25 @@ const entries = {
     ],
     "audience": "all"
   },
+  "mesa.turnos.liberar-movimento": {
+    "title": "Liberar movimento",
+    "summary": "Com a opção ligada, o Jogador só move o próprio personagem depois que o Mestre libera.",
+    "body": [
+      "Na vez do personagem, use “Liberar movimento”. A liberação vale só para essa vez: dar a vez a outro personagem bloqueia de novo. Em Livre, vale até você bloquear.",
+      "O Mestre continua movendo qualquer marcador. Desligue a opção em Configuração da mesa para que o Jogador mova na própria vez sem pedir."
+    ],
+    "audience": "master"
+  },
+  "mesa.marcadores.forma": {
+    "title": "Forma e tamanho do marcador",
+    "summary": "Escolha marcador redondo ou imagem livre e o tamanho de qualquer marcador.",
+    "body": [
+      "Redondo mostra o retrato recortado em círculo. Imagem livre desenha a imagem inteira, sem moldura: um PNG com fundo transparente aparece só com a figura.",
+      "O tamanho vai de 50% a 800% da casa. Selecione o marcador e arraste a alça dourada no canto, ou informe o valor em “Forma e tamanho”.",
+      "Só o Mestre muda forma, tamanho e imagem. A imagem escolhida aqui vale para o marcador, inclusive de personagens de Jogadores, sem mudar a ficha."
+    ],
+    "audience": "master"
+  },
   "mesa.rolagem.mecanicas": {
     "title": "Como ler os dados",
     "summary": "Escolha a mecânica da rolagem.",
@@ -152,6 +171,16 @@ const entries = {
     ],
     "audience": "all",
     "example": "2d6 + @forca_mod"
+  },
+  "mesa.marcadores.editar": {
+    "title": "Editar marcador",
+    "summary": "Mude nome e lado de uma criatura no mapa ou vincule uma ficha a ela.",
+    "body": [
+      "Selecione a criatura e use “Editar marcador”. O nome novo aparece no mapa e na ordem de turnos; a ficha do personagem do mestre continua com o nome dela.",
+      "“Vincular ficha” aparece só para criatura sem ficha. Depois de vincular, acompanhe vida e atributos em “Ficha do elemento”; o modelo é trocado lá.",
+      "Personagens de Jogadores mantêm nome e lado da própria ficha. Luz, visão e ocultação ficam no mesmo formulário."
+    ],
+    "audience": "master"
   },
   "mesa.npcs.ficha": {
     "title": "Ficha de NPC ou criatura",
@@ -198,6 +227,7 @@ const entries = {
     "summary": "O mapa e o grupo usam texto junto das cores.",
     "body": [
       "Aliados usam verde, inimigos vermelho e a vez atual recebe destaque dourado. A barra de vida mostra o valor e o máximo quando a ficha permite a leitura.",
+      "Nos cenários oficiais, árvores, pilares, altares, móveis, braseiros, paredes e água ocupam casas bloqueadas. Portas, escadas e escombros permitem passagem. Texturas, folhas e sombras são acabamento visual; não mudam o alcance nem as casas. Mostrar grade ajuda a conferir os limites.",
       "No mapa, cada marcador pode mostrar uma barra de vida (o primeiro recurso da ficha) e um escudo com a armadura. Toque na barra para ajustar: o dono da ficha e o Mestre podem; os demais só leem. NPCs e criaturas mostram as bolhas só para o Mestre. O botão ♥ das ferramentas mostra ou oculta as bolhas só na sua tela.",
       "A presença vem da renovação de conexão. Uma pessoa sem renovação por 45 segundos aparece ausente; isso não encerra uma campanha persistente."
     ],

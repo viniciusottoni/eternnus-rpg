@@ -154,6 +154,7 @@ export const SETTING_FIELDS = [
     options: [["free", "Livre — ações sem turnos"], ["turns", "Por turnos — o mestre concede a vez"], ["tactical", "Tática — turnos, grade e deslocamento"]], fallback: "tactical" },
   { key: "playerRollVisibility", type: "choice", label: "Quem vê as rolagens dos jogadores", help: "Jogadores não escolhem; vale para todas as rolagens deles.",
     options: [["table", "Mesa inteira"], ["master", "Quem rolou e o mestre"], ["blind", "Somente o mestre (quem rolou não vê)"]], fallback: "table" },
+  { key: "moveNeedsGrant", type: "bool", label: "Movimento só com liberação do mestre", help: "O jogador move o próprio personagem depois que você libera o movimento na vez dele. Trocar a vez bloqueia de novo." },
   { key: "fogEnabled", type: "bool", label: "Névoa ativa", help: "Jogadores veem só o que luz, visão e o mestre revelam." },
   { key: "manualReveal", type: "bool", label: "Revelação manual", help: "Com névoa, só aparece o que você revelar; luz e visão não revelam sozinhas." },
   { key: "rememberExplored", type: "bool", label: "Lembrar áreas exploradas", help: "Casas já vistas ficam atenuadas, sem mostrar criaturas." },

@@ -38,6 +38,7 @@ export function validHelpEntry(entry) {
 
 // Índice pequeno, sem parágrafos. Catálogos longos são importados ao abrir um ⓘ.
 export const HELP_KEYS = Object.freeze({
+  "campanhas.mapas.tiles": "master",
   "mesa.tela.horizontal": "all",
   "mesa.mapa.camera": "all",
   "mesa.dados.bandeja": "all",
@@ -78,6 +79,9 @@ export const HELP_KEYS = Object.freeze({
   "mesa.nevoa.ferramentas": "master",
   "mesa.nevoa.visao": "master",
   "mesa.turnos.ordem": "all",
+  "mesa.turnos.liberar-movimento": "master",
+  "mesa.marcadores.forma": "master",
+  "mesa.marcadores.editar": "master",
   "mesa.rolagem.mecanicas": "all",
   "mesa.rolagem.visibilidade": "all",
   "mesa.rolagem.formula": "all",

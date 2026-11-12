@@ -147,3 +147,9 @@ Ver CAMPANHAS_CONTINUIDADE.md. Autorização por página, sem herdar poderes do 
 - Importação CSV: só mestre, rota com limite de corpo próprio (1 MiB + 64 KiB), limitador `upload`, antiforgery comum, um único arquivo `.csv`/`.txt`. Decodificação UTF-8 estrita com recuo para Windows-1252; recusa bytes nulos, caracteres de controle e controles bidirecionais. Leitor RFC 4180 sem avaliar conteúdo, até 1.000 linhas e 100 colunas. Prévia não grava; confirmação grava numa transação sob o bloqueio da campanha. Mensagens de erro citam linha e regra, nunca o conteúdo bruto do arquivo nem exceções.
 - Fórmulas de planilha ficam como texto e a interface sempre escapa o conteúdo. Não há exportação para planilha; se for criada, neutralizar células iniciadas por `= + - @`.
 - Retrato de NPC compartilhado: rota própria confere vínculo e compartilhamento; `private, no-store` e `nosniff`.
+
+## Mapas de tiles — ADR-078
+
+Criar/editar exige Verified e proprietário da campanha conferido no banco, antiforgery comum e limite de corpo padrão. Grade limitada a 64 × 64 e 44 símbolos fixos, seis entradas e cinquenta mapas por campanha; sem HTML, SVG, URLs ou imagem enviada nesse fluxo. API de detalhe/catálogo exclusiva do Mestre; mapa ativo chega aos jogadores só pelo live mascarado. `TileData` nunca é serializado como campo alternativo.
+
+Bloqueio transacional sessão → campanha e revisão serializam terreno, camadas e preparação das cenas. Alteração do mapa atualmente apresentado é recusada. Reinicialização explícita remove explorações, luzes, marcas e posições das cenas afetadas, sem apagamento de texto ou personagens. Dados privados permanecem fora do cache PWA. Recursos gráficos são código local público; não há chamadas externas para gerar tiles.

@@ -10,8 +10,12 @@ public record FogLightInput(string? Id, int X, int Y, int Radius);
 public record FogMarkInput(string? Id, int X, int Y, string Kind, string Label, int? Dc, string? Sense, int? MaxDistance);
 public record FogRevealInput(bool All, List<string>? UserIds);
 public record FogEnabledInput(bool? Enabled);
-/// <summary>Estado completo desejado do marcador (nulo = valor da ficha/configuração).</summary>
-public record TokenSettingsInput(int? Light, int? Vision, int? Perception, string? Senses, bool Hidden, int? Dc, string? DetectSense, int? DetectRange);
+/// <summary>
+/// Estado completo desejado do marcador (nulo = valor da ficha/configuração). Nome, lado e ficha valem só para criaturas:
+/// <c>Label</c>/<c>Side</c> nulos mantêm o atual; <c>TemplateId</c> vincula uma ficha a um marcador que ainda não tem.
+/// </summary>
+public record TokenSettingsInput(int? Light, int? Vision, int? Perception, string? Senses, bool Hidden, int? Dc, string? DetectSense, int? DetectRange,
+    string? Label = null, string? Side = null, Guid? TemplateId = null);
 /// <summary>Configuração da mesa: <c>scope</c> "session" (só esta sessão) ou "campaign" (campanha toda). Settings nulo volta ao nível de cima.</summary>
 public record TableSettingsInput(TableSettings? Settings, string Scope);
 /// <summary>Configuração da campanha; nulo volta ao padrão do sistema.</summary>
@@ -120,17 +124,36 @@ public partial class SessionService
         if (senses?.Length > 400) throw new RuleException(400, "Os sentidos aceitam até 400 caracteres.");
         var sense = string.IsNullOrWhiteSpace(x.DetectSense) ? null : x.DetectSense.Trim();
         if (sense?.Length > TableFog.MaxSenseName) throw new RuleException(400, $"O sentido exigido aceita até {TableFog.MaxSenseName} caracteres.");
+        var label = x.Label == null ? null : Trim(x.Label, 40, "Dê um nome de até 40 caracteres ao marcador.");
+        if (x.Side != null && !Sides.Contains(x.Side)) throw new RuleException(400, "Lado do marcador inválido.");
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var a = await LockAsync(sessionId, user, ct); RequireMaster(a);
         var scene = await RequireSceneAsync(a, ct);
         var token = scene.Raw.GetValueOrDefault(tokenId) ?? throw new RuleException(404, "Marcador não encontrado.");
+        var creature = token.CharacterId == null;
+        if (!creature && ((label != null && label != token.Label) || (x.Side != null && x.Side != token.Side) || x.TemplateId != null))
+            throw new RuleException(409, "Nome, lado e ficha de personagem de jogador vêm da ficha do jogador.");
+        if (x.TemplateId != null && token.MasterCharacterId != null)
+            throw new RuleException(409, "Este marcador já tem ficha. Troque o modelo em “Ficha do elemento”.");
+        var before = token.Label;
         token.Light = x.Light; token.Vision = x.Vision; token.Perception = x.Perception; token.Senses = senses;
-        if (token.CharacterId == null)
+        if (creature)
         {
             if (token.Hidden && !x.Hidden) token.RevealedTo = [];
             token.Hidden = x.Hidden; token.Dc = x.Dc; token.DetectSense = sense; token.DetectRange = x.DetectRange;
+            if (label != null) token.Label = label;
+            if (x.Side != null) token.Side = x.Side;
+            // Vincular ficha: a criatura nasce com o nome e o lado atuais do marcador.
+            if (x.TemplateId != null) token.MasterCharacterId = await CreatureAsync(a, token.Label, token.Side, x.TemplateId, null, ct);
+            // A ordem de turnos guarda uma cópia do nome: acompanha a troca.
+            if (token.Label != before)
+            {
+                var order = TurnOrders.Parse(a.Session.TurnOrder);
+                if (TurnOrders.Relabel(order, "t:" + token.Id, token.Label)) a.Session.TurnOrder = TurnOrders.Serialize(order);
+            }
         }
-        Event(a.Session, user, await NameAsync(user, ct), EventKinds.Token, $"Mestre ajustou {token.Label}", null, masterOnly: true);
+        var text = token.Label != before ? $"Mestre renomeou {before} para {token.Label}" : x.TemplateId != null ? $"Mestre vinculou uma ficha a {token.Label}" : $"Mestre ajustou {token.Label}";
+        Event(a.Session, user, await NameAsync(user, ct), EventKinds.Token, text, x.TemplateId != null ? new { tokenId, masterCharacterId = token.MasterCharacterId } : null, masterOnly: true);
         await RefreshFogAsync(a, user, ct);
         await CommitAsync(tx, a.Session, ct);
     }
@@ -222,6 +245,7 @@ public partial class SessionService
     static object MasterToken(SessionToken t, FogToken f, string? image = null) => new
     {
         t.Id, t.CharacterId, t.Label, t.Side, t.X, t.Y, t.Fx, t.Fy, t.LastMovedTurn, light = f.Light, vision = f.Vision, perception = f.Perception, image, masterCharacterId = t.MasterCharacterId,
+        appearance = t.Appearance, size = t.Size, imageUrl = t.ImageUrl,
         overrides = new { light = t.Light, vision = t.Vision, perception = t.Perception, senses = t.Senses },
         hidden = t.CharacterId == null && t.Hidden, revealedTo = t.RevealedTo, dc = t.Dc, detectSense = t.DetectSense, detectRange = t.DetectRange,
     };
@@ -230,6 +254,8 @@ public partial class SessionService
     static object PlayerToken(SessionToken t, FogToken f, bool perceived, string? image = null) => new
     {
         t.Id, t.CharacterId, label = perceived ? "?" : t.Label, t.Side, t.X, t.Y, t.Fx, t.Fy, t.LastMovedTurn, light = f.Light, perceived, image = perceived ? null : image,
+        // Percebido não revela forma nem porte: marcador redondo padrão.
+        appearance = perceived ? TokenLooks.Round : t.Appearance, size = perceived ? TokenLooks.DefaultSize : t.Size,
     };
 
     /// <summary>Mapa, marcadores e névoa que <paramref name="viewer"/> pode receber. O mestre recebe tudo; jogadores, só o que enxergam.</summary>

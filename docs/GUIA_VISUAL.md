@@ -6,6 +6,8 @@ Evolução de novembro: [Jornada e atlas](PROGRESSAO_CENARIOS.md) documenta comp
 
 ## Direção oficial
 
+Tiles oficiais (ADR-077): pedra irregular com juntas, lascas e musgo; tábuas com veios e pregos; copas recortadas com galhos e agrupamentos de folhas; pilares facetados, altares com tecido, mesas conectadas na estalagem e caixotes com travessas nos armazéns. Água azul-petróleo com margens recortadas, braseiros de metal e chamas desenhadas com curvas. Luz superior quente e sombras discretas preservam a paleta medieval. A variação é estável e os detalhes finos somem em casas menores que 22 pixels de desenho. Miniaturas usam 24 pixels por casa. Silhuetas, sombras e margens ficam dentro das casas de origem; marcadores, alcance e névoa continuam em camadas superiores.
+
 O foco visual é o game medieval dos mockups, emulado com elegância e simplicidade. O painel lateral ajuda a localizar informações; não deve substituir a atmosfera da referência por um dashboard genérico. Priorizar leitura, ações previsíveis e conteúdo relevante. Uma tela não deve exigir que o usuário decifre seus ornamentos para operar.
 
 | Referência em `assets` | Aplicação |
@@ -88,6 +90,7 @@ Texto funcional usa fontes do sistema. O produto não depende de serviço extern
 | Cartão do grupo `.party-card` | `table.js` | Avatar, personagem, nível, vida e presença. Turno atual com borda dourada e selo ⌛. Mestre (ou o próprio jogador) abre a ficha pelo cartão. Avatar enviado que não puder ser exibido a outro participante cai no avatar padrão (`guardAvatars`). |
 | Tabuleiro `.board` | `table-map.js` | Canvas com foco visível; setas movem o cursor e Enter confirma; Esc cancela o modo. Marcadores: verde aliado, vermelho inimigo, aura dourada no turno atual. |
 | Bolhas do marcador | `table-map.js` | Barra de vida acima do marcador (verde, âmbar, vermelho, cinza ao zerar) com números a partir de 20 px por casa; escudo azul-aço com a armadura. Barra ajustável tem contorno dourado mais forte. |
+| Forma e tamanho do marcador (ADR-079) | `table-map.js`; `token-look.js` | Redondo: retrato em círculo com contorno da cor do lado. Imagem livre: figura inteira sem moldura, sombra que segue o recorte do PNG, anel translúcido da cor do lado aos pés e contorno retangular tracejado quando oculta, percebida ou selecionada. Tamanho de 50% a 800% da casa; maiores são desenhados antes, para que os menores fiquem por cima. Marcador selecionado pelo mestre ganha alça quadrada dourada no canto, com o percentual durante o arraste. |
 | Bandeja de dados `.dice-tray` | `table.js`, `sessions.css` | Faixa própria à direita do mapa (o mapa encolhe, sem cobrir casas); celular: duas colunas de 44 px. Destaque do resultado `.roll-spotlight` no alto do palco, sem animação com `prefers-reduced-motion`. |
 | Painel de registros `.side-panel` | `table.js` | Abas do mestre (Chat, Rolagens, Histórico, Notas) e do jogador (Chat, Rolagens, Sua ficha). Chat aceita `/r 1d20+3`. |
 | Barra de turno `.turn-bar` | `table.js` | Mestre: registrar nota, mostrar mapa, definir turno, abrir ficha e próximo turno. Jogador: atacar, habilidade, magia, item, mover, defender e encerrar turno, desabilitados com motivo fora da vez. |
@@ -226,6 +229,7 @@ Celular (≤ 900 px): o selo ocupa linha própria no topo; alvos de 44 px no sel
 ## Formulários: alinhamento e foco (revisão de 9 nov. 2026)
 
 - **Altura única:** controles de uma linha (texto, data/hora, select) têm 44 px. Botões em linha com campos usam a mesma altura.
+- **Rótulo com margem:** `label` global tem `margin-bottom: 5px`. Em linha com `align-items: end`, zerar a margem do rótulo; senão botões e caixas descem 5 px abaixo do campo. Campos de texto/número/busca têm 44 px exatos (regra de especificidade zero em `styles.css`), iguais a selects e botões. Editor de tiles (`.tile-editor`) aplica o mesmo e centraliza “Mostrar grade” na altura de 44 px.
 - **Barras de filtro:** levam `role="search"`, alinham pela base e não recebem dicas automáticas. Os botões descem juntos quando não cabem.
 - **Quatro ou mais ações:** usar `actionBar(tools, main)` de `js/ui.js`. Ferramentas à esquerda; perigo e primária à direita, primária por último. Sem espaço, cada grupo vai para sua linha (nunca um botão órfão). Em modal, a barra fica fixa no rodapé da rolagem (ADR-071).
 - **Dicas automáticas:** só em campos obrigatórios, com mínimo, faixa numérica ou texto longo. Campo curto opcional não mostra “Até N caracteres”.
@@ -252,3 +256,9 @@ Preparação de cenas e de mapas/cenários reutiliza a mesma câmera, comandos c
 - O mesmo selo aparece no título do cartão de campanha, nas abas/subabas da campanha, nos salões da Guilda, no botão Moderação e na aba Tickets do painel admin (`newsSlot`, atualizado junto com o menu).
 - Item novo (`.is-new`): filete vermelho à esquerda e etiqueta “Novo”/“Nova” (texto, não só cor). Linhas de tabela usam o filete na primeira célula.
 - Vermelho fica reservado a “há algo novo para você”; erros e perigo continuam com `--danger`. O selo entra com um leve aumento só sem `prefers-reduced-motion`.
+
+## Vinte cenários e editor de mapas — ADR-078
+
+Cenários usam materiais próprios: neve azulada e pinheiros, capim ocre e acácias, dunas/cactos, mata escura, sarcófagos/lápides, telhados, basalto/lava e fundo submerso/corais. Objetos acompanham o chão vizinho para evitar quadrados de outro bioma; telhados adjacentes formam construções contínuas. Atlas, editor, seletor e mesa compartilham o renderizador Canvas. O catálogo de peças mostra nome e miniatura, seleção dourada e descrição textual de passagem/visão; não depende só da cor.
+
+Editor no modal compartilhado: metadados e ferramentas acima, catálogo por grupos à esquerda e tabuleiro à direita. Em até 700 px o catálogo fica acima da área de desenho, com rolagem própria e alvos de 44 px. Estado do rascunho/entradas em `role=status`; falha de salvar mantém o desenho e aparece no feedback comum. Zoom/pan e teclado usam `createBoard`, sem novo ciclo de animação.

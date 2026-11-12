@@ -24,6 +24,8 @@ public sealed record TableSettings
     public bool ManualReveal { get; init; }
     /// <summary>Quem vê as rolagens dos jogadores (<see cref="RollVisibility"/>: table, master ou blind). Jogadores não escolhem.</summary>
     public string PlayerRollVisibility { get; init; } = RollVisibility.Table;
+    /// <summary>Jogador só move o próprio personagem depois que o mestre libera o movimento do turno (ver <see cref="GameSession.MoveGrantTurn"/>).</summary>
+    public bool MoveNeedsGrant { get; init; } = true;
 
     public static readonly TableSettings Default = new();
     static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -138,9 +140,9 @@ public static class TableFog
                 var c = map.Rows[y][x];
                 row[x] = c switch
                 {
-                    '#' or 'o' or 'T' => Wall,
-                    't' or '~' or 'h' or 'A' or 'b' => BlockMove,
                     '+' => DoorOpen,
+                    _ when MapTiles.SightBlocks.Contains(c) => Wall,
+                    _ when !map.CanStand(x, y) => BlockMove,
                     _ => Free,
                 };
                 if (c == 'T' && settings.TorchRadius > 0) lights.Add(new() { Id = $"t{x}-{y}", X = x, Y = y, Radius = settings.TorchRadius });

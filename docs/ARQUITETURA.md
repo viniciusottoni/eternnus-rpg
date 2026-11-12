@@ -2,7 +2,7 @@
 
 Névoa e iluminação: regras puras em `Domain/TableFog.cs` (`FogGrid`, `FogRules`, `TableSettings`, `MapFogState`); composição e imagem mascarada em `Application/TableFogService.cs`; casos de uso da mesa em `Application/SessionFog.cs` (parte de `SessionService`); preparação em `CampaignAssetsService`. Cliente: `js/fog-policy.js` (puro), `js/table-settings.js` (formulário), `js/fog-editor.js` (sob demanda) e camada de névoa em `js/table-map.js`. Ver [NEVOA_ILUMINACAO.md](NEVOA_ILUMINACAO.md).
 
-Evolução de jornada e atlas: `Domain/Progression` centraliza contadores compostos e os 21 marcos; `ProgressEndpoints` projeta progresso histórico sem escrever em GET. `SessionService` concede XP elegível também antes da limpeza explícita de one-shots. `js/map-picker.js` compartilha escolha e busca de cenários; `Domain/BattleMaps` continua sendo a única fonte das oito grades/referências oficiais. Ver [PROGRESSAO_CENARIOS.md](PROGRESSAO_CENARIOS.md) para compatibilidade e limitações.
+Evolução de jornada e atlas: `Domain/Progression` centraliza contadores compostos e os 21 marcos; `ProgressEndpoints` projeta progresso histórico sem escrever em GET. `SessionService` concede XP elegível também antes da limpeza explícita de one-shots. `js/map-picker.js` compartilha escolha e busca de cenários; `Domain/BattleMaps` continua sendo a única fonte das vinte grades/referências oficiais. Ver [PROGRESSAO_CENARIOS.md](PROGRESSAO_CENARIOS.md) para compatibilidade e limitações.
 
 ## Objetivo e limites
 
@@ -69,6 +69,8 @@ Leitura: `GET /live?after=n` é somente leitura. Ela confere a revisão no banco
 Visibilidade: jogadores não recebem notas privadas nem o objetivo inicial; somente o mestre lista sessões e abre o histórico completo da sessão. Participantes leem fichas compartilhadas; fichas privadas e históricos de alteração ficam restritos ao dono e ao mestre autorizado. O detalhe da campanha não expõe e-mails dos membros. Ver [FICHAS_PRIVACIDADE.md](FICHAS_PRIVACIDADE.md).
 
 ## Frontend
+
+Arte dos cenários oficiais (ADR-077): `js/tile-art.js` desenha os materiais e objetos em Canvas 2D, com variação determinística por coordenada. `table-map.js` reutiliza o módulo no editor, na mesa e nas miniaturas, mantendo a camada estática em memória e os ciclos existentes de água/luz. Cada desenho é recortado à própria casa, inclusive sombras e galhos; `?` é preenchido opaco. Não há estado autoritativo, dependência gráfica externa ou mudança de grade nessa camada.
 
 ES Modules nativos, servidos pelo mesmo host. Não há framework ou processo Node em produção. O cliente não guarda senha, cookie de sessão ou token de provedor em localStorage.
 
@@ -189,3 +191,10 @@ Câmera compartilhada (ADR-057): table-map.js recebe um host de controles via ha
 ## Indicadores de novidade (ADR-069)
 
 `Domain/Notices.cs` define `Notice` (aviso por leitor, só campanhas), `ReadMark` (marca de leitura por instante), `NoticeAreas` e `ReadScopes`. `Application/NoticeService.cs` reúne a gravação estática chamada pelos casos de uso (`NotifyAsync`, `ForgetAsync`, `MarkAsync`, sem `SaveChanges` próprio, dentro da transação de quem publica) e a leitura/visto usados por `Features/Notices/NoticeEndpoints.cs`. Pontos de gravação: `SessionService.StartAsync/EndAsync`, `SessionScenes.RecapAsync`, `WorkspaceService.Save/Delete/SavePast`, `WorkspaceChapters.SaveChapter`, `WorkspaceAtlas.PublishMap`, `WorkspaceTimeline.TimelineSave/TimelineDelete`, `PreparationService.SaveNpcAsync/DeleteNpcAsync/ScheduleAsync`, `CampaignService.JoinAsync` e `GuildService.CreateTopicAsync/ReplyAsync` (marca própria). Cliente: `js/notices.js` (contadores, selos `newsBadge`/`newsSlot`, destaque `highlightNew`/`keepHighlighted`, `markSeen`), usado por `layout.js`, `app.js`, `campaigns.js`, `one-shots.js`, `campaign-page.js`, `guild.js`, `progress.js`, `support.js` e `admin.js`.
+
+## Editor de tiles — ADR-078
+
+`Domain/MapTiles.cs` define o catálogo e valida grades; `BattleMaps.cs` contém vinte cenários oficiais. `CampaignTileMaps.cs` é parte de `CampaignAssetsService`, usa o bloqueio comum e persiste `CampaignMap.TileData`. `CampaignMapView` converte linhas em `rows`, marca `isTileMap` e omite o texto integral do serializador para preservar a máscara do jogador. A migração adiciona somente uma coluna anulável aos mapas antigos.
+
+`tile-map-editor.js` é carregado sob demanda pelo acervo; `tile-map-policy.js` concentra pintura, tamanho e validação de UX; `tile-art.js` mantém os 44 desenhos. `createBoard` fornece câmera, teclado, pintura e descarte. Sem novo cliente HTTP, menu, modal ou estado autoritativo no navegador. Preparação/cenas compartilham o bloqueio sessão → campanha para serializar edição do terreno com posições e camadas.
+| `js/token-look.js` | Regras puras da forma dos marcadores (ADR-079): redondo ou imagem livre, tamanho em % da casa (mesmos limites de `TokenLooks` em `Domain/Sessions.cs`), área de clique, alça de redimensionar e ordem de desenho. O servidor guarda e confere; a liberação do movimento (`GameSession.MoveGrantTurn`) é checada em `SessionService.MoveTokenAsync`. |

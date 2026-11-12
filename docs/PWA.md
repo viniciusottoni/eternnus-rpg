@@ -55,6 +55,8 @@ Uma publicação deve enviar uma versão coerente de HTML, módulos, CSS, manife
 
 ### Versão atual
 
+ADR-077: `eternnus-public-shell-v56` inclui `js/tile-art.js`, módulo público de desenho procedural, e atualiza o desenho compartilhado e a ajuda de legenda. Lista explícita revisada; nenhuma grade da API, imagem privada ou estado de sessão entra no cache. Sem `skipWaiting` ou recarga automática.
+
 Versão histórica: `eternnus-public-shell-v19`. Incluiu o novo módulo público `map-picker.js`, acabamento compartilhado, jornada com progresso de conquistas e renderização evoluída dos cenários. Lista permitida revisada: nenhuma resposta do atlas, perfil, XP, sessão ou arquivo privado é armazenada. O worker continua aguardando o fechamento das versões anteriores, sem `skipWaiting` ou recarga automática. O parágrafo seguinte registra a evolução anterior.
 
 `eternnus-public-shell-v18` inclui os módulos públicos de sessões/mesa, perfil, administração, suporte, biblioteca, Guilda, progressão, editor, fórmulas e ficha/PDF preenchido, além de campaign-assets, temporary-images e session-presence. A v18 também traz o explorador de pastas da aba Mapas e cenários (campaign-assets.js, policy.js e sessions.css) e corrige o histórico de sessão (session-history.js importava `guardAvatars` de forma ausente e a rota falhava). A v17 traz a página One-shot e leva Fichas-modelo para o Painel admin (Suporte e Fichas-modelo saem do menu do admin); a lista permitida foi revisada e permanece sem dados autenticados. A v16 ajusta o detector de manutenção para reconhecer também o HTML app_offline servido pelo IIS com status HTTP 200. A v15 incorporou o módulo público maintenance.js para detectar janelas de deploy sem recarregar uma aba ativa. A v14 atualizou a apresentação móvel da marca e da conta. Estado da mesa, mapas enviados, imagens temporárias, PDFs privados, fichas, perfil e histórico continuam fora do cache. A lista efetiva está em js/pwa-policy.js. As bibliotecas locais pdf.js/pdf-lib e suas fontes acompanham a publicação, mas são carregadas pela rede e não pertencem ao precache.
@@ -125,3 +127,17 @@ Shell v46 (ADR-067): `controlsHtml` passa a ser a barra única das listas (busca
 Shell v48 (ADR-069): indicadores de novidade. Acrescenta `js/notices.js` à lista explícita (só código público; contadores e chaves vêm de `/api/notices`, que nunca entra no cache). Atualiza `app.js`, `layout.js`, `campaigns.js`, `one-shots.js`, `campaign-page.js`, `campaign-prep.js`, `guild.js`, `progress.js`, `support.js`, `admin.js` e `styles.css`.
 
 Shell v50 (ADR-070): bandeja de dados, bolhas nos marcadores, mapa solto na mesa e UVTT. Acrescenta `js/vtt-import-policy.js` e `js/map-import.js` à lista explícita (só código público; imagens, mapas, camadas e respostas da mesa continuam fora do cache). Atualiza `table.js`, `table-map.js`, `play-policy.js`, `campaign-assets.js`, `help/mesa.js`, `help-policy.js` e `sessions.css`. O worker continua sem `skipWaiting` nem recarga de sessão ativa.
+
+## Tiles próprios — ADR-078
+
+PWA: o incremento v57 acrescenta `js/tile-map-editor.js` e `js/tile-map-policy.js` à lista pública explícita, junto do renderizador já público; as versões seguintes conservam esses arquivos. O catálogo obtido por API, as grades de campanha, camadas, rascunhos e estados de sessão não são cacheados. O worker não força atualização nem recarrega mesas ativas.
+
+## Forma dos marcadores — ADR-079
+
+`eternnus-public-shell-v59` acrescenta `js/token-look.js` (regras puras de forma, tamanho e clique dos marcadores, sem dados) à lista pública explícita e atualiza `table-map.js`, `table.js`, `table-tools.js`, `scene-editor.js`, `fog-policy.js`, `table-settings.js`, o catálogo de ajuda da mesa e `sessions.css`. Imagens de marcadores (`…/tokens/{id}/portrait`), estado ao vivo e a liberação do movimento vêm sempre de `/api` e nunca são cacheados. Sem `skipWaiting` ou recarga automática.
+
+## Editar marcador — ADR-080
+
+`eternnus-public-shell-v60` atualiza `table.js` (modal “Editar marcador”), `sessions.css` e o catálogo de ajuda da mesa; nenhum arquivo entra ou sai da lista pública explícita. Estado ao vivo e fichas vêm de `/api` e nunca são cacheados. Sem `skipWaiting` ou recarga automática.
+
+`eternnus-public-shell-v61` atualiza `styles.css` e `sessions.css` (alinhamento vertical de campos, botões e caixas do editor de tiles e altura única de 44 px dos campos de texto). Nenhum arquivo entra ou sai da lista pública explícita. Sem `skipWaiting` ou recarga automática.

@@ -6,6 +6,7 @@ import { api } from "./api.js";
 import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
 import { DICE, MASTER_VISIBILITY, VISIBILITY, diceNotation, specFromForm, visibilityLabel } from "./play-policy.js";
 import { isFreeMap, placement } from "./free-move-policy.js";
+import { LOOK_IMAGE, LOOK_ROUND, MAX_SIZE, MIN_SIZE, SIZE_STEP, DEFAULT_SIZE, clampSize } from "./token-look.js";
 
 const radios = (name, options, current) =>
   options.map(([v, l]) => `<label class="check"><input type="radio" name="${name}" value="${esc(v)}" ${v === current ? "checked" : ""}> ${esc(l)}</label>`).join("");
@@ -186,6 +187,48 @@ export function openTurnOrder({ base, live }) {
   };
 }
 
+/**
+ * Forma e tamanho do marcador (ADR-079): redondo ou imagem livre e porcentagem da casa. Usado ao posicionar e em "Forma e tamanho".
+ * A imagem livre usa a imagem do marcador ou do personagem do mestre; PNG com transparência fica sem fundo.
+ */
+export function lookFields(prefix, current = {}) {
+  const look = current.appearance === LOOK_IMAGE ? LOOK_IMAGE : LOOK_ROUND;
+  return `<fieldset class="token-look"><legend>Forma no mapa${helpButton("mesa.marcadores.forma", "Forma e tamanho do marcador")}</legend>
+    <div class="token-look-choices">${radios("appearance", [[LOOK_ROUND, "Marcador redondo"], [LOOK_IMAGE, "Imagem livre (PNG sem fundo)"]], look)}</div>
+    <div class="field"><label for="${prefix}-size">Tamanho (% da casa)</label><input id="${prefix}-size" name="size" type="number" min="${MIN_SIZE}" max="${MAX_SIZE}" step="${SIZE_STEP}" value="${clampSize(current.size ?? DEFAULT_SIZE)}" required inputmode="numeric" aria-describedby="${prefix}-size-hint"><small class="form-help" id="${prefix}-size-hint">100% ocupa uma casa; 200% serve para uma criatura grande. No mapa, arraste a alça dourada do marcador selecionado.</small></div>
+  </fieldset>`;
+}
+
+/** Valores do formulário. Imagem livre sem imagem disponível é recusada antes do envio. */
+export function lookFromForm(data, hasImage) {
+  const appearance = data.appearance === LOOK_IMAGE ? LOOK_IMAGE : LOOK_ROUND;
+  const size = Math.round(Number(data.size));
+  if (!Number.isFinite(size) || size < MIN_SIZE || size > MAX_SIZE) throw new Error(`Use um tamanho de ${MIN_SIZE}% a ${MAX_SIZE}% da casa.`);
+  if (appearance === LOOK_IMAGE && !hasImage) throw new Error("Escolha ou envie uma imagem para usar a imagem livre.");
+  return { appearance, size };
+}
+
+/** Mestre: forma, tamanho e imagem própria de qualquer marcador, inclusive dos jogadores. */
+export async function openTokenLook({ base, campaignId, token }) {
+  const sheets = await import("./npc-sheet.js");
+  const images = await sheets.imageChoices(campaignId).catch(() => []);
+  // Sem imagem própria, a imagem livre usa a do personagem do mestre (quando há).
+  const inherited = !token.imageUrl && token.image && token.masterCharacterId;
+  modal(
+    `◐ ${token.label}`,
+    `<form id="token-look-form">${lookFields("f-tlook", token)}${sheets.imageFields("f-tlook-img", token.imageUrl || "", images)}<p class="form-help">${inherited ? "Sem imagem própria, o marcador usa a imagem do personagem do mestre." : token.characterId ? "A imagem vale só para este marcador; a ficha do jogador não muda." : "Sem imagem, o marcador mostra as iniciais."}</p>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">Salvar</button></div></form>`,
+  );
+  $("#token-look-form").onsubmit = (e) => {
+    e.preventDefault();
+    submitForm(e.currentTarget, async (data) => {
+      const imageUrl = await sheets.imageFromUpload(data, campaignId, token.label);
+      const look = lookFromForm(data, !!imageUrl || !!inherited);
+      await api(`${base}/tokens/${token.id}/appearance`, "POST", { ...look, imageUrl });
+      $("#modal").close();
+    });
+  };
+}
+
 /** Resumo da ficha do NPC/criatura (recursos e destaques do modelo) para acompanhar o estado na mesa. */
 function npcSummary(n) {
   if (!n.sheet) return "";
@@ -201,7 +244,7 @@ export async function openNpcs({ base, live, campaignId, cell }) {
   modal(
     "♞ Personagens do mestre",
     `${onMap.length ? `<h3>No mapa</h3><ul class="npc-live">${onMap.map((n) => `<li class="metal"><strong>${esc(n.name)} <small class="npc-kind">${n.kind === "creature" ? "Criatura" : "Personagem"}</small></strong>${npcSummary(n)}<span class="npc-buttons">${button("▣ Ficha", "", "", "subtle small", `data-sheet="${esc(n.id)}"`)}${n.image ? button("◩ Imagem", "", "", "subtle small", `data-image="${esc(n.tokenId)}"`) : ""}</span>${(n.hasSheet ? [] : n.resources).map((r, i) => `<span class="npc-res">${esc(r.label)}: <b>${r.value}${r.max != null ? "/" + r.max : ""}</b> <button type="button" class="subtle small" data-npc="${esc(n.id)}" data-i="${i}" data-d="-1" aria-label="Diminuir ${esc(r.label)} de ${esc(n.name)}">−</button><button type="button" class="subtle small" data-npc="${esc(n.id)}" data-i="${i}" data-d="1" aria-label="Aumentar ${esc(r.label)} de ${esc(n.name)}">+</button></span>`).join("")}</li>`).join("")}</ul>` : ""}
-    ${cell ? `<h3>Colocar na casa ${cell.x + 1}, ${cell.y + 1}</h3>${data.items.filter((n) => !n.copy).length ? `<ul class="npc-pick">${data.items.filter((n) => !n.copy).map((n) => `<li><span>${esc(n.name)}<small>${esc(n.summary || "")}</small></span><button type="button" class="subtle small" data-place="${esc(n.id)}" data-copy="1">Cópia para o encontro</button><button type="button" class="subtle small" data-place="${esc(n.id)}">Original</button></li>`).join("")}</ul>` : `<p class="muted">Crie personagens do mestre na página da campanha, aba Cenas.</p>`}` : `<p class="form-help">Para colocar um personagem, use “Adicionar ao mapa” e escolha a casa.</p>`}`,
+    ${cell ? `<h3>Colocar na casa ${cell.x + 1}, ${cell.y + 1}</h3>${data.items.filter((n) => !n.copy).length ? `<div id="npc-look">${lookFields("f-nlook")}</div><ul class="npc-pick">${data.items.filter((n) => !n.copy).map((n) => `<li><span>${esc(n.name)}<small>${esc(n.summary || "")}</small></span><button type="button" class="subtle small" data-place="${esc(n.id)}" data-copy="1">Cópia para o encontro</button><button type="button" class="subtle small" data-place="${esc(n.id)}">Original</button></li>`).join("")}</ul>` : `<p class="muted">Crie personagens do mestre na página da campanha, aba Cenas.</p>`}` : `<p class="form-help">Para colocar um personagem, use “Adicionar ao mapa” e escolha a casa.</p>`}`,
   );
   $("#modal-body").onclick = async (e) => {
     const b = e.target.closest("[data-npc],[data-place],[data-sheet],[data-image]");
@@ -210,7 +253,9 @@ export async function openNpcs({ base, live, campaignId, cell }) {
       if (b.dataset.sheet) return await (await import("./npc-sheet.js")).openNpcSheet({ campaignId, npcId: b.dataset.sheet });
       if (b.dataset.image) { const n = onMap.find((x) => x.tokenId === b.dataset.image); return (await import("./npc-sheet.js")).showImage(n?.image, n?.name); }
       if (b.dataset.place) {
-        await api(`${base}/npc-tokens`, "POST", { masterCharacterId: b.dataset.place, ...placement(cell, isFreeMap(live.map)), copy: b.dataset.copy === "1" });
+        const form = { appearance: $("#npc-look input[name=appearance]:checked")?.value, size: $("#f-nlook-size")?.value };
+        const look = lookFromForm(form, true); // sem imagem do NPC, o mapa mostra o redondo com as iniciais
+        await api(`${base}/npc-tokens`, "POST", { masterCharacterId: b.dataset.place, ...placement(cell, isFreeMap(live.map)), copy: b.dataset.copy === "1", ...look });
         $("#modal").close();
       } else await api(`${base}/npcs/${b.dataset.npc}/resource`, "POST", { index: Number(b.dataset.i), delta: Number(b.dataset.d) }, { background: true });
     } catch (error) { toast(error.message); }

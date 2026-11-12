@@ -44,6 +44,8 @@ public class CampaignMap
     public int Width { get; set; }
     public int Height { get; set; }
     public byte[] Content { get; set; } = [];
+    /// <summary>Mapa desenhado com tiles: linhas separadas por LF. Nulo mantém os mapas de imagem existentes.</summary>
+    [MaxLength(4160)] public string? TileData { get; set; }
     public int Revision { get; set; } = 1;
     /// <summary>Categoria isolada no acervo: <see cref="CampaignAssetPurposes.Map"/> (cenas, atlas, mesa) ou
     /// <see cref="CampaignAssetPurposes.Portrait"/> (imagem de NPC; nunca listada como mapa).</summary>

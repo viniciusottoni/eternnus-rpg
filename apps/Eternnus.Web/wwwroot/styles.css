@@ -2890,6 +2890,8 @@ legend { padding: 0 6px; color: var(--gold); font-size: 12px; font-weight: 600; 
    Controles de uma linha têm sempre 44 px (data/hora/select do navegador variam sem isto).
    Barras de filtro (role=search) alinham pela base: rótulos em cima, controles e botões na mesma linha. */
 input[type=date], input[type=datetime-local], input[type=time], input[type=month], input[type=week], select { height: 44px; padding-block: 0; }
+/* Campos de texto/número/busca herdavam 44,8 px (linha 20,8 + padding) contra 44 dos selects: lado a lado ficavam 0,8 px desalinhados. Especificidade zero: qualquer regra de componente continua vencendo. */
+:where(input:is([type=text], [type=search], [type=number], [type=email], [type=password], [type=url], [type=tel], :not([type]))) { height: 44px; }
 form[role=search] { align-items: end; }
 form[role=search] .field { margin: 0; }
 form[role=search] button:not(.help-button):not(.icon-button), form[role=search] .button { height: 44px; min-height: 44px; }

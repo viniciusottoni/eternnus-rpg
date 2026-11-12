@@ -104,7 +104,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const m = mapOf(draft.mapKey);
     if (draft.kind === "image" && m) return { map: { kind: "cartographic", key: m.key, name: m.name, imageUrl: m.imageUrl || "/assets/valley.webp", rows: [] }, tokens: [], participants: [], session: {}, me: { isMaster: true } };
     if (!meta) return { map: { kind: "cartographic", key: "none", name: "", imageUrl: "", rows: [] }, tokens: [], participants: [], session: {}, me: { isMaster: true } };
-    let tokens = draft.prepared.map((t, i) => ({ id: "p" + i, characterId: t.characterId || null, label: t.label, side: t.side || "ally", x: t.x, y: t.y, fx: t.fx ?? null, fy: t.fy ?? null, hidden: !!t.hidden, light: t.light ?? null }));
+    let tokens = draft.prepared.map((t, i) => ({ id: "p" + i, characterId: t.characterId || null, label: t.label, side: t.side || "ally", x: t.x, y: t.y, fx: t.fx ?? null, fy: t.fy ?? null, hidden: !!t.hidden, light: t.light ?? null, appearance: t.appearance ?? null, size: t.size ?? null }));
     let fog;
     if (simulate) {
       const sim = simulateView({ visionMode: draft.visionMode, layer, width: width(), height: height(), tokens, characters, settings: meta.settings || {}, scale: meta.scaleMeters || 1.5, viewer: viewer || null });
@@ -126,11 +126,12 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   const markScene = () => { sceneDirty = true; renderStatus(); };
   const markLayer = () => { layerDirty = true; renderStatus(); };
   function moveToken(i, cell) {
-    if (simulate || i == null || !draft.prepared[i]) return;
+    if (simulate || i == null || !draft.prepared[i]) return false;
     const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, cell.x, cell.y, i, freeOn());
-    if (problem) return toast(problem);
+    if (problem) { toast(problem); return false; }
     draft.prepared[i] = { ...draft.prepared[i], ...fineOf(cell) };
     markScene(); redraw(); renderSide();
+    return true;
   }
   function onToken(t) {
     if (simulate) return;
@@ -340,7 +341,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     name: mapOnly ? "" : $("#se-name").value.trim(), description: draft.description, kind: draft.kind, mapKind: null, mapKey: draft.kind === "text" ? null : draft.mapKey,
     sharedText: draft.sharedText, privateNotes: draft.privateNotes, visionMode: draft.kind === "map" ? draft.visionMode || null : null, order: Number(draft.order) || 0,
     revision: saved.revision, layerMode: draft.layerMode,
-    prepared: draft.kind === "map" ? draft.prepared.map((t) => ({ characterId: t.characterId || null, masterCharacterId: t.masterCharacterId || null, label: t.label, side: t.side, x: t.x, y: t.y, fx: freeOn() ? t.fx ?? null : null, fy: freeOn() ? t.fy ?? null : null, hidden: !!t.hidden, light: t.light ?? null })) : [],
+    prepared: draft.kind === "map" ? draft.prepared.map((t) => ({ characterId: t.characterId || null, masterCharacterId: t.masterCharacterId || null, label: t.label, side: t.side, x: t.x, y: t.y, fx: freeOn() ? t.fx ?? null : null, fy: freeOn() ? t.fy ?? null : null, hidden: !!t.hidden, light: t.light ?? null, appearance: t.appearance ?? null, size: t.size ?? null, imageUrl: t.imageUrl ?? null })) : [],
   });
   async function saveLayer() {
     const result = await api(`${base}/assets/layers?key=${encodeURIComponent(draft.mapKey)}${saved.id ? `&scene=${encodeURIComponent(saved.id)}` : ""}`, "PUT", {

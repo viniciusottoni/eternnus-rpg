@@ -75,7 +75,7 @@ public sealed class TableRulesTests
         foreach (var map in BattleMaps.All.Where(m => m.Kind == MapKinds.Tileset))
         {
             Assert.All(map.Rows, row => Assert.Equal(map.Width, row.Length));
-            Assert.All(map.Rows, row => Assert.Matches(@"^[#ToAbt~.,+=rSdh:]+$", row));
+            Assert.All(map.Rows, row => Assert.All(row, c => Assert.True(MapTiles.IsValid(c), $"Unknown tile {c}")));
             Assert.True(map.Spawns().Count() >= 6, map.Key + " needs entry points for a full party");
             Assert.All(map.Spawns(), p => Assert.True(map.CanStand(p.X, p.Y)));
             Assert.False(map.CanStand(-1, 0)); Assert.False(map.CanStand(map.Width, 0));
@@ -88,7 +88,7 @@ public sealed class TableRulesTests
     public void Official_maps_have_connected_walkable_areas_and_distinct_identities()
     {
         Assert.Equal(BattleMaps.All.Count, BattleMaps.All.Select(m => m.Key).Distinct().Count());
-        Assert.True(BattleMaps.All.Count >= 8);
+        Assert.Equal(20, BattleMaps.All.Count);
         foreach (var map in BattleMaps.All.Where(m => m.Kind == MapKinds.Tileset))
         {
             var visited = new HashSet<(int X, int Y)>();

@@ -1,5 +1,33 @@
 # Validação
 
+## Editar marcador: nome, lado e ficha (ADR-080) — 12 de novembro de 2026
+
+Validação local com banco PostgreSQL exclusivo de teste (harness) e Chrome headless 1440×1000, `reducedMotion: reduce`.
+
+| Verificação | Resultado |
+| --- | --- |
+| `dotnet build apps/Eternnus.Web` | 0 erros |
+| `dotnet test tests/Eternnus.Tests` | 805 passaram, incluindo `Master_renames_creature_changes_side_and_links_a_sheet_later` (cliente anterior sem campos novos, 403 ao jogador, nome vazio e lado inválido 400, ordem de turnos renomeada, evento só do mestre, vínculo com nome/lado atuais, modelo inexistente 404, segundo vínculo 409, personagem de jogador 409 ao mudar e aceito ao repetir) e `Renamed_token_updates_only_its_turn_entry` |
+| `node --test tests/*.test.mjs` | 183 passaram (catálogo de ajuda com `mesa.marcadores.editar`) |
+| `node tests/token-edit.mjs` (novo) | Renomear e trocar lado pela API; jogador 403; personagem de jogador 409; jogador vê o nome novo sem o evento; dica “Sem ficha” na seleção; modal com valores atuais, grupo avançado recolhido e foco no nome; vínculo pelo modal; “Ficha do elemento” aparece; segundo vínculo 409; sem erros no navegador. Capturas em `artifacts/qa/token-edit/` |
+| `node tests/table-fog.mjs`, `node tests/token-look.mjs` | Passaram (74 verificações; ok) |
+
+Não verificado: celular e leitor de tela reais.
+
+## Forma dos marcadores e liberação do movimento (ADR-079) — 12 de novembro de 2026
+
+Validação local com banco PostgreSQL exclusivo de teste (harness, migração `TokenAppearanceMoveGrant` aplicada) e Chrome headless em desktop 1440×1000 e celular deitado 844×390, `reducedMotion: reduce`.
+
+| Verificação | Resultado |
+| --- | --- |
+| `dotnet build apps/Eternnus.Web` | 0 erros |
+| `dotnet test tests/Eternnus.Tests` | 803 passaram, incluindo `Player_moves_only_after_the_master_grants_movement_for_the_current_turn` (recusa sem liberação, 403 ao jogador, bloqueio no mesmo turno, revogação ao trocar a vez) e `Master_chooses_round_or_free_image_and_size_for_any_token_and_players_cannot` (imagem própria em personagem de jogador, PNG servido como PNG, limites, imagem de outra campanha 400). Testes antigos de alcance passaram a liberar o movimento explicitamente |
+| `node --test tests/*.test.mjs` | 183 passaram; `token-look.test.mjs` (7, novo): limites iguais aos do domínio, imagem livre exige imagem, proporção, alça em passos de 5%, clique em marcador grande e menor por cima, ordem de desenho, lista PWA |
+| `node tests/token-look.mjs` (novo) | Retrato PNG transparente servido como `image/png`; criatura nasce como imagem livre 300%; mestre muda forma/tamanho de personagem de jogador; jogador 403; tamanho 900 recusado; movimento 409 sem liberação; aviso “Movimento aguardando o mestre” e motivo no “Mover”; botão “Liberar/Bloquear movimento”; alça reduziu o dragão; modal com valores atuais; com a resposta do servidor atrasada 1,5 s, o marcador solto já aparece no destino; nova vez começa bloqueada; celular sem erros |
+| `node tests/free-movement.mjs`, `tests/table-fog.mjs`, `tests/campaign-assets.mjs`, `tests/sessions.mjs`, `tests/scene-editor.mjs` | Passaram (ajustados para liberar o movimento antes de mover o jogador) |
+
+Limites: o editor de cenas preserva forma, tamanho e imagem, mas não tem campos para editá-los; sem medição de carga; imagens por link https dependem do site de terceiros.
+
 ## Mesa vazia pausada automaticamente (ADR-075) — 12 de novembro de 2026
 
 | Verificação | Resultado |
@@ -543,3 +571,24 @@ Sem aparelho físico, Safari/iOS, carga medida ou publicação.
 - Regressão de navegador/PostgreSQL: `sessions.mjs` (185), `table-play.mjs` (92), `table-fog.mjs` (73), `table-viewport.mjs` (122; seletor do construtor restrito à barra de turno, pois a bandeja também abre o construtor), `tables-portraits.mjs`, `campaign-assets.mjs` (101), `temporary-images.mjs` (49), `scene-editor.mjs` (92): aprovados.
 - `tests/soundtrack-ui.mjs` falha no passo do celular em retrato (390 × 844) esperando `#t-audio` visível: o teste é anterior à ADR-056, que deixa a mesa inerte em retrato. Não alterado nesta entrega.
 - Não medido: aparelho físico (toque real, Safari/iOS), arrastar arquivo real do sistema operacional (o teste dispara `DragEvent` com `DataTransfer`) e arquivos `.dd2vtt` reais do Dungeondraft (o teste usa UVTT 0.3 gerado).
+
+## Arte dos cenários e tiles — 12/11/2026 (ADR-077)
+
+- `dotnet build Eternnus.sln --no-restore -v quiet`: aprovado, zero avisos e erros.
+- `dotnet test Eternnus.sln --no-build --filter "FullyQualifiedName~TableRulesTests|FullyQualifiedName~TableFogTests|FullyQualifiedName~SceneEditorTests" --verbosity quiet`: 39 aprovados.
+- `node --test tests/*.test.mjs`: 173 aprovados. Após atualizar a legenda, os 19 testes de ajuda/catálogo e PWA/service worker foram executados novamente e passaram.
+- `node tests/tile-art-ui.mjs`: 28 verificações com PostgreSQL isolado e Chromium. Sete cenários oficiais na mesa, miniaturas compartilhadas, teclado, viewport 1440 × 1000 e 844 × 390 com zoom e movimento reduzido, sem overflow horizontal ou erros JavaScript/CSP. Verificação de pixels dos 17 símbolos: arte determinística, nenhum pixel fora da casa, transformação do contexto restaurada e casa desconhecida inteiramente opaca.
+- Inspeção das capturas encontrou degradês reiniciados por casa na grama/água/areia e divisões artificiais em mesas conectadas; corrigidos e ensaio repetido. A captura inicial da floresta foi corrigida para aguardar a legenda do mapa, além da criação do canvas.
+- Capturas e relatório: `artifacts/qa/tile-art/` (sete mesas desktop, santuário em viewport móvel com zoom, atlas com miniaturas e prancha ampliada dos objetos). A prancha mostra o desenho estático; fogo e brilhos aparecem nas capturas da mesa.
+- O primeiro ensaio excedeu os 30 segundos de inicialização enquanto aplicava migrações no banco exclusivo do teste. O harness agora aceita `startupTimeoutMs`; o roteiro visual usa 120 segundos, preservando o padrão dos outros testes e a limpeza somente dos recursos criados pelo harness.
+- `node --check` nos módulos alterados e roteiro visual, além de `git diff --check`: aprovados. Sem alteração de dados de produção ou publicação. Aparelho físico, Safari/iOS e carga de múltiplos usuários não foram medidos; o viewport móvel é emulação de tamanho no Chromium.
+
+## Vinte cenários, catálogo e editor de tiles — 12/11/2026 (ADR-078)
+
+- Compilação `dotnet build Eternnus.sln --no-restore -v quiet`: aprovada, zero avisos/erros. Validação final recompilando: `dotnet test Eternnus.sln --no-restore --filter "FullyQualifiedName~TableRulesTests|FullyQualifiedName~CampaignAssetsTests|FullyQualifiedName~SceneEditorTests|FullyQualifiedName~TableFogTests" --verbosity quiet`: **51 aprovados**. Cobre vinte cenários, símbolos/conectividade das grades oficiais, 44 peças com regras de movimento/visão, persistência, limites, permissões, revisão, arquivo/uso ativo e redefinição de preparação com confirmação.
+- `node --test tests/*.test.mjs`: **183 aprovados** no checkout integrado. Inclui pintura imutável, preenchimento ligado, retângulos, redimensionamento, validação de entradas, legenda, ajuda e PWA. A falha temporária de paridade de `MoveNeedsGrant`, introduzido pelo trabalho simultâneo da ADR-079, desapareceu após a atualização correspondente do cliente.
+- `node tests/tile-map-editor.mjs`: **20 verificações de fluxo/visual + 45 HTTP**, PostgreSQL exclusivo e Chrome headless. Cria mapa pela interface/teclado, desfaz/refaz, salva/reabre, filtra peças e copia o cenário Montanha. Confere permissões e CSRF, revisão concorrente, reset explícito das posições, texto preservado, recusa de edição na mesa e de uso como imagem, colisão e mapa do jogador mascarado sem `TileData` integral. Sem erros de script/CSP.
+- O mesmo roteiro confere os 44 desenhos e a casa desconhecida: determinismo, recorte por casa e restauração do contexto. Capturas em `artifacts/qa/tile-editor/`: editor 1440 × 1050, celular 390 × 844 (controles e tabuleiro), mapa próprio na mesa, prancha dos vinte cenários e 44 tiles. A revisão visual levou à correção da largura do modal, pisos dos objetos conforme os vizinhos e telhados contínuos. A verificação móvel aguarda o recálculo responsivo antes de medir overflow.
+- `node tests/tile-map-races.mjs`: **4 corridas + 24 HTTP**, PostgreSQL real. Redesenho concorrente com salvamento de cena e camada em três ordens de chegada; camada antiga não restaura obstáculos anteriores, arranjos ficam vazios e texto permanece. Corrida entre edição de terreno e abertura de sessão conserva a mesma grade no mapa salvo e na mesa.
+- `node tests/scene-editor.mjs`: **92 verificações PostgreSQL** de regressão aprovadas após compartilhar o bloqueio transacional com a edição de terreno.
+- Migração `TileMapDrafts` aplicada nos bancos exclusivos do harness, preservando o caminho de imagens (`TileData = null`). Sem publicação ou migração de produção. Aparelho físico, Safari/iOS e carga sustentada não foram medidos. Rascunhos são locais à abertura do modal; não há empilhamento livre de peças ou rotação.
