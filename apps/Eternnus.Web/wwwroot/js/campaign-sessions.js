@@ -5,7 +5,7 @@ import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
 import { helpButton } from "./help.js";
 import { sessionLabel } from "./session-policy.js";
 import { chapterKindLabel } from "./campaign-chapters.js";
-import { controlsHtml, readControls } from "./data-table.js";
+import { controlsHtml, readControls, highlightIn } from "./data-table.js";
 
 const SOURCES = Object.freeze([["eternnus", "No Eternnus"], ["past", "Antes do Eternnus"]]);
 const sourceLabel = (s) => (s === "past" ? "Antes do Eternnus" : "No Eternnus");
@@ -62,6 +62,7 @@ export async function renderSessionLog(d, target, query = {}, { open = "", onCha
   ${controls}
   ${r.items.length ? `<div class="data-table-wrap" tabindex="0" role="region" aria-label="Sessões da campanha"><table class="data-table log-table"><caption class="sr-only">Sessões da campanha${q.search ? `, busca por ${esc(q.search)}` : ""}, página ${q.page} de ${pages}</caption><thead><tr><th scope="col">Nº</th><th scope="col">Sessão</th><th scope="col">Capítulo</th><th scope="col">Origem</th><th scope="col">Data</th>${master ? '<th scope="col">Estado</th>' : ""}</tr></thead><tbody>${r.items.map(row).join("")}</tbody></table></div>` : `<p class="muted small">${filtered ? "Nenhuma sessão encontrada com estes filtros." : master ? "Nenhuma sessão ainda. Inicie a primeira, registre uma anterior ou importe várias de uma vez." : "Nenhum resumo publicado ainda."}</p>`}
   ${pages > 1 ? `<div class="pagination">${button("← Mais recentes", "lg-page", q.page - 1, "subtle", q.page <= 1 ? "disabled" : "")}<span>Página ${q.page} de ${pages} · ${r.total} sessões</span>${button("Anteriores →", "lg-page", q.page + 1, "subtle", q.page >= pages ? "disabled" : "")}</div>` : ""}`;
+  highlightIn(target.querySelector(".data-table-wrap"), q.search);
   target.querySelector("#lg-controls").onsubmit = (e) => {
     e.preventDefault();
     const { q: search, filters } = readControls(e.currentTarget);

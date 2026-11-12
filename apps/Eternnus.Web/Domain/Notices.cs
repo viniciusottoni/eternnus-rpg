@@ -48,7 +48,9 @@ public static class NoticeAreas
     public const string Npcs = "npcs";
     /// <summary>Mapas publicados no atlas.</summary>
     public const string Atlas = "atlas";
-    public static readonly string[] All = [Table, Schedule, Journal, Players, Pages, Npcs, Atlas];
+    /// <summary>Pontos publicados na linha do tempo da campanha.</summary>
+    public const string Timeline = "timeline";
+    public static readonly string[] All = [Table, Schedule, Journal, Players, Pages, Npcs, Atlas, Timeline];
     /// <summary>Novidades mostradas na tela inicial (e apagadas ao vê-la).</summary>
     public static readonly string[] Home = [Table, Schedule];
 }

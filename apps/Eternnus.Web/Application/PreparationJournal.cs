@@ -15,7 +15,7 @@ public sealed partial class PreparationService
         if (search?.Length > 100) throw new RuleException(400, "Busca aceita até 100 caracteres.");
         var (c, master) = await AccessAsync(campaignId, user, false, false, ct);
         var recapQuery = db.Sessions.AsNoTracking().Where(s => s.CampaignId == campaignId && (master ? s.Recap != "" : s.RecapPublishedAt != null));
-        if (!string.IsNullOrWhiteSpace(search)) recapQuery = recapQuery.Where(s => s.Title.Contains(search) || s.Recap.Contains(search));
+        if (!string.IsNullOrWhiteSpace(search)) recapQuery = recapQuery.Where(TextSearch.AnyField<GameSession>(db, TextSearch.Pattern(search.Trim()), s => s.Title, s => s.Recap));
         var recapTotal = await recapQuery.CountAsync(ct);
         var recaps = await recapQuery.OrderByDescending(s => s.Number).Skip((page - 1) * 20).Take(20)
             .Select(s => new { s.Id, s.Number, s.Title, s.Recap, s.RecapPublishedAt, s.StartedAt, s.EndedAt, published = s.RecapPublishedAt != null }).ToListAsync(ct);

@@ -36,7 +36,7 @@ public static class SessionLogSources
 /// </summary>
 public sealed partial class WorkspaceService
 {
-    public const int LogPageSize = 15;
+    public const int LogPageSize = 20;
 
     static Expression<Func<PastSession, bool>> ScenesMatch(GameDb db, string pattern)
     {

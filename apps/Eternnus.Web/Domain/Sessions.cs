@@ -55,6 +55,9 @@ public class SessionToken
     [MaxLength(10)] public string Side { get; set; } = "ally";
     public int X { get; set; }
     public int Y { get; set; }
+    /// <summary>Posição dentro da casa em milésimos (0–999) nos mapas de movimentação livre; nulo = centro. Ver <see cref="FinePositions"/>.</summary>
+    public int? Fx { get; set; }
+    public int? Fy { get; set; }
     /// <summary>Número do turno em que o jogador moveu o marcador; limita um deslocamento por turno.</summary>
     public int LastMovedTurn { get; set; }
     /// <summary>Sobrescritas do mestre (nulo = valor da ficha/configuração). Raios em casas.</summary>

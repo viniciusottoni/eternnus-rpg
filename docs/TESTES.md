@@ -1,5 +1,28 @@
 # Validação
 
+## Mesa vazia pausada automaticamente (ADR-075) — 12 de novembro de 2026
+
+| Verificação | Resultado |
+| --- | --- |
+| `dotnet test tests/Eternnus.Tests` | 785 passaram, incluindo `Empty_table_is_paused_automatically_after_the_grace_but_not_while_someone_is_present` (folga, heartbeat, pausa única com evento "Mesa", sessão continua a única ativa, retomada do mestre, sessão encerrada ignorada) |
+| `node --test tests/*.test.mjs` | 173 passaram (tooltip do selo **Pausada** dentro de 80 caracteres) |
+| Script ponta a ponta (PostgreSQL do harness + Chrome headless, desktop e celular) | Worker pausou a sessão sem presença em até 30 s, sem pausar enquanto o mestre estava presente; `activeSessionPaused`/`activeSession.paused` verdadeiros; selo **Pausada** na lista e na página da campanha, sem destaque ONLINE na linha |
+
+Limites: o ajuste final (selo do topo da página da campanha e da tela de escolha de ficha) foi validado só pelos testes de unidade; a nova execução ponta a ponta ficou bloqueada por uma migração em andamento de outro trabalho (`SearchUnaccent`, modelo pendente). Sem medição de carga.
+
+## Mapas com movimentação livre (ADR-074) — 12 de novembro de 2026
+
+Validação local com banco PostgreSQL exclusivo de teste (harness, migração `FreeMovementMaps` aplicada), Chrome headless em desktop 1440×1000 e celular deitado 844×390. Viewport não equivale a aparelho físico; sem leitor de tela real.
+
+| Verificação | Resultado |
+| --- | --- |
+| `dotnet build apps/Eternnus.Web` | 0 erros |
+| `dotnet test tests/Eternnus.Tests` | 784 passaram, incluindo `Free_movement_maps_place_tokens_anywhere_share_cells_and_measure_in_a_straight_line` e `Scene_arrangement_shares_cells_and_keeps_fine_points_only_on_free_movement_maps` |
+| `node --test tests/*.test.mjs` | 173 passaram; `free-move-policy.test.mjs` (9, novo): ponto fino, distância em linha reta, marcador sob o ponto, recorte do alcance, corpo de escrita, preparo com casa dividida, lista PWA |
+| `node tests/free-movement.mjs` (novo) | Envio com `freeMovement` (e ignorado sem grade), posição fina pela API, fora da faixa 400, criatura na mesma casa, formulário com três opções e ⓘ, grade oculta por padrão e “Mostrar grade” disponível, arraste do jogador soltando no ponto exato (tolerância de 40 milésimos), celular deitado sem erros; capturas em `artifacts/qa/free-movement/` |
+
+Limites: forma tática com névoa ativa coberta só pelos testes de serviço (SQLite); sem medição de carga.
+
 ## Revisão de modais, ajuda e Mapas e cenários (ADR-050) — 9 de novembro de 2026
 
 Validação local com bancos PostgreSQL exclusivos de teste (harness), Chrome headless, desktop 1440×900 e viewport móvel 390×844. A viewport não equivale a aparelho físico, e não houve teste com leitor de tela real.
@@ -465,7 +488,7 @@ Sem aparelho físico, Safari/iOS ou publicação.
 
 - `dotnet test Eternnus.sln -v q`: **720 aprovados**, zero falhas. Novos em `SessionLogTests` (SQLite): união e visibilidade por papel, filtros, busca em resumos e cenas sem vazar objetivo/rascunho, busca geral por fonte, leitor CSV (aspas, quebras, numeração de linhas, limites), decodificação (binário, controles, bidi, Windows-1252, tamanho), importação prévia/gravação atômica com fórmula e HTML como texto, NPCs conhecidos e exclusão de registro anterior (só mestre, revisão atual, número liberado) e capítulos visíveis só quando o mestre publica (lista, filtro, linha, leitura e busca do jogador sem capítulo oculto).
 - `node --test` em cada `tests/*.test.mjs`: todos aprovados (contrato de `parseRoute` com `item`).
-- `node tests/tables-portraits.mjs`: PostgreSQL isolado + Chromium/Playwright. Busca geral sem limite por tipo (15 por página, filtro de tipo), NPCs conhecidos com busca e foco, retratos de NPC fora das escolhas de mapa, do acervo de mapas e do atlas (403 para jogador, 404 ao publicar retrato), retroclassificação da migração `NpcPortraitAssets` executada no PostgreSQL, tabelas da Preparação (busca ao digitar mantendo o foco, filtro de lado, página 2), da busca geral e de NPCs conhecidos; barra padrão com “Buscar”, sem “Limpar” e sem texto entre a busca e a tabela; Mapas e cenários sem seção de retratos; celular com tabela empilhada sem rolagem lateral e console sem erros. Capturas em `artifacts/qa/tables`.
+- `node tests/tables-portraits.mjs`: PostgreSQL isolado + Chromium/Playwright. Busca geral sem limite por tipo (20 por página, filtro de tipo, termo destacado), NPCs conhecidos com busca e foco, retratos de NPC fora das escolhas de mapa, do acervo de mapas e do atlas (403 para jogador, 404 ao publicar retrato), retroclassificação da migração `NpcPortraitAssets` executada no PostgreSQL, tabelas da Preparação (busca ao digitar mantendo o foco, filtro de lado, página 2), da busca geral e de NPCs conhecidos; barra padrão com “Buscar”, sem “Limpar” e sem texto entre a busca e a tabela; Mapas e cenários sem seção de retratos; celular com tabela empilhada sem rolagem lateral e console sem erros. Capturas em `artifacts/qa/tables`.
 - `node tests/campaign-sessions.mjs`: PostgreSQL isolado + Chromium/Playwright. ILIKE sem diferenciar maiúsculas, busca dentro das cenas JSON, UNION paginado, 403/404 por papel, modelo e importação (extensão, 413, exemplos recusados, confirmação, repetição recusada), NPCs compartilhados, busca geral com navegação até NPC e sessão, importação pela interface com título HTML exibido como texto, filtro por capítulo pela rota, celular de 390 px sem rolagem lateral, sem erros de console.
 - `node tests/campaign-chapters.mjs` e `node tests/campaign-workspace.mjs`: aprovados após ajuste dos seletores ao novo Diário.
 

@@ -33,6 +33,11 @@ public class CampaignMap
     public decimal ScaleMeters { get; set; } = 1.5m;
     /// <summary>Falso = "apenas imagem": usada só em cenas sem grade (sem marcadores, névoa ou movimento).</summary>
     public bool HasGrid { get; set; } = true;
+    /// <summary>
+    /// Movimentação livre (exige <see cref="HasGrid"/>): marcadores ficam em qualquer ponto da imagem. A grade passa a ser referência
+    /// de escala, paredes e névoa (oculta por padrão na mesa) e uma casa pode ter mais de um marcador.
+    /// </summary>
+    public bool FreeMovement { get; set; }
     /// <summary>Deslocamento da grade em pixels (0 até <see cref="GridPixels"/> − 1), para alinhar a grade ao desenho.</summary>
     public int GridOffsetX { get; set; }
     public int GridOffsetY { get; set; }

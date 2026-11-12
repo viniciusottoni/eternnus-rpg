@@ -299,7 +299,9 @@ public sealed class GuildTests : IAsyncLifetime
         var items = Json(await guild.CategoriesAsync(Common, default)).GetProperty("items").EnumerateArray()
             .Select(c => (c.GetProperty("slug").GetString(), c.GetProperty("minLevelToPost").GetInt32(), c.GetProperty("staffOnly").GetBoolean())).ToList();
         Assert.Equal(9, items.Count);
-        Assert.Equal(new (string?, int, bool)[] { ("forja-de-ideias", 1, false), ("galeria-do-artifice", 1, false), ("portal-do-aprendiz", 1, false) }, items.Skip(6).ToArray());
+        // Ordem da jornada (ADR-071): avisos, iniciantes, sugestões, conversa, grupo, mestres, artes, regras, fichas.
+        Assert.Equal(new[] { "avisos", "portal-do-aprendiz", "forja-de-ideias", "taverna", "procura-se-grupo", "mestres-e-campanhas", "galeria-do-artifice", "regras-e-sistemas", "fichas-e-biblioteca" }, items.Select(i => i.Item1).ToArray());
+        Assert.All(items.Where(i => i.Item1 is "forja-de-ideias" or "galeria-do-artifice" or "portal-do-aprendiz"), i => Assert.Equal((1, false), (i.Item2, i.Item3)));
         await TopicAsync(Common, Guid.Parse("00000000-0000-4000-8000-000000000207"));
     }
 
@@ -319,7 +321,7 @@ public sealed class GuildTests : IAsyncLifetime
         Assert.Equal("Bruno", item.GetProperty("reporter").GetProperty("name").GetString());
         Assert.Equal(2, item.GetProperty("postReports").GetInt32());
         Assert.Equal("Mensagem ofensiva", item.GetProperty("post").GetProperty("excerpt").GetString());
-        Assert.Equal(15, queue.GetProperty("pageSize").GetInt32());
+        Assert.Equal(20, queue.GetProperty("pageSize").GetInt32());
         Assert.Equal(1, Json(await guild.ReportsAsync(Ambassador, "open", 1, default, "desrespeito")).GetProperty("total").GetInt32());
         Assert.Equal(2, Json(await guild.ReportsAsync(Ambassador, "open", 1, default, "ofensiva")).GetProperty("total").GetInt32());
         Assert.Equal(0, Json(await guild.ReportsAsync(Ambassador, "open", 1, default, "inexistente")).GetProperty("total").GetInt32());

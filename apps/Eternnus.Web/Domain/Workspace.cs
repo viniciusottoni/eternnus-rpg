@@ -97,5 +97,6 @@ public static class WorkspaceModel
         b.Entity<PastSession>().HasIndex(x => new { x.CampaignId, x.Number }).IsUnique();
         b.Entity<PastSession>().Property(x => x.Revision).IsConcurrencyToken();
         b.Entity<PastSession>().OwnsMany(x => x.Scenes, o => o.ToJson());
+        TimelineModel.Configure(b);
     }
 }

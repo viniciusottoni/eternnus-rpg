@@ -36,7 +36,7 @@ public sealed class LibraryItemView
 /// ao estado "antes" de uma entrada <c>library.file.replace</c> ou <c>library.update</c> do próprio item.</summary>
 public class LibraryService(GameDb db, AuditService audit)
 {
-    public const int PageSize = 20, MaxPageSize = 50, MaxTitle = 120, MaxDescription = 2000, MaxReason = 300, MaxSearch = 100;
+    public const int PageSize = 20, MaxPageSize = PageSize, MaxTitle = 120, MaxDescription = 2000, MaxReason = 300, MaxSearch = 100;
     public const string TargetType = "library";
     public const string ActionUpload = "library.upload", ActionUpdate = "library.update", ActionReplace = "library.file.replace",
         ActionDelete = "library.delete", ActionRestore = "library.restore", ActionRevert = "library.revert";
@@ -54,8 +54,7 @@ public class LibraryService(GameDb db, AuditService audit)
         {
             var term = query.Q.Trim();
             if (term.Length > MaxSearch) throw new RuleException(400, "Busca muito longa.");
-            term = term.ToLowerInvariant();
-            items = items.Where(i => i.Title.ToLower().Contains(term) || i.Description.ToLower().Contains(term));
+            items = items.Where(TextSearch.AnyField<LibraryItem>(db, TextSearch.Pattern(term), i => i.Title, i => i.Description));
         }
         if (!string.IsNullOrWhiteSpace(query.SystemId))
         {

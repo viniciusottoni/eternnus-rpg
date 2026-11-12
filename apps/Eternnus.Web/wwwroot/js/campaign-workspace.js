@@ -1,8 +1,8 @@
 import { api } from './api.js';
-import { $, esc, modal, button, formError, submitForm, toast, empty } from './ui.js';
+import { $, esc, modal, button, actionBar, formError, submitForm, toast, empty } from './ui.js';
 import { shell } from './layout.js';
 import { helpButton } from './help.js';
-import { controlsHtml, readControls, pagerHtml, emptyTableHtml } from './data-table.js';
+import { controlsHtml, readControls, pagerHtml, emptyTableHtml, highlightIn } from './data-table.js';
 const PAGE_SIZE = 20;
 const TYPES = [['text','Texto livre'],['place','Lugar'],['faction','Facção'],['book','Livro'],['chapter','Capítulo'],['item','Item'],['event','Acontecimento'],['npc','NPC'],['objective','Objetivo'],['clue','Pista'],['note','Nota pessoal']];
 /** ADR-064: NPCs nascem em Preparação; o tipo "npc" só aparece em páginas antigas que já o usam. */
@@ -30,7 +30,7 @@ export async function renderWorkspace(d, target, notes = false, query = {search:
       ],
     });
     // Tabela padrão (mesma barra de busca das demais listas); a leitura continua no modal.
-    const row = p => `<tr><td data-label="Título"><strong class="ws-title">${p.pinned ? '<span aria-label="Fixada">★</span> ' : ''}${esc(p.title)}</strong>${p.npc ? ` <a class="chip" href="#campaign/${esc(d.id)}/prep" data-tip="Página de lore deste personagem da Preparação">NPC: ${esc(p.npc)}</a>` : ''}${p.collection || p.tags ? `<small class="muted">${esc([p.collection, p.tags].filter(Boolean).join(' · '))}</small>` : ''}</td>${notes ? '' : `<td data-label="Tipo">${label(TYPES, p.kind) || esc(p.kind)}</td>`}<td data-label="Quem lê">${label(VIS, p.visibility)}</td><td data-label="Estado">${label(STATUS, p.status)}</td><td data-label="Ações"><div class="scene-actions">${query.trash ? button('Restaurar','ws-restore',p.id,'subtle small',d.archived?'disabled':`aria-label="Restaurar ${esc(p.title)}"`) : button('Abrir','ws-open',p.id,'subtle small',`aria-label="Abrir ${esc(p.title)}"`)}</div></td></tr>`;
+    const row = p => `<tr><td data-label="Título"><strong class="ws-title">${p.pinned ? '<span aria-label="Fixada">★</span> ' : ''}${esc(p.title)}${p.npc ? ` <a class="chip" href="#campaign/${esc(d.id)}/prep" data-tip="Página de lore de ${esc(p.npc)}, personagem da Preparação" aria-label="NPC da Preparação: ${esc(p.npc)}">NPC</a>` : ''}</strong>${p.collection || p.tags ? `<small class="muted">${esc([p.collection, p.tags].filter(Boolean).join(' · '))}</small>` : ''}</td>${notes ? '' : `<td data-label="Tipo">${label(TYPES, p.kind) || esc(p.kind)}</td>`}<td data-label="Quem lê">${label(VIS, p.visibility)}</td><td data-label="Estado">${label(STATUS, p.status)}</td><td data-label="Ações"><div class="scene-actions">${query.trash ? button('Restaurar','ws-restore',p.id,'subtle small',d.archived?'disabled':`aria-label="Restaurar ${esc(p.title)}"`) : button('Abrir','ws-open',p.id,'subtle small',`aria-label="Abrir ${esc(p.title)}"`)}</div></td></tr>`;
     const table = `<div class="data-table-wrap" tabindex="0" role="region" aria-label="${notes ? 'Minhas notas' : 'Páginas do acervo'}"><table class="data-table stack-table workspace-table"><caption class="sr-only">${notes ? 'Minhas notas' : 'Páginas do acervo'}${query.trash ? ' na lixeira' : ''}, página ${query.page} de ${pages}</caption><thead><tr><th scope="col">Título</th>${notes ? '' : '<th scope="col">Tipo</th>'}<th scope="col">Quem lê</th><th scope="col">Estado</th><th scope="col">Ações</th></tr></thead><tbody>${result.items.map(row).join('')}</tbody></table></div>`;
     const none = query.trash && !query.search && !query.kind ? emptyTableHtml(false, 'A lixeira está vazia.')
       : filtered ? emptyTableHtml(true, '')
@@ -38,6 +38,7 @@ export async function renderWorkspace(d, target, notes = false, query = {search:
     target.innerHTML = `<div class="section-title"><h2>${notes ? 'Minhas notas' : 'Mundo e acervo'}${helpButton('campanhas.acervo.cadernos','Acervo e cadernos')}</h2>${!d.archived && (notes || d.isMaster) ? button('+ '+(notes?'Nota':'Página'),'ws-new','','primary small') : ''}</div>
       <p class="muted small section-lead">${notes ? 'Suas notas começam privadas, inclusive para o mestre. Você escolhe com quem compartilhar. <a href="#notebook">Abrir meu caderno de todas as campanhas</a>' : 'Organize lore, lugares, facções e livros. Abra uma página para ler, relacionar ou compartilhar.'}</p>
       ${controls}${result.items.length ? table : none}${pagerHtml({ page: query.page, pages, total: result.total }, 'ws-page', notes ? 'notas' : 'páginas')}`;
+    highlightIn(target.querySelector('.data-table-wrap'), query.search);
     const reload = () => renderWorkspace(d,target,notes,query);
     $('#ws-controls').onsubmit = e => {e.preventDefault(); const { q, filters } = readControls(e.currentTarget); renderWorkspace(d,target,notes,{search:q,kind:filters.kind||'',page:1,trash:filters.trash==='true'});};
     target.onclick = async e => { const b=e.target.closest('[data-action]'); if(!b||b.disabled||b.getAttribute('aria-disabled')==='true') return; try {
@@ -52,7 +53,7 @@ export async function renderWorkspace(d, target, notes = false, query = {search:
 async function readPage(d,id,reload) {
   const p=await api(`${base(d)}/pages/${id}`);
   modal(p.title,`<p class="muted small">${esc(VIS.find(([v])=>v===p.visibility)?.[1])} · ${esc(p.collection)}</p><article class="workspace-prose">${esc(p.content)}</article><div class="workspace-gallery" data-ws-gallery hidden></div>${p.secrets?`<details><summary>Segredos do autor</summary><p class="workspace-prose">${esc(p.secrets)}</p></details>`:''}${p.parent?`<p>${button('↑ '+esc(p.parent.title),'ws-related',p.parent.id,'text-button')}</p>`:''}${p.children.map(c=>button(esc(c.title),'ws-related',c.id,'subtle')).join('')}${p.related?.length?`<h3>Relacionados</h3>${p.related.map(c=>button(esc(c.title),"ws-related",c.id,"subtle")).join("")}`:""}${p.backlinks?.length?`<h3>Mencionado em</h3>${p.backlinks.map(c=>button(esc(c.title),"ws-related",c.id,"subtle")).join("")}`:""}
-    <div class="form-actions">${p.canEdit&&!d.archived?button('Editar','ws-edit','','primary')+button('Versões','ws-versions','','subtle')+button('Mover para lixeira','ws-trash','','subtle'):''}${button('Exportar texto','ws-export','','subtle')}${button('Anexos e imagens','ws-files','','subtle')}</div>`);
+    ${actionBar(button('Anexos e imagens','ws-files','','subtle')+button('Exportar texto','ws-export','','subtle')+(p.canEdit&&!d.archived?button('Versões','ws-versions','','subtle'):''),p.canEdit&&!d.archived?button('Mover para lixeira','ws-trash','','subtle danger-text')+button('Editar','ws-edit','','primary'):'')}`);
   showGallery(d,p);
   $('#modal').querySelector('#modal-body').onclick=async e=>{const b=e.target.closest('[data-action]');if(!b||b.disabled||b.getAttribute('aria-disabled')==='true')return;try{
     if(b.dataset.action==='ws-edit') await pageEditor(d,p,reload);

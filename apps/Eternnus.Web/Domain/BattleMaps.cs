@@ -9,6 +9,8 @@ namespace Eternnus.Web;
 public sealed record BattleMap(string Key, string Name, string Kind, string Description, string? ImageUrl, string[] Rows)
 {
     public decimal ScaleMeters { get; init; } = 1.5m;
+    /// <summary>Movimentação livre: marcadores em qualquer ponto (posição fina dentro da casa), sem casa exclusiva.</summary>
+    public bool Free { get; init; }
     public const char Spawn = 'S';
     const string Walkable = ".,+=rSd:";
     public int Width => Rows.Length == 0 ? 0 : Rows[0].Length;

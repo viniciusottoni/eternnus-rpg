@@ -3,7 +3,7 @@ import { api } from "./api.js";
 import { $, esc, button, toast } from "./ui.js";
 import { helpButton } from "./help.js";
 import { safeImageUrl } from "./play-policy.js";
-import { controlsHtml, readControls, pagerHtml, emptyTableHtml } from "./data-table.js";
+import { controlsHtml, readControls, pagerHtml, emptyTableHtml, highlightIn } from "./data-table.js";
 
 const KINDS = Object.freeze({
   premise: "Premissa", session: "Sessão", chapter: "Capítulo", page: "Mundo", note: "Nota", objective: "Objetivo",
@@ -16,7 +16,7 @@ export function searchForm(d) {
   return `<section class="campaign-search metal" aria-labelledby="cs-title"><h2 id="cs-title" class="small-heading">Buscar na campanha${helpButton("campanhas.busca.geral", "Busca na campanha")}</h2><form id="cs-form" class="search-bar table-controls" role="search"><div class="field"><label for="cs-q" class="sr-only">Termo de busca</label><input id="cs-q" name="q" type="search" minlength="2" maxlength="100" required placeholder="Nome, lugar, acontecimento…" aria-describedby="cs-hint"></div><div class="field"><label for="cs-kind" class="sr-only">Tipo</label><select id="cs-kind" name="kind"><option value="">Todos os tipos</option>${Object.entries(KINDS).filter(([v]) => d.isMaster || v !== "scene").map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select></div><div class="table-controls-actions"><button type="submit" class="subtle">Buscar</button></div><small id="cs-hint" class="form-help search-extra">${d.isMaster ? "Sessões, capítulos, mundo, notas, diário, NPCs e cenas." : "Sessões publicadas, mundo, suas notas, diário e NPCs conhecidos."}</small></form><div id="cs-results" aria-live="polite"></div></section>`;
 }
 
-/** Busca geral: tabela paginada de 15 itens no servidor. Filtros de tipo e página vão na consulta. */
+/** Busca geral: tabela paginada de 20 itens no servidor. Filtros de tipo e página vão na consulta. */
 export function mountSearch(d) {
   const form = $("#cs-form"), results = $("#cs-results");
   if (!form) return;
@@ -38,6 +38,7 @@ export function mountSearch(d) {
       const pager = pages > 1 ? `<nav class="pagination" aria-label="Páginas da busca">${button("← Anterior", "cs-page", state.page - 1, "subtle small", state.page <= 1 ? "disabled" : "")}<span>Página ${r.page} de ${pages} · ${r.total} ${r.total === 1 ? "resultado" : "resultados"} para “${esc(r.q)}”</span>${button("Próxima →", "cs-page", state.page + 1, "subtle small", state.page >= pages ? "disabled" : "")}</nav>` : `<p class="muted small" role="status">${r.total} ${r.total === 1 ? "resultado" : "resultados"} para “${esc(r.q)}”.</p>`;
       const notice = r.truncated ? `<p class="muted small" role="status">Mostrando os primeiros 500 acertos. Refine a busca para ver mais.</p>` : "";
       results.innerHTML = table + notice + pager;
+      highlightIn(results.querySelector(".data-table-wrap"), r.q);
       if (focusSel) results.querySelector(focusSel)?.focus();
     } catch (error) {
       if (results.isConnected) results.innerHTML = `<p role="alert">${esc(error.message)}</p>${button("Tentar novamente", "cs-retry", "", "subtle small")}`;
@@ -76,7 +77,7 @@ const loreLink = (d, page) => {
   return `<p class="small"><a class="lore-link" href="#campaign/${esc(d.id)}/world/${esc(page.id)}" aria-label="Ler a página ${esc(page.title)}">Ler página: ${esc(page.title)}</a></p>${note}`;
 };
 
-/** NPCs conhecidos em tabela paginada de 15: busca, tipo e página vêm do servidor. `focus`: id do NPC vindo da busca. */
+/** NPCs conhecidos em tabela paginada de 20: busca, tipo e página vêm do servidor. `focus`: id do NPC vindo da busca. */
 export async function renderKnownNpcs(d, target, focus = "", page = 1, filter = {}) {
   const state = { q: filter.q || "", kind: filter.kind || "", page };
   await loadKnown(d, target, state, focus);
@@ -109,6 +110,7 @@ async function loadKnown(d, target, state, focus, focusSel = "") {
         ? `<div class="data-table-wrap" tabindex="0" role="region" aria-label="NPCs conhecidos"><table class="data-table stack-table known-npc-table"><caption class="sr-only">NPCs conhecidos, página ${r.page} de ${pages}${filtered ? ", com filtros" : ""}</caption><thead><tr><th scope="col">Imagem</th><th scope="col">Nome</th><th scope="col">Tipo</th><th scope="col">Resumo</th><th scope="col">História</th></tr></thead><tbody>${rows}</tbody></table></div>`
         : emptyTableHtml(filtered, d.isMaster ? "Nenhum personagem compartilhado. Edite um personagem em Preparação e marque “Visível para os jogadores”." : "O mestre ainda não apresentou nenhum NPC.")
     }${pagerHtml({ page: r.page, pages, total: r.total }, "kn-page", "NPCs")}`;
+    highlightIn(target.querySelector(".data-table-wrap"), state.q);
     target.querySelectorAll(".known-npc-zoom img").forEach((img) => img.addEventListener("error", () => img.closest(".known-npc-zoom").replaceWith(Object.assign(document.createElement("span"), { className: "known-npc-initial", ariaHidden: "true", textContent: img.closest("tr").querySelector("strong").textContent.trim().charAt(0).toUpperCase() })), { once: true }));
     target.onsubmit = (e) => {
       if (e.target.id !== "kn-controls") return;

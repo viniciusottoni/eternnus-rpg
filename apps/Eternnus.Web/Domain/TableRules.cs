@@ -6,6 +6,11 @@ public static class TableRules
     public const double MetersPerSquare = 1.5;
     public const int MaxActions = 16;
     public static readonly TimeSpan OnlineWindow = TimeSpan.FromSeconds(45);
+    /// <summary>
+    /// Tempo sem nenhuma presença (mestre ou jogador) até a sessão ativa ser pausada automaticamente.
+    /// Folga acima do heartbeat, que o navegador pode espaçar para 1 por minuto em aba oculta.
+    /// </summary>
+    public static readonly TimeSpan EmptyTableGrace = TimeSpan.FromMinutes(3);
 
     public static int Modifier(int attribute) => (int)Math.Floor((attribute - 10) / 2.0);
     public static int MovementSquares(int meters, decimal scaleMeters = 1.5m) => Math.Max(1, (int)decimal.Floor(Math.Max(0, meters) / scaleMeters));

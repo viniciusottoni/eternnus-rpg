@@ -82,7 +82,7 @@ Indicações persistentes (texto, não só cor):
 1. Na aba **Cenas** (campanha) ou na aba **Cenas** da mesa, use "+ Nova cena" ou "Editar preparação". O editor abre em **Selecionar e mover**, nunca numa ferramenta que pinte.
 2. Escolha o tipo (mapa com grade, imagem sem grade, apresentação textual) e o cenário por miniatura.
 3. Posicione personagens e marcadores na prévia central. O servidor valida o arranjo (`ScenePrep.ValidateTokens`):
-   - até 60 marcadores, dentro da grade, fora de casas que bloqueiam movimento e sem dois na mesma casa;
+   - até 60 marcadores, dentro da grade, fora de casas que bloqueiam movimento e sem dois na mesma casa (em mapa de movimentação livre, a casa pode ser dividida e o ponto exato é guardado);
    - personagens vinculados à campanha e personagens do mestre da campanha.
 4. Ajuste visibilidade, texto e notas e use **Salvar preparação**.
 
@@ -125,7 +125,8 @@ Trocar o alcance exige salvar antes de editar a camada. É recusado com a cena e
   - grupos Recentes, Cenários prontos e Mapas da campanha.
 - Na Completa, o seletor também filtra por tipo e pasta.
 - Escolher só muda a seleção e a prévia. A seleção atual nunca some da busca.
-- Upload com **Apenas imagem** (`HasGrid = false`) ou **Usar grade**: a prévia aparece antes dos números.
+- Upload com **Apenas imagem** (`HasGrid = false`), **Usar grade** ou **Movimentação livre** (`FreeMovement`, ADR-074): a prévia aparece antes dos números.
+  - Movimentação livre: personagens e criaturas ficam em qualquer ponto da imagem e podem dividir a mesma casa. A grade ajustada é só referência de escala, paredes, luz e névoa e fica oculta na mesa (Mostrar grade a exibe). Na forma tática, o alcance é um círculo medido em linha reta.
   - Ajuste visual de tamanho e alinhamento, com resultado imediato ("N × M casas"; faixas fora da grade escurecidas).
   - Números exatos na Completa. Escala explicada ("cada quadrado representa N metros").
 - Grade autoritativa: `CampaignMapView.Grid(largura, altura, lado, deslocX, deslocY)` = casas inteiras a partir do deslocamento. Mesma conta em `gridFor` (cliente) e na máscara de imagem do servidor.
@@ -164,6 +165,7 @@ Trocar o alcance exige salvar antes de editar a camada. É recusado com a cena e
 - Trocar o cenário de uma cena em apresentação exige "Reiniciar cena" (recomeça a exploração daquele cenário).
 - No celular, a barra inferior fixa (vez, ações e navegação) ainda cobre a faixa de baixo do mapa até rolar.
 - Mapas com a grade ajustada depois de preparados: paredes e névoa seguem as casas (`TableFog.Fit`). Marcadores fora da nova grade saem da preparação.
+- Movimentação livre: faixas da borda menores que uma casa de referência ficam fora da área jogável; a simulação do editor usa a casa do marcador. Voltar o mapa para "Usar grade" faz a mesa usar o centro da casa e exigir uma casa por marcador.
 - A preferência de interface é por conta, não por dispositivo.
 - Sem medição de carga nem teste em aparelho físico.
 

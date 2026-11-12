@@ -71,7 +71,9 @@ Auditoria inicial: 59 conceitos e 202 linhas de controles/opções, antes de edi
 | Personagens do Mestre | `campaign-prep.js` | ⓘ | `campanhas.preparo.personagens` | O Mestre pode guardar personagens e criar cópias para encontros. | Aplicado |
 | Modelos privados | `campaign-prep.js` | ⓘ | `campanhas.preparo.modelos-privados` | O Mestre cria modelos próprios para sua campanha. | Aplicado |
 | Textos antigos (Bibliotecas) | `campaign-assets.js` | ⓘ | `campanhas.acervo.publicacao` | Textos de antes das Páginas; o Mestre converte cada um em página. | Aplicado |
+| Linha do tempo | `campaign-timeline.js` | ⓘ | `campanhas.acervo.linha-do-tempo` | A história da campanha em ordem, com relato completo ao abrir cada ponto. | Aplicado |
 | Mapas e escala | `campaign-assets.js` | ⓘ | `campanhas.acervo.mapas` | A grade e a escala ligam o mapa ao deslocamento. | Aplicado |
+| Movimentação livre (como usar a imagem) | `campaign-assets.js` | ⓘ | `campanhas.acervo.movimentacao` | Personagens e criaturas ficam em qualquer ponto da imagem, sem se prender às casas. | Aplicado |
 | Preparar e apresentar | `scene-editor.js`; `table-scenes.js` | ⓘ | `campanhas.cenas.preparacao` | Salvar a preparação não apresenta a cena aos jogadores. | Aplicado |
 | Aplicar à cena atual | `scene-editor.js` | ⓘ | `campanhas.cenas.aplicar` | Você escolhe quais partes salvas passam a valer agora. | Aplicado |
 | Alcance da preparação | `scene-editor.js` | ⓘ | `campanhas.cenas.alcance` | A preparação pode pertencer ao mapa ou só à cena. | Aplicado |
@@ -374,6 +376,7 @@ Tooltip dinâmico só abre se passar pelo limite de 80 caracteres. Nome acessív
 | Variações de conteúdo do componente | `session-history.js` | Texto visível / tooltip conforme elemento | — | Ícone de tipo de evento; o label identifica o evento e antes → depois permanece no detalhe visível. | Aplicado; grupos conceituais têm chave na tabela anterior |
 | Variações de conteúdo do componente | `sheet-templates.js` | Texto visível / tooltip conforme elemento | — | Tipos de campo, atalhos de desfazer/refazer/salvar e ações de duplicar/excluir; instruções do editor permanecem visíveis. | Aplicado; grupos conceituais têm chave na tabela anterior |
 | Variações de conteúdo do componente | `music.js` | Texto visível / tooltip conforme elemento | — | Tocar/pausar trilha e volume em percentual; os nomes acessíveis são atualizados junto com data-tip. | Aplicado; grupos conceituais têm chave na tabela anterior |
+| Selo de estado da mesa (ONLINE / ⏸ Pausada / Offline) | `ui.js` (`liveBadge`) | Tooltip | — | Usado nas listas de campanhas e one-shots, na página da campanha e na escolha de ficha da mesa; Pausada cobre mesa vazia e pausa do mestre. | Aplicado |
 | Variações de conteúdo do componente | `grid-adjust.js` | Texto visível / tooltip conforme elemento | — | Diminuir/aumentar tamanho e alinhamento; instrução e limites da grade visíveis, mesma ajuda na Básica e na Completa. | Aplicado; grupos conceituais têm chave na tabela anterior |
 | Variações de conteúdo do componente | `table-scenes.js` | Texto visível / tooltip conforme elemento | — | Estados Preparada/Já visitada/Em apresentação e ações Apresentar/Retomar/Reiniciar/Aplicar: estado e consequência visíveis, conceito detalhado no catálogo campanhas. | Aplicado; grupos conceituais têm chave na tabela anterior |
 | Variações de conteúdo do componente | `interface-mode.js` | Texto visível / tooltip conforme elemento | — | Básica e Completa: rótulos e descrição visíveis/associados; ajustes avançados não desaparecem da regra. | Aplicado; grupos conceituais têm chave na tabela anterior |
@@ -573,3 +576,12 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | Soltar arquivo no mapa / “Enviar mapa ou UVTT” | `table.js`, `map-import.js` | Véu com instrução visível; modal com ⓘ | `mesa.mapa.soltar` |
 | “Ajustar grade do mapa” | `map-import.js` (`openGridModal`) | Texto visível no modal; prévia compartilhada de `grid-adjust.js` | `campanhas.mapas.grade` |
 | “⇪ Importar UVTT” no acervo | `campaign-assets.js` | Rótulo + `data-tip` ≤ 80; modal com ⓘ | `mesa.mapa.soltar` |
+
+### Classificação da linha do tempo (ADR-072, 11/11/2026)
+
+| Elemento | Arquivo | Nível | Chave |
+| --- | --- | --- | --- |
+| Título “Linha do tempo” | `campaign-timeline.js` | ⓘ conceito: autoria do mestre, ordem manual, marcos opcionais e publicação. | `campanhas.acervo.linha-do-tempo` |
+| Campos Quando, Descrição curta e Relato completo | `campaign-timeline.js` | Auxiliar visível ligado por `aria-describedby` (texto livre; onde cada texto aparece). | — |
+| “Mostrar ao grupo” | `campaign-timeline.js` | Auxiliar visível: sem marcar, rascunho só do mestre. | — |
+| Selo “Rascunho” e “Definir início/fim” | `campaign-timeline.js` | Rótulos autoexplicativos; “+ Acontecimento” no limite usa `aria-disabled` + `data-tip` com o motivo. | — |

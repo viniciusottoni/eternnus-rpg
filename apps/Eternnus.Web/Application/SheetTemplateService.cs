@@ -51,7 +51,7 @@ public static class SheetTemplateLimits
 public class SheetTemplateService(GameDb db, AuditService audit)
 {
     internal static readonly Regex NamePattern = new("^[a-z][a-z0-9_]{0,39}$", RegexOptions.CultureInvariant);
-    const int PageSize = 15;
+    const int PageSize = 20;
 
     /// <summary>Validação completa usada ao publicar. Substituível em testes unitários que não dependem da linguagem de fórmulas.</summary>
     public Func<SheetTemplateVersion, IReadOnlyList<SheetIssue>> PublishValidator { get; set; } = ValidateForPublish;

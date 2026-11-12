@@ -46,7 +46,7 @@ public partial class SessionService
 
     static void RequireNotPaused(Access a)
     {
-        if (a.Session.PausedAt != null && !a.IsMaster) throw new RuleException(409, "A partida está pausada pelo mestre. Aguarde a retomada.");
+        if (a.Session.PausedAt != null && !a.IsMaster) throw new RuleException(409, "A partida está pausada. Aguarde o mestre retomar.");
     }
 
     public async Task SetTurnOrderAsync(Guid sessionId, TurnOrderInput x, string user, CancellationToken ct)
@@ -75,6 +75,42 @@ public partial class SessionService
         a.Session.PausedAt = x.Paused ? Now : null;
         Event(a.Session, user, await NameAsync(user, ct), EventKinds.Pause, x.Paused ? "O mestre pausou a partida" : "A partida foi retomada", new { paused = x.Paused });
         await CommitAsync(tx, a.Session, ct);
+    }
+
+    /// <summary>
+    /// Pausa as sessões ativas sem ninguém presente há <see cref="TableRules.EmptyTableGrace"/> (chamado pelo <see cref="EmptyTableWorker"/>).
+    /// Mesma escrita da pausa manual: bloqueio da sessão, reconferência no banco, evento e revisão. A sessão continua a única ativa;
+    /// o mestre retoma ao voltar. Não altera o prazo de recuperação nem o limite das one-shots.
+    /// </summary>
+    public async Task<int> PauseEmptyAsync(CancellationToken ct)
+    {
+        var cutoff = Now - TableRules.EmptyTableGrace;
+        var ids = await db.Sessions.AsNoTracking()
+            .Where(s => s.EndedAt == null && s.PausedAt == null && s.StartedAt <= cutoff && !db.SessionParticipants.Any(p => p.SessionId == s.Id && p.LastSeenAt >= cutoff))
+            .OrderBy(s => s.StartedAt).Select(s => s.Id).Take(100).ToListAsync(ct);
+        var paused = 0;
+        foreach (var id in ids)
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            var query = db.Database.IsNpgsql()
+                ? db.Sessions.FromSqlInterpolated($"SELECT * FROM \"Sessions\" WHERE \"Id\" = {id} FOR UPDATE")
+                : db.Sessions.Where(x => x.Id == id);
+            var s = await query.SingleOrDefaultAsync(ct);
+            cutoff = Now - TableRules.EmptyTableGrace;
+            // Alguém pode ter entrado, pausado ou encerrado entre a consulta e o bloqueio.
+            if (s == null || s.EndedAt != null || s.PausedAt != null || await db.SessionParticipants.AnyAsync(p => p.SessionId == id && p.LastSeenAt >= cutoff, ct))
+            {
+                await tx.RollbackAsync(ct); db.ChangeTracker.Clear(); continue;
+            }
+            // O evento precisa de um autor real: fica em nome do dono da campanha, assinado como "Mesa".
+            var owner = await db.Campaigns.Where(c => c.Id == s.CampaignId).Select(c => c.OwnerId).SingleAsync(ct);
+            s.PausedAt = Now;
+            Event(s, owner, "Mesa", EventKinds.Pause, "Partida pausada automaticamente: não há ninguém na mesa", new { paused = true, automatic = true });
+            await CommitAsync(tx, s, ct);
+            db.ChangeTracker.Clear();
+            paused++;
+        }
+        return paused;
     }
 
     // ---------- Rolagens ----------
@@ -348,12 +384,17 @@ public partial class SessionService
             var scene = await RequireSceneAsync(a, ct);
             var token = scene.Raw.GetValueOrDefault(tokenId) ?? throw new RuleException(409, "O marcador não está mais no mapa.");
             if (!a.IsMaster && token.CharacterId != me.CharacterId) throw new RuleException(403, "Você só desfaz o movimento do próprio personagem.");
-            if (token.X != tx2 || token.Y != ty) throw new RuleException(409, "O marcador já mudou de lugar; desfazer não sobrescreve a mudança mais recente.");
-            if (!scene.Grid.Inside(fx, fy) || scene.Grid.BlocksMove(fx, fy) || scene.Raw.Values.Any(t => t.Id != tokenId && t.X == fx && t.Y == fy))
+            // Movimentação livre: a posição fina também precisa coincidir e volta junto; marcadores podem dividir a casa.
+            var free = scene.Map.Free;
+            int? Fine(string point, string axis) => free && d.GetProperty(point).TryGetProperty(axis, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
+            var (fromFx, fromFy, toFx, toFy) = (Fine("from", "fx"), Fine("from", "fy"), Fine("to", "fx"), Fine("to", "fy"));
+            if (token.X != tx2 || token.Y != ty || (free && (token.Fx != toFx || token.Fy != toFy)))
+                throw new RuleException(409, "O marcador já mudou de lugar; desfazer não sobrescreve a mudança mais recente.");
+            if (!scene.Grid.Inside(fx, fy) || scene.Grid.BlocksMove(fx, fy) || (!free && scene.Raw.Values.Any(t => t.Id != tokenId && t.X == fx && t.Y == fy)))
                 throw new RuleException(409, "A posição anterior está ocupada ou bloqueada agora.");
-            token.X = fx; token.Y = fy;
+            token.X = fx; token.Y = fy; token.Fx = fromFx; token.Fy = fromFy;
             if (d.TryGetProperty("movedTurn", out var mt) && mt.ValueKind == JsonValueKind.Number && PlayModes.LimitsMovement(a.Session.PlayMode)) token.LastMovedTurn = mt.GetInt32();
-            Event(a.Session, user, author, EventKinds.Move, $"{token.Label} voltou à posição anterior (desfeito)", new { undoOf = e.Id, tokenId, from = new { x = tx2, y = ty }, to = new { x = fx, y = fy } }, masterOnly: e.MasterOnly);
+            Event(a.Session, user, author, EventKinds.Move, $"{token.Label} voltou à posição anterior (desfeito)", new { undoOf = e.Id, tokenId, from = new { x = tx2, y = ty, fx = toFx, fy = toFy }, to = new { x = fx, y = fy, fx = fromFx, fy = fromFy } }, masterOnly: e.MasterOnly);
             await RefreshFogAsync(a, user, ct);
         }
         else if (e.Kind == EventKinds.Sheet)

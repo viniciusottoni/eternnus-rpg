@@ -94,6 +94,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     layer = { fog: data.fog, manual: data.manual, cells: data.cells, lights: data.lights.map((l) => ({ ...l })), revealed: data.revealed, marks: data.marks.map((x) => ({ ...x })) };
   }
   const width = () => meta?.width || 0, height = () => meta?.height || 0;
+  // Movimentação livre: marcadores guardam o ponto dentro da casa (fx/fy) e podem dividir a casa.
+  const freeOn = () => !!meta?.freeMovement;
+  const fineOf = (c) => ({ x: c.x, y: c.y, fx: freeOn() && Number.isInteger(c.fx) ? c.fx : null, fy: freeOn() && Number.isInteger(c.fy) ? c.fy : null });
   const fogOn = () => draft.visionMode === "all" ? false : draft.visionMode ? true : (layer?.fog ?? meta?.settings?.fogEnabled ?? true);
   const shared = () => (draft.visionMode === "manual" || (!draft.visionMode && layer?.manual) ? layer?.revealed || "" : sharedPreview(layer, width(), height()));
 
@@ -101,7 +104,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const m = mapOf(draft.mapKey);
     if (draft.kind === "image" && m) return { map: { kind: "cartographic", key: m.key, name: m.name, imageUrl: m.imageUrl || "/assets/valley.webp", rows: [] }, tokens: [], participants: [], session: {}, me: { isMaster: true } };
     if (!meta) return { map: { kind: "cartographic", key: "none", name: "", imageUrl: "", rows: [] }, tokens: [], participants: [], session: {}, me: { isMaster: true } };
-    let tokens = draft.prepared.map((t, i) => ({ id: "p" + i, characterId: t.characterId || null, label: t.label, side: t.side || "ally", x: t.x, y: t.y, hidden: !!t.hidden, light: t.light ?? null }));
+    let tokens = draft.prepared.map((t, i) => ({ id: "p" + i, characterId: t.characterId || null, label: t.label, side: t.side || "ally", x: t.x, y: t.y, fx: t.fx ?? null, fy: t.fy ?? null, hidden: !!t.hidden, light: t.light ?? null }));
     let fog;
     if (simulate) {
       const sim = simulateView({ visionMode: draft.visionMode, layer, width: width(), height: height(), tokens, characters, settings: meta.settings || {}, scale: meta.scaleMeters || 1.5, viewer: viewer || null });
@@ -109,7 +112,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       tokens = sim.tokens;
     } else fog = { active: fogOn(), cells: layer.cells, lights: layer.lights, marks: layer.marks, shared: shared() };
     return {
-      map: { kind: "tileset", key: meta.layerKey, name: meta.name, rows: meta.rows, imageUrl: meta.imageUrl, gridPixels: meta.gridPixels, gridOffsetX: meta.gridOffsetX, gridOffsetY: meta.gridOffsetY, scaleMeters: meta.scaleMeters },
+      map: { kind: "tileset", key: meta.layerKey, name: meta.name, rows: meta.rows, imageUrl: meta.imageUrl, gridPixels: meta.gridPixels, gridOffsetX: meta.gridOffsetX, gridOffsetY: meta.gridOffsetY, scaleMeters: meta.scaleMeters, freeMovement: freeOn() },
       tokens, participants: tokens.filter((t) => t.characterId).map((t) => ({ characterId: t.characterId, online: true })), session: {}, me: { isMaster: !simulate, characterId: null }, fog,
     };
   }
@@ -124,9 +127,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   const markLayer = () => { layerDirty = true; renderStatus(); };
   function moveToken(i, cell) {
     if (simulate || i == null || !draft.prepared[i]) return;
-    const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, cell.x, cell.y, i);
+    const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, cell.x, cell.y, i, freeOn());
     if (problem) return toast(problem);
-    draft.prepared[i] = { ...draft.prepared[i], x: cell.x, y: cell.y };
+    draft.prepared[i] = { ...draft.prepared[i], ...fineOf(cell) };
     markScene(); redraw(); renderSide();
   }
   function onToken(t) {
@@ -307,7 +310,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (!host) return;
     let folders = [];
     if (mode === "complete") folders = (await api(`${base}/assets/maps`).catch(() => ({ folders: [] }))).folders || [];
-    host.innerHTML = mapChoices(maps.items, draft.mapKey, draft.kind === "map" ? "Mapas com grade" : "Imagens", { sceneKind: draft.kind, recentKeys: recents, complete: mode === "complete", folders, name: "se-map" });
+    host.innerHTML = mapChoices(maps.items, draft.mapKey, draft.kind === "map" ? "Mapas táticos (grade ou movimentação livre)" : "Imagens", { sceneKind: draft.kind, recentKeys: recents, complete: mode === "complete", folders, name: "se-map" });
     disposePicker = mountMapChoices(host, maps.items, { name: "se-map", onChange: (m) => chooseMap(m) });
   }
   async function mountGrid() {
@@ -337,7 +340,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     name: mapOnly ? "" : $("#se-name").value.trim(), description: draft.description, kind: draft.kind, mapKind: null, mapKey: draft.kind === "text" ? null : draft.mapKey,
     sharedText: draft.sharedText, privateNotes: draft.privateNotes, visionMode: draft.kind === "map" ? draft.visionMode || null : null, order: Number(draft.order) || 0,
     revision: saved.revision, layerMode: draft.layerMode,
-    prepared: draft.kind === "map" ? draft.prepared.map((t) => ({ characterId: t.characterId || null, masterCharacterId: t.masterCharacterId || null, label: t.label, side: t.side, x: t.x, y: t.y, hidden: !!t.hidden, light: t.light ?? null })) : [],
+    prepared: draft.kind === "map" ? draft.prepared.map((t) => ({ characterId: t.characterId || null, masterCharacterId: t.masterCharacterId || null, label: t.label, side: t.side, x: t.x, y: t.y, fx: freeOn() ? t.fx ?? null : null, fy: freeOn() ? t.fy ?? null : null, hidden: !!t.hidden, light: t.light ?? null })) : [],
   });
   async function saveLayer() {
     const result = await api(`${base}/assets/layers?key=${encodeURIComponent(draft.mapKey)}${saved.id ? `&scene=${encodeURIComponent(saved.id)}` : ""}`, "PUT", {
@@ -441,16 +444,16 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       case "se-token-remove": draft.prepared.splice(selected, 1); selected = null; panel = "overview"; markScene(); redraw(); return renderSide();
       case "se-add-character": {
         const c = characters.find((x) => x.id === id);
-        const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, pick.x, pick.y);
+        const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, pick.x, pick.y, -1, freeOn());
         if (problem) return toast(problem);
-        draft.prepared.push({ characterId: c.id, label: c.name, side: "ally", x: pick.x, y: pick.y, hidden: false });
+        draft.prepared.push({ characterId: c.id, label: c.name, side: "ally", ...fineOf(pick), hidden: false });
         selected = draft.prepared.length - 1; panel = "token"; pick = null; markScene(); redraw(); return renderSide();
       }
       case "se-add-npc": {
         const n = npcs.find((x) => x.id === id);
-        const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, pick.x, pick.y);
+        const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, pick.x, pick.y, -1, freeOn());
         if (problem) return toast(problem);
-        draft.prepared.push({ masterCharacterId: n.id, label: n.name.slice(0, 40), side: n.side || "enemy", x: pick.x, y: pick.y, hidden: false });
+        draft.prepared.push({ masterCharacterId: n.id, label: n.name.slice(0, 40), side: n.side || "enemy", ...fineOf(pick), hidden: false });
         selected = draft.prepared.length - 1; panel = "token"; pick = null; markScene(); redraw(); return renderSide();
       }
       case "se-light-remove": layer = { ...layer, lights: layer.lights.filter((l) => l.x !== pick.x || l.y !== pick.y) }; pick = null; panel = "overview"; markLayer(); redraw(); return renderSide();
@@ -505,9 +508,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (f.matches("[data-add-marker]")) {
       const label = String(data.label || "").trim();
       if (!label) return toast("Dê um nome ao marcador.");
-      const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, pick.x, pick.y);
+      const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, pick.x, pick.y, -1, freeOn());
       if (problem) return toast(problem);
-      draft.prepared.push({ label: label.slice(0, 40), side: data.side, x: pick.x, y: pick.y, hidden: data.hidden === "on" });
+      draft.prepared.push({ label: label.slice(0, 40), side: data.side, ...fineOf(pick), hidden: data.hidden === "on" });
       selected = draft.prepared.length - 1; panel = "token"; pick = null; markScene(); redraw(); return renderSide();
     }
     if (f.matches("[data-light-form]")) {
@@ -538,7 +541,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const scale = Number($("#se-g-scale")?.value);
     if (!v || !m) return;
     try {
-      const updated = await api(`${base}/assets/maps/${m.id}`, "PUT", { name: m.name, folderId: m.folderId || null, gridPixels: v.gridPixels, scaleMeters: scale, revision: m.revision, hasGrid: true, gridOffsetX: v.gridOffsetX, gridOffsetY: v.gridOffsetY });
+      const updated = await api(`${base}/assets/maps/${m.id}`, "PUT", { name: m.name, folderId: m.folderId || null, gridPixels: v.gridPixels, scaleMeters: scale, revision: m.revision, hasGrid: true, gridOffsetX: v.gridOffsetX, gridOffsetY: v.gridOffsetY, freeMovement: !!m.freeMovement });
       Object.assign(m, updated, { kind: "tileset" });
       const fresh = await api(`${base}/maps`); maps.items = fresh.items;
       const outside = draft.prepared.filter((t) => t.x >= updated.width || t.y >= updated.height).length;

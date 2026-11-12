@@ -171,11 +171,11 @@ public sealed class CharacterSheetTests : IAsyncLifetime
             await service.UpdateSheetAsync(c.Id, new(Values(("forca", (i % 2 == 0 ? 15 : 14).ToString()), ("apelido", "a" + i)), null, i + 1), Player, default);
         var page1 = Json(await service.FieldHistoryAsync(c.Id, null, 1, Player, default));
         Assert.Equal(44, page1.GetProperty("total").GetInt32());
-        Assert.Equal(15, page1.GetProperty("items").GetArrayLength());
+        Assert.Equal(20, page1.GetProperty("items").GetArrayLength());
         var forca = Json(await service.FieldHistoryAsync(c.Id, "forca", 2, Player, default));
         Assert.Equal(22, forca.GetProperty("total").GetInt32());
-        Assert.Equal(7, forca.GetProperty("items").GetArrayLength());
-        var first = forca.GetProperty("items")[6];
+        Assert.Equal(2, forca.GetProperty("items").GetArrayLength());
+        var first = forca.GetProperty("items")[1];
         Assert.Equal(("14", "15", "Rótulo forca", "edit", "Nome player"), (first.GetProperty("oldValue").GetString(), first.GetProperty("newValue").GetString(), first.GetProperty("label").GetString(), first.GetProperty("source").GetString(), first.GetProperty("changedBy").GetString()));
         Assert.DoesNotContain("@segredo", page1.GetRawText());
         Assert.Equal(400, (await Fails(() => service.FieldHistoryAsync(c.Id, "DROP TABLE", 1, Player, default))).Status);

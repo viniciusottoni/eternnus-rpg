@@ -57,7 +57,7 @@ export function playerCommands(state) {
   const classic = !!character?.classic;
   let reason = "";
   if (ended) reason = "A sessão foi encerrada.";
-  else if (play.paused) reason = "Partida pausada pelo mestre. Você ainda pode conversar.";
+  else if (play.paused) reason = "Partida pausada. Você ainda pode conversar enquanto o mestre não retoma.";
   else if (!character) reason = "Entre com uma ficha para agir.";
   else if (turnNeeded && !myTurn) reason = "Nesta mesa as ações acontecem por turnos. Aguarde o mestre conceder a sua vez.";
   return {

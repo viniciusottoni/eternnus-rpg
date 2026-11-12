@@ -2,7 +2,7 @@
 import { api } from "./api.js";
 import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
 import { helpButton } from "./help.js";
-import { controlsHtml, readControls, pagerHtml } from "./data-table.js";
+import { controlsHtml, readControls, pagerHtml, highlightIn } from "./data-table.js";
 
 export const CHAPTER_KINDS = Object.freeze([["chapter", "Capítulo"], ["act", "Ato"], ["arc", "Arco"]]);
 export const chapterKindLabel = (kind) => (CHAPTER_KINDS.find(([k]) => k === kind) || CHAPTER_KINDS[0])[1];
@@ -111,6 +111,7 @@ export async function renderChapters(d, target, onChange, page = 1, focusSel = "
       : filtered ? '<p class="muted small" role="status">Nenhum capítulo com estes filtros. Ajuste a busca ou volte os filtros para “Todos”.</p>'
       : `<p class="muted small">Nenhum capítulo criado.${editable ? " Crie o primeiro antes de abrir a próxima sessão — por exemplo, “Ato I — A Chegada” — ou importe vários de uma vez pela tabela de sessões." : ""}</p>`
   }`;
+  highlightIn(target.querySelector(".data-table-wrap"), filter.q);
   if (focusSel) target.querySelector(focusSel)?.focus();
   target.onsubmit = (e) => {
     if (e.target.id !== "ch-controls") return;

@@ -12,7 +12,7 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
 {
     internal GameDb Db => db;
     internal AuditService Audit => audit;
-    public const int PageSize = 15;
+    public const int PageSize = 20;
     public const string SystemActor = "system";
     /// <summary>Suspensão sem data de término (exibida como "por tempo indeterminado").</summary>
     public static readonly DateTimeOffset Indefinite = new(9999, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -83,7 +83,7 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
         {
             total = await db.Campaigns.CountAsync(ct),
             new7d = await db.Campaigns.CountAsync(c => c.CreatedAt >= week, ct),
-            online = await db.Sessions.CountAsync(s => s.EndedAt == null, ct),
+            online = await db.Sessions.CountAsync(s => s.EndedAt == null && s.PausedAt == null, ct),
             sessions7d = await db.Sessions.CountAsync(s => s.StartedAt >= week, ct),
             sessionsPrevious7d = await db.Sessions.CountAsync(s => s.StartedAt >= previous && s.StartedAt < week, ct),
         };
@@ -110,7 +110,7 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
         if (role != null && role != "" && !PlatformRoles.IsValid(role)) throw new RuleException(400, "Papel inválido.");
         var now = DateTimeOffset.UtcNow;
         var query = db.Users.AsNoTracking();
-        if (term != null) query = query.Where(u => u.DisplayName.ToLower().Contains(term) || (u.Email != null && u.Email.ToLower().Contains(term)));
+        if (term != null) query = query.Where(TextSearch.AnyField<AppUser>(db, TextSearch.Pattern(term), u => u.DisplayName, u => u.Email!));
         if (!string.IsNullOrEmpty(role)) query = query.Where(u => u.Role == role);
         query = status switch
         {
@@ -263,9 +263,14 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
         var term = Term(q); page = Page(page);
         var query = db.Campaigns.AsNoTracking();
         // Busca geral: nome da campanha ou do mestre (colunas da tabela).
-        if (term != null) query = query.Where(c => c.Name.ToLower().Contains(term) || db.Users.Any(u => u.Id == c.OwnerId && u.DisplayName.ToLower().Contains(term)));
+        if (term != null)
+        {
+            var pattern = TextSearch.Pattern(term);
+            var owners = db.Users.Where(TextSearch.AnyField<AppUser>(db, pattern, u => u.DisplayName)).Select(u => u.Id);
+            query = query.Where(TextSearch.Or(TextSearch.AnyField<Campaign>(db, pattern, c => c.Name), c => owners.Contains(c.OwnerId)));
+        }
         if (systemId is { } system) query = query.Where(c => c.RpgSystemId == system);
-        if (online is { } live) query = query.Where(c => db.Sessions.Any(s => s.CampaignId == c.Id && s.EndedAt == null) == live);
+        if (online is { } live) query = query.Where(c => db.Sessions.Any(s => s.CampaignId == c.Id && s.EndedAt == null && s.PausedAt == null) == live);
         var total = await query.CountAsync(ct);
         var items = await query.OrderByDescending(c => c.LastActivityAt).ThenBy(c => c.Id).Skip((page - 1) * PageSize).Take(PageSize)
             .Select(c => new
@@ -277,7 +282,7 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
                 masterId = c.OwnerId,
                 masterName = db.Users.Where(u => u.Id == c.OwnerId).Select(u => u.DisplayName).FirstOrDefault(),
                 memberCount = db.Members.Count(m => m.CampaignId == c.Id),
-                online = db.Sessions.Any(s => s.CampaignId == c.Id && s.EndedAt == null),
+                online = db.Sessions.Any(s => s.CampaignId == c.Id && s.EndedAt == null && s.PausedAt == null),
                 c.CreatedAt,
                 c.LastActivityAt,
             }).ToListAsync(ct);
@@ -301,7 +306,7 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
             .Join(db.Users, m => m.UserId, u => u.Id, (m, u) => new { u.Id, name = u.DisplayName, u.AvatarUrl })
             .OrderBy(u => u.name).ThenBy(u => u.Id).Take(200).ToListAsync(ct);
         var sessions = await db.Sessions.AsNoTracking().Where(s => s.CampaignId == id).OrderByDescending(s => s.Number).Take(10)
-            .Select(s => new { s.Id, s.Number, s.Title, s.StartedAt, s.EndedAt }).ToListAsync(ct);
+            .Select(s => new { s.Id, s.Number, s.Title, s.StartedAt, s.EndedAt, paused = s.PausedAt != null }).ToListAsync(ct);
         var sessionCount = await db.Sessions.CountAsync(s => s.CampaignId == id, ct);
         var characterCount = await db.CampaignCharacters.CountAsync(x => x.CampaignId == id, ct);
         return new
@@ -315,7 +320,7 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
             campaign.LastActivityAt,
             campaign.master,
             members,
-            online = sessions.Any(s => s.EndedAt == null),
+            online = sessions.Any(s => s.EndedAt == null && !s.paused),
             sessionCount,
             characterCount,
             sessions,
@@ -338,8 +343,9 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
         if (!string.IsNullOrWhiteSpace(action)) { var a = action.Trim(); query = query.Where(x => x.Action.StartsWith(a)); }
         if (!string.IsNullOrWhiteSpace(actor))
         {
-            var exact = actor.Trim(); var term = exact.ToLowerInvariant();
-            query = query.Where(x => x.ActorId == exact || db.Users.Any(u => u.Id == x.ActorId && u.DisplayName.ToLower().Contains(term)));
+            var exact = actor.Trim();
+            var actors = db.Users.Where(TextSearch.AnyField<AppUser>(db, TextSearch.Pattern(exact), u => u.DisplayName)).Select(u => u.Id);
+            query = query.Where(x => x.ActorId == exact || actors.Contains(x.ActorId));
         }
         if (!string.IsNullOrWhiteSpace(targetType)) { var t = targetType.Trim(); query = query.Where(x => x.TargetType == t); }
         if (!string.IsNullOrWhiteSpace(targetId)) { var t = targetId.Trim(); query = query.Where(x => x.TargetId == t); }

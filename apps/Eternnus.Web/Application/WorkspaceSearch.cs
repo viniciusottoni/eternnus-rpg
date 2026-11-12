@@ -8,8 +8,8 @@ namespace Eternnus.Web;
 /// </summary>
 public sealed partial class WorkspaceService
 {
-    /// <summary>Resultados por página da busca geral (tabela de 15 itens).</summary>
-    public const int SearchPageSize = 15;
+    /// <summary>Resultados por página da busca geral (tabela de 20 itens).</summary>
+    public const int SearchPageSize = 20;
     /// <summary>Teto de acertos por busca (por fonte e no total): limita memória por requisição.</summary>
     public const int MaxSearchHits = 500;
 

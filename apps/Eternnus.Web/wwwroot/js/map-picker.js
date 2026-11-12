@@ -1,6 +1,7 @@
 // Seletor compartilhado de cenários: miniaturas reais, nome, tipo em linguagem simples, busca, recentes, cenários prontos
 // e mapas da campanha. Na interface Completa, filtros por tipo e pasta. Escolher só muda a seleção e a prévia.
 import { esc } from "./ui.js";
+import { clearHighlight, highlightIn } from "./data-table.js";
 import { mapThumbnail } from "./table-map.js";
 import { acceptsMap, filterMaps, groupMaps, mapTypeLabel } from "./scene-policy.js";
 
@@ -56,6 +57,7 @@ export function mountMapChoices(root, maps, opts = {}) {
     const keep = new Set(filterMaps(maps, { query, type, folderId, selected: selectedKey() }).map((m) => m.key));
     let visible = 0;
     for (const c of cards) { c.hidden = !keep.has(c.dataset.key); if (!c.hidden && !c.hasAttribute("data-recent")) visible++; }
+    for (const title of picker.querySelectorAll(".map-choice-text strong")) { clearHighlight(title); highlightIn(title, query); }
     picker.querySelectorAll("[data-map-group]").forEach((g) => (g.hidden = ![...g.querySelectorAll("[data-map-choice]")].some((c) => !c.hidden)));
     const filtered = query || type || folderId;
     picker.querySelector("[data-map-count]").textContent = filtered ? `${visible} cenário(s) encontrados · a seleção atual permanece visível` : `${visible} cenários disponíveis`;

@@ -221,7 +221,7 @@ public partial class SessionService
     // ---------- Projeção ----------
     static object MasterToken(SessionToken t, FogToken f, string? image = null) => new
     {
-        t.Id, t.CharacterId, t.Label, t.Side, t.X, t.Y, t.LastMovedTurn, light = f.Light, vision = f.Vision, perception = f.Perception, image, masterCharacterId = t.MasterCharacterId,
+        t.Id, t.CharacterId, t.Label, t.Side, t.X, t.Y, t.Fx, t.Fy, t.LastMovedTurn, light = f.Light, vision = f.Vision, perception = f.Perception, image, masterCharacterId = t.MasterCharacterId,
         overrides = new { light = t.Light, vision = t.Vision, perception = t.Perception, senses = t.Senses },
         hidden = t.CharacterId == null && t.Hidden, revealedTo = t.RevealedTo, dc = t.Dc, detectSense = t.DetectSense, detectRange = t.DetectRange,
     };
@@ -229,7 +229,7 @@ public partial class SessionService
     // Imagem só para marcador visível de fato: percebido ("?") não revela nome nem imagem.
     static object PlayerToken(SessionToken t, FogToken f, bool perceived, string? image = null) => new
     {
-        t.Id, t.CharacterId, label = perceived ? "?" : t.Label, t.Side, t.X, t.Y, t.LastMovedTurn, light = f.Light, perceived, image = perceived ? null : image,
+        t.Id, t.CharacterId, label = perceived ? "?" : t.Label, t.Side, t.X, t.Y, t.Fx, t.Fy, t.LastMovedTurn, light = f.Light, perceived, image = perceived ? null : image,
     };
 
     /// <summary>Mapa, marcadores e névoa que <paramref name="viewer"/> pode receber. O mestre recebe tudo; jogadores, só o que enxergam.</summary>

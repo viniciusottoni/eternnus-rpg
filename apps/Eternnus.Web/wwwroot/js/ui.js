@@ -37,6 +37,12 @@ export function button(text, action, id = "", classes = "", extra = "") {
   }
   return `<button type="button" class="${classes}" data-action="${action}" data-id="${esc(id)}" ${extra}>${text}</button>`;
 }
+/** Barra de ações com muitos botões: ferramentas à esquerda, ações principais à direita (primária por último).
+ *  Recebe HTML já montado por `button()`. Dentro de modal fica fixa no rodapé da rolagem. */
+export function actionBar(tools = "", main = "") {
+  const group = (html, cls) => (html ? `<div class="action-group${cls}">${html}</div>` : "");
+  return `<div class="form-actions action-bar">${group(tools, " action-tools")}${group(main, " action-main")}</div>`;
+}
 export function fieldHint(id, hint) {
   return hint ? `<small class="form-help" id="${esc(id)}-hint">${esc(hint)}</small>` : '';
 }
@@ -86,6 +92,13 @@ export async function submitForm(form, task) {
     form.removeAttribute("aria-busy");
     finish();
   }
+}
+/** Selo de estado da mesa: aberta, pausada (vazia ou pelo mestre) ou fechada. Rótulos são constantes do código. */
+export function liveBadge(online, paused, offline = "Offline", label = "ONLINE") {
+  if (!online) return `<span class="offline-badge" data-tip="Nenhuma sessão está aberta nesta campanha.">${offline}</span>`;
+  if (paused)
+    return '<span class="status-chip" data-tip="Sessão aberta e pausada: mesa vazia ou pausa do mestre. O mestre retoma.">⏸ Pausada</span>';
+  return `<span class="online-badge" data-tip="Há uma sessão ativa nesta campanha."><i aria-hidden="true"></i>${label}</span>`;
 }
 export function formatDate(date) {
   return new Date(date.endsWith("Z") ? date : date + "Z").toLocaleString(

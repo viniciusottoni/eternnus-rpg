@@ -7,23 +7,26 @@ namespace Eternnus.Web;
 public record CampaignTextConvertInput(int Revision);
 public record CampaignFolderInput(string Name, Guid? ParentId);
 public record CampaignFolderNameInput(string Name);
-/// <summary><c>Purpose</c>: <c>map</c> ou <c>portrait</c> (ver <see cref="CampaignAssetPurposes"/>); nulo mantém a categoria atual (novo = mapa).</summary>
-public record CampaignMapInput(string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int Revision = 0, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, string? Purpose = null);
+/// <summary><c>Purpose</c>: <c>map</c> ou <c>portrait</c> (ver <see cref="CampaignAssetPurposes"/>); nulo mantém a categoria atual (novo = mapa).
+/// <c>FreeMovement</c>: marcadores em qualquer ponto da imagem (exige grade, que vira referência de escala, paredes e névoa).</summary>
+public record CampaignMapInput(string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int Revision = 0, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, string? Purpose = null, bool FreeMovement = false);
 /// <summary>Mapa importado de um link https: o servidor baixa uma vez e trata como upload (ver RemoteImageFetcher).</summary>
-public record CampaignMapImportInput(string Url, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0);
+public record CampaignMapImportInput(string Url, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, bool FreeMovement = false);
 /// <summary>Preparação de névoa/luz de um mapa: estado completo editado no editor e a revisão lida.</summary>
 public record MapLayerInput(bool? Fog, string[] Cells, List<FogLight>? Lights, string? Revealed, List<FogMarkInput>? Marks, int Revision, bool ResetExploration = false, string? PrepVersion = null);
-public record CampaignMapView(Guid Id, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int PixelWidth, int PixelHeight, int Revision, string ImageUrl, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0)
+public record CampaignMapView(Guid Id, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int PixelWidth, int PixelHeight, int Revision, string ImageUrl, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, bool FreeMovement = false)
 {
     public string Key => "asset:" + Id;
     /// <summary>Com grade: mapa tático (marcadores, névoa, movimento). Sem grade: imagem para cenas sem grade.</summary>
     public string Kind => HasGrid ? MapKinds.Tileset : MapKinds.Cartographic;
-    public string Description => HasGrid ? $"Grade de {GridPixels} px · {ScaleMeters} m por quadrado" : "Imagem da campanha, sem grade";
+    public string Description => !HasGrid ? "Imagem da campanha, sem grade"
+        : FreeMovement ? $"Movimentação livre · referência de {GridPixels} px = {ScaleMeters} m"
+        : $"Grade de {GridPixels} px · {ScaleMeters} m por quadrado";
     public int Width => HasGrid ? (PixelWidth - GridOffsetX) / GridPixels : 0;
     public int Height => HasGrid ? (PixelHeight - GridOffsetY) / GridPixels : 0;
     public string[] Rows => HasGrid ? Grid(PixelWidth, PixelHeight, GridPixels, GridOffsetX, GridOffsetY) : [];
     /// <summary>Mapa com grade para névoa e movimento; nulo para imagem sem grade.</summary>
-    public BattleMap? Battle() => HasGrid ? new(Key, Name, Kind, Description, ImageUrl, Rows) { ScaleMeters = ScaleMeters } : null;
+    public BattleMap? Battle() => HasGrid ? new(Key, Name, Kind, Description, ImageUrl, Rows) { ScaleMeters = ScaleMeters, Free = FreeMovement } : null;
     /// <summary>
     /// Grade autoritativa: casas inteiras a partir do deslocamento (faixas parciais nas bordas ficam fora).
     /// Mesma conta em <c>scene-policy.js</c> (<c>gridFor</c>).
@@ -109,9 +112,9 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
         var item = await Texts.SingleOrDefaultAsync(x => x.CampaignId == campaign && x.Id == id && x.ConvertedPageId == null, ct) ?? throw Missing();
         db.Remove(item); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
-    static CampaignMapView View(CampaignMap m) => new(m.Id, m.Name, m.FolderId, m.GridPixels, m.ScaleMeters, m.Width, m.Height, m.Revision, $"/api/campaigns/{m.CampaignId}/assets/maps/{m.Id}/image", m.HasGrid, m.GridOffsetX, m.GridOffsetY);
+    static CampaignMapView View(CampaignMap m) => new(m.Id, m.Name, m.FolderId, m.GridPixels, m.ScaleMeters, m.Width, m.Height, m.Revision, $"/api/campaigns/{m.CampaignId}/assets/maps/{m.Id}/image", m.HasGrid, m.GridOffsetX, m.GridOffsetY, m.FreeMovement);
     static IQueryable<CampaignMapView> Views(IQueryable<CampaignMap> query, Guid campaign) =>
-        query.Select(m => new CampaignMapView(m.Id, m.Name, m.FolderId, m.GridPixels, m.ScaleMeters, m.Width, m.Height, m.Revision, $"/api/campaigns/{campaign}/assets/maps/{m.Id}/image", m.HasGrid, m.GridOffsetX, m.GridOffsetY));
+        query.Select(m => new CampaignMapView(m.Id, m.Name, m.FolderId, m.GridPixels, m.ScaleMeters, m.Width, m.Height, m.Revision, $"/api/campaigns/{campaign}/assets/maps/{m.Id}/image", m.HasGrid, m.GridOffsetX, m.GridOffsetY, m.FreeMovement));
     /// <summary>Acervo por categoria isolada: mapas (com pastas) ou retratos de NPC; uma categoria nunca aparece na outra.</summary>
     public async Task<object> MapTreeAsync(Guid campaign, string user, Guid? folderId, int page, CancellationToken ct, string? purpose = null)
     {
@@ -180,7 +183,9 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
         var purpose = x.Purpose == null ? map.Purpose : CampaignAssetPurposes.Normalize(x.Purpose);
         var portrait = purpose == CampaignAssetPurposes.Portrait;
         // Retrato é só imagem: nunca tem grade.
-        if (portrait) x = x with { HasGrid = false, GridOffsetX = 0, GridOffsetY = 0 };
+        if (portrait) x = x with { HasGrid = false, GridOffsetX = 0, GridOffsetY = 0, FreeMovement = false };
+        // Movimentação livre usa a grade como referência (escala, paredes, névoa): sem grade, não há movimentação.
+        if (!x.HasGrid) x = x with { FreeMovement = false };
         if (id != null && portrait && map.Purpose != purpose) await EnsureNotUsedAsMapAsync(campaign, map.Id, ct);
         if (id == null && normalized == null) throw new RuleException(409, "Selecione a imagem.");
         if (id == null || map.Purpose != purpose)
@@ -210,6 +215,9 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
         }
         map.Name = name; map.FolderId = x.FolderId; map.GridPixels = x.GridPixels; map.ScaleMeters = x.ScaleMeters;
         map.HasGrid = x.HasGrid; map.GridOffsetX = x.HasGrid ? x.GridOffsetX : 0; map.GridOffsetY = x.HasGrid ? x.GridOffsetY : 0; map.Purpose = purpose;
+        // Voltar de livre para grade: posições finas preparadas ficam guardadas, mas a grade usa o centro da casa
+        // e a preparação passa a exigir uma casa por marcador (ver ScenePrep.ValidateTokens).
+        map.FreeMovement = x.FreeMovement;
         if (id == null) db.Add(map); else map.Revision++;
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return View(map);
     }
@@ -291,6 +299,7 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
         {
             key = map.Key, layerKey, mode = layerKey == map.Key ? SceneLayerModes.Map : SceneLayerModes.Scene, name = map.Name, kind = map.Kind, width = map.Width, height = map.Height, rows = map.Rows, imageUrl = map.ImageUrl, scaleMeters = map.ScaleMeters,
             gridPixels = asset?.GridPixels, gridOffsetX = asset?.GridOffsetX, gridOffsetY = asset?.GridOffsetY, pixelWidth = asset?.PixelWidth, pixelHeight = asset?.PixelHeight,
+            freeMovement = map.Free,
             fog = prep.Fog, manual = prep.Manual, cells = prep.Cells, lights = prep.Lights, revealed = prep.Revealed, marks = prep.Marks, explored = Bits.Encode(explored),
             revision = row?.Revision ?? 0, prepVersion = TableFogService.PrepVersion(prep), settings,
             inUse = await LiveOn(campaign, map.Key, layerKey).AnyAsync(ct),

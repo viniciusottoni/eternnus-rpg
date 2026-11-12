@@ -5,6 +5,7 @@ import { attachFormulaSuggest } from "./formula-suggest.js";
 import { api } from "./api.js";
 import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
 import { DICE, MASTER_VISIBILITY, VISIBILITY, diceNotation, specFromForm, visibilityLabel } from "./play-policy.js";
+import { isFreeMap, placement } from "./free-move-policy.js";
 
 const radios = (name, options, current) =>
   options.map(([v, l]) => `<label class="check"><input type="radio" name="${name}" value="${esc(v)}" ${v === current ? "checked" : ""}> ${esc(l)}</label>`).join("");
@@ -209,7 +210,7 @@ export async function openNpcs({ base, live, campaignId, cell }) {
       if (b.dataset.sheet) return await (await import("./npc-sheet.js")).openNpcSheet({ campaignId, npcId: b.dataset.sheet });
       if (b.dataset.image) { const n = onMap.find((x) => x.tokenId === b.dataset.image); return (await import("./npc-sheet.js")).showImage(n?.image, n?.name); }
       if (b.dataset.place) {
-        await api(`${base}/npc-tokens`, "POST", { masterCharacterId: b.dataset.place, x: cell.x, y: cell.y, copy: b.dataset.copy === "1" });
+        await api(`${base}/npc-tokens`, "POST", { masterCharacterId: b.dataset.place, ...placement(cell, isFreeMap(live.map)), copy: b.dataset.copy === "1" });
         $("#modal").close();
       } else await api(`${base}/npcs/${b.dataset.npc}/resource`, "POST", { index: Number(b.dataset.i), delta: Number(b.dataset.d) }, { background: true });
     } catch (error) { toast(error.message); }

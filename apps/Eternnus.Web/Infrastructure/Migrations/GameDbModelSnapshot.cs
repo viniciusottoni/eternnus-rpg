@@ -21,6 +21,7 @@ namespace Eternnus.Web.Infrastructure.Migrations
                 .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "unaccent");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("Eternnus.Web.AppUser", b =>
@@ -444,6 +445,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                     b.Property<Guid?>("FolderId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("FreeMovement")
+                        .HasColumnType("boolean");
 
                     b.Property<int>("GridOffsetX")
                         .HasColumnType("integer");
@@ -948,7 +952,7 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             Description = "Conversa geral entre aventureiros.",
                             MinLevelToPost = 1,
                             Name = "Taverna",
-                            Order = 1,
+                            Order = 3,
                             Slug = "taverna",
                             StaffOnly = false
                         },
@@ -958,7 +962,7 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             Description = "Encontre mesa, mestre ou jogadores.",
                             MinLevelToPost = 1,
                             Name = "Procura-se grupo",
-                            Order = 2,
+                            Order = 4,
                             Slug = "procura-se-grupo",
                             StaffOnly = false
                         },
@@ -968,7 +972,7 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             Description = "Dúvidas e debates sobre regras de cada sistema.",
                             MinLevelToPost = 2,
                             Name = "Regras e sistemas",
-                            Order = 3,
+                            Order = 7,
                             Slug = "regras-e-sistemas",
                             StaffOnly = false
                         },
@@ -978,7 +982,7 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             Description = "Ideias, ganchos e relatos de campanha.",
                             MinLevelToPost = 2,
                             Name = "Mestres e campanhas",
-                            Order = 4,
+                            Order = 5,
                             Slug = "mestres-e-campanhas",
                             StaffOnly = false
                         },
@@ -988,7 +992,7 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             Description = "Sugestões para fichas-modelo e materiais da biblioteca.",
                             MinLevelToPost = 1,
                             Name = "Fichas e biblioteca",
-                            Order = 5,
+                            Order = 8,
                             Slug = "fichas-e-biblioteca",
                             StaffOnly = false
                         },
@@ -998,7 +1002,7 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             Description = "Sugestões de melhorias e novos recursos para a plataforma.",
                             MinLevelToPost = 1,
                             Name = "Forja de Ideias",
-                            Order = 6,
+                            Order = 2,
                             Slug = "forja-de-ideias",
                             StaffOnly = false
                         },
@@ -1008,7 +1012,7 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             Description = "Mapas, retratos, tokens e artes criadas pela comunidade.",
                             MinLevelToPost = 1,
                             Name = "Galeria do Artífice",
-                            Order = 7,
+                            Order = 6,
                             Slug = "galeria-do-artifice",
                             StaffOnly = false
                         },
@@ -1018,7 +1022,7 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             Description = "Dúvidas de quem está começando no RPG ou na Eternnus.",
                             MinLevelToPost = 1,
                             Name = "Portal do Aprendiz",
-                            Order = 8,
+                            Order = 1,
                             Slug = "portal-do-aprendiz",
                             StaffOnly = false
                         });
@@ -1820,6 +1824,12 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
+                    b.Property<int?>("Fx")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Fy")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("Hidden")
                         .HasColumnType("boolean");
 
@@ -2224,6 +2234,64 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.HasIndex("TicketId", "Id");
 
                     b.ToTable("TicketMessages");
+                });
+
+            modelBuilder.Entity("Eternnus.Web.TimelineEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Details")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("character varying(10000)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Published")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(280)
+                        .HasColumnType("character varying(280)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("When")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignId", "Kind")
+                        .IsUnique()
+                        .HasFilter("\"Kind\" <> 'event'");
+
+                    b.HasIndex("CampaignId", "Position");
+
+                    b.ToTable("TimelineEvent");
                 });
 
             modelBuilder.Entity("Eternnus.Web.UserAchievement", b =>
@@ -3080,6 +3148,10 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                             b1.Property<Guid?>("CharacterId");
 
+                            b1.Property<int?>("Fx");
+
+                            b1.Property<int?>("Fy");
+
                             b1.Property<bool>("Hidden");
 
                             b1.Property<string>("Label")
@@ -3118,6 +3190,10 @@ namespace Eternnus.Web.Infrastructure.Migrations
                                 .ValueGeneratedOnAdd();
 
                             b1.Property<Guid?>("CharacterId");
+
+                            b1.Property<int?>("Fx");
+
+                            b1.Property<int?>("Fy");
 
                             b1.Property<bool>("Hidden");
 
@@ -3416,6 +3492,15 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.HasOne("Eternnus.Web.SupportTicket", null)
                         .WithMany()
                         .HasForeignKey("TicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Eternnus.Web.TimelineEvent", b =>
+                {
+                    b.HasOne("Eternnus.Web.Campaign", null)
+                        .WithMany()
+                        .HasForeignKey("CampaignId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

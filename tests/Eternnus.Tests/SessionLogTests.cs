@@ -305,7 +305,7 @@ public sealed class SessionLogTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Search_returns_every_hit_paginated_by_fifteen_with_kind_filter()
+    public async Task Search_returns_every_hit_paginated_by_twenty_with_kind_filter()
     {
         // 20 NPCs e 1 capítulo com "goblin": antes a busca parava em 8 por tipo.
         for (var i = 1; i <= 20; i++) db.Add(new MasterCharacter { CampaignId = campaign.Id, Name = $"Goblin {i:00}", SharedWithPlayers = i % 2 == 0 });
@@ -313,11 +313,11 @@ public sealed class SessionLogTests : IAsyncLifetime
         await service.SaveChapter(campaign.Id, null, "master", new("Covil goblin", "act"), default);
         var page1 = Json(await service.Search(campaign.Id, "master", "goblin", null, 1, default));
         Assert.Equal(21, page1.GetProperty("total").GetInt32());
-        Assert.Equal(15, page1.GetProperty("items").GetArrayLength());
-        Assert.Equal(15, page1.GetProperty("pageSize").GetInt32());
+        Assert.Equal(20, page1.GetProperty("items").GetArrayLength());
+        Assert.Equal(20, page1.GetProperty("pageSize").GetInt32());
         Assert.False(page1.GetProperty("truncated").GetBoolean());
         var page2 = Json(await service.Search(campaign.Id, "master", "goblin", null, 2, default));
-        Assert.Equal(6, page2.GetProperty("items").GetArrayLength());
+        Assert.Equal(1, page2.GetProperty("items").GetArrayLength());
         // Página além da última volta para a última.
         Assert.Equal(2, Json(await service.Search(campaign.Id, "master", "goblin", null, 99, default)).GetProperty("page").GetInt32());
         // Filtro de tipo antes da paginação; jogador só vê os compartilhados.
@@ -332,15 +332,15 @@ public sealed class SessionLogTests : IAsyncLifetime
     public async Task Known_npcs_filter_by_name_and_kind_and_open_on_the_focused_page()
     {
         var prep = new PreparationService(db, TimeProvider.System);
-        for (var i = 1; i <= 18; i++) db.Add(new MasterCharacter { CampaignId = campaign.Id, Name = $"Aliado {i:00}", Summary = i == 3 ? "Ferreiro da vila" : "", Kind = i <= 2 ? NpcKinds.Creature : NpcKinds.Npc, SharedWithPlayers = true });
+        for (var i = 1; i <= 23; i++) db.Add(new MasterCharacter { CampaignId = campaign.Id, Name = $"Aliado {i:00}", Summary = i == 3 ? "Ferreiro da vila" : "", Kind = i <= 2 ? NpcKinds.Creature : NpcKinds.Npc, SharedWithPlayers = true });
         await db.SaveChangesAsync();
         var all = Json(await prep.KnownNpcsAsync(campaign.Id, "player", null, null, 1, default));
-        Assert.Equal(18, all.GetProperty("total").GetInt32());
-        Assert.Equal(15, all.GetProperty("items").GetArrayLength());
+        Assert.Equal(23, all.GetProperty("total").GetInt32());
+        Assert.Equal(20, all.GetProperty("items").GetArrayLength());
         Assert.Equal("Aliado 03", Assert.Single(Json(await prep.KnownNpcsAsync(campaign.Id, "player", "ferreiro", null, 1, default)).GetProperty("items").EnumerateArray()).GetProperty("name").GetString());
         Assert.Equal(2, Json(await prep.KnownNpcsAsync(campaign.Id, "player", null, NpcKinds.Creature, 1, default)).GetProperty("total").GetInt32());
-        // Link da busca: o NPC 17 está na página 2.
-        var focus = await db.MasterCharacters.Where(m => m.Name == "Aliado 17").Select(m => m.Id).SingleAsync();
+        // Link da busca: o NPC 22 está na página 2.
+        var focus = await db.MasterCharacters.Where(m => m.Name == "Aliado 22").Select(m => m.Id).SingleAsync();
         var focused = Json(await prep.KnownNpcsAsync(campaign.Id, "player", null, null, 1, default, focus));
         Assert.Equal(2, focused.GetProperty("page").GetInt32());
         Assert.Contains(focused.GetProperty("items").EnumerateArray(), i => i.GetProperty("id").GetGuid() == focus);

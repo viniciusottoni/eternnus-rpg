@@ -25,6 +25,9 @@ public sealed class SceneToken
     [MaxLength(10)] public string Side { get; set; } = "enemy";
     public int X { get; set; }
     public int Y { get; set; }
+    /// <summary>Posição dentro da casa (milésimos) em mapas de movimentação livre; nulo = centro.</summary>
+    public int? Fx { get; set; }
+    public int? Fy { get; set; }
     public bool Hidden { get; set; }
     public int? Light { get; set; }
 }
