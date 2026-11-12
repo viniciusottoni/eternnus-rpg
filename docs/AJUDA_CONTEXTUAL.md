@@ -4,6 +4,8 @@ Fonte de verdade da ajuda atual e futura (ADR-047). Fase A documentada antes da 
 
 ## Objetivo e decisão
 
+ADR-077, arte dos tiles: texturas, veios, sombras, folhas e faces são decoração sem interação própria (sem tooltip ou foco). A explicação de terreno livre/bloqueado e do comando Mostrar grade integra a chave existente `mesa.mapa.legenda`, no catálogo `js/help/mesa.js`. Não foram criados controles nem chaves novas.
+
 Cada elemento usa um nível principal. Texto auxiliar sempre visível informa formato, limite, requisito ou consequência e se liga por `aria-describedby`. Tooltip reforça uma informação breve, de até 80 caracteres. Botão ⓘ abre uma explicação com mais de uma frase sobre conceitos, papéis e diferenças entre opções. Uma explicação conceitual pode coexistir com o requisito visível do campo; não esconde esse requisito.
 
 | Situação | Nível e exemplo real |
@@ -585,3 +587,30 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | Campos Quando, Descrição curta e Relato completo | `campaign-timeline.js` | Auxiliar visível ligado por `aria-describedby` (texto livre; onde cada texto aparece). | — |
 | “Mostrar ao grupo” | `campaign-timeline.js` | Auxiliar visível: sem marcar, rascunho só do mestre. | — |
 | Selo “Rascunho” e “Definir início/fim” | `campaign-timeline.js` | Rótulos autoexplicativos; “+ Acontecimento” no limite usa `aria-disabled` + `data-tip` com o motivo. | — |
+
+## Classificação — mapas próprios com tiles (ADR-078)
+
+| Elemento | Nível / chave |
+| --- | --- |
+| Criar mapas, permissões, publicação e redefinição de preparação | ⓘ `campanhas.mapas.tiles`, catálogo campanhas e índice |
+| Criar com tiles / Criar cópia / Editar tiles / Salvar cópia | Rótulos visíveis; nenhuma ação só por ícone |
+| Peças do catálogo | Nome visível + `aria-pressed`; nome acessível informa passagem/visão; detalhes no estado visível |
+| Grupo, ferramenta, nome, pasta, escala, dimensões | Labels permanentes; limites e instruções junto dos campos |
+| Desfazer / Refazer | Texto visível; disabled quando não há etapa; ajuda descreve histórico de 30 etapas |
+| Grade, pincel, retângulo, preencher, capturar | Instruções visíveis; teclado/pan/zoom pelo componente compartilhado |
+| Redefinir preparação | Checkbox explícito com consequências sempre visíveis; salvar cópia como alternativa |
+| Sair com rascunho | Confirmação de descarte; aviso nativo de saída da página |
+| Câmera | Ajuda existente `mesa.mapa.camera` |
+
+## Classificação — forma dos marcadores e liberação do movimento (ADR-079)
+
+| Elemento | Arquivo | Nível / chave |
+| --- | --- | --- |
+| Grupo “Forma no mapa” (redondo ou imagem livre, tamanho) ao posicionar, em “Personagens do mestre” e em “Forma e tamanho” | `table-tools.js`; `table.js` | ⓘ `mesa.marcadores.forma` (mestre); auxiliar visível do tamanho ligado por `aria-describedby` |
+| Ferramenta “Forma e tamanho” | `table.js` | Rótulo visível; aparece só com marcador selecionado |
+| Ferramenta “Editar marcador” e grupo Identificação (nome, lado, vincular ficha) | `table.js` | Rótulo visível; aparece só com criatura selecionada; ⓘ `mesa.marcadores.editar` (mestre); vincular ficha reutiliza ⓘ `mesa.npcs.ficha` e auxiliar visível ligado por `aria-describedby` (ADR-080) |
+| Dica “Sem ficha” na seleção | `table.js` | Texto visível na faixa de dica do mapa |
+| Alça dourada de redimensionar | `table-map.js` | Visual; alternativa acessível no campo numérico de “Forma e tamanho”; tamanho anunciado na área de status |
+| “Liberar movimento” / “Bloquear movimento” | `table.js` | Texto visível + `aria-pressed`; ⓘ `mesa.turnos.liberar-movimento` (mestre) |
+| Opção “Movimento só com liberação do mestre” | `table-settings.js` | ⓘ `mesa.turnos.liberar-movimento` e auxiliar visível |
+| Selo “Movimento aguardando o mestre” e motivo do “Mover” desabilitado | `table.js` | Texto visível (`role="status"`) e `data-tip` com o motivo |

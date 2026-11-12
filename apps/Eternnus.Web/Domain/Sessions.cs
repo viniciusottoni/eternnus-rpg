@@ -75,4 +75,24 @@ public class SessionToken
     public int? DetectRange { get; set; }
     /// <summary>Personagem do mestre representado (cópia de encontro ou original).</summary>
     public Guid? MasterCharacterId { get; set; }
+    /// <summary>Aparência escolhida pelo mestre (<see cref="TokenLooks"/>): marcador redondo ou imagem livre (PNG com transparência).</summary>
+    [MaxLength(8)] public string Appearance { get; set; } = TokenLooks.Round;
+    /// <summary>Tamanho em porcentagem da casa (<see cref="TokenLooks.MinSize"/>–<see cref="TokenLooks.MaxSize"/>). Só o mestre altera.</summary>
+    public int Size { get; set; } = TokenLooks.DefaultSize;
+    /// <summary>Imagem própria do marcador (asset:{id} do acervo da campanha ou https); nula = imagem do personagem do mestre, se houver.</summary>
+    [MaxLength(500)] public string? ImageUrl { get; set; }
+}
+
+/// <summary>Aparência dos marcadores no mapa. O servidor só guarda; o desenho é do cliente (<c>table-map.js</c>).</summary>
+public static class TokenLooks
+{
+    public const string Round = "round", Image = "image";
+    public const int MinSize = 50, MaxSize = 800, DefaultSize = 100;
+    public static string Require(string? appearance) =>
+        appearance is Round or Image ? appearance : throw new RuleException(400, "Escolha marcador redondo ou imagem livre.");
+    public static int RequireSize(int size) =>
+        size is >= MinSize and <= MaxSize ? size : throw new RuleException(400, $"O tamanho vai de {MinSize}% a {MaxSize}% da casa.");
+    /// <summary>Valores guardados em cenas antigas ou editados à mão voltam ao padrão em vez de recusar a cena.</summary>
+    public static string Clean(string? appearance) => appearance is Image ? Image : Round;
+    public static int CleanSize(int size) => size is >= MinSize and <= MaxSize ? size : DefaultSize;
 }

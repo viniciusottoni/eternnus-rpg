@@ -31,6 +31,7 @@ try {
 
   // Movimento: casa desconhecida recusada com mensagem genérica; depois de clarear, caminho livre.
   await master(s + "/turn", "POST", { characterId: character.id }, 204);
+  await master(s + "/move-grant", "POST", { allowed: true }, 204); // ADR-079
   const mine = live.tokens.find((t) => t.characterId === character.id);
   const refused = await player(`${s}/tokens/${mine.id}/move`, "POST", { x: mine.x + 3, y: mine.y }, 400);
   check(refused.message ?? refused.title ?? refused.error ?? Object.values(refused).find((v) => typeof v === "string"), "Esse ponto não está disponível.");

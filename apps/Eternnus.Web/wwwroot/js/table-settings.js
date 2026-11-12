@@ -6,6 +6,7 @@ import { SETTING_FIELDS, normalizeSettings } from "./fog-policy.js";
 const concept = Object.freeze({
   playMode: { help: "campanhas.config.forma-de-jogar" },
   playerRollVisibility: { help: "mesa.rolagem.visibilidade" },
+  moveNeedsGrant: { help: "mesa.turnos.liberar-movimento" },
   fogEnabled: { help: "mesa.config.nevoa" },
   manualReveal: { help: "mesa.config.revelacao-manual" },
   rememberExplored: { help: "mesa.config.nevoa" },

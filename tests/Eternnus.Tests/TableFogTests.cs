@@ -204,6 +204,7 @@ public sealed class TableFogSessionTests : IAsyncLifetime
     {
         var id = await StartAsync();
         await service.NextTurnAsync(id, Master, default);
+        await service.MoveGrantAsync(id, new(true), Master, default); // liberação do mestre (MoveNeedsGrant)
         var token = await HeroToken(id);
         var unknown = await Assert.ThrowsAsync<RuleException>(() => service.MoveTokenAsync(id, token.Id, new(token.X + 3, token.Y), Player, default));
         Assert.Equal("Esse ponto não está disponível.", unknown.Message);
@@ -293,6 +294,7 @@ public sealed class TableFogSessionTests : IAsyncLifetime
         Assert.False(me.GetProperty("movementRole").GetBoolean());
         Assert.Equal(JsonValueKind.Null, me.GetProperty("reach").ValueKind);
         await service.NextTurnAsync(next, Master, default);
+        await service.MoveGrantAsync(next, new(true), Master, default); // liberação do mestre (MoveNeedsGrant)
         var token = await HeroToken(next);
         await service.MoveTokenAsync(next, token.Id, new(token.X + 10, token.Y), Player, default); // além de 9 m: o mestre decide
     }

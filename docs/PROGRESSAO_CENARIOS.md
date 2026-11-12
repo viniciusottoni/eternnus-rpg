@@ -50,10 +50,22 @@ Idempotência por origem, transações existentes e autorização continuam no s
 | `courtyard` | Pátio da Fortaleza | Praça, jardins, fonte e caminhos alternativos |
 | `harbor` | Cais das Marés | Armazém, carga e três ancoradouros fluviais ou costeiros |
 | `sanctuary` | Santuário de Pedra | Templo, ruína ou salão cerimonial sem divindade imposta |
+| `mountain` | Passo da Montanha | Neve, pinheiros e travessias entre rochas |
+| `savanna` | Savana dos Ventos | Capim seco, acácias e acampamento |
+| `desert` | Deserto das Dunas | Areia, cactos, palmeiras e oásis |
+| `dense-forest` | Floresta Densa | Mata rasteira, árvores e caminhos entre clareiras |
+| `tomb` | Tumba dos Ancestrais | Câmaras funerárias, sarcófagos e altares |
+| `graveyard` | Cemitério das Brumas | Lápides, cercas e mausoléu |
+| `castle` | Castelo da Coroa | Muralhas, corredores e salão do trono |
+| `cave` | Caverna dos Cristais | Galerias, estalagmites e cristais |
+| `volcano` | Vulcão da Cinza | Basalto, lava e passagens de pedra |
+| `underwater` | Ruínas Debaixo d’Água | Fundo submerso, corais, algas e ruínas |
+| `village` | Aldeia do Vale | Casas, caminhos, cercas e poço |
+| `city` | Cidade das Arcadas | Ruas calçadas, quarteirões e mercado |
 
-Os novos mapas têm 28 × 18 casas e pelo menos seis pontos de entrada. Não impõem facção, sistema, nível, criaturas nem resultados de encontro. Todas as áreas caminháveis se conectam por movimentos ortogonais. Cenários existentes preservam identificadores e coordenadas de entrada; a cripta recebe preenchimento apenas na borda leste que estava curta, e a floresta ganha travessia.
+O atlas tem vinte cenários: dezenove mapas táticos e o Vale Dourado cartográfico. Os doze cenários da ADR-078 têm 28 × 20 ou 32 × 22 casas; os anteriores conservam suas grades. Mapas táticos têm pelo menos seis pontos de entrada e não impõem facção, sistema, nível, criaturas nem resultados de encontro. Todas as áreas caminháveis oficiais se conectam por movimentos ortogonais. Cenários existentes preservam identificadores e coordenadas de entrada.
 
-Fonte única das grades: `Domain/BattleMaps.cs`. Além dos símbolos anteriores, `d` indica madeira caminhável, `:` areia caminhável e `h` mesa/caixote bloqueado. O cliente usa a mesma legenda. Textura e iluminação não inventam obstáculos ou permissões. Miniaturas e mesa desenham a mesma grade; o Vale Dourado continua cartográfico.
+Fonte única das grades: `Domain/BattleMaps.cs`; as 44 peças estão em `Domain/MapTiles.cs`, com terreno, grupo, passagem e bloqueio de visão. O cliente usa a mesma legenda. Textura e iluminação não inventam obstáculos ou permissões. Miniaturas, editor e mesa desenham a mesma grade; o Vale Dourado continua cartográfico. O Mestre pode criar mapas próprios vazios ou copiar cenários táticos no acervo, sem depender dos mapas prontos (ADR-078).
 
 O atlas aparece em Mapas e cenários, junto do acervo privado existente. A escolha ao abrir sessão ou trocar mapa reutiliza `map-picker.js`, com busca sem acentos, miniatura real, dimensões e rádio acessível. Buscar preserva a seleção atual visível. A troca continua removendo criaturas e reposicionando personagens conforme o contrato anterior.
 

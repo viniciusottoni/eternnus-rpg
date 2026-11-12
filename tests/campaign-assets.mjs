@@ -69,6 +69,7 @@ try {
   const character = await player("/api/characters", "POST", { name: "Aventureiro", archetype: "Explorador", level: 1, hp: 10, maxHp: 10, strength: 10, agility: 10, intellect: 10, notes: "", movement: 3 });
   await player(`/api/sessions/${session.id}/join`, "POST", { characterId: character.id }, 204);
   await master(`/api/sessions/${session.id}/turn`, "POST", { characterId: character.id }, 204);
+  await master(`/api/sessions/${session.id}/move-grant`, "POST", { allowed: true }, 204); // ADR-079
   const joined = await player(`/api/sessions/${session.id}/live`);
   const ownToken = joined.tokens.find(t => t.characterId === character.id);
   check([ownToken.x, ownToken.y], [0, 0]);

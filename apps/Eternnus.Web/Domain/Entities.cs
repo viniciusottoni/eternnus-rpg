@@ -125,6 +125,11 @@ public class GameSession
     /// <summary>Último personagem que recebeu o turno; mantém a rotação quando o jogador encerra a própria vez.</summary>
     public Guid? LastActiveCharacterId { get; set; }
     public int TurnNumber { get; set; }
+    /// <summary>
+    /// Turno (<see cref="TurnNumber"/>) em que o mestre liberou o movimento dos jogadores; nulo = bloqueado.
+    /// Trocar o turno revoga sozinho, porque o número muda. Só vale com <see cref="TableSettings.MoveNeedsGrant"/>.
+    /// </summary>
+    public int? MoveGrantTurn { get; set; }
     /// <summary>Ajuste da configuração da mesa só para esta sessão (<see cref="Eternnus.Web.TableSettings"/>); nulo = configuração da campanha.</summary>
     [MaxLength(4000)] public string? TableSettings { get; set; }
     /// <summary>Forma de condução fixada ao abrir a sessão (<see cref="PlayModes"/>). Nula = tática (sessões anteriores).</summary>

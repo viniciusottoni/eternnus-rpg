@@ -91,6 +91,18 @@ public sealed class TablePlayRulesTests
     }
 
     [Fact]
+    public void Renamed_token_updates_only_its_turn_entry()
+    {
+        var token = Guid.NewGuid();
+        List<TurnEntry> order = [new() { Key = "t:" + token, Label = "Esqueleto" }, new() { Key = "g:1", Label = "Grupo" }];
+        Assert.True(TurnOrders.Relabel(order, "t:" + token, new string('x', 50)));
+        Assert.Equal(40, order[0].Label.Length);
+        Assert.Equal("Grupo", order[1].Label);
+        Assert.False(TurnOrders.Relabel(order, "t:" + token, new string('x', 40)));
+        Assert.False(TurnOrders.Relabel(order, "t:" + Guid.NewGuid(), "Outro"));
+    }
+
+    [Fact]
     public void Summary_shows_only_resources_defined_by_the_template()
     {
         var stressOnly = new List<SheetField>

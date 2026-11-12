@@ -44,7 +44,8 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
 
     async Task SetModeAsync(string mode)
     {
-        campaign.TableSettings = (TableSettings.Default with { PlayMode = mode, FogEnabled = false }).Serialize();
+        // Regras de alcance e turno testadas sem a liberação do mestre; ela tem teste próprio.
+        campaign.TableSettings = (TableSettings.Default with { PlayMode = mode, FogEnabled = false, MoveNeedsGrant = false }).Serialize();
         await db.SaveChangesAsync();
     }
     async Task<Guid> StartAsync(string? mode = PlayModes.Tactical)
@@ -109,7 +110,7 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
     public async Task Session_keeps_its_play_mode_when_the_campaign_changes_mid_game()
     {
         var id = await StartAsync(PlayModes.Turns);
-        await service.UpdateCampaignTableSettingsAsync(campaign.Id, TableSettings.Default with { PlayMode = PlayModes.Free, FogEnabled = false }, Master, default);
+        await service.UpdateCampaignTableSettingsAsync(campaign.Id, TableSettings.Default with { PlayMode = PlayModes.Free, FogEnabled = false, MoveNeedsGrant = false }, Master, default);
         Assert.Equal(409, await Status(() => service.UseActionAsync(id, new("ataque", "golpe", null), Player, default)));
         // Turnos: exige a vez, mas não limita a distância.
         await service.SetTurnAsync(id, new(hero.Id), Master, default);
@@ -674,6 +675,57 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Master_renames_creature_changes_side_and_links_a_sheet_later()
+    {
+        await SheetTemplateService.EnsureFreeTemplateAsync(db, default);
+        var id = await StartAsync(PlayModes.Turns);
+        var skeleton = JsonSerializer.SerializeToElement(await service.AddTokenAsync(id, new("Esqueleto", "enemy", 2, 1), Master, default), Web).GetProperty("id").GetGuid();
+        await service.SetTurnOrderAsync(id, new([new() { Key = "t:" + skeleton, Initiative = 12 }]), Master, default);
+        db.ChangeTracker.Clear();
+        // Campos novos ausentes (cliente anterior): nome e lado ficam como estão.
+        await service.TokenSettingsAsync(id, skeleton, new(null, null, null, null, false, null, null, null), Master, default);
+        db.ChangeTracker.Clear();
+        Assert.Equal("Esqueleto", (await db.SessionTokens.SingleAsync(t => t.Id == skeleton)).Label);
+        Assert.Equal(403, await Status(() => service.TokenSettingsAsync(id, skeleton, new(null, null, null, null, false, null, null, null, Label: "X"), Player, default)));
+        db.ChangeTracker.Clear();
+        Assert.Equal(400, await Status(() => service.TokenSettingsAsync(id, skeleton, new(null, null, null, null, false, null, null, null, Label: " "), Master, default)));
+        db.ChangeTracker.Clear();
+        Assert.Equal(400, await Status(() => service.TokenSettingsAsync(id, skeleton, new(null, null, null, null, false, null, null, null, Side: "boss"), Master, default)));
+        db.ChangeTracker.Clear();
+
+        await service.TokenSettingsAsync(id, skeleton, new(null, null, null, null, false, null, null, null, Label: "Esqueleto guardião", Side: "neutral"), Master, default);
+        db.ChangeTracker.Clear();
+        var token = await db.SessionTokens.SingleAsync(t => t.Id == skeleton);
+        Assert.Equal(("Esqueleto guardião", "neutral"), (token.Label, token.Side));
+        Assert.Null(token.MasterCharacterId);
+        Assert.Equal("Esqueleto guardião", TurnOrders.Parse((await db.Sessions.SingleAsync(s => s.Id == id)).TurnOrder).Single().Label);
+        var renamed = await db.Events.Where(e => e.SessionId == id && e.Kind == EventKinds.Token).OrderBy(e => e.Id).LastAsync();
+        Assert.True(renamed.MasterOnly);
+        Assert.Contains("renomeou Esqueleto para Esqueleto guardião", renamed.Content);
+
+        // Vincular ficha: a criatura nasce com o nome e o lado atuais; segundo vínculo é recusado.
+        Assert.Equal(404, await Status(() => service.TokenSettingsAsync(id, skeleton, new(null, null, null, null, false, null, null, null, TemplateId: Guid.NewGuid()), Master, default)));
+        db.ChangeTracker.Clear();
+        await service.TokenSettingsAsync(id, skeleton, new(null, null, null, null, false, null, null, null, TemplateId: SheetTemplate.FreeTemplateId), Master, default);
+        db.ChangeTracker.Clear();
+        token = await db.SessionTokens.SingleAsync(t => t.Id == skeleton);
+        var npc = await db.MasterCharacters.SingleAsync(m => m.Id == token.MasterCharacterId);
+        Assert.Equal(("Esqueleto guardião", "neutral", NpcKinds.Creature), (npc.Name, npc.Side, npc.Kind));
+        Assert.NotNull(npc.TemplateVersionId);
+        Assert.Equal(409, await Status(() => service.TokenSettingsAsync(id, skeleton, new(null, null, null, null, false, null, null, null, TemplateId: SheetTemplate.FreeTemplateId), Master, default)));
+        db.ChangeTracker.Clear();
+
+        // Personagem de jogador: nome, lado e ficha vêm da ficha do jogador.
+        var hero = await db.SessionTokens.FirstAsync(t => t.SessionId == id && t.CharacterId != null);
+        Assert.Equal(409, await Status(() => service.TokenSettingsAsync(id, hero.Id, new(null, null, null, null, false, null, null, null, Label: "Outro"), Master, default)));
+        db.ChangeTracker.Clear();
+        Assert.Equal(409, await Status(() => service.TokenSettingsAsync(id, hero.Id, new(null, null, null, null, false, null, null, null, Side: "enemy"), Master, default)));
+        db.ChangeTracker.Clear();
+        // Repetir o mesmo nome/lado do jogador não é mudança: segue aceito.
+        await service.TokenSettingsAsync(id, hero.Id, new(null, null, null, null, false, null, null, null, Label: hero.Label, Side: hero.Side), Master, default);
+    }
+
+    [Fact]
     public async Task Master_changes_creature_image_and_the_board_portrait_follows()
     {
         var id = await StartAsync(PlayModes.Free);
@@ -710,6 +762,73 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
         var removed = JsonSerializer.SerializeToElement(await service.SaveNpcImageAsync(campaign.Id, npcId, new(null, changed.GetProperty("revision").GetInt32()), Master, default), Web);
         Assert.Equal(JsonValueKind.Null, removed.GetProperty("imageUrl").ValueKind);
         Assert.DoesNotContain(tokenId + "/portrait", await StateText(id, Player));
+    }
+
+    [Fact]
+    public async Task Player_moves_only_after_the_master_grants_movement_for_the_current_turn()
+    {
+        campaign.TableSettings = (TableSettings.Default with { PlayMode = PlayModes.Turns, FogEnabled = false }).Serialize();
+        await db.SaveChangesAsync();
+        var id = await StartAsync(null);
+        await service.SetTurnAsync(id, new(hero.Id), Master, default);
+        var token = await TokenOf(id, hero.Id);
+        var cell = await FreeCell(id, token, 1);
+        Assert.False((await State(id, Player)).GetProperty("play").GetProperty("moveGranted").GetBoolean());
+        Assert.Equal(409, await Status(() => service.MoveTokenAsync(id, token.Id, cell, Player, default)));
+        Assert.Equal(403, await Status(() => service.MoveGrantAsync(id, new(true), Player, default)));
+        await service.MoveGrantAsync(id, new(true), Master, default);
+        var play = (await State(id, Player)).GetProperty("play");
+        Assert.True(play.GetProperty("moveNeedsGrant").GetBoolean());
+        Assert.True(play.GetProperty("moveGranted").GetBoolean());
+        await service.MoveTokenAsync(id, token.Id, cell, Player, default);
+        // O mestre pode bloquear de novo no mesmo turno.
+        await service.MoveGrantAsync(id, new(false), Master, default);
+        token = await TokenOf(id, hero.Id);
+        Assert.Equal(409, await Status(async () => await service.MoveTokenAsync(id, token.Id, await FreeCell(id, token, 1), Player, default)));
+        // Liberação é do turno: trocar a vez revoga sem outra ação do mestre.
+        await service.MoveGrantAsync(id, new(true), Master, default);
+        await service.SetTurnAsync(id, new(rogue.Id), Master, default);
+        await service.SetTurnAsync(id, new(hero.Id), Master, default);
+        Assert.False((await State(id, Player)).GetProperty("play").GetProperty("moveGranted").GetBoolean());
+        token = await TokenOf(id, hero.Id);
+        Assert.Equal(409, await Status(async () => await service.MoveTokenAsync(id, token.Id, await FreeCell(id, token, 1), Player, default)));
+        // O mestre continua movendo qualquer marcador sem liberação.
+        await service.MoveTokenAsync(id, token.Id, await FreeCell(id, token, 1), Master, default);
+    }
+
+    [Fact]
+    public async Task Master_chooses_round_or_free_image_and_size_for_any_token_and_players_cannot()
+    {
+        var id = await StartAsync(PlayModes.Free);
+        var token = await TokenOf(id, hero.Id);
+        var png = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3 };
+        var portrait = new CampaignMap { CampaignId = campaign.Id, Name = "Recorte", Purpose = CampaignAssetPurposes.Portrait, HasGrid = false, Width = 64, Height = 64, Content = png };
+        var stranger = new Campaign { OwnerId = Outsider, Name = "Outra" };
+        var foreign = new CampaignMap { CampaignId = stranger.Id, Name = "Alheia", Purpose = CampaignAssetPurposes.Portrait, HasGrid = false, Width = 64, Height = 64, Content = png };
+        db.AddRange(portrait, stranger, foreign);
+        await db.SaveChangesAsync();
+
+        await service.TokenAppearanceAsync(id, token.Id, new(TokenLooks.Image, 250, "asset:" + portrait.Id), Master, default);
+        var mine = (await State(id, Player)).GetProperty("tokens").EnumerateArray().Single(t => t.GetProperty("id").GetGuid() == token.Id);
+        Assert.Equal("image", mine.GetProperty("appearance").GetString());
+        Assert.Equal(250, mine.GetProperty("size").GetInt32());
+        Assert.Contains($"/tokens/{token.Id}/portrait", mine.GetProperty("image").GetString());
+        // Personagem do jogador também ganha imagem; o PNG é servido como PNG (transparência preservada).
+        var bytes = await service.PortraitAsync(id, token.Id, Player, default);
+        Assert.Equal(png, bytes);
+        Assert.Equal(DocumentKinds.Png, CampaignAssetsService.ImageType(bytes));
+
+        Assert.Equal(403, await Status(() => service.TokenAppearanceAsync(id, token.Id, new(TokenLooks.Round, 100), Player, default)));
+        Assert.Equal(400, await Status(() => service.TokenAppearanceAsync(id, token.Id, new("square", 100), Master, default)));
+        Assert.Equal(400, await Status(() => service.TokenAppearanceAsync(id, token.Id, new(TokenLooks.Round, TokenLooks.MaxSize + 1), Master, default)));
+        Assert.Equal(400, await Status(() => service.TokenAppearanceAsync(id, token.Id, new(TokenLooks.Image, 100, "asset:" + foreign.Id), Master, default)));
+
+        // Criatura nasce com a forma e o tamanho escolhidos ao posicionar.
+        var spot = await FreeCell(id, token, 2);
+        var created = JsonSerializer.SerializeToElement(await service.AddTokenAsync(id, new("Dragão", "enemy", spot.X, spot.Y, Appearance: TokenLooks.Image, Size: 400), Master, default), Web);
+        db.ChangeTracker.Clear();
+        var dragon = await db.SessionTokens.AsNoTracking().SingleAsync(t => t.Id == created.GetProperty("id").GetGuid());
+        Assert.Equal((TokenLooks.Image, 400), (dragon.Appearance, dragon.Size));
     }
 
     sealed class Clock(DateTimeOffset start) : TimeProvider

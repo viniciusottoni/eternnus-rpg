@@ -48,6 +48,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         if (key.StartsWith("asset:"))
         {
             var asset = await new CampaignAssetsService(db).ResolveMapAsync(campaign, key, ct) ?? throw new RuleException(400, "Mapa da campanha não encontrado.");
+            if (asset.IsTileMap && kind != MapKinds.Tileset) throw new RuleException(400, "Mapas de tiles exigem uma cena com grade.");
             if (kind == MapKinds.Tileset && !asset.HasGrid) throw new RuleException(400, "Esta imagem não tem grade. Escolha “Imagem sem grade” ou configure a grade do mapa.");
             return;
         }
@@ -103,6 +104,8 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
 
     public async Task<object> SaveSceneAsync(Guid campaignId, Guid? id, SceneInput x, string user, CancellationToken ct)
     {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await new CampaignAssetsService(db).Lock(campaignId, user, ct);
         await AccessAsync(campaignId, user, true, true, ct);
         var name = Text(x.Name, 80, "Dê um nome de até 80 caracteres à cena.", true);
         if (!SceneKinds.All.Contains(x.Kind)) throw new RuleException(400, "Escolha mapa, imagem ou apresentação textual.");
@@ -138,6 +141,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         scene.LayerMode = x.Kind == SceneKinds.Map ? x.LayerMode ?? scene.LayerMode : SceneLayerModes.Map;
         if (x.Prepared != null) scene.Prepared = x.Kind == SceneKinds.Map ? await ValidArrangementAsync(campaignId, scene, x.Prepared, ct) : [];
         try { await db.SaveChangesAsync(ct); } catch (DbUpdateConcurrencyException) { throw new RuleException(409, "A cena mudou em outra tela. Recarregue antes de salvar."); }
+        await tx.CommitAsync(ct);
         return new { scene.Id, scene.Revision };
     }
 
@@ -152,11 +156,15 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         var prep = TableFogService.PreparedOf(row, state, map, settings);
         var characters = await CampaignCharactersAsync(campaignId, ct);
         var npcs = (await db.MasterCharacters.AsNoTracking().Where(m => m.CampaignId == campaignId).Select(m => m.Id).ToListAsync(ct)).ToHashSet();
-        return ScenePrep.ValidateTokens(input, new FogGrid(map.Width, map.Height, prep.Cells), characters.Select(c => c.Id).ToHashSet(), characters.ToDictionary(c => c.Id, c => c.Name), npcs, map.Free);
+        var tokens = ScenePrep.ValidateTokens(input, new FogGrid(map.Width, map.Height, prep.Cells), characters.Select(c => c.Id).ToHashSet(), characters.ToDictionary(c => c.Id, c => c.Name), npcs, map.Free);
+        foreach (var image in tokens.Select(t => t.ImageUrl).Where(i => i != null).Distinct()) await ValidImageAsync(campaignId, image, db, ct);
+        return tokens;
     }
 
     public async Task<object> DuplicateSceneAsync(Guid campaignId, Guid id, string user, CancellationToken ct)
     {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await new CampaignAssetsService(db).Lock(campaignId, user, ct);
         await AccessAsync(campaignId, user, true, true, ct);
         var s = await db.Scenes.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.CampaignId == campaignId, ct) ?? throw new RuleException(404, "Cena não encontrada.");
         if (await db.Scenes.CountAsync(x => x.CampaignId == campaignId, ct) >= MaxScenes) throw new RuleException(409, $"A campanha aceita até {MaxScenes} cenas.");
@@ -176,6 +184,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
                 db.Add(new CampaignMapLayer { CampaignId = campaignId, MapKey = ScenePrep.LayerKey(s.MapKey, copy.Id), State = ScenePrep.PrepOf(layer).Serialize(), UpdatedAt = Now });
         }
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return new { copy.Id, copy.Revision };
     }
 
@@ -312,7 +321,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
     public static async Task<string?> ValidImageAsync(Guid campaignId, string? input, GameDb db, CancellationToken ct)
     {
         var url = NpcImages.Normalize(input, out var asset);
-        if (asset is { } id && !await db.Set<CampaignMap>().AnyAsync(m => m.Id == id && m.CampaignId == campaignId, ct))
+        if (asset is { } id && !await db.Set<CampaignMap>().AnyAsync(m => m.Id == id && m.CampaignId == campaignId && m.TileData == null, ct))
             throw new RuleException(400, "Escolha uma imagem do acervo desta campanha.");
         return url;
     }

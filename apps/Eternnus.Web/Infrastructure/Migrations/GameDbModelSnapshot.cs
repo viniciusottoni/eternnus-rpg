@@ -482,6 +482,10 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasPrecision(8, 2)
                         .HasColumnType("numeric(8,2)");
 
+                    b.Property<string>("TileData")
+                        .HasMaxLength(4160)
+                        .HasColumnType("character varying(4160)");
+
                     b.Property<int>("Width")
                         .HasColumnType("integer");
 
@@ -792,6 +796,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<int?>("MoveGrantTurn")
+                        .HasColumnType("integer");
 
                     b.Property<bool>("MusicLoop")
                         .HasColumnType("boolean");
@@ -1811,6 +1818,11 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Appearance")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
                     b.Property<Guid?>("CharacterId")
                         .HasColumnType("uuid");
 
@@ -1832,6 +1844,10 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                     b.Property<bool>("Hidden")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("Label")
                         .IsRequired()
@@ -1865,6 +1881,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
+
+                    b.Property<int>("Size")
+                        .HasColumnType("integer");
 
                     b.Property<int?>("Vision")
                         .HasColumnType("integer");
@@ -3146,6 +3165,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             b1.Property<int>("__synthesizedOrdinal")
                                 .ValueGeneratedOnAdd();
 
+                            b1.Property<string>("Appearance")
+                                .HasMaxLength(8);
+
                             b1.Property<Guid?>("CharacterId");
 
                             b1.Property<int?>("Fx");
@@ -3153,6 +3175,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             b1.Property<int?>("Fy");
 
                             b1.Property<bool>("Hidden");
+
+                            b1.Property<string>("ImageUrl")
+                                .HasMaxLength(500);
 
                             b1.Property<string>("Label")
                                 .IsRequired()
@@ -3165,6 +3190,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             b1.Property<string>("Side")
                                 .IsRequired()
                                 .HasMaxLength(10);
+
+                            b1.Property<int?>("Size");
 
                             b1.Property<int>("X");
 
@@ -3189,6 +3216,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             b1.Property<int>("__synthesizedOrdinal")
                                 .ValueGeneratedOnAdd();
 
+                            b1.Property<string>("Appearance")
+                                .HasMaxLength(8);
+
                             b1.Property<Guid?>("CharacterId");
 
                             b1.Property<int?>("Fx");
@@ -3196,6 +3226,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             b1.Property<int?>("Fy");
 
                             b1.Property<bool>("Hidden");
+
+                            b1.Property<string>("ImageUrl")
+                                .HasMaxLength(500);
 
                             b1.Property<string>("Label")
                                 .IsRequired()
@@ -3208,6 +3241,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             b1.Property<string>("Side")
                                 .IsRequired()
                                 .HasMaxLength(10);
+
+                            b1.Property<int?>("Size");
 
                             b1.Property<int>("X");
 

@@ -3134,6 +3134,11 @@ a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3
 .npc-image-fields fieldset { margin: 0; }
 .npc-image-fields .form-actions { margin-top: 10px; }
 @media (max-width: 560px) { .npc-image-editor { grid-template-columns: 1fr; } }
+/* Forma e tamanho do marcador (ADR-079): opções lado a lado; quebram no celular. */
+.token-look .token-look-choices { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-bottom: 10px; }
+.token-look .token-look-choices .check { min-height: 44px; align-items: center; }
+.token-look input[type="number"] { max-width: 9rem; }
+#npc-look { margin-bottom: 12px; }
 /* Configurações da campanha: a ficha-modelo segue o mesmo cartão dos demais itens da lista. */
 .campaign-tab-body .cs-template-settings { padding: 18px 20px; margin: 0 0 14px; }
 .campaign-tab-body .cs-template-settings > h3 { margin: 0 0 6px; color: #ead6a8; font: normal 18px var(--serif); }
@@ -3388,3 +3393,43 @@ a.npc-avatar:focus-visible { outline: 2px solid var(--bright); outline-offset: 3
 @media (prefers-reduced-motion: reduce) {
   .roll-spotlight.show { animation: none; }
 }
+
+/* Editor de mapas com tiles: controles comuns e canvas compartilhado com a mesa. */
+dialog.tile-map-dialog { width: min(1420px, 97vw); max-width: 97vw; }
+.tile-editor { display: grid; gap: 12px; }
+/* Rótulos globais têm margin-bottom; com align-items:end ele deslocava botões 5 px abaixo dos campos. Campos e botões compartilham 44 px. */
+.tile-editor label { margin: 0; }
+.tile-editor :is(input:not([type=checkbox]):not([type=radio]), select), .tile-editor .tm-toolbar button, .tile-editor .tm-fields button { height: 44px; min-height: 44px; box-sizing: border-box; }
+.tm-fields { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.tm-fields label { display: grid; gap: 5px; flex: 1 1 160px; }
+.tm-size { border: 1px solid var(--line); padding: 10px; }
+.tm-size summary { cursor: pointer; margin-bottom: 8px; }
+.tm-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+.tm-toolbar > label:first-child { display: grid; gap: 5px; }
+.tm-toolbar > .check { min-height: 44px; align-items: center; }
+.tm-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 12px; }
+.tm-palette { max-height: 590px; overflow: auto; padding: 8px; background: #141c17; border: 1px solid var(--line); }
+.tm-palette > label { display: grid; gap: 5px; margin-bottom: 10px; }
+.tm-tiles { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+.tm-tile { display: grid; justify-items: center; align-content: start; gap: 5px; padding: 5px; min-height: 98px; font-size: 12px; }
+.tm-tile canvas { width: 58px; height: 58px; }
+.tm-tile[aria-pressed="true"] { outline: 2px solid var(--gold); background: #413a26; }
+.tm-tile[hidden] { display: none; }
+.tm-stage { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.tm-camera { min-height: 44px; }
+.tm-camera .map-camera-controls { position: static; flex-wrap: wrap; }
+.tm-board { position: relative; height: 530px; min-height: 260px; flex: 1; }
+.tm-board .board-surface { min-height: 100%; }
+.fx-thumb canvas { width: 100%; height: 100%; object-fit: contain; }
+@media (max-width: 700px) {
+  .tm-layout { grid-template-columns: minmax(0,1fr); }
+  .tm-palette { max-height: 210px; }
+  .tm-tiles { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .tm-board { height: 390px; flex: none; }
+  .tm-fields label { flex-basis: 120px; }
+  .tile-editor button, .tile-editor select { min-height: 44px; }
+  .tile-editor input, .tile-editor select { font-size: 16px; }
+}
+/* Editar marcador (ADR-080): luz, visão e ocultação recolhidas abaixo da identificação. */
+.token-advanced { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 4px; }
+.token-advanced summary { min-height: 44px; display: list-item; align-content: center; color: var(--bright); cursor: pointer; font-size: 13px; }

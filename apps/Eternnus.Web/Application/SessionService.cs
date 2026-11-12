@@ -14,7 +14,12 @@ public record MapInput(string MapKind, string MapKey);
 /// <summary>Destino: casa (X, Y) e, em mapas de movimentação livre, o ponto dentro dela (<c>Fx</c>/<c>Fy</c>, 0–999; nulo = centro).</summary>
 public record MoveInput(int X, int Y, int? Fx = null, int? Fy = null);
 /// <summary>Novo marcador. Com <c>TemplateId</c> ou <c>ImageUrl</c>, nasce uma criatura do mestre com ficha/imagem ligada ao marcador.</summary>
-public record MapTokenInput(string Label, string Side, int X, int Y, bool Hidden = false, int? Light = null, Guid? TemplateId = null, string? ImageUrl = null, int? Fx = null, int? Fy = null);
+public record MapTokenInput(string Label, string Side, int X, int Y, bool Hidden = false, int? Light = null, Guid? TemplateId = null, string? ImageUrl = null, int? Fx = null, int? Fy = null,
+    string? Appearance = null, int? Size = null);
+/// <summary>Aparência de um marcador (<see cref="TokenLooks"/>). <c>ImageUrl</c> nula usa a imagem do personagem do mestre, se houver.</summary>
+public record TokenAppearanceInput(string Appearance, int Size, string? ImageUrl = null);
+/// <summary>Libera (true) ou bloqueia (false) o movimento dos jogadores no turno atual.</summary>
+public record MoveGrantInput(bool Allowed);
 public record HpInput(int Delta, string? Reason);
 
 /// <summary>
@@ -121,6 +126,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         if (key?.StartsWith("asset:") == true)
         {
             var asset = await new CampaignAssetsService(db).ResolveMapAsync(campaign, key, ct) ?? throw new RuleException(400, "Mapa da campanha não encontrado.");
+            if (asset.IsTileMap && kind != MapKinds.Tileset) throw new RuleException(400, "Mapas de tiles exigem uma cena com grade.");
             // Imagem com grade pode ser usada como cena sem grade; imagem sem grade nunca vira mapa tático.
             if (kind == MapKinds.Tileset && !asset.HasGrid) throw new RuleException(400, "Esta imagem não tem grade. Use-a em uma cena sem grade ou configure a grade em Mapas e cenários.");
             return (kind, asset.Key, asset.Name);
@@ -584,6 +590,8 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         {
             var (_, _, character) = await RequireTurnAsync(sessionId, user, ct);
             if (token.CharacterId != character.Id) throw new RuleException(403, "Você só move o próprio personagem.");
+            // Liberação do mestre vale só para o turno em que foi dada (no modo livre, até o mestre bloquear).
+            if (scene.Settings.MoveNeedsGrant && a.Session.MoveGrantTurn != a.Session.TurnNumber) throw new RuleException(409, "Aguarde o mestre liberar o seu movimento.");
             // Sem o papel Deslocamento no modelo, o mestre combina a distância verbalmente: o servidor não limita.
             // Só a forma tática limita distância, caminho e um deslocamento por turno.
             var tactical = PlayModes.LimitsMovement(a.Session.PlayMode);
@@ -653,27 +661,60 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         if (!scene.Grid.Inside(x.X, x.Y) || scene.Grid.BlocksMove(x.X, x.Y)) throw new RuleException(400, "Esse ponto do mapa está bloqueado.");
         if (!scene.Map.Free && scene.Raw.Values.Any(t => t.X == x.X && t.Y == x.Y)) throw new RuleException(409, "Já existe alguém nesse ponto.");
         if (scene.Raw.Count >= 60) throw new RuleException(409, "Limite de 60 marcadores no mapa.");
-        var token = new SessionToken { SessionId = sessionId, Label = label, Side = x.Side, X = x.X, Y = x.Y, Fx = fx, Fy = fy, Hidden = x.Hidden, Light = x.Light };
+        var token = new SessionToken { SessionId = sessionId, Label = label, Side = x.Side, X = x.X, Y = x.Y, Fx = fx, Fy = fy, Hidden = x.Hidden, Light = x.Light,
+            Appearance = x.Appearance == null ? TokenLooks.Round : TokenLooks.Require(x.Appearance), Size = x.Size is { } size ? TokenLooks.RequireSize(size) : TokenLooks.DefaultSize };
+        // Criatura com ficha e/ou imagem: vira personagem do mestre da campanha, acompanhável pela ficha.
         if (x.TemplateId != null || !string.IsNullOrWhiteSpace(x.ImageUrl))
-        {
-            // Criatura com ficha e/ou imagem: vira personagem do mestre da campanha, acompanhável pela ficha.
-            if (await db.MasterCharacters.CountAsync(m => m.CampaignId == a.Campaign.Id, ct) >= PreparationService.MaxNpcs) throw new RuleException(409, $"A campanha aceita até {PreparationService.MaxNpcs} personagens do mestre.");
-            var npc = new MasterCharacter { CampaignId = a.Campaign.Id, Name = label, Side = x.Side, Kind = NpcKinds.Creature, UpdatedAt = Now, ImageUrl = await PreparationService.ValidImageAsync(a.Campaign.Id, x.ImageUrl, db, ct) };
-            if (x.TemplateId is { } templateId)
-            {
-                var template = await AllowedTemplates(a.Campaign).SingleOrDefaultAsync(t => t.Id == templateId, ct) ?? throw new RuleException(404, "Ficha-modelo não encontrada para esta campanha.");
-                var version = await db.SheetTemplateVersions.AsNoTracking().SingleAsync(v => v.Id == template.CurrentVersionId, ct);
-                npc.TemplateVersionId = version.Id;
-                npc.Values = JsonSerializer.Serialize(CharacterSheets.Complete(version.Fields, new Dictionary<string, string>()).Stored);
-            }
-            db.MasterCharacters.Add(npc);
-            token.MasterCharacterId = npc.Id;
-        }
+            token.MasterCharacterId = await CreatureAsync(a, label, x.Side, x.TemplateId, x.ImageUrl, ct);
         db.SessionTokens.Add(token);
         Event(a.Session, user, await NameAsync(user, ct), EventKinds.Token, $"{label} surgiu no mapa", new { tokenId = token.Id, side = x.Side, x = x.X, y = x.Y }, masterOnly: Secret(scene, token));
         await RefreshFogAsync(a, user, ct);
         await CommitAsync(tx, a.Session, ct);
         return new { token.Id, masterCharacterId = token.MasterCharacterId };
+    }
+
+    /// <summary>Cria a criatura (personagem do mestre) que acompanha um marcador: ficha do modelo escolhido e/ou imagem. Chamar com a sessão bloqueada.</summary>
+    async Task<Guid> CreatureAsync(Access a, string label, string side, Guid? templateId, string? imageUrl, CancellationToken ct)
+    {
+        if (await db.MasterCharacters.CountAsync(m => m.CampaignId == a.Campaign.Id, ct) >= PreparationService.MaxNpcs) throw new RuleException(409, $"A campanha aceita até {PreparationService.MaxNpcs} personagens do mestre.");
+        var npc = new MasterCharacter { CampaignId = a.Campaign.Id, Name = label, Side = side, Kind = NpcKinds.Creature, UpdatedAt = Now, ImageUrl = await PreparationService.ValidImageAsync(a.Campaign.Id, imageUrl, db, ct) };
+        if (templateId is { } id)
+        {
+            var template = await AllowedTemplates(a.Campaign).SingleOrDefaultAsync(t => t.Id == id, ct) ?? throw new RuleException(404, "Ficha-modelo não encontrada para esta campanha.");
+            var version = await db.SheetTemplateVersions.AsNoTracking().SingleAsync(v => v.Id == template.CurrentVersionId, ct);
+            npc.TemplateVersionId = version.Id;
+            npc.Values = JsonSerializer.Serialize(CharacterSheets.Complete(version.Fields, new Dictionary<string, string>()).Stored);
+        }
+        db.MasterCharacters.Add(npc);
+        return npc.Id;
+    }
+
+    /// <summary>Mestre escolhe redondo ou imagem livre e o tamanho de qualquer marcador, inclusive dos jogadores.</summary>
+    public async Task TokenAppearanceAsync(Guid sessionId, Guid tokenId, TokenAppearanceInput x, string user, CancellationToken ct)
+    {
+        var appearance = TokenLooks.Require(x.Appearance);
+        var size = TokenLooks.RequireSize(x.Size);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var a = await LockAsync(sessionId, user, ct); RequireMaster(a);
+        var token = await db.SessionTokens.SingleOrDefaultAsync(t => t.Id == tokenId && t.SessionId == sessionId, ct) ?? throw new RuleException(404, "Marcador não encontrado.");
+        var image = await PreparationService.ValidImageAsync(a.Campaign.Id, x.ImageUrl, db, ct);
+        if (token.Appearance == appearance && token.Size == size && token.ImageUrl == image) { await tx.RollbackAsync(ct); return; }
+        token.Appearance = appearance; token.Size = size; token.ImageUrl = image;
+        Event(a.Session, user, await NameAsync(user, ct), EventKinds.Token, $"Mestre ajustou a aparência de {token.Label}", new { tokenId, appearance, size }, masterOnly: true);
+        await CommitAsync(tx, a.Session, ct);
+    }
+
+    /// <summary>Libera ou bloqueia o movimento dos jogadores no turno atual. Trocar o turno bloqueia de novo (o número muda).</summary>
+    public async Task MoveGrantAsync(Guid sessionId, MoveGrantInput x, string user, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var a = await LockAsync(sessionId, user, ct); RequireMaster(a);
+        if ((a.Session.MoveGrantTurn == a.Session.TurnNumber) == x.Allowed) { await tx.RollbackAsync(ct); return; }
+        a.Session.MoveGrantTurn = x.Allowed ? a.Session.TurnNumber : null;
+        var who = a.Session.ActiveCharacterId is { } id ? await db.Characters.Where(c => c.Id == id).Select(c => c.Name).SingleOrDefaultAsync(ct) : ActiveEntry(a.Session)?.Label;
+        var text = !x.Allowed ? "Mestre bloqueou o movimento" : who == null ? "Mestre liberou o movimento" : $"Mestre liberou o movimento de {who}";
+        Event(a.Session, user, await NameAsync(user, ct), EventKinds.Turn, text, new { moveGranted = x.Allowed, turn = a.Session.TurnNumber });
+        await CommitAsync(tx, a.Session, ct);
     }
 
     public async Task RemoveTokenAsync(Guid sessionId, Guid tokenId, string user, CancellationToken ct)
@@ -769,7 +810,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         events.Reverse();
         var tokens = s.MapKind == MapKinds.Tileset
             ? await db.SessionTokens.AsNoTracking().Where(t => t.SessionId == sessionId).OrderBy(t => t.Label)
-                .Select(t => new { t.Id, t.CharacterId, t.Label, t.Side, t.X, t.Y, t.Fx, t.Fy, t.LastMovedTurn }).ToListAsync(ct)
+                .Select(t => new { t.Id, t.CharacterId, t.Label, t.Side, t.X, t.Y, t.Fx, t.Fy, t.LastMovedTurn, appearance = t.Appearance, size = t.Size }).ToListAsync(ct)
             : [];
         object map = await LiveMapAsync(s, ct);
         object boardTokens = tokens; object? fog = null;

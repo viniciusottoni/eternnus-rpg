@@ -67,6 +67,7 @@ public partial class SessionService
         }
         var masterOnline = await db.SessionParticipants.AsNoTracking().Where(p => p.SessionId == s.Id && p.IsMaster).Select(p => p.LastSeenAt).FirstOrDefaultAsync(ct);
         var away = !TableRules.IsOnline(masterOnline, Now);
+        var settings = await Fog.SettingsAsync(a.Campaign, s, ct);
         List<object> npcs = [];
         if (a.IsMaster)
         {
@@ -94,7 +95,10 @@ public partial class SessionService
             modeLabel = PlayModes.Label(s.PlayMode),
             paused = s.PausedAt != null,
             // Jogadores veem quem recebe as próprias rolagens (definido pelo mestre na configuração da mesa).
-            playerRollVisibility = (await Fog.SettingsAsync(a.Campaign, s, ct)).PlayerRollVisibility,
+            playerRollVisibility = settings.PlayerRollVisibility,
+            // Movimento do jogador: exige liberação do mestre no turno atual (configuração da mesa).
+            moveNeedsGrant = settings.MoveNeedsGrant,
+            moveGranted = s.MoveGrantTurn == s.TurnNumber,
             turnOrder = entries,
             activeTurnKey = s.ActiveTurnKey,
             myTurn = IsTurnOf(s, myCharacter),

@@ -14,17 +14,18 @@ public record CampaignMapInput(string Name, Guid? FolderId, int GridPixels, deci
 public record CampaignMapImportInput(string Url, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, bool FreeMovement = false);
 /// <summary>Preparação de névoa/luz de um mapa: estado completo editado no editor e a revisão lida.</summary>
 public record MapLayerInput(bool? Fog, string[] Cells, List<FogLight>? Lights, string? Revealed, List<FogMarkInput>? Marks, int Revision, bool ResetExploration = false, string? PrepVersion = null);
-public record CampaignMapView(Guid Id, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int PixelWidth, int PixelHeight, int Revision, string ImageUrl, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, bool FreeMovement = false)
+public record CampaignMapView(Guid Id, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int PixelWidth, int PixelHeight, int Revision, string? ImageUrl, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, bool FreeMovement = false, [property: System.Text.Json.Serialization.JsonIgnore] string? TileData = null)
 {
+    public bool IsTileMap => TileData != null;
     public string Key => "asset:" + Id;
     /// <summary>Com grade: mapa tático (marcadores, névoa, movimento). Sem grade: imagem para cenas sem grade.</summary>
     public string Kind => HasGrid ? MapKinds.Tileset : MapKinds.Cartographic;
-    public string Description => !HasGrid ? "Imagem da campanha, sem grade"
+    public string Description => IsTileMap ? $"Mapa de tiles · {Width} × {Height} casas · {ScaleMeters} m por casa" : !HasGrid ? "Imagem da campanha, sem grade"
         : FreeMovement ? $"Movimentação livre · referência de {GridPixels} px = {ScaleMeters} m"
         : $"Grade de {GridPixels} px · {ScaleMeters} m por quadrado";
-    public int Width => HasGrid ? (PixelWidth - GridOffsetX) / GridPixels : 0;
-    public int Height => HasGrid ? (PixelHeight - GridOffsetY) / GridPixels : 0;
-    public string[] Rows => HasGrid ? Grid(PixelWidth, PixelHeight, GridPixels, GridOffsetX, GridOffsetY) : [];
+    public int Width => IsTileMap ? Rows[0].Length : HasGrid ? (PixelWidth - GridOffsetX) / GridPixels : 0;
+    public int Height => IsTileMap ? Rows.Length : HasGrid ? (PixelHeight - GridOffsetY) / GridPixels : 0;
+    public string[] Rows => TileData?.Split('\n') ?? (HasGrid ? Grid(PixelWidth, PixelHeight, GridPixels, GridOffsetX, GridOffsetY) : []);
     /// <summary>Mapa com grade para névoa e movimento; nulo para imagem sem grade.</summary>
     public BattleMap? Battle() => HasGrid ? new(Key, Name, Kind, Description, ImageUrl, Rows) { ScaleMeters = ScaleMeters, Free = FreeMovement } : null;
     /// <summary>
@@ -40,7 +41,7 @@ public record CampaignMapView(Guid Id, string Name, Guid? FolderId, int GridPixe
 }
 
 /// <summary>Gestão prévia/durante sessão. Bytes privados pertencem à campanha e somem com ela.</summary>
-public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = null)
+public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? signals = null)
 {
     public const int MaxImageBytes = 10 * 1024 * 1024;
     public const int MaxImageRequestBytes = MaxImageBytes + 64 * 1024;
@@ -59,7 +60,7 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
         if (write && c.OwnerId != user) throw new RuleException(403, "Somente o mestre pode organizar a campanha.");
         return c;
     }
-    async Task Lock(Guid campaign, string user, CancellationToken ct)
+    internal async Task Lock(Guid campaign, string user, CancellationToken ct)
     {
         var resourceCampaign = await Access(campaign, user, true, ct);
         // One-shot encerra com sessão -> campanha. Preservar a ordem também na preparação de recursos.
@@ -112,9 +113,9 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
         var item = await Texts.SingleOrDefaultAsync(x => x.CampaignId == campaign && x.Id == id && x.ConvertedPageId == null, ct) ?? throw Missing();
         db.Remove(item); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
-    static CampaignMapView View(CampaignMap m) => new(m.Id, m.Name, m.FolderId, m.GridPixels, m.ScaleMeters, m.Width, m.Height, m.Revision, $"/api/campaigns/{m.CampaignId}/assets/maps/{m.Id}/image", m.HasGrid, m.GridOffsetX, m.GridOffsetY, m.FreeMovement);
+    static CampaignMapView View(CampaignMap m) => new(m.Id, m.Name, m.FolderId, m.TileData == null ? m.GridPixels : 0, m.ScaleMeters, m.Width, m.Height, m.Revision, m.TileData == null ? $"/api/campaigns/{m.CampaignId}/assets/maps/{m.Id}/image" : null, m.HasGrid, m.GridOffsetX, m.GridOffsetY, m.FreeMovement, m.TileData);
     static IQueryable<CampaignMapView> Views(IQueryable<CampaignMap> query, Guid campaign) =>
-        query.Select(m => new CampaignMapView(m.Id, m.Name, m.FolderId, m.GridPixels, m.ScaleMeters, m.Width, m.Height, m.Revision, $"/api/campaigns/{campaign}/assets/maps/{m.Id}/image", m.HasGrid, m.GridOffsetX, m.GridOffsetY, m.FreeMovement));
+        query.Select(m => new CampaignMapView(m.Id, m.Name, m.FolderId, m.TileData == null ? m.GridPixels : 0, m.ScaleMeters, m.Width, m.Height, m.Revision, m.TileData == null ? $"/api/campaigns/{campaign}/assets/maps/{m.Id}/image" : null, m.HasGrid, m.GridOffsetX, m.GridOffsetY, m.FreeMovement, m.TileData));
     /// <summary>Acervo por categoria isolada: mapas (com pastas) ou retratos de NPC; uma categoria nunca aparece na outra.</summary>
     public async Task<object> MapTreeAsync(Guid campaign, string user, Guid? folderId, int page, CancellationToken ct, string? purpose = null)
     {
@@ -175,9 +176,13 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
         await Access(campaign, user, true, ct); var name = Name(x.Name, 120);
         if (x.GridPixels is < 8 or > 1024 || x.ScaleMeters is < 0.01m or > 1000m || decimal.Round(x.ScaleMeters, 2) != x.ScaleMeters) throw new RuleException(400, "Grade: 8–1.024 pixels. Escala: 0,01–1.000 metros, até duas casas decimais.");
         if (x.GridOffsetX < 0 || x.GridOffsetY < 0 || x.GridOffsetX >= x.GridPixels || x.GridOffsetY >= x.GridPixels) throw new RuleException(400, "O deslocamento da grade vai de 0 até o tamanho do quadrado menos 1 pixel.");
-        (byte[] Bytes, int Width, int Height)? normalized = image == null ? null : await Normalize(image, ct);
+        // Retratos guardam a transparência do PNG (imagem livre no mapa); mapas continuam JPEG.
+        var keepAlpha = x.Purpose == CampaignAssetPurposes.Portrait
+            || (x.Purpose == null && id != null && await Maps.AnyAsync(m => m.Id == id && m.CampaignId == campaign && m.Purpose == CampaignAssetPurposes.Portrait, ct));
+        (byte[] Bytes, int Width, int Height)? normalized = image == null ? null : await Normalize(image, ct, keepAlpha);
         await using var tx = await db.Database.BeginTransactionAsync(ct); await Lock(campaign, user, ct); await CheckFolder(campaign, x.FolderId, ct);
         var map = id is { } key ? await Maps.SingleOrDefaultAsync(m => m.Id == key && m.CampaignId == campaign, ct) ?? throw Missing() : new CampaignMap { CampaignId = campaign };
+        if (map.TileData != null) throw new RuleException(409, "Edite este mapa no editor de tiles.");
         if (id != null && map.Revision != x.Revision) throw Stale();
         if (id != null) await EnsureMapIdleAsync(campaign, map.Id, ct);
         var purpose = x.Purpose == null ? map.Purpose : CampaignAssetPurposes.Normalize(x.Purpose);
@@ -251,7 +256,7 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
         var session = await db.Sessions.AsNoTracking().FirstOrDefaultAsync(s => s.CampaignId == campaign && s.EndedAt == null && s.MapKey == key, ct);
         var master = c.OwnerId == user;
         if (!master && session == null) throw Missing();
-        var map = await Maps.AsNoTracking().Where(m => m.CampaignId == campaign && m.Id == id)
+        var map = await Maps.AsNoTracking().Where(m => m.CampaignId == campaign && m.Id == id && m.TileData == null)
             .Select(m => new { m.Content, m.GridPixels, m.Revision, m.HasGrid, m.GridOffsetX, m.GridOffsetY }).SingleOrDefaultAsync(ct) ?? throw Missing();
         var viewer = master ? asUser : user;
         // Imagem sem grade (ou apresentada como cena sem grade) não tem névoa: só chega a jogadores enquanto está na mesa.
@@ -314,6 +319,8 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
     /// </summary>
     public async Task<object> SaveLayerAsync(Guid campaign, string key, string user, MapLayerInput x, CancellationToken ct, Guid? sceneId = null)
     {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await Lock(campaign, user, ct);
         var (map, layerKey, _) = await LayerTargetAsync(campaign, key, sceneId, ct);
         if (x.Cells == null || x.Cells.Length != map.Height || x.Cells.Any(r => r == null || r.Length != map.Width || !r.All(TableFog.IsValidCell)))
             throw new RuleException(400, "As marcas do mapa não correspondem à grade. Recarregue o editor.");
@@ -324,7 +331,6 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
         var draft = new MapFogState { Fog = x.Fog, Cells = x.Cells };
         foreach (var l in lights) FogEdits.UpsertLight(draft, map.Width, map.Height, new FogLightInput(null, l.X, l.Y, l.Radius));
         draft.Revealed = Bits.Resize(x.Revealed, map.Width * map.Height);
-        await using var tx = await db.Database.BeginTransactionAsync(ct); await Lock(campaign, user, ct);
         var fog = new TableFogService(db);
         var owner = await db.Campaigns.SingleAsync(x2 => x2.Id == campaign, ct);
         var settings = await fog.CampaignSettingsAsync(owner, ct);
@@ -376,7 +382,14 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
     static string Name(string? value, int max) { var s = LibraryService.Clean(value ?? "", false); return s.Length is 0 || s.Length > max ? throw new RuleException(400, $"Informe um nome de até {max} caracteres.") : s; }
     static RuleException Missing() => new(404, "Recurso da campanha não encontrado.");
     static RuleException Stale() => new(409, "O recurso mudou. Atualize antes de editar novamente.");
-    public static async Task<(byte[] Bytes, int Width, int Height)> Normalize(UploadedDocument image, CancellationToken ct)
+    /// <summary>Tipo servido para bytes do acervo: PNG (retrato com transparência) ou JPEG (demais).</summary>
+    public static string ImageType(byte[] bytes) => DocumentFiles.Sniff(bytes) == DocumentKinds.Png ? DocumentKinds.Png : DocumentKinds.Jpeg;
+
+    /// <summary>
+    /// Reprocessa a imagem sem metadados. Com <paramref name="keepAlpha"/>, PNG com transparência continua PNG (marcador de imagem livre);
+    /// sem transparência, ou sem a opção, vira JPEG sobre fundo branco.
+    /// </summary>
+    public static async Task<(byte[] Bytes, int Width, int Height)> Normalize(UploadedDocument image, CancellationToken ct, bool keepAlpha = false)
     {
         if (image.Content.Length is 0 or > MaxImageBytes) throw new RuleException(413, "Envie uma imagem de até 10 MB.");
         if (image.ContentType is not (DocumentKinds.Jpeg or DocumentKinds.Png)) throw new RuleException(415, "Use uma imagem PNG ou JPEG.");
@@ -398,8 +411,10 @@ public sealed class CampaignAssetsService(GameDb db, SessionSignals? signals = n
             var settings = new MagickReadSettings { Format = image.ContentType == DocumentKinds.Png ? MagickFormat.Png : MagickFormat.Jpeg };
             decoded.Ping(image.Content, settings);
             if (decoded.Width < 64 || decoded.Height < 64 || decoded.Width > 4096 || decoded.Height > 4096 || (long)decoded.Width * decoded.Height > 8000000) throw new RuleException(400, "Use imagem estática de 64–4.096 pixels por lado e até 8 milhões de pixels.");
-            decoded.Read(image.Content, settings); ct.ThrowIfCancellationRequested(); decoded.AutoOrient(); decoded.Strip(); decoded.BackgroundColor = MagickColors.White; decoded.Alpha(AlphaAction.Remove); decoded.Quality = 88;
-            var bytes = decoded.ToByteArray(MagickFormat.Jpeg);
+            decoded.Read(image.Content, settings); ct.ThrowIfCancellationRequested(); decoded.AutoOrient(); decoded.Strip();
+            var alpha = keepAlpha && decoded.HasAlpha && !decoded.IsOpaque;
+            if (!alpha) { decoded.BackgroundColor = MagickColors.White; decoded.Alpha(AlphaAction.Remove); decoded.Quality = 88; }
+            var bytes = decoded.ToByteArray(alpha ? MagickFormat.Png : MagickFormat.Jpeg);
             if (bytes.Length > MaxImageBytes) throw new RuleException(413, "A imagem preparada excede 10 MB.");
             return (bytes, (int)decoded.Width, (int)decoded.Height);
         }

@@ -789,3 +789,48 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 - Migradas para o auxiliar: administração (usuários, campanhas, auditoria por nome do autor), lista de campanhas, tópicos da Guilda, biblioteca, catálogo de músicas, diário de resumos, histórico da sessão, suporte e páginas do acervo. O cliente já normalizava (`normalizeText` em `js/data-table.js`, filtro de cenários em `js/scene-policy.js`).
 
 **Consequências:** a migração exige que o usuário de migração possa criar extensões confiáveis no banco (privilégio `CREATE` no banco). As consultas não usam índice na coluna dobrada; as listas continuam paginadas e limitadas. Nenhum contrato HTTP muda além da regra de comparação.
+
+## ADR-077 — Arte procedural dos cenários e tiles (12/11/2026)
+
+**Contexto:** cenários oficiais tinham superfícies uniformes e objetos representados por retângulos e círculos simples, com pouca identidade de jogo.
+
+**Decisão:** usar os recursos nativos do Canvas 2D para materiais texturizados e silhuetas reconhecíveis: copas recortadas, pedra lascada, pilares facetados, altares, mobiliário, ferragens, margens e chamas em curvas. `js/tile-art.js` concentra o desenho estático compartilhado, com variação determinística e menos detalhes em escalas pequenas. Mesas adjacentes se conectam na estalagem; caixotes preservam travessas individuais no cais. Miniaturas usam o mesmo desenho em maior resolução.
+
+**Consequências:** grades, legenda, colisão e autorização do servidor permanecem iguais. O recorte por casa impede que ornamentos invadam casas desconhecidas ou confundam a área ocupada. Luz/água seguem o ciclo existente, com movimento reduzido, pausa em aba oculta e descarte pelo roteador. Sem dependência gráfica, imagens externas, endpoint ou migração. Ajuda existente `mesa.mapa.legenda` explica a distinção entre acabamento e ocupação. Cache público v56 inclui o módulo, sem persistir dados da mesa. O Vale Dourado mantém a arte cartográfica oficial.
+
+## ADR-078 — Vinte cenários e mapas próprios com tiles (12/11/2026)
+
+**Contexto:** ampliar os ambientes oficiais e permitir que o Mestre desenhe mapas reutilizáveis com as peças do jogo, sem depender de uma imagem pronta.
+
+**Decisão:**
+- Manter os oito cenários anteriores e adicionar Montanha, Savana, Deserto, Floresta densa, Tumba, Cemitério, Castelo, Caverna, Vulcão, Debaixo d’água, Aldeia e Cidade em `Domain/BattleMaps.cs`: vinte cenários (dezenove táticos e o Vale Dourado cartográfico). Grades oficiais têm seis entradas e áreas caminháveis conectadas, verificadas por teste.
+- `Domain/MapTiles.cs` define as 44 peças, agrupamentos e regras de ocupação/visão; `BattleMap.Walkable` conserva a legenda de movimento. `TableFog.Initial` deriva os bloqueios dessa mesma fonte. Água profunda e lava bloqueiam passagem; fundo submerso e algas são transitáveis. Não se implementam dano, natação ou regras de sistema implicitamente.
+- Mapas próprios são `CampaignMap` com `TileData` anulável (linhas separadas por LF), migração `TileMapDrafts`. Não existe imagem gerada persistida nem aceitação de HTML/SVG do cliente. Mapas antigos mantêm `TileData = null`. JSON omite `TileData`: envia só `rows`, para que a máscara de névoa não deixe uma cópia integral escondida no payload.
+- Editor sob demanda em Mapas e cenários: criar vazio ou copiar um oficial/mapa próprio, escolher peças por grupo, pincel, retângulo, preenchimento ligado, capturar peça, desfazer/refazer (30 etapas), grade, câmera compartilhada, tamanho e escala. De 8 a 64 casas por lado, seis entradas mínimas, cota comum de cinquenta mapas. Rascunho só em memória.
+- Escritas usam identidade autenticada, política Verified e antiforgery comum. Bloqueio sessão → campanha serializa salvamento de terreno com abertura/apresentação, preparação de névoa e salvamento/duplicação de cenas. Revisão evita sobrescrita; mapa na mesa responde 409. Mudança de terreno já preparado exige `resetPreparation=true`: remove camadas e posições de cenas, preservando textos e personagens. Cópia preserva o original.
+
+**Consequências:** mapas próprios aparecem no acervo, no seletor de cenários e na mesa, com névoa calculada no servidor. São mapas táticos: não são retratos nem imagens para o Atlas compartilhado. Metadados sem alteração de terreno preservam a preparação. O editor usa o mesmo Canvas dos mapas oficiais e não muda cenas ao salvar. PWA v57 inclui apenas os módulos públicos; APIs, grades de campanha e rascunhos continuam fora do cache.
+
+## ADR-079 — Forma e tamanho dos marcadores e liberação do movimento (12/11/2026)
+
+**Contexto:** o mestre quer posicionar jogadores, personagens do mestre, criaturas e inimigos como marcador redondo ou como imagem livre (PNG recortado, sem moldura), com tamanho ajustável no mapa. O jogador só deve mover o próprio personagem quando o mestre permitir, na vez dele. Arrastar um marcador também o fazia voltar à origem antes de chegar ao destino.
+
+**Decisão:**
+- `SessionToken` guarda `Appearance` (`round`/`image`), `Size` (50–800 % da casa) e `ImageUrl` própria (acervo da campanha ou https). Só o mestre altera, por `POST …/tokens/{id}/appearance`, por `appearance`/`size` ao posicionar (`/tokens`, `/npc-tokens`) ou pela alça dourada do marcador selecionado. A imagem própria vale para qualquer marcador, inclusive de jogadores, sem mudar a ficha; sem ela, vale a imagem do personagem do mestre. Cenas guardam e devolvem os três campos (`SceneToken`, JSON); valores inválidos de cenas antigas voltam a redondo/100%.
+- Retratos do acervo enviados em PNG com transparência continuam PNG; mapas continuam JPEG. As rotas de imagem respondem com o tipo real. Marcador apenas percebido chega ao jogador como redondo/100%, sem nome nem imagem.
+- Nova configuração da mesa `MoveNeedsGrant` (padrão ligado). `GameSession.MoveGrantTurn` guarda o número do turno liberado pelo mestre (`POST …/move-grant`); trocar a vez muda o número e bloqueia de novo, sem escrita extra. No modo Livre, a liberação vale até o mestre bloquear. O servidor confere em `MoveTokenAsync`; o cliente só desabilita o botão e explica o motivo.
+- O cliente mantém o marcador solto (e o tamanho escolhido na alça) desenhado no destino até o estado novo chegar; recusa ou falta de confirmação em 5 s devolve com a animação curta. Clique acha marcadores maiores que uma casa; entre sobrepostos vence o menor. Regras puras em `js/token-look.js`.
+
+**Consequências:** mesas existentes passam a exigir a liberação do movimento até o mestre desligar a opção em Configuração da mesa. O editor de cenas preserva forma, tamanho e imagem dos marcadores capturados da mesa, mas ainda não oferece campos para editá-los. Imagem por link https continua sujeita ao site de terceiros. PWA v59 acrescenta `js/token-look.js`; nenhuma imagem ou estado de sessão entra no cache.
+
+## ADR-080 — Editar marcador: nome, lado e ficha (12/11/2026)
+
+**Contexto:** o mestre posicionava uma criatura “Sem ficha” e depois não tinha como renomeá-la, trocar o lado nem vincular uma ficha; ao selecionar, nada indicava por que “Ficha do elemento” não aparecia. A única saída era remover e criar de novo, perdendo posição e ajustes de névoa.
+
+**Decisão:**
+- `POST …/tokens/{id}/settings` ganha `label`, `side` e `templateId` opcionais; ausentes mantêm o valor atual, então clientes anteriores seguem válidos. Valem só para criaturas: personagem de jogador continua com nome e lado da ficha (409 se o pedido tentar mudar).
+- `templateId` cria o personagem do mestre (tipo criatura) com o nome e o lado atuais, pelo mesmo caminho de `POST …/tokens` (`CreatureAsync`). Marcador já vinculado responde 409: o modelo é trocado em “Ficha do elemento”. Não há desvincular nesta tela.
+- Renomear não altera a ficha do personagem do mestre (pode ser o “Original” usado em outras cenas), só o marcador. A ordem de turnos guarda uma cópia do nome e é atualizada na mesma transação (`TurnOrders.Relabel`). Evento só do mestre: “Mestre renomeou X para Y” ou “Mestre vinculou uma ficha a X”.
+- Interface: ferramenta “Editar marcador” na Básica sempre que uma criatura está selecionada; o modal traz Identificação (nome, lado, vincular ficha) e, recolhidos, luz, visão e ocultação. “Luz, visão e ocultação” (Completa) abre o mesmo modal com o grupo aberto. A dica de seleção avisa quando a criatura não tem ficha.
+
+**Consequências:** escrita segue o fluxo comum (bloqueio da sessão, evento, revisão, sinal). Vincular conta no limite de personagens do mestre da campanha. PWA v60 atualiza `table.js`, `sessions.css` e o catálogo de ajuda da mesa, sem arquivo novo.

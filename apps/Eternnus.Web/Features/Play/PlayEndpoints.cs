@@ -51,7 +51,7 @@ public static class PlayEndpoints
             var bytes = await p.KnownPortraitAsync(campaignId, npcId, Id(u), ct);
             http.Response.Headers.CacheControl = "private, no-store";
             http.Response.Headers["X-Content-Type-Options"] = "nosniff";
-            return Results.File(bytes, DocumentKinds.Jpeg, enableRangeProcessing: false);
+            return Results.File(bytes, CampaignAssetsService.ImageType(bytes), enableRangeProcessing: false);
         });
         campaign.MapPost("/npcs", (Guid campaignId, NpcInput x, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.SaveNpcAsync(campaignId, null, x, Id(u), ct));
         campaign.MapPut("/npcs/{npcId:guid}", (Guid campaignId, Guid npcId, NpcInput x, PreparationService p, ClaimsPrincipal u, CancellationToken ct) => p.SaveNpcAsync(campaignId, npcId, x, Id(u), ct));
@@ -87,7 +87,7 @@ public static class PlayEndpoints
             var bytes = await s.PortraitAsync(sessionId, tokenId, Id(u), ct);
             http.Response.Headers.CacheControl = "private, no-store";
             http.Response.Headers["X-Content-Type-Options"] = "nosniff";
-            return Results.File(bytes, DocumentKinds.Jpeg, enableRangeProcessing: false);
+            return Results.File(bytes, CampaignAssetsService.ImageType(bytes), enableRangeProcessing: false);
         });
         session.MapPost("/npcs/{npcId:guid}/resource", async (Guid sessionId, Guid npcId, NpcResourceInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.AdjustNpcResourceAsync(sessionId, npcId, x, Id(u), ct); return Ok(); });
         session.MapPost("/recap", async (Guid sessionId, RecapInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.RecapAsync(sessionId, x, Id(u), ct); return Ok(); });

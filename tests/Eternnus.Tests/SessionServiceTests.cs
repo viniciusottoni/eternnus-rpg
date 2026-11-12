@@ -100,6 +100,7 @@ public sealed class SessionServiceTests : IAsyncLifetime
         var id = await StartAsync();
         await service.JoinAsync(id, null, Player, default);
         await service.NextTurnAsync(id, Master, default);
+        await service.MoveGrantAsync(id, new(true), Master, default); // liberação do mestre (MoveNeedsGrant)
         var token = await db.SessionTokens.AsNoTracking().SingleAsync(t => t.SessionId == id);
         Assert.Equal('S', BattleMaps.Crypt.Rows[token.Y][token.X]);
         Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => service.MoveTokenAsync(id, token.Id, new(0, 0), Player, default))).Status);

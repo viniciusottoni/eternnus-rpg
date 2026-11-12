@@ -36,3 +36,13 @@ Erros usuais: 400 campos/parser/dimensões; 403 membro tentando gestão; 404 ine
 ## Validação
 
 `CampaignAssetsTests` cobre conversão de textos antigos (publicação, autoria, revisão, conversão única), autoria autorizada, revisão, ausência de vínculo, hierarquia, pasta não vazia, bytes antes/durante/depois da sessão, cascata e rejeição de imagens falsas/excessivas (seis testes SQLite aprovados). `node tests/campaign-assets.mjs` passou 73 verificações no PostgreSQL: inclui upload PNG real normalizado para JPEG, autorização de bytes, grade/escala live, corrida entre seleção e exclusão e encerramento de one-shot com árvore de pastas e bytes eliminados. Essa integração usa a exceção explícita de scanner no desenvolvimento; saúde/assinaturas do ClamAV de produção continuam externas. Não se declara carga medida nem moderação semântica de mapas.
+
+## Mapas desenhados com tiles (ADR-078)
+
+O Mestre encontra **+ Criar com tiles** em Mundo e acervo → Mapas e cenários. Pode partir de um mapa vazio ou de **Criar cópia com tiles** em um dos dezenove cenários táticos. O vigésimo cenário é a cartografia oficial do Vale Dourado. O mapa salvo entra na pasta escolhida e no seletor das cenas/sessões; mostrar ao grupo é uma ação separada.
+
+O catálogo oferece 44 peças em Terrenos, Natureza, Construções, Objetos e Jogo. Pincel pinta casas; retângulo cobre a área entre início/fim; preenchimento afeta só casas ligadas do mesmo tile; capturar seleciona uma peça existente. Desfazer/refazer mantém trinta etapas nesta abertura. Setas/Enter, zoom e arrastar usam o tabuleiro compartilhado. O editor exige nome, escala, grade de 8–64 casas por lado e seis entradas do grupo. A cota de cinquenta mapas é compartilhada com os uploads.
+
+Cada casa recebe uma peça; o piso dos objetos acompanha o terreno vizinho, com piso-base quando isolados, sem camada livre de empilhamento ou rotação nesta versão. Lava não calcula dano e fundo submerso não impõe regras de natação: são terrenos com ocupação explícita. Paredes e objetos bloqueadores geram a preparação inicial de movimento/visão no servidor.
+
+Editar um mapa ativo exige trocar o cenário da mesa primeiro. Se mudar o terreno já preparado, confirme no editor que as camadas de névoa/luz/marcas e os arranjos das cenas serão refeitos, ou use Salvar cópia. Textos e fichas de personagens são preservados; os marcadores precisam ser posicionados novamente. Rascunhos ficam só em memória; fechar com alterações pede confirmação. Mapas de tiles não são imagens para retratos ou para o Atlas compartilhado.

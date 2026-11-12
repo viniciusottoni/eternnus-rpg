@@ -35,6 +35,8 @@ try {
   const base = `/api/sessions/${session.id}`;
   // Com névoa, casas não exploradas recusam o movimento (como na grade); aqui o mapa todo fica visível.
   await master(base + '/fog/enabled', 'POST', { enabled: false }, 204);
+  // ADR-079: no modo livre, a liberação do mestre vale até ele bloquear.
+  await master(base + '/move-grant', 'POST', { allowed: true }, 204);
   let live = await player(base + '/live');
   check(live.map.freeMovement, true, 'mesa recebe o modo livre');
   const mine = live.tokens.find((t) => t.characterId === hero.id);

@@ -30,6 +30,10 @@ public sealed class SceneToken
     public int? Fy { get; set; }
     public bool Hidden { get; set; }
     public int? Light { get; set; }
+    /// <summary>Aparência e tamanho do marcador (<see cref="TokenLooks"/>); ausentes em cenas anteriores = redondo, 100%.</summary>
+    [MaxLength(8)] public string? Appearance { get; set; }
+    public int? Size { get; set; }
+    [MaxLength(500)] public string? ImageUrl { get; set; }
 }
 
 /// <summary>

@@ -167,18 +167,28 @@ public partial class SessionService
         return await NpcSheetAsync(campaignId, npcId, user, ct);
     }
 
-    /// <summary>Imagens dos marcadores de NPC/criatura desta sessão (tokenId → endereço para o cliente).</summary>
+    /// <summary>
+    /// Imagens dos marcadores desta sessão (tokenId → endereço para o cliente): a imagem própria do marcador, escolhida pelo mestre,
+    /// ou a do personagem do mestre representado. Personagens de jogadores só têm imagem quando o mestre escolhe uma.
+    /// </summary>
     async Task<Dictionary<Guid, string>> PortraitsAsync(Guid sessionId, CancellationToken ct) =>
-        (await db.SessionTokens.AsNoTracking().Where(t => t.SessionId == sessionId && t.MasterCharacterId != null)
-            .Join(db.MasterCharacters, t => t.MasterCharacterId, m => m.Id, (t, m) => new { t.Id, m.ImageUrl }).Where(x => x.ImageUrl != null).ToListAsync(ct))
+        (await (from t in db.SessionTokens.AsNoTracking().Where(t => t.SessionId == sessionId)
+                join m in db.MasterCharacters.AsNoTracking() on t.MasterCharacterId equals (Guid?)m.Id into ms
+                from m in ms.DefaultIfEmpty()
+                select new { t.Id, ImageUrl = t.ImageUrl ?? (m == null ? null : m.ImageUrl) })
+            .Where(x => x.ImageUrl != null).ToListAsync(ct))
         .ToDictionary(x => x.Id, x => PortraitUrl(sessionId, x.Id, x.ImageUrl)!);
 
-    /// <summary>Imagem do acervo de um NPC no mapa. Jogador só recebe se o marcador estiver visível para ele (e não apenas percebido).</summary>
+    /// <summary>
+    /// Imagem do acervo de um marcador no mapa (própria ou do personagem do mestre). Jogador só recebe se o marcador estiver visível
+    /// para ele (e não apenas percebido). PNG com transparência continua PNG (ver <see cref="CampaignAssetsService.ImageType"/>).
+    /// </summary>
     public async Task<byte[]> PortraitAsync(Guid sessionId, Guid tokenId, string user, CancellationToken ct)
     {
         var a = await SessionAccessAsync(sessionId, user, ct);
-        var token = await db.SessionTokens.AsNoTracking().SingleOrDefaultAsync(t => t.Id == tokenId && t.SessionId == sessionId && t.MasterCharacterId != null, ct) ?? throw new RuleException(404, "Imagem não encontrada.");
-        var image = await db.MasterCharacters.AsNoTracking().Where(m => m.Id == token.MasterCharacterId && m.CampaignId == a.Campaign.Id).Select(m => m.ImageUrl).SingleOrDefaultAsync(ct);
+        var token = await db.SessionTokens.AsNoTracking().SingleOrDefaultAsync(t => t.Id == tokenId && t.SessionId == sessionId, ct) ?? throw new RuleException(404, "Imagem não encontrada.");
+        var image = token.ImageUrl ?? (token.MasterCharacterId == null ? null
+            : await db.MasterCharacters.AsNoTracking().Where(m => m.Id == token.MasterCharacterId && m.CampaignId == a.Campaign.Id).Select(m => m.ImageUrl).SingleOrDefaultAsync(ct));
         NpcImages.Normalize(image, out var asset);
         if (asset is not { } assetId) throw new RuleException(404, "Imagem não encontrada.");
         if (!a.IsMaster)

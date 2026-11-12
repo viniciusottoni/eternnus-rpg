@@ -244,6 +244,11 @@ try {
   check(woke.session.activeName, "Tharion");
 
   // Turno do jogador: ações da ficha, defesa, movimento e encerramento.
+  // ADR-079: sem liberação do mestre, o movimento do jogador é recusado mesmo na vez dele.
+  await player(s + "/tokens/" + state.tokens.find((t) => t.characterId === tharion.id).id + "/move", "POST", { x: 0, y: 0 }, 409);
+  await player(s + "/move-grant", "POST", { allowed: true }, 403);
+  await master(s + "/move-grant", "POST", { allowed: true }, 204);
+  check((await player(s + "/live")).play.moveGranted, true);
   const basic = await player(s + "/actions", "POST", {
     kind: "ataque",
     target: "Esqueleto",

@@ -87,6 +87,15 @@ public static class TurnOrders
 
     static string Cut(string s) => s.Length > 40 ? s[..40] : s;
 
+    /// <summary>Atualiza o nome guardado de uma entrada (marcador renomeado). Verdadeiro se a ordem mudou.</summary>
+    public static bool Relabel(List<TurnEntry> entries, string key, string label)
+    {
+        var entry = entries.FirstOrDefault(e => e.Key == key);
+        if (entry == null || entry.Label == Cut(label)) return false;
+        entry.Label = Cut(label);
+        return true;
+    }
+
     /// <summary>Maior iniciativa primeiro; sem iniciativa vai ao fim; empate mantém a ordem informada (estável).</summary>
     public static List<TurnEntry> SortByInitiative(IReadOnlyList<TurnEntry> entries) =>
         entries.Select((e, i) => (e, i)).OrderBy(x => x.e.Initiative == null).ThenByDescending(x => x.e.Initiative ?? 0).ThenBy(x => x.i).Select(x => x.e).ToList();

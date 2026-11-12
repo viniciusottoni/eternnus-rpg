@@ -14,6 +14,10 @@ public static class CampaignAssetsEndpoints
         api.MapPost("/library/{id:guid}/convert", (Guid campaignId, Guid id, CampaignTextConvertInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.ConvertTextAsync(campaignId, id, Id(u), x, ct));
         api.MapDelete("/library/{id:guid}", async (Guid campaignId, Guid id, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeleteTextAsync(campaignId, id, Id(u), ct); return Results.NoContent(); });
         api.MapGet("/maps", (Guid campaignId, Guid? folderId, int? page, string? purpose, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.MapTreeAsync(campaignId, Id(u), folderId, page ?? 1, ct, purpose));
+        api.MapGet("/tile-catalog", (Guid campaignId, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.TileCatalogAsync(campaignId, Id(u), ct));
+        api.MapGet("/tile-maps/{id:guid}", (Guid campaignId, Guid id, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.TileMapAsync(campaignId, id, Id(u), ct));
+        api.MapPost("/tile-maps", (Guid campaignId, TileMapInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveTileMapAsync(campaignId, null, Id(u), x, ct));
+        api.MapPut("/tile-maps/{id:guid}", (Guid campaignId, Guid id, TileMapInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveTileMapAsync(campaignId, id, Id(u), x, ct));
         // Retratos de NPC: categoria isolada dos mapas, para o seletor de imagem do personagem.
         api.MapGet("/portraits", (Guid campaignId, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.PortraitChoicesAsync(campaignId, Id(u), ct));
         api.MapPost("/folders", (Guid campaignId, CampaignFolderInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.CreateFolderAsync(campaignId, Id(u), x, ct));
@@ -58,7 +62,7 @@ public static class CampaignAssetsEndpoints
             var bytes = await s.ImageAsync(campaignId, id, Id(u), ct, string.IsNullOrEmpty(@as) ? null : @as);
             http.Response.Headers.CacheControl = "private, no-store";
             http.Response.Headers["X-Content-Type-Options"] = "nosniff";
-            return Results.File(bytes, DocumentKinds.Jpeg, enableRangeProcessing: false);
+            return Results.File(bytes, CampaignAssetsService.ImageType(bytes), enableRangeProcessing: false);
         });
     }
 }
