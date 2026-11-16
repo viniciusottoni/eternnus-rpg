@@ -1,6 +1,6 @@
 # Editor de cenas, mapas e cenários — interface Básica e Completa
 
-Fonte de verdade da preparação e do uso de cenas. Complementa [CONDUCAO_MESA.md](CONDUCAO_MESA.md), [NEVOA_ILUMINACAO.md](NEVOA_ILUMINACAO.md), [API.md](API.md) e a decisão ADR-048 em [DECISOES.md](DECISOES.md).
+Fonte de verdade da preparação e do uso de cenas. Desde a ADR-081 o editor roda sobre o núcleo gráfico comum e as cenas são criadas e organizadas no gerenciador da Preparação ([PREPARACAO_EDITOR.md](PREPARACAO_EDITOR.md)). Complementa [CONDUCAO_MESA.md](CONDUCAO_MESA.md), [NEVOA_ILUMINACAO.md](NEVOA_ILUMINACAO.md), [API.md](API.md) e a decisão ADR-048 em [DECISOES.md](DECISOES.md).
 
 ## Três escolhas independentes
 
@@ -79,7 +79,7 @@ Indicações persistentes (texto, não só cor):
 
 ### Preparar sem apresentar
 
-1. Na aba **Cenas** (campanha) ou na aba **Cenas** da mesa, use "+ Nova cena" ou "Editar preparação". O editor abre em **Selecionar e mover**, nunca numa ferramenta que pinte.
+1. Na **Preparação** da campanha (Novo › Nova cena, ou duplo clique numa cena) ou na aba **Cenas** da mesa, use "+ Nova cena" ou "Editar preparação". O editor abre em **Selecionar e mover**, nunca numa ferramenta que pinte.
 2. Escolha o tipo (mapa com grade, imagem sem grade, apresentação textual) e o cenário por miniatura.
 3. Posicione personagens e marcadores na prévia central. O servidor valida o arranjo (`ScenePrep.ValidateTokens`):
    - até 60 marcadores, dentro da grade, fora de casas que bloqueiam movimento e sem dois na mesma casa (em mapa de movimentação livre, a casa pode ser dividida e o ponto exato é guardado);
@@ -109,7 +109,7 @@ Indicações persistentes (texto, não só cor):
 
 `Scene.LayerMode`:
 
-- **`map` (compartilhada, padrão e comportamento anterior):** a cena usa a camada do mapa (`MapKey`), a mesma da aba Mapas e cenários e de outras cenas compartilhadas. A exploração também é compartilhada. O editor mostra "Compartilhada com: …".
+- **`map` (compartilhada, padrão e comportamento anterior):** a cena usa a camada do mapa (`MapKey`), a mesma da ação "Preparar névoa e luz" do mapa e de outras cenas compartilhadas. A exploração também é compartilhada. O editor mostra "Compartilhada com: …".
 - **`scene` (própria):** camada `{mapa}@{cena}`.
   - Começa com a preparação da camada compartilhada, sem explorações, e segue independente.
   - A imagem não é duplicada.
@@ -173,3 +173,11 @@ Trocar o alcance exige salvar antes de editar a camada. É recusado com a cena e
 ## Câmera e identidade móvel (ADR-057)
 
 Editor de cenas e preparação de mapas/cenários compartilham câmera com a mesa: mapa ampliado em telas compactas, arraste local, pinça de dois dedos limitada e Mapa inteiro. Topo/ferramentas rolam na horizontal; Propriedades abre/recolhe a lateral sem desmontar o formulário. Toque duplo simultâneo cancela traço/arraste pendente, sem salvar ou apresentar. Ajuste de grade tem zoom de prévia 1–4×. Valores e operações de salvar/aplicar continuam nos contratos existentes.
+
+## Editor sobre o núcleo gráfico (ADR-081)
+
+- Menus Arquivo, Editar, Cena, Camada e Exibir; ferramentas por ícone à esquerda (Básica primeiro, grupos da Completa depois); painéis Propriedades, Camadas, Estrutura, Personagens e Histórico à direita; barra de estado com zoom, casa sob o cursor e estado.
+- Botão direito num marcador: editar propriedades, duplicar, copiar, recortar, excluir, ocultar/mostrar aos jogadores, mover para camada. Numa casa vazia: adicionar marcador, colocar personagem, colar, foco de luz, marca oculta, revelar/cobrir.
+- Personagens e criaturas podem ser arrastados do painel Personagens para o mapa, com a mesma validação de "Colocar aqui".
+- Camadas da cena (Base = mapa, Elementos e extras) organizam marcadores; olho, cadeado e opacidade valem só no editor. "Oculto" continua sendo o controle do que os jogadores veem.
+- Desfazer/refazer cobre arranjo, textos, camadas e a preparação do mapa da sessão de edição. Salvar, aplicar, apresentar e reiniciar continuam ações explícitas.

@@ -11,6 +11,8 @@ public sealed record BattleMap(string Key, string Name, string Kind, string Desc
     public decimal ScaleMeters { get; init; } = 1.5m;
     /// <summary>Movimentação livre: marcadores em qualquer ponto (posição fina dentro da casa), sem casa exclusiva.</summary>
     public bool Free { get; init; }
+    /// <summary>Terreno (camada Base) de um mapa de tiles com objetos por cima; nulo quando igual a <see cref="Rows"/>. Só desenho.</summary>
+    public string[]? Terrain { get; init; }
     public const char Spawn = 'S';
     public const string Walkable = ".,+=rSd:nsevufcw";
     public int Width => Rows.Length == 0 ? 0 : Rows[0].Length;

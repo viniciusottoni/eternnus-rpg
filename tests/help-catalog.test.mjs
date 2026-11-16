@@ -13,7 +13,7 @@ test('todas as referências literais e chaves de opções existem no catálogo',
   const used = new Set();
   for (const [file, source] of sources) {
     if (file === 'help-policy.js') continue;
-    for (const match of source.matchAll(/(?:helpButton\(\s*|\bhelp:\s*)["']([a-z][a-z0-9.-]+)["']/g)) {
+    for (const match of source.matchAll(/(?:helpButton\(\s*|\bhelp:\s*\[?\s*)["']([a-z][a-z0-9.-]+)["']/g)) {
       assert.ok(Object.hasOwn(catalog, match[1]), `${file}: ${match[1]}`); used.add(match[1]);
     }
   }

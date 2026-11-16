@@ -34,6 +34,8 @@ public sealed class SceneToken
     [MaxLength(8)] public string? Appearance { get; set; }
     public int? Size { get; set; }
     [MaxLength(500)] public string? ImageUrl { get; set; }
+    /// <summary>Camada visual do editor de cena (<see cref="Scene.Layers"/>); ausente = <c>elements</c>. Só organização: não muda a mesa.</summary>
+    [MaxLength(24)] public string? Layer { get; set; }
 }
 
 /// <summary>
@@ -63,6 +65,11 @@ public class Scene
     public int Order { get; set; }
     public int Revision { get; set; } = 1;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>Pasta da categoria Cenas na Preparação; nula = raiz.</summary>
+    public Guid? FolderId { get; set; }
+    /// <summary>Camadas visuais do editor (JSON de <see cref="EditorLayer"/>); nulo = Base e Elementos.</summary>
+    [MaxLength(4000)] public string? Layers { get; set; }
 }
 
 /// <summary>Recurso configurável de um personagem do mestre (vida, estresse, munição…).</summary>
@@ -96,6 +103,9 @@ public class MasterCharacter
     [MaxLength(500)] public string? ImageUrl { get; set; }
     /// <summary>Visível aos membros em "NPCs conhecidos": nome, tipo, resumo curto e imagem. Notas, lado, recursos e ficha continuam do mestre.</summary>
     public bool SharedWithPlayers { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>Pasta da categoria Personagens na Preparação; nula = raiz.</summary>
+    public Guid? FolderId { get; set; }
 }
 
 public static class NpcKinds
@@ -188,10 +198,12 @@ public static class PreparationModel
         b.Entity<Scene>().Property(x => x.Revision).IsConcurrencyToken();
         b.Entity<Scene>().OwnsMany(x => x.Prepared, o => o.ToJson());
         b.Entity<Scene>().OwnsMany(x => x.Saved, o => o.ToJson());
+        b.Entity<Scene>().HasOne<CampaignMapFolder>().WithMany().HasForeignKey(x => x.FolderId).OnDelete(DeleteBehavior.NoAction);
         b.Entity<MasterCharacter>().HasOne<Campaign>().WithMany().HasForeignKey(x => x.CampaignId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<MasterCharacter>().HasIndex(x => new { x.CampaignId, x.Name });
         b.Entity<MasterCharacter>().Property(x => x.Revision).IsConcurrencyToken();
         b.Entity<MasterCharacter>().OwnsMany(x => x.Resources, o => o.ToJson());
+        b.Entity<MasterCharacter>().HasOne<CampaignMapFolder>().WithMany().HasForeignKey(x => x.FolderId).OnDelete(DeleteBehavior.NoAction);
         b.Entity<RollRequest>().HasOne<GameSession>().WithMany().HasForeignKey(x => x.SessionId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<RollRequest>().HasIndex(x => new { x.SessionId, x.CreatedAt });
         b.Entity<RollRequest>().OwnsMany(x => x.Targets, o => o.ToJson());

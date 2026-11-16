@@ -392,20 +392,31 @@ function treasure(g,type) {
 }
 
 /** Desenho compartilhado entre miniaturas, editor e mesa; omite detalhes finos em escalas pequenas. */
-export function drawTile(g, rows, x, y, size, outdoor, timber) {
+/**
+ * `ground` (opcional, mesmas dimensões): terreno da camada Base sob objetos de camadas superiores (ADR-081).
+ * Sem ele, o piso dos objetos segue o terreno vizinho, como antes.
+ */
+export function drawTile(g, rows, x, y, size, outdoor, timber, ground = null) {
   const c=at(rows,x,y),rand=seed=>noise(x,y,seed),detail=size>=22;
+  const under=ground?.[y]?.[x];
   g.save();g.translate(x*size,y*size);g.scale(size/100,size/100);
   // Recorte por casa, inclusive sombras e galhos, para respeitar a névoa.
   g.beginPath();g.rect(0,0,100,100);g.clip();
   if(c==="?") {g.fillStyle="#050403";g.fillRect(0,0,100,100);g.restore();return;}
   let surface=c;
   if(SURFACES[c]) surface=objectGround(rows,x,y,SURFACES[c]);
-  if(c==="S") surface=[...rows[y].slice(0,x)].reverse().find(t=>t!=="S" && t!=="?") || (outdoor ? "," : timber ? "d" : ".");
+  // Objeto sobre terreno explícito: o piso é o da Base (água e lava são desenhadas antes do objeto).
+  const explicit=under && under!==c && under!=="?" && (SURFACES[c] || "trbohAB+=kgONYS".includes(c));
+  if(explicit && under==="~") {water(g,ground,x,y,rand,detail);surface=null;}
+  else if(explicit && under==="L") {lava(g,rand,detail);surface=null;}
+  else if(explicit && !wall(under)) surface=under;
+  if(c==="S" && !explicit) surface=[...rows[y].slice(0,x)].reverse().find(t=>t!=="S" && t!=="?") || (outdoor ? "," : timber ? "d" : ".");
   if(wall(c)) masonry(g,rows,x,y,rand,detail);
   else if(c==="~") water(g,rows,x,y,rand,detail);
   else if(c==="L") lava(g,rand,detail);
   else {
-    if("nsevufc".includes(surface)) wildGround(g,surface,x,y,rand,detail);
+    if(surface===null) {/* piso já desenhado (água/lava da Base) */}
+    else if("nsevufc".includes(surface)) wildGround(g,surface,x,y,rand,detail);
     else if(surface==="d" || timber && "hobA+=".includes(c)) wood(g,x,y,rand,detail);
     else if(surface==="," || outdoor && "trbo".includes(c)) grass(g,x,y,rand,detail);
     else if(surface===":" || c==="h" && !timber) sand(g,x,y,rand,detail);

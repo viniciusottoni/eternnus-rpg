@@ -22,6 +22,16 @@ public class CampaignMapFolder
     public Guid CampaignId { get; set; }
     public Guid? ParentId { get; set; }
     [MaxLength(100)] public string Name { get; set; } = "";
+    /// <summary>Categoria da Preparação (<see cref="PrepCategories"/>). Pastas antigas são de mapas.</summary>
+    [MaxLength(12)] public string Category { get; set; } = PrepCategories.Maps;
+}
+/// <summary>Raízes fixas da Preparação: cada pasta pertence a uma categoria e só guarda itens dela.</summary>
+public static class PrepCategories
+{
+    public const string Scenes = "scenes", Maps = "maps", Characters = "characters";
+    public static readonly string[] All = [Scenes, Maps, Characters];
+    public static bool IsValid(string? v) => v is Scenes or Maps or Characters;
+    public static string Require(string? v) => IsValid(v) ? v! : throw new RuleException(400, "Escolha Cenas, Mapas ou Personagens.");
 }
 public class CampaignMap
 {
@@ -50,11 +60,23 @@ public class CampaignMap
     /// <summary>Categoria isolada no acervo: <see cref="CampaignAssetPurposes.Map"/> (cenas, atlas, mesa) ou
     /// <see cref="CampaignAssetPurposes.Portrait"/> (imagem de NPC; nunca listada como mapa).</summary>
     [MaxLength(16)] public string Purpose { get; set; } = CampaignAssetPurposes.Map;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>Descrição livre do mestre.</summary>
+    [MaxLength(500)] public string Summary { get; set; } = "";
+    /// <summary>Cenário oficial (<see cref="BattleMaps"/>) usado como modelo na criação; só informativo.</summary>
+    [MaxLength(80)] public string? SourceKey { get; set; }
+    /// <summary>Documento editável: camadas de tiles (<see cref="TileLayers"/>) ou composição de imagem (<see cref="MapComposition"/>).</summary>
+    [MaxLength(400000)] public string? Composition { get; set; }
+    /// <summary>Mapa dono de uma imagem-fonte (<see cref="CampaignAssetPurposes.Layer"/>); nulo nas demais imagens.</summary>
+    public Guid? OwnerMapId { get; set; }
 }
 /// <summary>Categorias de imagem do acervo da campanha.</summary>
 public static class CampaignAssetPurposes
 {
     public const string Map = "map", Portrait = "portrait";
+    /// <summary>Imagem-fonte de um elemento de mapa de imagem (<see cref="CampaignMap.OwnerMapId"/>). Uso interno: nunca aceita do cliente.</summary>
+    public const string Layer = "layer";
     public static string Normalize(string? v) => v switch { null or "" => Map, Map or Portrait => v, _ => throw new RuleException(400, "Categoria de imagem inválida.") };
 }
 /// <summary>Névoa, paredes, portas, luzes e explorações de um mapa da campanha (oficial ou enviado), contínuos entre sessões.</summary>
@@ -83,10 +105,12 @@ public static class CampaignAssetsModel
         b.Entity<CampaignLibraryEntry>().Property(x => x.Revision).IsConcurrencyToken();
         b.Entity<CampaignMapFolder>().HasOne<Campaign>().WithMany().HasForeignKey(x => x.CampaignId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<CampaignMapFolder>().HasIndex(x => new { x.CampaignId, x.ParentId });
+        b.Entity<CampaignMapFolder>().HasIndex(x => new { x.CampaignId, x.Category, x.ParentId });
         b.Entity<CampaignMapFolder>().HasOne<CampaignMapFolder>().WithMany().HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.NoAction);
         b.Entity<CampaignMap>().HasOne<Campaign>().WithMany().HasForeignKey(x => x.CampaignId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<CampaignMap>().HasOne<CampaignMapFolder>().WithMany().HasForeignKey(x => x.FolderId).OnDelete(DeleteBehavior.NoAction);
         b.Entity<CampaignMap>().HasIndex(x => new { x.CampaignId, x.FolderId });
+        b.Entity<CampaignMap>().HasIndex(x => new { x.CampaignId, x.OwnerMapId });
         b.Entity<CampaignMap>().Property(x => x.Revision).IsConcurrencyToken();
         b.Entity<CampaignMap>().Property(x => x.ScaleMeters).HasPrecision(8, 2);
         b.Entity<CampaignMapLayer>().HasOne<Campaign>().WithMany().HasForeignKey(x => x.CampaignId).OnDelete(DeleteBehavior.Cascade);

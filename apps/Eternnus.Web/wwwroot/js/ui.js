@@ -66,7 +66,7 @@ export function formError() {
 }
 // Classes de layout (wide, editor de cena) saem só ao abrir o próximo modal: assim o modal que fecha mantém o tamanho
 // durante o fade de saída. Quem precisa delas as adiciona depois de chamar modal().
-const MODAL_LAYOUTS = ["wide", "scene-editor-modal"];
+const MODAL_LAYOUTS = ["wide", "scene-editor-modal", "editor-modal"];
 export function modal(title, content) {
   const dialog = $("#modal");
   if (!dialog.open) dialog.classList.remove(...MODAL_LAYOUTS);

@@ -218,19 +218,20 @@ try {
       void openSceneEditor({campaign:{id:campaignId,name:'A Sombra de Valdaran'},...(kind==='layer'?{kind:'layer',mapKey:id}:{sceneId:id})});
     },{campaignId:campaign.id,kind,id});
     await cameraPage.locator('.scene-editor').waitFor();
-    await cameraPage.waitForFunction(()=>Number(document.querySelector('#se-board').dataset.zoom)>1);
+    // Editor (ADR-081): começa em "Ajustar à tela"; roda, pinça e Ctrl+0/1 controlam o zoom.
+    await cameraPage.waitForFunction(()=>Number(document.querySelector('#se-board').dataset.zoom)>=1);
     await circles(cameraPage,kind);
     const before=await cameraPage.locator('#se-board').getAttribute('data-zoom');
     await pinch('#se-board');
     check(await cameraPage.evaluate(()=>visualViewport.scale)===1,`${kind}: pinça não amplia o diálogo`);
     check(Number(await cameraPage.locator('#se-board').getAttribute('data-zoom'))>Number(before),`${kind}: pinça na preparação`);
-    await cameraPage.locator('[data-action="se-properties"]').click();
-    check(await cameraPage.locator('#se-side').isVisible(),`${kind}: propriedades acessíveis`);
-    await cameraPage.locator('[data-action="se-properties"]').click();
-    check(!await cameraPage.locator('#se-side').isVisible(),`${kind}: recolher amplia prévia`);
-    await cameraPage.locator('.se-controls').evaluate(e=>e.scrollLeft=0);
+    if (!await cameraPage.locator('.ed-panels').isVisible()) await cameraPage.locator('[data-ed="panels"]').click();
+    check(await cameraPage.locator('.ed-panels').isVisible(),`${kind}: propriedades acessíveis`);
+    await cameraPage.locator('[data-ed="panels"]').click();
+    check(!await cameraPage.locator('.ed-panels').isVisible(),`${kind}: recolher amplia prévia`);
+    await cameraPage.locator('.ed-menubar').evaluate(e=>e.scrollLeft=0);
     await shot(cameraPage,`12-editor-${kind}`);
-    await cameraPage.locator('#close-modal').click();
+    await cameraPage.locator('[data-ed="close"]').click();
   }
   // Prévia do ajuste de grade usa o mesmo gesto, preservando seus valores.
   await cameraPage.evaluate(async()=>{

@@ -1,8 +1,7 @@
 import { helpButton } from "./help.js";
 import { api } from "./api.js";
-import { $, esc, button, modal, formError, submitForm, toast, empty } from "./ui.js";
-import { folderTree, folderPath, flattenFolders } from "./policy.js";
-import { mapThumbnail } from "./table-map.js";
+import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
+import { folderTree, flattenFolders } from "./policy.js";
 import { safeImageUrl } from "./play-policy.js";
 
 const base = d => `/campaigns/${d.id}/assets`;
@@ -39,110 +38,43 @@ function confirmDelete(title, action) {
   modal(title, `<p>Esta ação remove o recurso da campanha.</p><form id="ca-delete-form">${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button class="danger" type="submit">Excluir</button></div></form>`);
   $("#ca-delete-form").onsubmit = e => { e.preventDefault(); submitForm(e.currentTarget, async () => { await action(); $("#modal").close(); }); };
 }
-const ICON = {
-  root: '<svg class="fx-icon fx-root-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="fx-map" d="M3 6.2 8.6 4l6.8 2.4L21 4.2v13.6L15.4 20l-6.8-2.4L3 19.8z"/><path class="fx-fold" d="M8.6 4v13.6M15.4 6.4V20"/></svg>',
-  folder: '<svg class="fx-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="fx-back" d="M2.5 6A1.5 1.5 0 0 1 4 4.5h5l2 2h9A1.5 1.5 0 0 1 21.5 8v10a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 18z"/><path class="fx-front" d="M2.5 9.5h19V18a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 18z"/></svg>',
-  open: '<svg class="fx-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="fx-back" d="M2.5 6A1.5 1.5 0 0 1 4 4.5h5l2 2h9A1.5 1.5 0 0 1 21.5 8v2H6.4a1.6 1.6 0 0 0-1.5 1.1L2.5 18z"/><path class="fx-front" d="M6.4 10.5h15.5a.9.9 0 0 1 .9 1.2l-2.3 6.7a1.6 1.6 0 0 1-1.5 1.1H3.4a.9.9 0 0 1-.9-1.2l2.4-6.7a1.6 1.6 0 0 1 1.5-1.1z"/></svg>',
-  chevron: '<svg class="fx-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg>',
-};
-const ROOT_NAME = "Mapas e cenários";
-const openFolders = new Map(); // campanha -> pastas expandidas na árvore (somente estado visual)
-const runs = new WeakMap();
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-const decimal = n => Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+// ---------- Mapas da campanha (ADR-081) ----------
+// A antiga subpágina "Mapas e cenários" deu lugar ao gerenciador da Preparação (js/prep-explorer.js).
+// Aqui ficam só o formulário de envio/importação/configuração de mapas de imagem e o envio multipart comum.
+const ROOT_NAME = "Mapas";
+const MAX_BYTES = 10 * 1024 * 1024;
 
-function treeNode(folder, children, open, currentId, depth) {
-  const kids = children.get(folder.id) || [], expanded = open.has(folder.id) && kids.length > 0, current = folder.id === currentId;
-  const twisty = kids.length
-    ? `<button type="button" class="fx-twisty" data-action="ca-toggle" data-id="${esc(folder.id)}" aria-expanded="${expanded}" aria-label="${expanded ? "Recolher" : "Expandir"} ${esc(folder.name)}">${ICON.chevron}</button>`
-    : '<span class="fx-twisty" aria-hidden="true"></span>';
-  return `<li><div class="fx-row${current ? " current" : ""}">${twisty}<button type="button" class="fx-node" data-action="ca-open" data-id="${esc(folder.id)}"${current ? ' aria-current="true"' : ""}>${current || expanded ? ICON.open : ICON.folder}<span>${esc(folder.name)}</span></button></div>${expanded && depth < 8 ? `<ul class="fx-group">${kids.map(k => treeNode(k, children, open, currentId, depth + 1)).join("")}</ul>` : ""}</li>`;
-}
-function treeHtml(children, open, currentId) {
-  const top = children.get("") || [];
-  return `<ul class="fx-tree"><li><div class="fx-row fx-root${currentId ? "" : " current"}"><button type="button" class="fx-node" data-action="ca-open" data-id=""${currentId ? "" : ' aria-current="true"'}>${ICON.root}<span>${ROOT_NAME}</span></button></div>${top.length ? `<ul class="fx-group">${top.map(f => treeNode(f, children, open, currentId, 1)).join("")}</ul>` : ""}</li></ul>`;
+/**
+ * Envia uma imagem como mapa novo (mesmo multipart do envio manual). Usado pelo formulário e pelos fluxos de criação
+ * (área em branco, cartografia oficial como modelo). Devolve o mapa salvo.
+ */
+export async function uploadMapImage(d, { blob, fileName = "", name, summary = "", folderId = null, gridPixels = 64, scaleMeters = 1.5, hasGrid = true, gridOffsetX = 0, gridOffsetY = 0, freeMovement = false, sourceKey = "" }) {
+  if (!blob?.size || blob.size > MAX_BYTES) throw new Error("Selecione uma imagem de até 10 MB.");
+  const upload = new FormData();
+  upload.append("name", name); upload.append("folderId", folderId || "");
+  upload.append("file", blob instanceof File ? blob : new File([blob], fileName || (blob.type === "image/png" ? "mapa.png" : "mapa.jpg"), { type: blob.type || "image/png" }));
+  upload.append("gridPixels", String(gridPixels)); upload.append("scaleMeters", String(scaleMeters));
+  upload.append("hasGrid", hasGrid ? "true" : "false"); upload.append("gridOffsetX", String(hasGrid ? gridOffsetX : 0)); upload.append("gridOffsetY", String(hasGrid ? gridOffsetY : 0)); upload.append("freeMovement", hasGrid && freeMovement ? "true" : "false");
+  if (summary) upload.append("summary", summary);
+  if (sourceKey) upload.append("sourceKey", sourceKey);
+  return api(`${base(d)}/maps`, "POST", upload);
 }
 
-export async function renderCampaignMaps(d, target, folderId = "", page = 1) {
-  const run = (runs.get(target) || 0) + 1; runs.set(target, run);
-  const pane = target.querySelector(".fx-pane");
-  if (pane) pane.setAttribute("aria-busy", "true");
-  else target.innerHTML = '<p role="status">Abrindo mapas e cenários…</p>';
-  let result, catalog;
-  try { [result, catalog] = await Promise.all([
-    api(`${base(d)}/maps?${new URLSearchParams({ ...(folderId ? { folderId } : {}), page })}`),
-    api(`/campaigns/${d.id}/maps`),
-  ]); }
-  finally { if (target.isConnected && runs.get(target) === run) target.querySelector(".fx-pane")?.removeAttribute("aria-busy"); }
-  if (!target.isConnected || runs.get(target) !== run) return;
-  const children = folderTree(result.folders), path = folderPath(result.folders, folderId), current = path.at(-1);
-  const official = catalog.items.filter(m => !m.key.startsWith("resource:") && !m.key.startsWith("asset:"));
-  if (!openFolders.has(d.id)) openFolders.set(d.id, new Set());
-  const open = openFolders.get(d.id);
-  for (const f of path) open.add(f.id);
-  const subfolders = children.get(folderId) || [];
-  const crumbs = [current
-    ? `<li><button type="button" class="fx-crumb" data-action="ca-open" data-id="">${ICON.root}<span>${ROOT_NAME}</span></button></li>`
-    : `<li><span class="fx-crumb" aria-current="location">${ICON.root}<span>${ROOT_NAME}</span></span></li>`]
-    .concat(path.map((f, i) => i === path.length - 1
-      ? `<li><span class="fx-crumb" aria-current="location">${ICON.open}<span>${esc(f.name)}</span></span></li>`
-      : `<li><button type="button" class="fx-crumb" data-action="ca-open" data-id="${esc(f.id)}">${ICON.folder}<span>${esc(f.name)}</span></button></li>`));
-  const canDelete = current && !subfolders.length && !result.total;
-  const folderTiles = subfolders.map(f => { const n = (children.get(f.id) || []).length; return `<li><button type="button" class="fx-tile fx-folder-tile" data-action="ca-open" data-id="${esc(f.id)}">${ICON.folder}<strong>${esc(f.name)}</strong><small>${n ? plural(n, "subpasta", "subpastas") : "Pasta"}</small></button></li>`; }).join("");
-  const mapTiles = result.items.map(m => `<li><article class="fx-tile fx-map-tile"><div class="fx-thumb" data-campaign-map="${esc(m.id)}"></div><div class="fx-meta"><strong>${esc(m.name)}</strong><small>${m.isTileMap ? `${m.width} × ${m.height} casas · mapa de tiles` : `${m.pixelWidth}×${m.pixelHeight} px`} · ${m.isTileMap ? `${decimal(m.scaleMeters)} m por casa` : m.hasGrid === false ? "apenas imagem (sem grade)" : `${m.freeMovement ? "movimentação livre · referência " : ""}${m.gridPixels} px/quadro${m.gridOffsetX || m.gridOffsetY ? ` · deslocada ${m.gridOffsetX}/${m.gridOffsetY} px` : ""} · ${decimal(m.scaleMeters)} m`}</small></div><div class="fx-tile-actions">${d.activeSession ? button("Mostrar na mesa", "ca-show", m.key, "primary small") : ""}${m.hasGrid === false ? "" : button("☼ Névoa e luz", "ca-fog", m.key, "subtle small", `aria-label="Preparar névoa e luz de ${esc(m.name)}"`)}${button(m.isTileMap ? "Editar tiles" : "Editar / mover", "ca-map-edit", m.id, "subtle small")}${m.isTileMap ? button("Criar cópia", "ca-tile-copy", m.key, "subtle small") : ""}${button("Excluir", "ca-map-delete", m.id, "subtle small", `aria-label="Excluir ${esc(m.name)}"`)}</div></article></li>`).join("");
-  target.innerHTML = `<div class="section-title fx-title"><h2>${ROOT_NAME}${helpButton("campanhas.acervo.mapas", "Mapas e escala")}</h2></div>
-<section class="fx-section" aria-labelledby="fx-own-title"><div class="fx-head"><div><h3 id="fx-own-title">Mapas da campanha</h3><p class="muted small">Crie mapas com tiles ou envie uma imagem PNG/JPEG até 10 MB; 64–4.096 pixels por lado, até 8 milhões de pixels. Use como imagem sem grade ou ajuste a grade sobre a prévia. A mesma imagem pode servir a várias cenas, sem duplicar o arquivo.</p></div><div class="fx-actions">${button("+ Criar com tiles", "ca-tile-new", "", "primary")}${button("+ Nova pasta", "ca-folder", "", "primary")}${button("+ Enviar mapa", "ca-upload", "", "primary")}${button("⇪ Importar UVTT", "ca-uvtt", "", "subtle", 'data-tip="Dungeondraft (.dd2vtt), .uvtt ou .df2vtt com paredes e luzes"')}</div></div>
-<div class="fx-explorer metal"><nav class="fx-sidebar" aria-label="Pastas de mapas e cenários">${treeHtml(children, open, folderId)}</nav>
-<section class="fx-pane" aria-label="Conteúdo da pasta"><div class="fx-toolbar">${button("↑", "ca-open", current?.parentId || "", "fx-up", `aria-label="Subir para a pasta anterior"${current ? "" : " disabled"}`)}<nav class="fx-path" aria-label="Caminho da pasta"><ol>${crumbs.join("")}</ol></nav><span class="fx-count">${plural(subfolders.length, "pasta", "pastas")} · ${plural(result.total, "mapa", "mapas")}</span>${current ? `<span class="fx-folder-actions">${button("✎ Renomear", "ca-folder-rename", current.id, "subtle small", `aria-label="Renomear a pasta ${esc(current.name)}"`)}${button("Excluir pasta", "ca-folder-delete", current.id, "subtle small", canDelete ? "" : 'aria-disabled="true" data-tip="Esvazie a pasta antes de excluir."')}</span>` : ""}</div>
-${subfolders.length || result.items.length ? `<ul class="fx-grid" aria-label="Pastas e mapas">${folderTiles}${mapTiles}</ul>` : `<div class="fx-empty">${ICON.open}<p><strong>Esta pasta está vazia.</strong><span>Crie um mapa com tiles, envie uma imagem ou crie uma subpasta para organizar seus cenários.</span></p></div>`}${pager(result)}</section></div>
-<div class="fx-footer">${d.activeSession ? button("Ocultar mapa na mesa", "ca-hide", "", "subtle") : '<p class="muted small">Abra uma sessão para mostrar seus mapas na mesa.</p>'}</div></section>`;
-  const atlas = document.createElement("details");
-  atlas.className = "official-atlas metal";
-  atlas.open = !folderId;
-  atlas.innerHTML = `<summary><span>Atlas do Eternnus${helpButton("progresso.atlas.cenarios", "Atlas do Eternnus")}</span><small>${official.length} cenários prontos · incluídos para toda mesa</small></summary><p class="muted small">Locais sem trama ou sistema obrigatório. Adapte nomes, habitantes e objetivos à sua história.</p><div class="atlas-grid">${official.map(m => `<article class="atlas-card"><div class="map-preview" data-official-map="${esc(m.key)}"></div><div><span class="eyebrow">${m.kind === "tileset" ? `${m.rows[0].length} × ${m.rows.length} CASAS` : "CARTOGRAFIA"}</span><h3>${esc(m.name)}</h3><p>${esc(m.description)}</p><div class="atlas-actions">${m.kind === "tileset" ? button("Criar cópia com tiles", "ca-tile-copy", m.key, "subtle") : ""}${m.kind === "tileset" ? button("☼ Névoa e luz", "ca-fog", m.key, "subtle", `aria-label="Preparar névoa e luz de ${esc(m.name)}"`) : ""}${d.activeSession ? button("Mostrar na mesa", "ca-show", m.key, "subtle") : '<small>Disponível ao abrir uma sessão</small>'}</div></div></article>`).join("")}</div>`;
-  target.querySelector(".fx-section").before(atlas);
-  atlas.querySelectorAll("[data-official-map]").forEach(el => mapThumbnail(el, official.find(m => m.key === el.dataset.officialMap)));
-  target.querySelectorAll("[data-campaign-map]").forEach(el => mapThumbnail(el, result.items.find(m => m.id === el.dataset.campaignMap)));
-  const trail = target.querySelector(".fx-path ol");
-  trail.scrollLeft = trail.scrollWidth; // no celular o caminho rola em uma linha; mostra a pasta atual
-  const reload = () => renderCampaignMaps(d, target, folderId, page);
-  target.onclick = async event => {
-    const b = event.target.closest("[data-action]"); if (!b || b.disabled) return;
-    try {
-      const action = b.dataset.action, id = b.dataset.id;
-      if (action === "ca-toggle") {
-        open.has(id) ? open.delete(id) : open.add(id);
-        target.querySelector(".fx-sidebar").innerHTML = treeHtml(children, open, folderId);
-        target.querySelector(`.fx-twisty[data-id="${CSS.escape(id)}"]`)?.focus();
-      }
-      if (action === "ca-open") await renderCampaignMaps(d, target, id);
-      if (action === "ca-fog") await (await import("./fog-editor.js")).openLayerEditor(d, id);
-      if (action === "ca-page") await renderCampaignMaps(d, target, folderId, Number(id));
-      if (action === "ca-folder") folderModal(d, folderId, current, reload);
-      if (action === "ca-folder-rename" && current) folderModal(d, current.parentId, null, reload, current);
-      if (action === "ca-upload") mapModal(d, null, result.folders, folderId, reload);
-      if (action === "ca-uvtt") (await import("./map-import.js")).openUvttImport({ campaignId: d.id, onDone: reload });
-      if (action === "ca-tile-new" || action === "ca-tile-copy" || action === "ca-map-edit" && result.items.find(m => m.id === id)?.isTileMap) {
-        await (await import("./tile-map-editor.js")).openTileMapEditor(d, {
-          item: action === "ca-map-edit" ? result.items.find(m => m.id === id) : null,
-          source: action === "ca-tile-copy" ? catalog.items.find(m => m.key === id) : null,
-          folders: result.folders, folderId, onSaved: reload,
-        });
-      } else if (action === "ca-map-edit") mapModal(d, result.items.find(m => m.id === id), result.folders, folderId, reload);
-      if (action === "ca-map-delete" || action === "ca-folder-delete") confirmDelete(action === "ca-map-delete" ? "Excluir mapa?" : "Excluir pasta?", async () => { await api(`${base(d)}/${action === "ca-map-delete" ? "maps" : "folders"}/${id}`, "DELETE"); await renderCampaignMaps(d, target, action === "ca-folder-delete" ? current?.parentId || "" : folderId); });
-      if (action === "ca-show" || action === "ca-hide") { await api(`/sessions/${d.activeSession.id}/map`, "POST", { mapKind: action === "ca-hide" ? "cartographic" : catalog.items.find(m => m.key === id)?.kind || "tileset", mapKey: action === "ca-hide" ? "valley" : id }); toast(action === "ca-hide" ? "Mapa da campanha ocultado. A mesa exibe o cenário oficial." : "Mapa mostrado para a mesa."); }
-    } catch (error) { toast(error.message); }
-  };
-}
-/** Cria uma pasta em `parentId` ou, com `folder`, renomeia a pasta sem mudar o lugar dela nem o conteúdo. */
-function folderModal(d, parentId, parent, reload, folder = null) {
-  modal(folder ? "Renomear pasta" : "Nova pasta", `${folder ? "" : `<p class="muted small">Dentro de: ${esc(parent?.name || ROOT_NAME)}</p>`}<form id="ca-form"><div class="field"><label for="ca-name">Nome da pasta</label><input id="ca-name" name="name" required maxlength="100" value="${esc(folder?.name || "")}"></div>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button class="primary" type="submit">${folder ? "Salvar nome" : "Criar pasta"}</button></div></form>`);
-  $("#ca-name").focus(); $("#ca-name").select(); $("#ca-form").onsubmit = e => { e.preventDefault(); submitForm(e.currentTarget, async data => { if (folder) await api(`${base(d)}/folders/${folder.id}`, "PUT", { name: data.name }); else await api(`${base(d)}/folders`, "POST", { name: data.name, parentId: parentId || null }); $("#modal").close(); await reload(); }); };
-}
-function mapModal(d, item, folders, folderId, reload) {
+/** Pastas de Mapas para o seletor (pastas antigas sem categoria contam como Mapas). */
+const mapFolders = (folders = []) => (folders || []).filter(f => !f.category || f.category === "maps");
+
+/**
+ * Envio (aparelho ou link), ou configuração de um mapa de imagem existente (`item`): nome, descrição, pasta,
+ * apenas imagem / grade / movimentação livre, grade ajustada sobre a prévia, escala e deslocamento.
+ * `source` pré-seleciona "file" ou "link"; `sourceKey` marca o modelo oficial de origem; `onSaved(map)` recebe o mapa salvo.
+ */
+export function openMapUpload(d, { item = null, folderId = "", folders = [], sourceKey = "", source = "file", onSaved } = {}) {
   const hasGrid = item ? item.hasGrid !== false : true;
   const use = !hasGrid ? "no" : item?.freeMovement ? "free" : "yes";
-  modal(item ? "Configurar mapa" : "Enviar mapa", `<form id="ca-form" class="map-upload"><div class="field"><label for="ca-name">Nome do mapa</label><input id="ca-name" name="name" required maxlength="120" value="${esc(item?.name || "")}"></div>${item ? "" : '<fieldset class="grid-choice"><legend>De onde vem a imagem</legend><label class="check se-option"><input type="radio" name="source" value="file" checked><span><strong>Do aparelho</strong><small>PNG ou JPEG até 10 MB.</small></span></label><label class="check se-option"><input type="radio" name="source" value="link"><span><strong>De um link</strong><small>O Eternnus baixa uma cópia; os jogadores não acessam o site de origem.</small></span></label></fieldset><div class="field" data-source="file"><label for="ca-image">Imagem PNG ou JPEG (até 10 MB)</label><input id="ca-image" type="file" name="file" accept="image/png,image/jpeg" required><small class="form-help">A imagem só sai do seu aparelho ao salvar.</small></div><div class="field" data-source="link" hidden><label for="ca-url">Link https da imagem</label><input id="ca-url" name="url" type="url" inputmode="url" maxlength="2000" placeholder="https://…/mapa.jpg" disabled aria-describedby="ca-url-hint"><small class="form-help" id="ca-url-hint">Use o endereço que abre a própria imagem (PNG ou JPEG, até 10 MB). A prévia abaixo é carregada do site do link.</small></div>'}<fieldset class="grid-choice"><legend>Como usar a imagem${helpButton("campanhas.acervo.movimentacao", "Movimentação livre")}</legend><label class="check se-option"><input type="radio" name="useGrid" value="no" ${use === "no" ? "checked" : ""}><span><strong>Apenas imagem</strong><small>Para mostrar ao grupo, sem casas, marcadores ou névoa.</small></span></label><label class="check se-option"><input type="radio" name="useGrid" value="yes" ${use === "yes" ? "checked" : ""}><span><strong>Usar grade</strong><small>Personagens andam por casas; dá para usar paredes, luz e névoa.</small></span></label><label class="check se-option"><input type="radio" name="useGrid" value="free" ${use === "free" ? "checked" : ""}><span><strong>Movimentação livre</strong><small>Personagens e criaturas ficam em qualquer ponto da imagem. A grade abaixo vira só referência de escala, paredes e névoa (oculta na mesa).</small></span></label></fieldset><div data-grid-host ${use === "no" ? "hidden" : ""}><p class="form-help" data-grid-wait>${item ? "" : "Escolha a imagem para ver a prévia da grade."}</p></div><div class="field"><label for="ca-location">Pasta</label><select id="ca-location" name="folderId"><option value="">${ROOT_NAME}</option>${flattenFolders(folderTree(folders)).map(f => `<option value="${esc(f.id)}" ${f.id === (item?.folderId || folderId) ? "selected" : ""}>${"   ".repeat(f.depth + 1)}${esc(f.name)}</option>`).join("")}</select></div>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button class="primary" type="submit">Salvar mapa</button></div></form>`);
+  const fromLink = source === "link";
+  const list = flattenFolders(folderTree(mapFolders(folders)));
+  const where = item ? item.folderId || "" : folderId || "";
+  modal(item ? "Configurar mapa" : fromLink ? "Importar mapa por link" : "Enviar mapa", `<form id="ca-form" class="map-upload"><div class="field"><label for="ca-name">Nome do mapa</label><input id="ca-name" name="name" required maxlength="120" value="${esc(item?.name || "")}"></div><div class="field"><label for="ca-summary">Descrição</label><textarea id="ca-summary" name="summary" maxlength="500" rows="2">${esc(item?.summary || "")}</textarea></div>${item ? "" : `<fieldset class="grid-choice"><legend>De onde vem a imagem</legend><label class="check se-option"><input type="radio" name="source" value="file" ${fromLink ? "" : "checked"}><span><strong>Do aparelho</strong><small>PNG ou JPEG até 10 MB.</small></span></label><label class="check se-option"><input type="radio" name="source" value="link" ${fromLink ? "checked" : ""}><span><strong>De um link</strong><small>O Eternnus baixa uma cópia; os jogadores não acessam o site de origem.</small></span></label></fieldset><div class="field" data-source="file" ${fromLink ? "hidden" : ""}><label for="ca-image">Imagem PNG ou JPEG (até 10 MB)</label><input id="ca-image" type="file" name="file" accept="image/png,image/jpeg" ${fromLink ? "disabled" : "required"}><small class="form-help">A imagem só sai do seu aparelho ao salvar.</small></div><div class="field" data-source="link" ${fromLink ? "" : "hidden"}><label for="ca-url">Link https da imagem</label><input id="ca-url" name="url" type="url" inputmode="url" maxlength="2000" placeholder="https://…/mapa.jpg" ${fromLink ? "required" : "disabled"} aria-describedby="ca-url-hint"><small class="form-help" id="ca-url-hint">Use o endereço que abre a própria imagem (PNG ou JPEG, até 10 MB). A prévia abaixo é carregada do site do link.</small></div>`}<fieldset class="grid-choice"><legend>Como usar a imagem${helpButton("campanhas.acervo.movimentacao", "Movimentação livre")}</legend><label class="check se-option"><input type="radio" name="useGrid" value="no" ${use === "no" ? "checked" : ""}><span><strong>Apenas imagem</strong><small>Para mostrar ao grupo, sem casas, marcadores ou névoa.</small></span></label><label class="check se-option"><input type="radio" name="useGrid" value="yes" ${use === "yes" ? "checked" : ""}><span><strong>Usar grade</strong><small>Personagens andam por casas; dá para usar paredes, luz e névoa.</small></span></label><label class="check se-option"><input type="radio" name="useGrid" value="free" ${use === "free" ? "checked" : ""}><span><strong>Movimentação livre</strong><small>Personagens e criaturas ficam em qualquer ponto da imagem. A grade abaixo vira só referência de escala, paredes e névoa (oculta na mesa).</small></span></label></fieldset><div data-grid-host ${use === "no" ? "hidden" : ""}><p class="form-help" data-grid-wait>${item ? "" : "Escolha a imagem para ver a prévia da grade."}</p></div><div class="field"><label for="ca-location">Pasta</label><select id="ca-location" name="folderId"><option value="">${ROOT_NAME}</option>${list.map(f => `<option value="${esc(f.id)}" ${f.id === where ? "selected" : ""}>${"   ".repeat(f.depth + 1)}${esc(f.name)}</option>`).join("")}</select></div>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button class="primary" type="submit">Salvar mapa</button></div></form>`);
   $("#modal").classList.add("wide");
   const form = $("#ca-form");
   const host = form.querySelector("[data-grid-host]");
@@ -150,6 +82,7 @@ function mapModal(d, item, folders, folderId, reload) {
   const mount = async (src) => {
     const { gridAdjustHtml, mountGridAdjust } = await import("./grid-adjust.js");
     const { interfaceMode } = await import("./interface-mode.js");
+    if (!form.isConnected) return;
     adjust?.dispose();
     host.innerHTML = gridAdjustHtml("ca-g", item || {}, { complete: interfaceMode() === "complete" });
     adjust = mountGridAdjust(host, src, { onChange: (v) => { valid = v.valid; } });
@@ -167,25 +100,18 @@ function mapModal(d, item, folders, folderId, reload) {
     }
   });
   $("#modal").addEventListener("close", () => { adjust?.dispose(); if (objectUrl) URL.revokeObjectURL(objectUrl); }, { once: true });
-  $("#ca-name").focus();
+  (fromLink ? $("#ca-url") : $("#ca-name"))?.focus();
   form.onsubmit = e => { e.preventDefault(); submitForm(form, async data => {
     const grid = data.useGrid !== "no", freeMovement = data.useGrid === "free";
     const v = adjust?.values() || { gridPixels: item?.gridPixels || 64, gridOffsetX: 0, gridOffsetY: 0 };
     if (grid && adjust && !valid) throw new Error("Ajuste a grade: " + (host.querySelector("[data-grid-summary]")?.textContent || "valores inválidos."));
     const scale = Number(form.querySelector("[name=scaleMeters]")?.value || item?.scaleMeters || 1.5);
-    if (item) await api(`${base(d)}/maps/${item.id}`, "PUT", { name: data.name, folderId: data.folderId || null, gridPixels: v.gridPixels, scaleMeters: scale, revision: item.revision, hasGrid: grid, gridOffsetX: grid ? v.gridOffsetX : 0, gridOffsetY: grid ? v.gridOffsetY : 0, freeMovement });
-    else if (data.source === "link") {
-      await api(`${base(d)}/maps/import`, "POST", { url: String(data.url || "").trim(), name: data.name, folderId: data.folderId || null, gridPixels: v.gridPixels, scaleMeters: scale, hasGrid: grid, gridOffsetX: grid ? v.gridOffsetX : 0, gridOffsetY: grid ? v.gridOffsetY : 0, freeMovement });
-    }
-    else {
-      const file = form.querySelector("[name=file]").files?.[0];
-      if (!file?.size || file.size > 10 * 1024 * 1024) throw new Error("Selecione uma imagem de até 10 MB.");
-      const upload = new FormData();
-      upload.append("name", data.name); upload.append("folderId", data.folderId || ""); upload.append("file", file);
-      upload.append("gridPixels", String(v.gridPixels)); upload.append("scaleMeters", String(scale));
-      upload.append("hasGrid", grid ? "true" : "false"); upload.append("gridOffsetX", String(grid ? v.gridOffsetX : 0)); upload.append("gridOffsetY", String(grid ? v.gridOffsetY : 0)); upload.append("freeMovement", freeMovement ? "true" : "false");
-      await api(`${base(d)}/maps`, "POST", upload);
-    }
-    $("#modal").close(); toast("Mapa salvo."); await reload();
+    const summary = String(data.summary || "").trim().slice(0, 500);
+    const common = { name: data.name, summary, folderId: data.folderId || null, gridPixels: v.gridPixels, scaleMeters: scale, hasGrid: grid, gridOffsetX: grid ? v.gridOffsetX : 0, gridOffsetY: grid ? v.gridOffsetY : 0, freeMovement };
+    let saved;
+    if (item) saved = await api(`${base(d)}/maps/${item.id}`, "PUT", { ...common, revision: item.revision });
+    else if (data.source === "link") saved = await api(`${base(d)}/maps/import`, "POST", { ...common, url: String(data.url || "").trim(), ...(sourceKey ? { sourceKey } : {}) });
+    else saved = await uploadMapImage(d, { ...common, blob: form.querySelector("[name=file]").files?.[0], sourceKey });
+    $("#modal").close(); toast(item ? "Mapa atualizado." : "Mapa salvo."); await onSaved?.(saved);
   }); };
 }

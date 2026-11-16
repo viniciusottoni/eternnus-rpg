@@ -108,7 +108,7 @@ public static class ServiceRegistration
         builder.Services.AddScoped<SessionService>(); builder.Services.AddScoped<CharacterSheetService>(); builder.Services.AddSingleton<SessionSignals>(); builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddHostedService<MailWorker>();
         builder.Services.AddSingleton<TemporaryImageRelay>();
-        builder.Services.AddScoped<CampaignAssetsService>();
+        builder.Services.AddScoped<CampaignAssetsService>(); builder.Services.AddScoped<PrepWorkspaceService>();
         builder.Services.AddScoped<WorkspaceService>();
         builder.Services.AddSingleton(_ => MusicStorage.FromConfiguration(builder.Configuration, builder.Environment)); builder.Services.AddScoped<MusicCatalogService>();
         builder.Services.AddHostedService<MusicStorageSweeper>();

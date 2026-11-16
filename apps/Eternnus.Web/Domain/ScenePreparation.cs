@@ -21,7 +21,7 @@ public record PreferencesInput(string? InterfaceMode);
 
 /// <summary>Marcador enviado pelo editor de preparação (posições privadas, sem apresentar a cena).</summary>
 public record SceneTokenInput(Guid? CharacterId, Guid? MasterCharacterId, string? Label, string? Side, int X, int Y, bool Hidden = false, int? Light = null, int? Fx = null, int? Fy = null,
-    string? Appearance = null, int? Size = null, string? ImageUrl = null);
+    string? Appearance = null, int? Size = null, string? ImageUrl = null, string? Layer = null);
 
 /// <summary>
 /// Regras puras da preparação de cenas: chave da camada, separação entre preparação e estado ao vivo, aplicação explícita e reinício.
@@ -48,6 +48,17 @@ public static class ScenePrep
         Fog = s.Fog, Manual = s.Manual, Cells = [.. s.Cells], Revealed = s.Revealed,
         Lights = s.Lights.Select(l => new FogLight { Id = l.Id, X = l.X, Y = l.Y, Radius = l.Radius }).ToList(),
         Marks = s.Marks.Select(CloneMark).ToList(),
+    };
+
+    /// <summary>Camada do marcador: uma camada existente da cena, exceto a Base; senão, Elementos.</summary>
+    public static string TokenLayer(string? layer, IReadOnlySet<string>? layers) =>
+        layer != null && layer != EditorLayers.Base && (layers?.Contains(layer) ?? layer == EditorLayers.Elements) ? layer : EditorLayers.Elements;
+
+    /// <summary>Cópia completa de um marcador preparado (posição, aparência, imagem e camada).</summary>
+    public static SceneToken Clone(SceneToken t) => new()
+    {
+        CharacterId = t.CharacterId, MasterCharacterId = t.MasterCharacterId, Label = t.Label, Side = t.Side, X = t.X, Y = t.Y, Fx = t.Fx, Fy = t.Fy,
+        Hidden = t.Hidden, Light = t.Light, Appearance = t.Appearance, Size = t.Size, ImageUrl = t.ImageUrl, Layer = t.Layer,
     };
 
     static FogMark CloneMark(FogMark m) => new() { Id = m.Id, X = m.X, Y = m.Y, Kind = m.Kind, Label = m.Label, Dc = m.Dc, Sense = m.Sense, MaxDistance = m.MaxDistance };
@@ -128,7 +139,8 @@ public static class ScenePrep
     /// (em mapas de movimentação livre, <paramref name="free"/>, a casa pode ser dividida e a posição fina é guardada).
     /// Personagens precisam estar vinculados à campanha; personagens do mestre, pertencer a ela.
     /// </summary>
-    public static List<SceneToken> ValidateTokens(IReadOnlyList<SceneTokenInput>? input, FogGrid grid, IReadOnlySet<Guid> characters, IReadOnlyDictionary<Guid, string> characterNames, IReadOnlySet<Guid> npcs, bool free = false)
+    /// <remarks><paramref name="layers"/>: camadas da cena; o marcador fica numa delas (nunca na Base), senão em Elementos.</remarks>
+    public static List<SceneToken> ValidateTokens(IReadOnlyList<SceneTokenInput>? input, FogGrid grid, IReadOnlySet<Guid> characters, IReadOnlyDictionary<Guid, string> characterNames, IReadOnlySet<Guid> npcs, bool free = false, IReadOnlySet<string>? layers = null)
     {
         var list = input ?? [];
         if (list.Count > MaxTokens) throw new RuleException(400, $"Use até {MaxTokens} marcadores por cena.");
@@ -146,12 +158,13 @@ public static class ScenePrep
             var appearance = t.Appearance == null ? null : TokenLooks.Require(t.Appearance);
             var size = t.Size is { } sz ? TokenLooks.RequireSize(sz) : (int?)null;
             var image = NpcImages.Normalize(t.ImageUrl, out _);
+            var layer = TokenLayer(t.Layer, layers);
             if (t.CharacterId is { } cid)
             {
                 if (!characters.Contains(cid)) throw new RuleException(400, "Escolha personagens vinculados à campanha.");
                 if (!people.Add(cid)) throw new RuleException(400, "Cada personagem aparece uma vez na cena.");
                 var name = characterNames.GetValueOrDefault(cid) ?? "Personagem";
-                result.Add(new SceneToken { CharacterId = cid, Label = name.Length > 40 ? name[..40] : name, Side = "ally", X = t.X, Y = t.Y, Fx = fx, Fy = fy, Appearance = appearance, Size = size, ImageUrl = image });
+                result.Add(new SceneToken { CharacterId = cid, Label = name.Length > 40 ? name[..40] : name, Side = "ally", X = t.X, Y = t.Y, Fx = fx, Fy = fy, Appearance = appearance, Size = size, ImageUrl = image, Layer = layer });
                 continue;
             }
             var label = LibraryService.Clean(t.Label ?? "", false).Trim();
@@ -159,7 +172,7 @@ public static class ScenePrep
             var side = t.Side ?? "enemy";
             if (!Sides.Contains(side)) throw new RuleException(400, "Escolha aliado, inimigo ou neutro.");
             if (t.MasterCharacterId is { } npc && !npcs.Contains(npc)) throw new RuleException(400, "Personagem do mestre não encontrado.");
-            result.Add(new SceneToken { MasterCharacterId = t.MasterCharacterId, Label = label, Side = side, X = t.X, Y = t.Y, Fx = fx, Fy = fy, Hidden = t.Hidden, Light = t.Light, Appearance = appearance, Size = size, ImageUrl = image });
+            result.Add(new SceneToken { MasterCharacterId = t.MasterCharacterId, Label = label, Side = side, X = t.X, Y = t.Y, Fx = fx, Fy = fy, Hidden = t.Hidden, Light = t.Light, Appearance = appearance, Size = size, ImageUrl = image, Layer = layer });
         }
         return result;
     }

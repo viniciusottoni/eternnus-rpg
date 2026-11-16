@@ -20,7 +20,7 @@ import { campaignForm, confirmCampaign } from "./campaigns.js";
 import { isGuid, sessionLabel } from "./session-policy.js";
 import { mapChoices, mountMapChoices } from "./map-picker.js";
 import { guardAvatars } from "./sheet.js";
-import { renderCampaignLibrary, renderCampaignMaps } from "./campaign-assets.js";
+import { renderCampaignLibrary } from "./campaign-assets.js";
 import { keepMasterPresence } from "./session-presence.js";
 import { campaignNotices, newsBadge, keepHighlighted, markSeen } from "./notices.js";
 
@@ -36,16 +36,21 @@ const TABS = [
 ];
 // Subpáginas com submenu sempre visível na aba-mãe: [chave, rótulo, só mestre].
 const SUBPAGES = {
-  world: [["world", "Páginas", false], ["timeline", "Linha do tempo", false], ["npcs", "NPCs conhecidos", false], ["atlas", "Atlas compartilhado", false], ["resources", "Bibliotecas", false], ["maps", "Mapas e cenários", true]],
+  world: [["world", "Páginas", false], ["timeline", "Linha do tempo", false], ["npcs", "NPCs conhecidos", false], ["atlas", "Atlas compartilhado", false], ["resources", "Bibliotecas", false]],
   settings: [["settings", "Campanha", true], ["table", "Mesa", true]],
 };
+// Endereços antigos que abrem outra aba (ADR-081): "Mapas e cenários" virou a raiz Mapas da Preparação.
+const ALIASES = { maps: "prep" };
+// Raízes da Preparação com endereço próprio (#campaign/{id}/prep/{raiz}).
+const PREP_ROOTS = new Set(["scenes", "maps", "characters"]);
 // Seções do Diário com endereço próprio (links antigos e atalhos): abrem o Diário já na seção.
 const JOURNAL_SECTIONS = { sessions: "cp-log", past: "cp-log" };
 // Item opcional da rota (#campaign/{id}/{aba}/{item}): página do acervo, sessão, capítulo, NPC ou a premissa.
-const ITEM = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(live|past)-[0-9a-f-]{36}|chapter-([0-9a-f-]{36}|none)|premise)$/i;
+const ITEM = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|(live|past)-[0-9a-f-]{36}|chapter-([0-9a-f-]{36}|none)|premise|scenes|maps|characters)$/i;
 /** Aba principal que contém `tab` (ela mesma, a mãe de uma subpágina ou o Diário). */
 export function parentTab(tab) {
   if (TABS.some(([key]) => key === tab)) return tab;
+  if (ALIASES[tab]) return ALIASES[tab];
   if (JOURNAL_SECTIONS[tab]) return "journal";
   return Object.entries(SUBPAGES).find(([, items]) => items.some(([key]) => key === tab))?.[0] || null;
 }
@@ -92,7 +97,7 @@ export async function renderCampaignPage(id, tab = "overview", item = "") {
     `${detail.isOneShot ? '<a class="back-link" href="#one-shot">← One-shots</a>' : '<a class="back-link" href="#campaigns">← Minhas campanhas</a>'}
   <section class="campaign-hero metal"><div class="campaign-hero-copy"><span class="eyebrow">${esc(detail.system)}</span><h1>${esc(detail.name)}</h1>${detail.archived ? '<p class="notice-box">Campanha arquivada: conteúdo e histórico preservados, sem novas partidas até ser restaurada.</p>' : ""}${heroPremise(detail)}<div class="hero-meta"><span>♛ <b>Mestre:</b> ${esc(masterName)}</span><span>♙ <b>${detail.members.length}</b> ${detail.members.length === 1 ? "jogador" : "jogadores"}</span>${detail.isMaster && !detail.isOneShot ? `<span>▣ <b>${detail.sessionCount}</b> ${detail.sessionCount === 1 ? "sessão" : "sessões"}</span>` : ""}${online ? liveBadge(true, detail.activeSession.paused) : ""}</div></div>${online ? `<a class="button primary enter-table" href="#table/${esc(id)}">▶ ${detail.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>` : ""}</section>
   <nav class="page-tabs" aria-label="Seções da campanha">${visible.map(([key, label]) => `<a href="#campaign/${esc(id)}/${key}" ${key === parent ? 'aria-current="page" class="active"' : ""}>${label}${newsBadge(tabNews(news, key), label)}</a>`).join("")}</nav>
-  <div class="campaign-page-grid"><section id="campaign-tab" class="campaign-tab" aria-live="polite">${subnav(detail, parent, tab, news)}<div id="campaign-tab-body" class="campaign-tab-body"></div></section>${overviewCard(detail)}</div>`;
+  <div class="campaign-page-grid${parent === "prep" ? " workspace-wide" : ""}"><section id="campaign-tab" class="campaign-tab" aria-live="polite">${subnav(detail, parent, tab, news)}<div id="campaign-tab-body" class="campaign-tab-body"></div></section>${parent === "prep" ? "" : overviewCard(detail)}</div>`;
   const releaseTab = await renderTab(detail, tab, item);
   if (request !== generation) { if (typeof releaseTab === "function") releaseTab(); return; }
   const releaseNews = showNews(detail, tab, news);
@@ -164,8 +169,7 @@ async function renderTab(d, tab, item = "") {
   if (tab === "atlas") return (await import("./campaign-workspace.js")).renderAtlas(d, target);
   if (tab === "timeline") return (await import("./campaign-timeline.js")).renderTimeline(d, target);
   if (tab === "resources") return renderCampaignLibrary(d, target);
-  if (tab === "prep") return (await import("./campaign-prep.js")).renderPrep(d, target);
-  if (tab === "maps") return renderCampaignMaps(d, target);
+  if (tab === "prep" || tab === "maps") return (await import("./campaign-prep.js")).renderPrep(d, target, { category: tab === "maps" ? "maps" : PREP_ROOTS.has(item) ? item : "" });
   if (tab === "table") return (await import("./fog-editor.js")).renderTableSettingsTab(d, target);
   if (tab === "settings") {
     target.innerHTML = `<div class="section-title"><h2>Configurações${helpButton("campanhas.config.arquivamento", "Arquivar e restaurar")}</h2></div><div class="settings-list"><article class="metal"><h3>Identidade da campanha</h3><p class="muted small">Nome, sistema, premissa, origem e continuidade.</p>${button("Editar campanha", "cp-edit", d.id, "subtle")}</article><article class="metal"><h3>Convite e jogadores</h3><p class="muted small">O link de convite e a lista de jogadores ficam na aba Grupo.</p><a class="button subtle" href="#campaign/${esc(d.id)}/players">Abrir o grupo</a></article>${d.isOneShot ? `<article class="metal"><h3>Continuar depois</h3><p class="muted small">Converta em campanha persistente para guardar sessão, fichas, mapas e histórico. Usa uma das suas vagas de campanha; jogadores sem vaga podem voltar pelo convite.</p>${button("Converter em campanha", "cp-convert", d.id, "primary")}</article><article class="metal danger-zone"><h3>Encerrar one-shot</h3><p class="muted small">Encerre a sessão na mesa ou pela página One-shot. Todo o conteúdo da mesa é apagado; fichas pessoais são preservadas.</p><a class="button subtle" href="#one-shot">Ir para One-shot</a></article>` : `<article class="metal"><h3>${d.archived ? "Restaurar campanha" : "Arquivar campanha"}</h3><p class="muted small">${d.archived ? "Volta a permitir sessões e preparação. A campanha arquivada já ocupa sua vaga, então restaurar não ultrapassa o limite." : "Guarda conteúdo e histórico e impede novas partidas. A campanha continua contando no limite de campanhas."}</p>${button(d.archived ? "Restaurar" : "Arquivar", d.archived ? "cp-restore" : "cp-archive", d.id, "subtle", d.activeSession ? 'aria-disabled="true" data-tip="Encerre a sessão em andamento antes"' : "")}</article><article class="metal danger-zone"><h3>Excluir campanha</h3><p class="muted small">${d.members.length ? "Indisponível enquanto houver jogadores vinculados." : "Sessões, registros e recursos serão apagados. Fichas pessoais são preservadas."}</p>${button("Excluir campanha", "cp-delete", d.id, "danger", d.members.length ? "disabled" : "")}</article>`}</div>`;

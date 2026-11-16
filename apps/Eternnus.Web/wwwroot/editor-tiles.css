@@ -1,0 +1,75 @@
+/* Editor de mapas de tiles (ADR-081): só o que é próprio dele; janela, menus e painéis vêm de editor.css. */
+
+/* Topo: tile escolhido e salvar */
+.tme-current { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; max-width: 18ch; padding: 4px 8px; }
+.tme-current canvas { width: 24px; height: 24px; border-radius: 4px; border: 1px solid var(--ed-line, #3a3f31); flex: none; }
+.tme-current span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .82rem; }
+.tme-save { min-height: 36px; }
+.tme-save[aria-busy="true"] { cursor: progress; }
+
+/* Cursores por ferramenta (a mão e o espaço já são tratados pelo tabuleiro) */
+.ed-shell[data-tme-tool="brush"] .tme-board canvas,
+.ed-shell[data-tme-tool="erase"] .tme-board canvas,
+.ed-shell[data-tme-tool="rect"] .tme-board canvas,
+.ed-shell[data-tme-tool="marquee"] .tme-board canvas { cursor: crosshair; }
+.ed-shell[data-tme-tool="fill"] .tme-board canvas,
+.ed-shell[data-tme-tool="pick"] .tme-board canvas,
+.ed-shell[data-tme-tool="inspect"] .tme-board canvas { cursor: pointer; }
+.ed-shell[data-tme-tool="zoom"] .tme-board canvas { cursor: zoom-in; }
+.ed-shell[data-tme-tool] .tme-board.camera-pan canvas { cursor: grab; }
+
+/* Paleta */
+.tme-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.tme-filters .field { margin-bottom: 6px; min-width: 0; }
+.tme-filters label { display: block; font-size: .76rem; color: var(--muted, #9da492); margin-bottom: 2px; }
+.tme-filters input, .tme-filters select { width: 100%; min-height: 36px; box-sizing: border-box; }
+.tme-selected { display: flex; align-items: center; gap: 8px; min-height: 48px; margin: 2px 0 8px; padding: 6px; border: 1px solid #5b4a2a; border-radius: 8px; background: #1f1b12; }
+.tme-selected canvas { width: 40px; height: 40px; flex: none; border-radius: 4px; }
+.tme-selected div { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.tme-selected strong { color: var(--bright, #e6cf98); }
+.tme-selected small { color: var(--muted, #9da492); font-size: .74rem; }
+.tme-tiles { display: flex; flex-direction: column; gap: 8px; max-height: min(52vh, 520px); overflow-y: auto; padding-right: 2px; scrollbar-width: thin; }
+.tme-group[hidden] { display: none; }
+.tme-group-title { margin: 0 0 4px; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--gold, #c6a463); }
+.tme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 4px; }
+.tme-tile {
+  display: grid; justify-items: center; align-content: start; gap: 3px; min-height: 44px; padding: 4px 2px;
+  border: 1px solid transparent; border-radius: 6px; background: #14160f; color: inherit; font: inherit; font-size: .7rem; line-height: 1.15; cursor: pointer;
+}
+.tme-tile canvas { width: 40px; height: 40px; border-radius: 3px; }
+.tme-tile span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-align: center; }
+.tme-tile:hover { background: var(--ed-hover, #262a20); border-color: var(--ed-line, #3a3f31); }
+.tme-tile[aria-pressed="true"] { border-color: #e6cf98; background: #3a3220; box-shadow: 0 0 0 1px #e6cf98 inset; }
+.tme-tile[hidden] { display: none; }
+
+/* Propriedades */
+.tme-info { display: grid; gap: 2px; margin: 0 0 8px; }
+.tme-info div { display: flex; justify-content: space-between; gap: 8px; font-size: .84rem; }
+.tme-info dt { color: var(--muted, #9da492); }
+.tme-info dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.tme-warn { color: #f0c977; }
+.tme-sub { margin: 10px 0 4px; font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; color: var(--gold, #c6a463); }
+.tme-stack { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.tme-stack li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 3px 6px; border-radius: 5px; background: #14160f; font-size: .82rem; }
+.tme-stack li small { grid-column: 1 / -1; color: var(--muted, #9da492); font-size: .72rem; }
+.tme-stack li.is-active { outline: 1px solid #8a6f3a; background: #241f13; }
+.tme-stack li.is-hidden { opacity: .6; font-style: italic; }
+.tme-prop-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.tme-prop-actions button { min-height: 36px; }
+.tme-shortcuts { display: flex; align-items: center; gap: 4px; }
+
+/* Escolha (conflito ao salvar, salvar antes de preparar) */
+.tme-choice p { margin: 0 0 10px; font-size: .88rem; line-height: 1.45; }
+.tme-choice .form-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+
+/* Toque: alvos de 44 px */
+@media (pointer: coarse) {
+  .tme-current, .tme-save, .tme-prop-actions button, .tme-filters input, .tme-filters select { min-height: 44px; }
+  .tme-grid { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
+  .tme-tile { min-height: 64px; }
+  .tme-choice .form-actions button { min-height: 44px; }
+}
+@media (max-width: 900px), (max-width: 1200px) and (pointer: coarse) {
+  .tme-current span { display: none; }
+  .tme-tiles { max-height: none; }
+}

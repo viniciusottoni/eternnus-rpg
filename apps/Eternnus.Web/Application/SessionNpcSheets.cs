@@ -201,7 +201,7 @@ public partial class SessionService
             }
             else if (token.Hidden) throw new RuleException(404, "Imagem não encontrada.");
         }
-        return await db.Set<CampaignMap>().AsNoTracking().Where(m => m.Id == assetId && m.CampaignId == a.Campaign.Id).Select(m => m.Content).SingleOrDefaultAsync(ct)
+        return await db.Set<CampaignMap>().AsNoTracking().Where(m => m.Id == assetId && m.CampaignId == a.Campaign.Id && m.Purpose != CampaignAssetPurposes.Layer).Select(m => m.Content).SingleOrDefaultAsync(ct)
             ?? throw new RuleException(404, "Imagem não encontrada.");
     }
 }
