@@ -450,6 +450,10 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Entries")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
                     b.Property<Guid?>("FolderId")
                         .HasColumnType("uuid");
 
@@ -477,6 +481,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasColumnType("character varying(120)");
 
                     b.Property<Guid?>("OwnerMapId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OwnerSceneId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Purpose")
@@ -518,6 +525,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.HasIndex("CampaignId", "FolderId");
 
                     b.HasIndex("CampaignId", "OwnerMapId");
+
+                    b.HasIndex("CampaignId", "OwnerSceneId");
 
                     b.ToTable("CampaignMap");
                 });
@@ -911,6 +920,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(10000)
                         .HasColumnType("character varying(10000)");
+
+                    b.Property<Guid?>("OverlayId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime?>("PausedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1812,6 +1824,10 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<Guid>("CampaignId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Composition")
+                        .HasMaxLength(400000)
+                        .HasColumnType("character varying(400000)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1819,6 +1835,10 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Entry")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)");
 
                     b.Property<Guid?>("FolderId")
                         .HasColumnType("uuid");
@@ -1857,6 +1877,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                     b.Property<int>("Order")
                         .HasColumnType("integer");
+
+                    b.Property<Guid?>("OverlayId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("PrivateNotes")
                         .IsRequired()

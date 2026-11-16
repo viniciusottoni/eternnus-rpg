@@ -177,7 +177,7 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
     onZoom: () => shell.updateZoom(),
   });
   // Réguas: 0 no canto do mapa; metros pela escala (metros por casa).
-  shell.setCamera({ ...board.camera, ruler: () => { const r = board.camera.cellRect({ x: 0, y: 0 }); return r.size > 0 ? { x: r.x, y: r.y, cellPx: r.size, cellUnits: Number(doc.scaleMeters) || 1.5, unit: "m" } : null; } });
+  shell.setCamera({ ...board.camera, ruler: () => { const r = board.camera.cellRect({ x: 0, y: 0 }); return r.size > 0 ? { x: r.x, y: r.y, cellPx: r.size, cellUnits: Number(doc.scaleMeters) || 1.5, unit: "m", onScale: () => documentProperties() } : null; } });
   const canvas = shell.stage.querySelector("canvas");
   // Início do arraste (prévia do retângulo/seleção) e Alt do zoom; o tabuleiro entrega a pintura ao soltar.
   shell.stage.addEventListener("pointerdown", (e) => {

@@ -389,3 +389,136 @@ export function structureGroups({ tokens = [], layers = [], selected = [], layer
 
 /** Igualdade de instantâneos (rascunho/preparação) para recalcular "alterações não salvas" depois de desfazer. */
 export const sameSnapshot = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+// ---------- Composição da cena, entradas e distribuição do grupo (ADR-090) ----------
+
+/** Como a imagem de fundo é usada. Três escolhas que não se confundem; a grade técnica da movimentação livre fica oculta. */
+export const BACKGROUND_MODES = Object.freeze([
+  ["free", "Movimentação livre", "Personagens ficam em qualquer ponto da imagem, sem grade visível. Uma grade técnica oculta serve só de escala, paredes e névoa."],
+  ["tactical", "Movimentação tática", "Mapa com grade visível: uma casa por personagem e regras de alcance. Ajuste a grade depois, se precisar."],
+  ["image", "Somente apresentação", "Imagem ilustrativa para o grupo ver, sem personagens nem movimento."],
+]);
+
+/** Quadrado da grade técnica para uma imagem nova: ~64 px, aumentado até caber em 100 × 100 casas e 4.096 casas. Null se não couber. */
+export function defaultGrid(width, height) {
+  const w = Math.floor(Number(width)), h = Math.floor(Number(height));
+  if (!(w >= 8 && h >= 8)) return null;
+  for (let s = Math.max(8, Math.min(64, w, h)); s <= 1024; s++) if (gridFor(w, h, s).valid) return s;
+  return null;
+}
+
+/** Tipos de ponto de entrada de um mapa reutilizável (não vinculados a personagens). */
+export const ENTRY_KINDS = Object.freeze([
+  ["party", "Entrada do grupo"],
+  ["enemies", "Entrada de inimigos"],
+  ["reinforcements", "Reforços"],
+  ["other", "Outro ponto"],
+]);
+export const MAX_ENTRIES = 12;
+export const MAX_ENTRY_SIDE = 20;
+const ENTRY_ID = /^[a-z0-9-]{1,24}$/;
+
+/** Retângulo (em casas) que envolve as casas pintadas, limitado a 20 × 20 a partir do primeiro canto. */
+export function entryRect(cells) {
+  const list = (cells || []).filter((c) => Number.isInteger(c?.x) && Number.isInteger(c?.y));
+  if (!list.length) return null;
+  const x = Math.min(...list.map((c) => c.x)), y = Math.min(...list.map((c) => c.y));
+  const w = Math.min(MAX_ENTRY_SIDE, Math.max(...list.map((c) => c.x)) - x + 1), h = Math.min(MAX_ENTRY_SIDE, Math.max(...list.map((c) => c.y)) - y + 1);
+  return { x, y, w, h };
+}
+
+/** Casas de um retângulo dentro da grade, em ordem de leitura. */
+export function rectCells(rect, width, height) {
+  if (!rect) return [];
+  const out = [];
+  for (let y = Math.max(0, rect.y); y < Math.min(height, rect.y + rect.h); y++)
+    for (let x = Math.max(0, rect.x); x < Math.min(width, rect.x + rect.w); x++) out.push({ x, y });
+  return out;
+}
+
+/** Id curto e único para um ponto de entrada novo. */
+export function newEntryId(entries = []) {
+  const used = new Set(entries.map((e) => e.id));
+  for (let i = 1; i < 1000; i++) if (!used.has(`entrada-${i}`)) return `entrada-${i}`;
+  return `entrada-${Date.now().toString(36)}`.slice(0, 24);
+}
+
+/** Mesmas regras do servidor (MapEntries.Validate): até 12, ids únicos, nome 1–40, tipo conhecido, retângulo na grade. "" = válido. */
+export function entriesProblem(entries, width, height) {
+  if (!Array.isArray(entries)) return "Pontos de entrada inválidos.";
+  if (entries.length > MAX_ENTRIES) return `Use até ${MAX_ENTRIES} pontos de entrada por mapa.`;
+  const ids = new Set();
+  for (const e of entries) {
+    if (!ENTRY_ID.test(String(e?.id ?? "")) || ids.has(e.id)) return "Cada ponto de entrada precisa de um identificador único.";
+    ids.add(e.id);
+    const name = String(e.name ?? "").trim();
+    if (!name || name.length > 40) return "Dê um nome de até 40 caracteres a cada ponto de entrada.";
+    if (!ENTRY_KINDS.some(([k]) => k === e.kind)) return "Escolha o tipo do ponto de entrada.";
+    if (![e.x, e.y, e.w, e.h].every(Number.isInteger) || e.w < 1 || e.h < 1 || e.w > MAX_ENTRY_SIDE || e.h > MAX_ENTRY_SIDE || e.x < 0 || e.y < 0 || e.x + e.w > width || e.y + e.h > height)
+      return `O ponto “${name}” precisa ficar dentro do mapa (até ${MAX_ENTRY_SIDE} × ${MAX_ENTRY_SIDE} casas).`;
+  }
+  return "";
+}
+
+/**
+ * Área de entrada efetiva da cena, na ordem da regra de posicionamento (ADR-090 §6.3):
+ * área própria da cena → ponto do mapa escolhido pela cena → primeira "Entrada do grupo" do mapa → nenhuma (regra antiga).
+ * → { rect, source: "scene"|"map-ref"|"map-party", entry? } ou null.
+ */
+export function sceneEntryArea(sceneEntry, mapEntries = []) {
+  if (sceneEntry && Number.isInteger(sceneEntry.x)) return { rect: { x: sceneEntry.x, y: sceneEntry.y, w: sceneEntry.w, h: sceneEntry.h }, source: "scene" };
+  if (sceneEntry?.ref) {
+    const e = mapEntries.find((m) => m.id === sceneEntry.ref);
+    if (e) return { rect: { x: e.x, y: e.y, w: e.w, h: e.h }, source: "map-ref", entry: e };
+  }
+  const party = mapEntries.find((m) => m.kind === "party");
+  return party ? { rect: { x: party.x, y: party.y, w: party.w, h: party.h }, source: "map-party", entry: party } : null;
+}
+
+const SLOTS = [[500, 500], [250, 250], [750, 250], [250, 750], [750, 750], [500, 250], [500, 750], [250, 500], [750, 500]];
+/**
+ * "Distribuir grupo na área inicial": coloca na área os personagens ainda sem posição. Posições já preparadas são
+ * preservadas (fixadas manualmente). Com grade, uma casa por personagem; com movimentação livre, casas livres primeiro e
+ * depois pontos distintos dentro das casas já usadas. Casas que bloqueiam movimento ficam de fora.
+ * → { tokens, placed:[characterId], missing:[characterId] } sem alterar a entrada.
+ */
+export function distributeInArea({ cells, width, height, tokens = [], area, characters = [], free = false, layer = "elements" }) {
+  const next = tokens.map((t) => ({ ...t }));
+  const present = new Set(next.map((t) => t.characterId).filter(Boolean));
+  const pending = characters.filter((c) => c?.id && !present.has(c.id));
+  const spots = rectCells(area, width, height).filter((c) => !placementProblem(cells, width, height, [], c.x, c.y, -1, true));
+  const placed = [], missing = [];
+  const count = (s) => next.filter((t) => t.x === s.x && t.y === s.y).length;
+  for (const c of pending) {
+    if (next.length >= 60) { missing.push(c.id); continue; }
+    let spot = spots.find((s) => !placementProblem(cells, width, height, next, s.x, s.y, -1, false));
+    let fine = SLOTS[0];
+    if (!spot && free && spots.length) {
+      const least = spots.reduce((best, s) => (count(s) < count(best) ? s : best), spots[0]);
+      if (count(least) < SLOTS.length) { spot = least; fine = SLOTS[count(least)]; }
+    }
+    if (!spot) { missing.push(c.id); continue; }
+    next.push({ characterId: c.id, label: String(c.name || "Personagem").slice(0, 40), side: "ally", hidden: false, x: spot.x, y: spot.y, fx: free ? fine[0] : null, fy: free ? fine[1] : null, layer });
+    placed.push(c.id);
+  }
+  return { tokens: next, placed, missing };
+}
+
+/**
+ * Documento que os jogadores recebem (achatado em PNG transparente): sem camadas ou elementos "só o mestre vê".
+ * O olho de edição fica fora da regra de segredo: ocultar no editor não oculta dos jogadores.
+ */
+export function publicComposition(doc) {
+  const secret = new Set((doc?.layers || []).filter((l) => l.secret).map((l) => l.id));
+  return {
+    ...doc,
+    layers: (doc?.layers || []).map((l) => ({ ...l, visible: !l.secret })),
+    elements: (doc?.elements || []).filter((e) => !e.secret && !secret.has(e.layer)).map((e) => ({ ...e, visible: true })),
+  };
+}
+
+/** Há algo para os jogadores verem na composição? Sem isso, nenhuma sobreposição é enviada. */
+export const hasPublicElements = (doc) => publicComposition(doc).elements.some((e) => e.opacity > 0);
+
+/** Fontes de imagem (`asset:{guid}`) usadas pela composição, sem repetição. */
+export const compositionSources = (doc) => [...new Set((doc?.elements || []).filter((e) => e.type === "image" && /^asset:/.test(e.src || "")).map((e) => e.src))];

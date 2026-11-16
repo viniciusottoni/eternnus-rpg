@@ -4,8 +4,9 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 namespace Eternnus.Web;
 
-/// <summary>Camada visual de um documento do editor (cena, mapa de tiles ou mapa de imagem). Opacidade 0–100.</summary>
-public sealed record EditorLayer(string Id, string Name, string Kind, bool Visible = true, bool Locked = false, int Opacity = 100);
+/// <summary>Camada visual de um documento do editor (cena, mapa de tiles ou mapa de imagem). Opacidade 0–100.
+/// <c>Secret</c>: só o mestre vê (fica fora da imagem dos jogadores); vale para a composição de cenas, nula nos demais.</summary>
+public sealed record EditorLayer(string Id, string Name, string Kind, bool Visible = true, bool Locked = false, int Opacity = 100, bool? Secret = null);
 
 /// <summary>
 /// Regras puras das camadas (ADR-081): Base (<c>base</c>) e Elementos (<c>elements</c>) obrigatórias, nessa ordem de baixo para cima,
@@ -40,7 +41,7 @@ public static partial class EditorLayers
             var name = LibraryService.Clean(l.Name ?? "", false).Trim();
             if (name.Length is 0 or > 40) throw new RuleException(400, "Dê um nome de até 40 caracteres a cada camada.");
             if (l.Opacity is < 0 or > 100) throw new RuleException(400, "A opacidade da camada vai de 0 a 100.");
-            result.Add(l with { Name = name });
+            result.Add(l with { Name = name, Secret = l.Secret == true ? true : null });
         }
         return result;
     }
@@ -135,7 +136,7 @@ public sealed record CompositionElement(
     bool Visible = true, bool Locked = false, bool FlipX = false, bool FlipY = false,
     string? Text = null, double? FontSize = null, string? FontFamily = null, string? Color = null,
     string? Fill = null, string? Stroke = null, double? StrokeWidth = null, string? Align = null, bool? Bold = null, bool? Italic = null,
-    string? Group = null);
+    string? Group = null, bool? Secret = null);
 public sealed record CompositionDocument(int V, CompositionArtboard? Artboard, List<EditorLayer?>? Layers, List<CompositionElement?>? Elements);
 
 /// <summary>
@@ -212,7 +213,7 @@ public static partial class MapComposition
             else if (e.Src != null) throw Invalid("só elementos de imagem têm origem.");
             elements.Add(e with
             {
-                Name = name, Src = src, Text = e.Type == "text" ? e.Text ?? "" : e.Text,
+                Name = name, Src = src, Text = e.Type == "text" ? e.Text ?? "" : e.Text, Secret = e.Secret == true ? true : null,
                 Color = Color(e.Color, "cor"), Fill = Color(e.Fill, "preenchimento"), Stroke = Color(e.Stroke, "contorno"),
             });
         }
@@ -222,6 +223,13 @@ public static partial class MapComposition
 
     static string? Color(string? value, string what) =>
         value == null ? null : Hex().IsMatch(value) ? value.ToLowerInvariant() : throw Invalid($"use cor no formato #rrggbb ({what}).");
+
+    /// <summary>Mapas não têm camada secreta (só a composição de cenas): a marca é removida.</summary>
+    public static CompositionDocument WithoutSecrets(CompositionDocument doc) => doc with
+    {
+        Layers = doc.Layers?.Select(l => l == null ? null : l with { Secret = null }).ToList(),
+        Elements = doc.Elements?.Select(e => e == null ? null : e with { Secret = null }).ToList(),
+    };
 
     /// <summary>Troca as origens das imagens (ex.: <c>self</c> pela imagem-fonte criada, ou fontes de uma cópia).</summary>
     public static CompositionDocument WithSources(CompositionDocument doc, Func<string, string> map) =>

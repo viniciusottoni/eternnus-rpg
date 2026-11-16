@@ -17,7 +17,11 @@ import {
   HELP, SCENE_KINDS, VISIBILITY_OPTIONS, APPLY_PRESERVES, APPLY_TOKENS, TOOL_GROUPS, toolLabel, acceptsMap, hiddenCustomizations,
   placementProblem, simulateView, recentMapKeys, mapTypeLabel, sceneKindLabel, SCENE_SIDES, sceneLayers, tokenLayerOf, layerAlpha,
   clipboardFrom, pastePlacement, moveTokensBy, structureGroups, sameSnapshot,
+  BACKGROUND_MODES, defaultGrid, ENTRY_KINDS, entryRect, rectCells, newEntryId, entriesProblem, sceneEntryArea, distributeInArea, compositionSources,
 } from "./scene-policy.js";
+import { mountImageDrop, listenPaste, splitImageFiles, baseName, readImageSize, assetListHtml, bindAssetList } from "./image-drop.js";
+import { MAP_ELEMENT, blankSceneComposition, loadSceneComposition, sceneSourceResolver, flattenPreview, flattenOverlay, createImageCache, createSceneComposer } from "./scene-composition.js";
+import * as CP from "./composition-policy.js";
 
 const SIDES = SCENE_SIDES;
 const opt = (list, current) => list.map(([v, l]) => `<option value="${esc(v)}" ${v === current ? "selected" : ""}>${esc(l)}</option>`).join("");
@@ -34,6 +38,8 @@ const LOCAL_TOOLS = {
   vwall: ["Parede vetorial", "Parede vetorial: clique ponto a ponto, inclusive em diagonal. Enter ou duplo clique termina; Esc desiste. O ímã prende em vértices, paredes e cantos/meios das casas; Shift trava em 45°; Alt desliga o ímã."],
   vedit: ["Editar paredes", "Editar paredes: clique numa parede para selecionar (Shift soma), arraste um vértice ou o segmento, arraste no vazio para selecionar por área. Alt+clique divide o segmento; Delete apaga."],
   diagnostic: ["Diagnóstico de visão", "Diagnóstico de visão: mostra paredes por tipo, casas que bloqueiam movimento (hachura), áreas sem luz (azul) e problemas da geometria (!). Só você vê."],
+  addImage: ["Adicionar imagem", "Adicionar imagem: envie uma ou várias imagens do computador. Também dá para arrastar arquivos para o palco ou colar uma imagem com Ctrl+V."],
+  entry: ["Área de entrada", "Área de entrada: arraste sobre as casas por onde o grupo chega. Personagens sem posição preparada entram por ela ao apresentar a cena."],
 };
 const labelOf = (id) => LOCAL_TOOLS[id]?.[0] || toolLabel(id);
 const helpOf = (id) => LOCAL_TOOLS[id]?.[1] || HELP[id] || "";
@@ -54,8 +60,13 @@ function toDraft(s) {
     name: s.name || "", kind: s.kind, mapKey: s.mapKey || "", sharedText: s.sharedText || "", privateNotes: s.privateNotes || "",
     visionMode: s.visionMode || "", layerMode: s.layerMode || "map", description: s.description || "", order: s.order || 0, layers,
     prepared: (s.prepared || []).map((t) => ({ ...t, layer: tokenLayerOf(t.layer, layers) })),
+    // ADR-090: área de entrada da cena ({ref} ou {x,y,w,h}) e composição só desta cena (imagens sobre o mapa).
+    entry: s.entry && (s.entry.ref || Number.isInteger(s.entry.x)) ? { ...s.entry } : null,
+    composition: loadSceneComposition(s.composition, s.composition?.artboard),
   };
 }
+/** Campos da cena salvos pelo PUT/POST de cenas (a composição tem endpoint próprio, com a imagem achatada). */
+const sceneFields = (d) => ({ ...d, composition: undefined });
 
 /**
  * Abre o editor. `sceneId` nulo cria uma cena (na pasta `folderId`); `mapKey` com `kind: "layer"` edita só a preparação
@@ -99,12 +110,33 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   const manual = () => draft.visionMode === "manual" || (!draft.visionMode && !!layer?.manual);
   const say = (text) => shell.message(text);
 
+  // ---------- Composição da cena, área de entrada e pontos de entrada (ADR-090) ----------
+  // Imagem da campanha usada como fundo: só ela recebe composição (o servidor mescla a sobreposição na entrega à mesa).
+  const imageMap = () => { const m = mapOf(draft.mapKey); return m && String(m.key).startsWith("asset:") && !m.isTileMap && m.imageUrl && m.pixelWidth > 0 ? m : null; };
+  const composable = () => !mapOnly && draft.kind !== "text" && !!imageMap();
+  const composing = () => shell.context === "compose" && composable();
+  let composer = null, pendingBlank = null, previewUrl = "", previewTimer2 = 0, previewSeq2 = 0, keepRatio = true, uploading = false;
+  let mapEntries = [], savedEntries = [], startChoice = null;
+  const imageCache = createImageCache(sceneSourceResolver(campaign.id, () => imageMap()?.imageUrl), () => composer?.invalidate());
+  /** Documento editável da composição; enquanto a cena não tem nenhuma, um documento vazio pendente (só entra no rascunho ao mudar). */
+  function compDoc() {
+    if (draft.composition) return draft.composition;
+    const m = imageMap();
+    if (!m) return null;
+    if (!pendingBlank || pendingBlank.artboard.width !== m.pixelWidth || pendingBlank.artboard.height !== m.pixelHeight) pendingBlank = blankSceneComposition(m.pixelWidth, m.pixelHeight);
+    return pendingBlank;
+  }
+  const compElements = () => draft.composition?.elements?.length || 0;
+
   // ---------- Ferramentas (Básica primeiro; grupos da Completa depois) ----------
   function toolProblem(id) {
     if ((id === "add" || id === "npc") && !meta) return NEED_MAP;
     if (LAYER_TOOLS.has(id) && !meta) return NEED_MAP;
     if (LAYER_TOOLS.has(id) && layerLocked()) return "Salve o alcance da preparação antes de editar o mapa.";
     if (id === "gridAdjust" && !draft.mapKey?.startsWith("asset:")) return "A grade de cenários prontos já está definida.";
+    if (id === "entry" && !meta) return NEED_MAP;
+    if (id === "entry" && mapOnly && !meta.entriesEditable) return "Cenários prontos já trazem as entradas do grupo; crie um mapa a partir do modelo para editar.";
+    if (id === "addImage" && uploading) return "Aguarde o envio em andamento terminar.";
     return null;
   }
   // Dica da ferramenta: o texto de ajuda dela sem o nome repetido no início ("Nome: o que fazer").
@@ -114,7 +146,10 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   const notMap = () => !mapKind();
   const tools = [
     T("select", "select", "v", "basic", true),
+    // Composição (ADR-090): enviar imagens é a ação principal de uma cena visual; arrastar e colar também funcionam.
+    T("addImage", "image", "u", "basic", true, { context: "compose", hidden: () => mapOnly || draft.kind === "text", action: () => pickImages() }),
     T("add", "plus", "a", "basic", true, { hidden: () => mapOnly || notMap() }),
+    T("entry", "marquee", "", "elements", true, { hidden: notMap }),
     T("scenery", "scenery", "c", "basic", true, { hidden: () => mapOnly, ...panelTool("scenery") }),
     T("visibility", "eye", "", "basic", true, { hidden: () => mapOnly || notMap(), ...panelTool("visibility") }),
     T("reveal", "reveal", "r", "basic", true, { hidden: () => notMap() || (mode !== "complete" && !manual()) }),
@@ -152,7 +187,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     // Contextos de trabalho (ADR-086), pelos grupos de TOOL_INVENTORY. Só reorganizam a interface; nada muda na preparação.
     kind: mapOnly ? "map-prep" : "scene",
     contexts: [
-      { id: "elements", groups: ["elements"], tools: ["add"], panels: ["props", "layers", "structure", "characters"], defaultTool: "select" },
+      ...(mapOnly ? [] : [{ id: "compose", tools: ["addImage"], panels: ["props", "layers", "assets"], defaultTool: "select" }]),
+      { id: "elements", label: mapOnly ? "Elementos" : "Personagens", groups: ["elements"], tools: ["add", "entry"], panels: ["props", "layers", "structure", "characters"], defaultTool: "select" },
       { id: "walls", groups: ["walls"], panels: ["props", "structure"], defaultTool: "wall" },
       { id: "light", groups: ["light"], panels: ["props", "structure"], defaultTool: "light" },
       { id: "explore", groups: ["explore"], tools: ["visibility", "reveal", "conceal"], panels: ["props", "structure"], defaultTool: "select" },
@@ -163,20 +199,30 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       { id: "props", title: "Propriedades" },
       ...(mapOnly ? [] : [{ id: "layers", title: "Camadas" }]),
       { id: "structure", title: "Estrutura" },
-      ...(mapOnly ? [] : [{ id: "characters", title: "Personagens" }]),
+      ...(mapOnly ? [] : [{ id: "characters", title: "Personagens e posições iniciais", help: ["campanhas.cenas.posicoes", "Posições iniciais e área de entrada"] }]),
+      ...(mapOnly ? [] : [{ id: "assets", title: "Acervo", help: ["campanhas.cenas.composicao", "Composição da cena"] }]),
       { id: "history", title: "Histórico", basic: false },
     ],
-    actions: `${nameField}${button(`${icon("eye")}<span>Ver como jogador</span>`, "se-preview", "", "subtle", 'aria-pressed="false"')}${button("Salvar preparação", "se-save", "", "primary")}<span id="se-apply-slot"></span>`,
+    onContext: (id) => onWorkContext(id),
+    actions: `${nameField}${button(`${icon("eye")}<span>Ver como jogador</span>`, "se-preview", "", "subtle", 'aria-pressed="false" data-tip="Ver como jogador" data-tip-detail="Simula luz, névoa e visão dos personagens, sem alterar a mesa."')}${button("Salvar preparação", "se-save", "", "primary")}<span id="se-apply-slot"></span>`,
+    // No contexto Composição os atalhos agem nas imagens; nos demais, nos marcadores (ADR-090).
     keys: {
       "mod+s": () => save(),
       "mod+z": () => undo(), "mod+shift+z": () => redo(), "mod+y": () => redo(),
-      "mod+c": () => copy(), "mod+x": () => cut(), "mod+v": () => paste(),
-      "mod+a": () => selectAll(), "mod+d": () => deselect(),
-      delete: () => removeSelection(), backspace: () => removeSelection(),
+      "mod+c": () => (composing() ? composer?.copy() : copy()), "mod+x": () => (composing() ? (composer?.cut(), afterCompose()) : cut()),
+      "mod+v": () => pasting.request(),
+      "mod+j": () => { if (composing()) { composer?.duplicate(); afterCompose(); } },
+      "mod+]": () => { if (composing()) { composer?.zorder("front"); afterCompose(); } },
+      "mod+[": () => { if (composing()) { composer?.zorder("back"); afterCompose(); } },
+      "mod+g": () => { if (composing()) { composer?.group(true); afterCompose(); } },
+      "mod+shift+g": () => { if (composing()) { composer?.group(false); afterCompose(); } },
+      "mod+a": () => (composing() ? composer?.select((draft.composition?.elements || []).filter((x) => CP.isSelectable(draft.composition, x)).map((x) => x.id), false) : selectAll()),
+      "mod+d": () => (composing() ? composer?.select([], false) : deselect()),
+      delete: () => (composing() ? (composer?.remove(), afterCompose()) : removeSelection()), backspace: () => (composing() ? (composer?.remove(), afterCompose()) : removeSelection()),
       escape: (e) => onEscape(e),
     },
     contextBar: true,
-    contextBarHint: "Selecione paredes com “Editar paredes” para ajustar tipo e visibilidade aqui.",
+    contextBarHint: "Selecione uma imagem (Composição) ou paredes (Editar paredes) para ajustar as propriedades aqui.",
     isDirty: () => sceneDirty || layerDirty,
     onTool: (id) => onTool(id),
     onModeChange: (next) => onModeChange(next),
@@ -186,7 +232,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   root.classList.add("scene-editor");
   root.dataset.tool = tool;
   const q = (sel) => root.querySelector(sel);
-  shell.stage.innerHTML = `<div class="ed-stage-banner se-sim-banner" id="se-sim" role="note" hidden></div><div class="board se-board" id="se-board"></div><div class="se-text-preview" id="se-text" hidden></div><p class="se-hint" id="se-hint" role="status" hidden></p>`;
+  shell.stage.innerHTML = `<div class="ed-stage-banner se-sim-banner" id="se-sim" role="note" hidden></div><div class="board se-board" id="se-board"></div><div class="se-compose" id="se-compose" hidden></div><div class="se-start" id="se-start" hidden></div><div class="se-text-preview" id="se-text" hidden></div><p class="se-hint" id="se-hint" role="status" hidden></p><input type="file" id="se-files" accept="image/png,image/jpeg" multiple hidden>`;
   const boardHost = q("#se-board");
   const nameInput = q("#se-name");
   if (nameInput) nameInput.value = draft.name;
@@ -212,14 +258,18 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     ruler: () => {
       if (!mapKind() || !meta) return null;
       const r = board.camera.cellRect({ x: 0, y: 0 });
-      return r.size > 0 ? { x: r.x, y: r.y, cellPx: r.size, cellUnits: Number(meta.scaleMeters) || 1.5, unit: "m" } : null;
+      // A escala muda no ajuste da grade (imagens enviadas); cenários prontos têm grade fixa.
+      const locked = toolProblem("gridAdjust");
+      return r.size > 0 ? { x: r.x, y: r.y, cellPx: r.size, cellUnits: Number(meta.scaleMeters) || 1.5, unit: "m", onScale: locked ? null : () => openPanel("gridAdjust"), scaleReason: locked || "" } : null;
     },
   });
 
   // ---------- Histórico (instantâneos do rascunho e da preparação do mapa) ----------
-  function capture() { return { draft: clone(draft), layer: clone(layer), reset: resetExploration }; }
+  function capture() { return { draft: clone(draft), layer: clone(layer), reset: resetExploration, entries: clone(mapEntries) }; }
   function restore(snap) {
     draft = clone(snap.draft); layer = clone(snap.layer); resetExploration = !!snap.reset;
+    if (Array.isArray(snap.entries)) mapEntries = clone(snap.entries);
+    pendingBlank = null; composer?.prune(); composer?.invalidate(); schedulePreview();
     selection = selection.filter((i) => draft.prepared[i]);
     if (!draft.layers.some((l) => l.id === activeLayer)) activeLayer = "elements";
     if (panel === "token" && !selection.length) panel = "overview";
@@ -238,9 +288,11 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   // Digitação: o "antes" é capturado na primeira tecla; a entrada fecha ao sair do campo.
   const beginTyping = (label) => { if (!history.pending) history.begin(label); };
   function commitTyping() { if (history.pending) history.commit(); }
+  const entriesDirty = () => !!meta?.entriesEditable && !sameSnapshot(mapEntries, savedEntries);
+  const compositionDirty = () => !mapOnly && !sameSnapshot(draft.composition, savedScene.composition);
   function recomputeDirty() {
     sceneDirty = !mapOnly && !sameSnapshot(draft, savedScene);
-    layerDirty = !!layer && (!sameSnapshot(layer, savedLayer) || resetExploration);
+    layerDirty = (!!layer && (!sameSnapshot(layer, savedLayer) || resetExploration)) || entriesDirty();
     if (simulate) { serverView = null; serverViewError = ""; }
     renderStatus();
   }
@@ -251,7 +303,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
 
   // ---------- Dados do mapa ----------
   async function loadLayer() {
-    layer = null; meta = null; savedLayer = null; resetExploration = false;
+    layer = null; meta = null; savedLayer = null; resetExploration = false; mapEntries = []; savedEntries = [];
     const m = mapOf(draft.mapKey);
     if (draft.kind !== "map" || !m || m.kind !== "tileset") return;
     const data = await api(`${base}/assets/layers?key=${encodeURIComponent(draft.mapKey)}${saved.id ? `&scene=${encodeURIComponent(saved.id)}` : ""}`);
@@ -259,7 +311,11 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     layer = { fog: data.fog, manual: data.manual, cells: data.cells, lights: data.lights.map((l) => ({ ...l })), revealed: data.revealed, marks: data.marks.map((x) => ({ ...x })), walls: (data.walls || []).map((w) => ({ ...w })) };
     wallSel = []; wallPts = [];
     savedLayer = clone(layer);
+    // Pontos de entrada do mapa (reutilizáveis; editados na preparação do mapa) e grade: oculta na movimentação livre.
+    mapEntries = (data.entries || []).map((e) => ({ ...e })); savedEntries = clone(mapEntries);
+    if (gridKey !== data.key) { grid = !data.freeMovement; gridKey = data.key; }
   }
+  let gridKey = "";
   const width = () => meta?.width || 0, height = () => meta?.height || 0;
   // Movimentação livre: marcadores guardam o ponto dentro da casa (fx/fy) e podem dividir a casa.
   const freeOn = () => !!meta?.freeMovement;
@@ -275,7 +331,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
 
   function boardState() {
     const m = mapOf(draft.mapKey);
-    if (draft.kind === "image" && m) return { map: { kind: "cartographic", key: m.key, name: m.name, imageUrl: m.imageUrl || "/assets/valley.webp", rows: [] }, tokens: [], participants: [], session: {}, me: { isMaster: true } };
+    // Com composição, o tabuleiro mostra o mapa já com as imagens da cena (prévia achatada no navegador).
+    const shown = previewUrl && compElements() ? previewUrl : null;
+    if (draft.kind === "image" && m) return { map: { kind: "cartographic", key: m.key, name: m.name, imageUrl: shown || m.imageUrl || "/assets/valley.webp", rows: [] }, tokens: [], participants: [], session: {}, me: { isMaster: true } };
     if (!meta) return { map: { kind: "cartographic", key: "none", name: "", imageUrl: "", rows: [] }, tokens: [], participants: [], session: {}, me: { isMaster: true } };
     let tokens = draft.prepared.map((t, i) => {
       // Camadas da cena: olho e opacidade só mudam o desenho no editor; a simulação mostra o que os jogadores veem.
@@ -295,15 +353,23 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       tokens = sim.tokens;
     } else fog = { active: fogOn(), cells: layer.cells, lights: layer.lights, marks: layer.marks, walls: layer.walls, shared: shared() };
     return {
-      map: { kind: "tileset", key: meta.layerKey, name: meta.name, rows: meta.rows, imageUrl: meta.imageUrl, gridPixels: meta.gridPixels, gridOffsetX: meta.gridOffsetX, gridOffsetY: meta.gridOffsetY, scaleMeters: meta.scaleMeters, freeMovement: freeOn() },
+      map: { kind: "tileset", key: meta.layerKey, name: meta.name, rows: meta.rows, imageUrl: shown || meta.imageUrl, gridPixels: meta.gridPixels, gridOffsetX: meta.gridOffsetX, gridOffsetY: meta.gridOffsetY, scaleMeters: meta.scaleMeters, freeMovement: freeOn() },
       tokens, participants: tokens.filter((t) => t.characterId).map((t) => ({ characterId: t.characterId, online: true })), session: {}, me: { isMaster: !simulate, characterId: null }, fog,
     };
   }
+  /** Casas destacadas no tabuleiro: a área de entrada efetiva da cena (ou todos os pontos do mapa, na preparação do mapa). */
+  function entryHighlight() {
+    if (simulate || !meta || !mapKind()) return [];
+    const showAll = mapOnly || tool === "entry" || panel === "entries";
+    if (showAll) return mapEntries.flatMap((e) => rectCells(e, width(), height()));
+    if (shell.context !== "elements" && panel !== "characters") return [];
+    return rectCells(sceneEntryArea(draft.entry, mapEntries)?.rect, width(), height());
+  }
   function boardView() {
-    const paint = !simulate && PAINT.has(tool) && !!meta && !layerLocked();
+    const paint = !simulate && (PAINT.has(tool) || tool === "entry") && !!meta && (tool === "entry" || !layerLocked());
     const vector = !simulate && VECTOR_TOOLS.has(tool) && !!meta && !layerLocked();
     return {
-      mode: paint ? "paint" : vector ? "vector" : "none", fogTools: !simulate && (mode === "complete" || paint || vector || diag), grid, reach: [], attack: [],
+      mode: paint ? "paint" : vector ? "vector" : "none", fogTools: !simulate && (mode === "complete" || (paint && tool !== "entry") || vector || diag), grid, reach: entryHighlight(), attack: [],
       vector: vector || wallSel.length ? { preview: wallPreview(), selected: wallSel, vertices: tool === "vedit", point: vector ? vpoint : null, box: vdrag?.box || null } : null,
       diagnostic: !simulate && diag && layer ? diagnosticView() : null,
       selected: !simulate && selection.length === 1 ? "p" + selection[0] : null, selectedIds: simulate ? [] : selection.map((i) => "p" + i),
@@ -388,7 +454,33 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     change(`Pintar: ${labelOf(id)}`, () => { layer = paintLocal(layer, width(), id, cells); });
     refresh();
   }
-  function onPaint(cells) { if (PAINT.has(tool)) paintCells(tool, cells); }
+  function onPaint(cells) {
+    if (tool === "entry") return setEntryFromCells(cells);
+    if (PAINT.has(tool)) paintCells(tool, cells);
+  }
+  /**
+   * Área de entrada desenhada (retângulo das casas pintadas, até 20 × 20). Na cena, vira a área própria da cena;
+   * na preparação do mapa, um novo ponto de entrada reutilizável do mapa (sem vínculo com personagens).
+   */
+  function setEntryFromCells(cells) {
+    if (simulate || !meta) return;
+    const rect = entryRect(cells);
+    if (!rect) return;
+    if (mapOnly) {
+      if (!meta.entriesEditable) return say(toolProblem("entry"));
+      if (mapEntries.length >= 12) return say("Use até 12 pontos de entrada por mapa.");
+      const kind = mapEntries.some((e) => e.kind === "party") ? "other" : "party";
+      const entry = { id: newEntryId(mapEntries), name: kind === "party" ? "Entrada do grupo" : `Ponto ${mapEntries.length + 1}`, kind, ...rect };
+      change("Ponto de entrada", () => { mapEntries = [...mapEntries, entry]; });
+      panel = "entries";
+      refresh();
+      return say(`Ponto de entrada criado (${rect.w} × ${rect.h} casas). Dê um nome e escolha o tipo no painel.`);
+    }
+    change("Área de entrada da cena", () => { draft.entry = rect; });
+    panel = "characters";
+    refresh();
+    say(`Área de entrada da cena: ${rect.w} × ${rect.h} casas. Personagens sem posição preparada entram por ela.`);
+  }
   function onHover(p) {
     hover = p;
     if (p) lastCell = { x: p.x, y: p.y, fx: p.fx, fy: p.fy };
@@ -652,7 +744,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (simulate || mapOnly || !mapKind() || !meta) { say("Personagens e marcadores entram em cenas de mapa tático."); return false; }
     const target = draft.layers.find((l) => l.id === activeTokenLayer());
     if (target?.locked) { say(`A camada “${target.name}” está bloqueada. Escolha outra em Camadas.`); return false; }
-    if (token.characterId && draft.prepared.some((t) => t.characterId === token.characterId)) { say("Esse personagem já está na cena."); return false; }
+    // Personagem já posicionado: arrastar de novo move o marcador existente (nunca cria duplicata).
+    const existing = token.characterId ? draft.prepared.findIndex((t) => t.characterId === token.characterId) : -1;
+    if (existing >= 0) { selection = [existing]; panel = "token"; return moveToken(existing, cell); }
     const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, cell.x, cell.y, -1, freeOn());
     if (problem) { say(problem); return false; }
     change(label, () => { draft.prepared.push({ ...token, ...fineOf(cell), hidden: !!token.hidden, layer: activeTokenLayer() }); });
@@ -859,6 +953,478 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     });
   }
 
+  // ---------- Composição da cena (ADR-090) ----------
+  // Elementos só desta cena sobre o mapa compartilhado. Cada operação entra no histórico do editor; salvar envia o
+  // documento e a sobreposição achatada (PNG transparente) pelo endpoint próprio da composição.
+  function compChange(label, fn) {
+    if (!composable() || simulate) return false;
+    change(label, () => { if (!draft.composition) { draft.composition = compDoc(); pendingBlank = null; } fn(); });
+    afterCompose();
+    return true;
+  }
+  function afterCompose() { composer?.invalidate(); if (composing()) { renderSide(); renderLayers(); } else schedulePreview(); renderStatus(); }
+  /** Prévia achatada (mapa + imagens visíveis no editor) para o tabuleiro dos contextos de personagens, paredes e luz. */
+  function schedulePreview() {
+    clearTimeout(previewTimer2);
+    if (!compElements() || !imageMap()) {
+      if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = ""; redraw(); }
+      return;
+    }
+    if (composing()) return; // recalcula ao sair da composição
+    const seq = ++previewSeq2;
+    previewTimer2 = setTimeout(async () => {
+      try {
+        const url = await flattenPreview(draft.composition, imageCache);
+        if (seq !== previewSeq2 || closed) { URL.revokeObjectURL(url); return; }
+        const old = previewUrl; previewUrl = url; redraw();
+        if (old) setTimeout(() => URL.revokeObjectURL(old), 2000);
+      } catch (e) { say(e.message); }
+    }, 150);
+  }
+  const boardCamera = {
+    zoomIn: () => board.camera.zoomIn(), zoomOut: () => board.camera.zoomOut(), fit: () => board.camera.fit(),
+    actual: () => board.camera.actual(natural()), zoom: () => board.camera.zoom(natural()),
+    setPanHold: (on) => board.camera.setPanHold(on), setPan: (on) => board.camera.setPan(on),
+    ruler: () => {
+      if (!mapKind() || !meta) return null;
+      const r = board.camera.cellRect({ x: 0, y: 0 });
+      const locked = toolProblem("gridAdjust");
+      return r.size > 0 ? { x: r.x, y: r.y, cellPx: r.size, cellUnits: Number(meta.scaleMeters) || 1.5, unit: "m", onScale: locked ? null : () => openPanel("gridAdjust"), scaleReason: locked || "" } : null;
+    },
+  };
+  function composeCamera() {
+    const cam = composer.surface.camera;
+    return { ...cam, setPan: () => {}, ruler: () => {
+      const v = cam.view();
+      return meta?.gridPixels ? { x: v.left + (meta.gridOffsetX || 0) * v.scale, y: v.top + (meta.gridOffsetY || 0) * v.scale, cellPx: meta.gridPixels * v.scale, cellUnits: Number(meta.scaleMeters) || 1.5, unit: "m" }
+        : { x: v.left, y: v.top, cellPx: v.scale, cellUnits: 1, unit: "px" };
+    } };
+  }
+  function mountComposer() {
+    if (composer) return composer;
+    composer = createSceneComposer({
+      host: q("#se-compose"), doc: compDoc, tool: () => tool, cache: imageCache,
+      resolveSrc: sceneSourceResolver(campaign.id, () => imageMap()?.imageUrl),
+      options: () => ({ snap: true, snapObjects: true, grid: meta?.gridPixels && grid ? { size: meta.gridPixels, offsetX: meta.gridOffsetX || 0, offsetY: meta.gridOffsetY || 0 } : null }),
+      change: (label, fn) => compChange(label, fn),
+      begin: (label) => { commitTyping(); history.begin(label); if (!draft.composition) { draft.composition = compDoc(); pendingBlank = null; } },
+      commit: () => { history.commit(); recomputeDirty(); afterCompose(); },
+      cancel: () => { history.cancel(); composer?.invalidate(); },
+      onSelection: () => { if (composing()) { renderSide(); renderLayers(); } },
+      onLive: () => syncComposeBar(),
+      onContext: (at, id, point) => composeMenu(at, id, point),
+      onOpen: () => showProps(),
+      cursor: (p) => shell.setStatus({ coords: p ? `${Math.round(p.x)}, ${Math.round(p.y)} px` : "" }),
+      camera: () => shell.updateZoom(),
+      keepRatio: () => keepRatio,
+      say,
+    });
+    composer.surface.canvas.setAttribute("aria-label", "Composição da cena: imagens por cima do mapa. Setas movem 1 pixel (Shift: 10); Enter abre as propriedades; Shift+F10 abre o menu.");
+    composer.surface.canvas.addEventListener("keydown", onComposeKey);
+    return composer;
+  }
+  function onWorkContext(id) {
+    if (id === "compose" && composable()) { mountComposer(); shell.setCamera(composeCamera()); composer.invalidate(); }
+    else { shell.setCamera(boardCamera); schedulePreview(); }
+    shell.contextBar?.hide();
+    renderAll();
+  }
+  function onComposeKey(e) {
+    if (!composer) return;
+    const dir = ARROWS[e.key];
+    if (dir && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); e.stopPropagation(); const step = e.shiftKey ? 10 : 1; composer.nudge(dir[0] * step, dir[1] * step); return; }
+    if (e.key === "Enter" && composer.selection.size) { e.preventDefault(); showProps(); return; }
+    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      e.preventDefault();
+      const el = composer.selected()[0];
+      composeMenu(composer.surface.clientPointOf(el), el?.id || null, composer.viewCenter());
+    }
+  }
+  function composeMenu(at, id, point) {
+    if (!composer || simulate) return;
+    if (!id) {
+      return openContextMenu(at, [
+        { label: "Adicionar imagem…", run: () => pickImages() },
+        { label: "Colar aqui", shortcut: "mod+v", disabled: !composer.hasClipboard, disabledReason: "Copie um elemento antes.", run: () => { composer.paste(point); afterCompose(); } },
+        { label: "Selecionar tudo", shortcut: "mod+a", run: () => composer.select((draft.composition?.elements || []).filter((x) => CP.isSelectable(draft.composition, x)).map((x) => x.id), false) },
+      ], { label: "Composição" });
+    }
+    const els = composer.selected(), one = els[0];
+    const layers = compDoc().layers;
+    const act = (fn) => () => { fn(); afterCompose(); };
+    openContextMenu(at, [
+      { label: "Propriedades…", shortcut: "enter", run: () => showProps() },
+      { label: "Duplicar", shortcut: "mod+j", run: act(() => composer.duplicate()) },
+      { label: "Copiar", shortcut: "mod+c", run: () => composer.copy() },
+      { label: "Recortar", shortcut: "mod+x", run: act(() => composer.cut()) },
+      { label: "Excluir", shortcut: "delete", danger: true, run: act(() => composer.remove()) },
+      { separator: true },
+      { label: "Ajustar à área (imagem inteira)", run: act(() => composer.fit("fit")) },
+      { label: "Preencher a área (pode recortar)", run: act(() => composer.fit("fill")) },
+      { label: "Tamanho original", run: act(() => composer.fit("original")) },
+      { label: "Centralizar", run: act(() => composer.fit("center")) },
+      { separator: true },
+      { label: "Espelhar na horizontal", run: act(() => composer.flip("x")) },
+      { label: "Espelhar na vertical", run: act(() => composer.flip("y")) },
+      { label: "Girar 90° à direita", run: act(() => composer.rotate(90)) },
+      { label: "Girar 90° à esquerda", run: act(() => composer.rotate(-90)) },
+      { separator: true },
+      { label: "Trazer para frente", shortcut: "mod+]", run: act(() => composer.zorder("front")) },
+      { label: "Avançar", run: act(() => composer.zorder("forward")) },
+      { label: "Recuar", run: act(() => composer.zorder("backward")) },
+      { label: "Enviar para trás", shortcut: "mod+[", run: act(() => composer.zorder("back")) },
+      { separator: true },
+      { label: "Só o mestre vê (oculto dos jogadores)", checked: els.every((x) => x.secret), run: act(() => composer.toggle("secret")) },
+      { label: els.every((x) => x.locked) ? "Desbloquear" : "Bloquear", run: act(() => composer.toggle("locked")) },
+      { label: "Mover para camada", items: layers.slice().reverse().map((l) => ({ label: l.name, checked: els.every((x) => x.layer === l.id), disabled: l.locked, disabledReason: "Camada bloqueada.", run: act(() => composer.moveToLayer(l.id)) })) },
+    ], { label: one?.name || "Imagem" });
+  }
+  /** Barra de propriedades do elemento selecionado: posição, tamanho, giro, opacidade, camada, proporção e ações rápidas. */
+  function syncComposeBar() {
+    const bar = shell.contextBar;
+    if (!bar) return;
+    if (!composer || !composing() || simulate) return;
+    const els = composer.selected();
+    if (!els.length) return bar.hide();
+    const one = els.length === 1 ? els[0] : null;
+    const layers = compDoc().layers;
+    const values = one ? { x: one.x, y: one.y, width: one.width, height: one.height, rotation: one.rotation, opacity: one.opacity } : { opacity: els[0].opacity };
+    const key = "comp:" + els.map((e) => e.id).join(",");
+    if (bar.available && document.activeElement?.closest?.("[data-ed-contextbar]") && bar._key === key) return bar.update(values);
+    bar._key = key;
+    bar.show({
+      key, title: one ? one.name || "Imagem" : `${els.length} elementos`, icon: "image",
+      fields: [
+        ...(one ? [
+          { name: "x", label: "X", type: "number", step: 1, unit: "px", value: one.x },
+          { name: "y", label: "Y", type: "number", step: 1, unit: "px", value: one.y },
+          { name: "width", label: "Largura", type: "number", min: 1, max: 16384, step: 1, unit: "px", value: one.width },
+          { name: "height", label: "Altura", type: "number", min: 1, max: 16384, step: 1, unit: "px", value: one.height },
+          { name: "keepRatio", label: "Manter proporção", type: "checkbox", value: keepRatio },
+          { name: "rotation", label: "Giro", type: "number", min: -360, max: 360, step: 1, unit: "°", value: one.rotation },
+        ] : []),
+        { name: "opacity", label: "Opacidade", type: "number", min: 0, max: 100, step: 1, unit: "%", value: els[0].opacity },
+        { name: "layer", label: "Camada", type: "select", value: els.every((x) => x.layer === els[0].layer) ? els[0].layer : "", options: layers.map((l) => [l.id, l.name]) },
+        { name: "secret", label: "Só o mestre vê", type: "checkbox", value: els.every((x) => x.secret) },
+        { name: "locked", label: "Bloqueado", type: "checkbox", value: els.every((x) => x.locked) },
+      ],
+      actions: [
+        { id: "fit", label: "Ajustar à área visível (imagem inteira)", icon: "maximize" },
+        { id: "fill", label: "Preencher a área visível (pode recortar)", icon: "fill" },
+        { id: "original", label: "Tamanho original", icon: "image" },
+        { id: "center", label: "Centralizar no mapa", icon: "alignCenter" },
+        { id: "flipX", label: "Espelhar na horizontal", icon: "distributeX" },
+        { id: "flipY", label: "Espelhar na vertical", icon: "distributeY" },
+        { id: "duplicate", label: "Duplicar (Ctrl+J)", icon: "copy" },
+        { id: "front", label: "Trazer para frente", icon: "up" },
+        { id: "back", label: "Enviar para trás", icon: "down" },
+        { id: "delete", label: "Excluir", icon: "trash", danger: true },
+      ],
+      onChange: (name, value) => {
+        if (name === "keepRatio") { keepRatio = !!value; return say(keepRatio ? "Proporção mantida ao mudar largura ou altura." : "Proporção liberada: largura e altura mudam separadamente."); }
+        if (name === "layer" && !value) return;
+        composer.setField(name, value); afterCompose(); syncComposeBar();
+      },
+      onAction: (id) => composeAction(id),
+    });
+  }
+  function composeAction(id) {
+    if (!composer) return;
+    ({
+      fit: () => composer.fit("fit"), fill: () => composer.fit("fill"), original: () => composer.fit("original"), center: () => composer.fit("center"),
+      flipX: () => composer.flip("x"), flipY: () => composer.flip("y"), duplicate: () => composer.duplicate(), front: () => composer.zorder("front"), back: () => composer.zorder("back"),
+      delete: () => composer.remove(), rotR: () => composer.rotate(90), rotL: () => composer.rotate(-90), add: () => pickImages(),
+    })[id]?.();
+    afterCompose(); syncComposeBar();
+  }
+  /** Painel Propriedades no contexto Composição: o selecionado ou, sem seleção, o que é desta cena e o que é compartilhado. */
+  function composePanel() {
+    const m = mapOf(draft.mapKey);
+    if (!composable()) {
+      if (!draft.mapKey) return `<div class="se-panel"><h3>Composição da cena${helpButton("campanhas.cenas.composicao", "Composição da cena")}</h3><p class="form-help">Comece pelo fundo: arraste uma imagem para o palco, envie do computador ou escolha um mapa.</p><div class="form-actions">${button("Enviar imagem…", "se-tool", "addImage", "primary")}${button("Escolher um mapa", "se-tool", "scenery", "subtle")}</div></div>`;
+      return `<div class="se-panel"><h3>Composição da cena${helpButton("campanhas.cenas.composicao", "Composição da cena")}</h3><p class="form-help">A composição usa uma imagem da campanha como fundo. Esta cena usa “${esc(m?.name || "um cenário pronto")}” (${esc(mapTypeLabel(m))}), que não recebe imagens por cima.</p><div class="form-actions">${button("Usar uma imagem minha como fundo…", "se-replace-bg", "", "subtle")}${button("Escolher outro mapa", "se-tool", "scenery", "subtle")}</div></div>`;
+    }
+    const els = composer?.selected() || [];
+    const scope = `<p class="se-scope" role="note"><strong>Somente esta cena.</strong> As imagens ficam por cima do mapa “${esc(m.name)}”, que é compartilhado${m && (m.scenes?.length || 0) > 1 ? " com outras cenas" : ""} e não muda aqui.</p>`;
+    if (!els.length) {
+      const n = compElements();
+      return `<div class="se-panel"><h3>Composição da cena${helpButton("campanhas.cenas.composicao", "Composição da cena")}</h3>${scope}<p class="form-help">${n ? `${n} elemento(s) nesta cena. Clique numa imagem para mover, redimensionar (alças; Shift solta a proporção, Alt a partir do centro) e girar (alça de cima).` : "Arraste imagens do computador ou do painel Acervo, cole com Ctrl+V ou use Adicionar imagem. Cada imagem é um elemento independente."}</p>
+        <div class="form-actions">${button("Adicionar imagem…", "se-tool", "addImage", "primary")}${button("Abrir o mapa original…", "se-open-map", "", "subtle")}${n ? button("Criar mapa a partir da composição", "se-map-from-comp", "", "subtle") : ""}</div>
+        <p class="form-help">“Ocultar” e “Bloquear” nas camadas valem só no editor. Para esconder dos jogadores, marque <strong>Só o mestre vê</strong>.</p></div>`;
+    }
+    const one = els.length === 1 ? els[0] : null;
+    const status = one ? CP.artboardStatus(one, compDoc().artboard) : "";
+    return `<div class="se-panel"><h3>${one ? esc(one.name || "Imagem") : `${els.length} elementos`}</h3>${scope}
+      ${one ? `<div class="field"><label for="se-c-name">Nome</label><input id="se-c-name" data-comp-name maxlength="80" value="${esc(one.name || "")}"></div><p class="form-help">${Math.round(one.width)} × ${Math.round(one.height)} px · giro ${Math.round(one.rotation)}°${status === "outside" ? " · fora da área visível (não aparece na mesa)" : status === "partial" ? " · parcialmente fora da área visível (a parte de fora não aparece)" : ""}.</p>` : ""}
+      <label class="check"><input type="checkbox" data-comp-flag="secret" ${els.every((x) => x.secret) ? "checked" : ""}> Só o mestre vê (não vai para os jogadores)</label>
+      <label class="check"><input type="checkbox" data-comp-flag="visible" ${els.every((x) => x.visible) ? "" : "checked"}> Ocultar só no editor</label>
+      <label class="check"><input type="checkbox" data-comp-flag="locked" ${els.every((x) => x.locked) ? "checked" : ""}> Bloquear</label>
+      <div class="se-comp-actions" role="group" aria-label="Tamanho e posição">${button("Ajustar à área", "se-comp", "fit", "subtle small")}${button("Preencher a área", "se-comp", "fill", "subtle small")}${button("Tamanho original", "se-comp", "original", "subtle small")}${button("Centralizar", "se-comp", "center", "subtle small")}</div>
+      <p class="form-help"><strong>Ajustar</strong> mostra a imagem inteira dentro do mapa; <strong>Preencher</strong> cobre o mapa todo e pode recortar; <strong>Tamanho original</strong> usa os pixels da imagem.</p>
+      <div class="se-comp-actions" role="group" aria-label="Transformar">${button("Espelhar ↔", "se-comp", "flipX", "subtle small")}${button("Espelhar ↕", "se-comp", "flipY", "subtle small")}${button("Girar 90°", "se-comp", "rotR", "subtle small")}${button("Duplicar", "se-comp", "duplicate", "subtle small")}${button("Frente", "se-comp", "front", "subtle small")}${button("Trás", "se-comp", "back", "subtle small")}</div>
+      <div class="form-actions se-danger-zone">${button("Excluir", "se-comp", "delete", "text-button")}</div></div>`;
+  }
+  function renderCompLayers(host) {
+    const d = compDoc();
+    renderLayersPanel(host, {
+      layers: d.layers, active: composer?.activeLayer || "elements", complete: mode === "complete", selectionCount: composer?.editableSelection().length || 0,
+      visibilityNote: "Olho, cadeado e opacidade valem só no editor. Para esconder dos jogadores use “Só o mestre vê”.",
+      onAction: compLayerAction,
+    });
+    host.insertAdjacentHTML("beforeend", `<fieldset class="se-secret-layers"><legend>Na sessão</legend>${d.layers.map((l) => `<label class="check"><input type="checkbox" data-comp-secret="${esc(l.id)}" ${l.secret ? "checked" : ""}> ${esc(l.name)}: só o mestre vê</label>`).join("")}<p class="form-help">O mapa compartilhado fica no fundo da camada ${esc(d.layers[0].name)} e não pode ser movido aqui.</p></fieldset>`);
+  }
+  function compLayerAction(action, id, value) {
+    const d = compDoc(), current = d.layers.find((l) => l.id === id);
+    if (action === "select") { if (composer) composer.activeLayer = id; return renderLayers(); }
+    if (action === "move-selection") { composer?.moveToLayer(id); return afterCompose(); }
+    if (["visible", "lock", "opacity", "rename"].includes(action)) {
+      if (!current) return;
+      const patch = action === "visible" ? { visible: !current.visible } : action === "lock" ? { locked: !current.locked } : action === "opacity" ? { opacity: value } : { name: value };
+      return compChange({ visible: patch.visible ? "Mostrar camada no editor" : "Ocultar camada no editor", lock: patch.locked ? "Bloquear camada" : "Desbloquear camada", opacity: "Opacidade da camada", rename: "Renomear camada" }[action], () => { draft.composition.layers = patchLayer(draft.composition.layers, id, patch); });
+    }
+    if (action === "up" || action === "down") {
+      const result = moveLayer(d.layers, id, action === "up" ? 1 : -1);
+      if (result.error) return say(result.error);
+      return compChange(action === "up" ? "Subir camada" : "Descer camada", () => { draft.composition.layers = result.layers; });
+    }
+    if (action === "add" || action === "duplicate") {
+      const result = action === "add" ? addLayer(d.layers, "", id) : addLayer(d.layers, `${current?.name || "Camada"} (cópia)`.slice(0, 40), id, { visible: current?.visible, opacity: current?.opacity });
+      if (result.error) return say(result.error);
+      compChange(action === "add" ? "Nova camada" : "Duplicar camada", () => { draft.composition.layers = result.layers; });
+      if (composer) composer.activeLayer = result.id;
+      return renderLayers();
+    }
+    if (action === "delete") {
+      const result = removeLayer(d.layers, id);
+      if (result.error) return say(result.error);
+      compChange("Excluir camada", () => { draft.composition.layers = result.layers; draft.composition.elements = draft.composition.elements.map((e) => (e.layer === id ? { ...e, layer: "elements" } : e)); });
+      if (composer) composer.activeLayer = "elements";
+    }
+  }
+  /** Painel Acervo: mapas de imagem da campanha arrastáveis para a composição (referência, sem copiar o arquivo). */
+  let assetsKey = "";
+  function renderAssets(force = false) {
+    const host = shell.panel("assets");
+    if (!host) return;
+    if (!host.querySelector("[data-asset-q]")) {
+      host.innerHTML = '<div class="field"><label for="se-asset-q">Buscar no acervo</label><input id="se-asset-q" type="search" data-asset-q maxlength="80" autocomplete="off"></div><div data-asset-list></div><p class="form-help">Arraste para o palco ou use Adicionar: a cena passa a usar a mesma imagem, sem duplicar o arquivo. Numa cena vazia, a imagem vira o fundo.</p>';
+      bindAssetList(host, { onAdd: (item) => addFromAsset(item, null) });
+    }
+    // As miniaturas só são refeitas quando a lista muda (imagens do acervo não ficam em cache do navegador).
+    const key = `${draft.mapKey}|${maps.items.length}|${host.querySelector("[data-asset-q]").value}`;
+    if (!force && key === assetsKey) return;
+    assetsKey = key;
+    const items = maps.items.filter((m) => m.key !== draft.mapKey);
+    host.querySelector("[data-asset-list]").innerHTML = assetListHtml(items, { query: host.querySelector("[data-asset-q]").value, empty: "Nenhuma imagem no acervo da campanha ainda. Envie imagens pela Preparação › Mapas ou solte arquivos aqui no palco." });
+  }
+
+  // ---------- Imagens soltas, coladas ou escolhidas (ADR-090) ----------
+  function pickImages() { const input = q("#se-files"); input.value = ""; input.click(); }
+  /** Ponto do documento (pixels da imagem) onde a imagem foi solta; null = centro da vista. */
+  function dropPoint(p) {
+    if (!p) return null;
+    if (composing() && composer) return composer.docPoint(p);
+    if (meta?.gridPixels) {
+      const c = board.camera.pointAt(p.clientX, p.clientY);
+      if (c) return { x: (meta.gridOffsetX || 0) + (c.x + (c.fx ?? 500) / 1000) * meta.gridPixels, y: (meta.gridOffsetY || 0) + (c.y + (c.fy ?? 500) / 1000) * meta.gridPixels };
+    }
+    return null;
+  }
+  async function handleFiles(list, p = null) {
+    if (simulate) return say("Volte à edição antes de adicionar imagens.");
+    if (busy || uploading) return say("Aguarde a operação em andamento terminar.");
+    const { files, problems } = splitImageFiles(list);
+    if (problems.length) say(problems.join(" "));
+    if (!files.length) return;
+    if (mapOnly) return say("Imagens entram no editor do mapa (Preparação › Mapas) ou na composição de uma cena.");
+    if (draft.kind === "text") return say("Cenas textuais não têm imagem. Mude o tipo em Cena › Cenário.");
+    if (!draft.mapKey) { startChoice = { files }; renderSide(); return showProps(); }
+    if (!composable()) { startChoice = { files, replace: true }; renderSide(); return showProps(); }
+    const at = dropPoint(p);
+    if (shell.context !== "compose") shell.setContext("compose");
+    await addFileElements(files, at);
+  }
+  /** Garante a cena salva (as imagens-fonte pertencem a ela). Cena nova sem nome recebe o nome da imagem. */
+  async function ensureSceneSaved(hint) {
+    if (saved.id) return true;
+    if (!draft.name.trim()) { draft.name = `Cena — ${hint}`.slice(0, 80); if (nameInput) nameInput.value = draft.name; shell.setTitle(titleText(), subtitleText()); }
+    await save();
+    if (saved.id) say("Cena salva para guardar as imagens dela. Continue compondo.");
+    return !!saved.id;
+  }
+  async function addFileElements(files, at) {
+    if (!(await ensureSceneSaved(baseName(files[0].name)))) return;
+    mountComposer();
+    uploading = true; shell.refreshTools();
+    const added = [];
+    try {
+      for (const [i, file] of files.entries()) {
+        say(files.length > 1 ? `Enviando imagem ${i + 1} de ${files.length}…` : `Enviando “${baseName(file.name)}”…`);
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("name", baseName(file.name));
+        const source = await api(`${base}/scenes/${saved.id}/sources`, "POST", fd, { background: true });
+        if (closed) return;
+        const el = composer.addImage(source, at ? { x: at.x + i * 24, y: at.y + i * 24 } : null);
+        if (el) added.push(el.id);
+      }
+      say(added.length > 1 ? `${added.length} imagens adicionadas só a esta cena.` : "Imagem adicionada só a esta cena: arraste para mover; as alças redimensionam e giram.");
+    } catch (e) {
+      say(`${added.length ? `${added.length} imagem(ns) adicionada(s). ` : ""}${e?.message || "O envio falhou."} As restantes não foram enviadas; tente de novo.`);
+    } finally {
+      uploading = false;
+      if (added.length) composer.select(added, false);
+      shell.refreshTools(); afterCompose(); syncComposeBar();
+    }
+  }
+  /** Imagem do acervo: numa cena vazia vira o fundo; senão entra na composição como referência (sem copiar bytes). */
+  async function addFromAsset(item, p) {
+    if (simulate || mapOnly || draft.kind === "text") return;
+    const m = mapOf(item.src);
+    if (!draft.mapKey && m) return chooseMap(m);
+    if (!composable()) return say("A composição usa uma imagem da campanha como fundo. Escolha o fundo antes.");
+    const at = dropPoint(p);
+    if (shell.context !== "compose") shell.setContext("compose");
+    mountComposer().addImage({ key: item.src, name: item.name, width: item.width || m?.pixelWidth, height: item.height || m?.pixelHeight }, at, { label: "Imagem do acervo" });
+    syncComposeBar();
+  }
+
+  // ---------- Primeira imagem, área em branco e tornar jogável (ADR-090) ----------
+  function startPanel() {
+    const c = startChoice;
+    const modes = BACKGROUND_MODES.filter(([v]) => !(c.playable && v === "image"));
+    const files = c.files || [];
+    const head = c.playable ? "Tornar esta imagem jogável" : c.blank ? "Começar com uma área em branco" : c.replace ? "Usar como novo fundo da cena?" : "Primeira imagem da cena";
+    const use = files.length ? `<fieldset><legend>“${esc(baseName(files[0].name))}”</legend><label class="check se-option"><input type="radio" name="use" value="background" checked><span><strong>Usar como fundo da cena</strong><small>Vira o mapa desta cena (guardado em Mapas e reutilizável em outras cenas).</small></span></label>${c.replace ? "" : `<label class="check se-option"><input type="radio" name="use" value="element"><span><strong>Adicionar como elemento independente</strong><small>Cria um fundo em branco do mesmo tamanho e coloca a imagem por cima, livre para mover.</small></span></label>`}</fieldset>${files.length > 1 ? `<p class="form-help">As outras ${files.length - 1} imagem(ns) entram como elementos por cima do fundo.</p>` : ""}` : "";
+    const size = c.blank ? `<div class="field"><label for="se-blank-size">Tamanho</label><select id="se-blank-size" name="size">${opt([["2048x1536", "2048 × 1536 px (4:3)"], ["1920x1080", "1920 × 1080 px (16:9)"], ["1536x1536", "1536 × 1536 px (quadrado)"], ["3072x2048", "3072 × 2048 px (grande)"]], "2048x1536")}</select></div>` : "";
+    const replaceNote = c.replace ? '<p class="notice-box">Trocar o fundo remove as posições preparadas e a composição desta cena (o mapa anterior continua em Mapas).</p>' : "";
+    const sharedNote = c.playable ? `<p class="form-help">O mapa “${esc(imageMap()?.name || "")}” ganha uma grade técnica e passa a aceitar personagens. Outras cenas que o usam como imagem continuam iguais.</p>` : "";
+    return `<form class="se-panel se-start-form" data-start-form><h3>${head}${helpButton("campanhas.cenas.composicao", "Composição da cena")}</h3>${replaceNote}${use}${size}
+      <fieldset><legend>Como os personagens usam a imagem?</legend>${modes.map(([v, l, help], i) => `<label class="check se-option"><input type="radio" name="mode" value="${v}" ${i === 0 ? "checked" : ""}><span><strong>${esc(l)}</strong><small>${esc(help)}</small></span></label>`).join("")}</fieldset>${sharedNote}
+      <div class="form-actions">${button("Cancelar", "se-start-cancel", "", "subtle")}<button type="submit" class="primary">Continuar</button></div></form>`;
+  }
+  async function confirmStart(form) {
+    const c = startChoice;
+    if (!c || busy || uploading) return;
+    const data = Object.fromEntries(new FormData(form));
+    const modeV = BACKGROUND_MODES.some(([v]) => v === data.mode) ? data.mode : "free";
+    if (c.replace && (draft.prepared.length || compElements()) && !confirm("Trocar o fundo remove as posições preparadas e a composição desta cena. Continuar?")) return;
+    startChoice = null;
+    uploading = true; renderSide(); renderStatus();
+    try {
+      if (c.playable) { uploading = false; return await makePlayable(modeV); }
+      if (c.blank) {
+        const [w, h] = String(data.size || "2048x1536").split("x").map(Number);
+        await createBackground(await blankImage(w, h), modeV, "Área em branco");
+      } else if (data.use === "element") {
+        const s = await readImageSize(c.files[0]);
+        const k = Math.min(1, 4096 / Math.max(s.width, s.height), Math.sqrt(8_000_000 / (s.width * s.height)));
+        await createBackground(await blankImage(Math.max(256, Math.round(s.width * k)), Math.max(256, Math.round(s.height * k))), modeV, "Área em branco");
+        uploading = false;
+        if (shell.context !== "compose") shell.setContext("compose");
+        await addFileElements(c.files, null);
+      } else {
+        await createBackground(c.files[0], modeV, baseName(c.files[0].name));
+        uploading = false;
+        if (c.files.length > 1) { if (shell.context !== "compose") shell.setContext("compose"); await addFileElements(c.files.slice(1), null); }
+      }
+    } catch (e) { error = e?.message || "Não foi possível criar o fundo."; }
+    finally { uploading = false; renderAll(); }
+  }
+  /** PNG liso (pergaminho escuro) para "área em branco". */
+  function blankImage(w, h) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(64, Math.min(4096, w)); canvas.height = Math.max(64, Math.min(4096, h));
+    const g = canvas.getContext("2d");
+    g.fillStyle = "#1d1a15"; g.fillRect(0, 0, canvas.width, canvas.height);
+    return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(new File([b], "area-em-branco.png", { type: "image/png" })) : reject(new Error("O navegador não gerou a área em branco."))), "image/png"));
+  }
+  /** Envia a imagem como mapa da campanha (pelo upload de mapas existente) e a associa a esta cena. */
+  async function createBackground(file, modeV, name) {
+    const s = await readImageSize(file);
+    const playable = modeV !== "image";
+    const gridPx = defaultGrid(s.width, s.height);
+    if (playable && !gridPx) throw new Error("A imagem é pequena ou estreita demais para posicionar personagens. Use “Somente apresentação” ou outra imagem.");
+    say("Enviando o fundo da cena…");
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("name", String(name || "Fundo").slice(0, 120));
+    fd.append("gridPixels", String(gridPx || 64));
+    fd.append("scaleMeters", "1.5");
+    fd.append("hasGrid", String(playable));
+    fd.append("freeMovement", String(modeV === "free"));
+    const created = await api(`${base}/assets/maps`, "POST", fd, { background: true });
+    maps.items = (await api(`${base}/maps`, "GET", undefined, { background: true })).items;
+    commitTyping();
+    draft.kind = playable ? "map" : "image"; draft.mapKey = `asset:${created.id}`;
+    draft.prepared = []; draft.composition = null; draft.entry = null; pendingBlank = null; selection = [];
+    await loadLayer();
+    resetHistory("Fundo da cena definido. O histórico de desfazer recomeça a partir daqui.");
+    recomputeDirty(); renderAll(); renderPanels();
+    say(`Fundo “${created.name}” pronto (${playable ? (modeV === "free" ? "movimentação livre" : "movimentação tática") : "somente apresentação"}). Ele também fica em Preparação › Mapas.`);
+  }
+  /** Imagem sem grade → jogável: grade técnica (livre) ou visível (tática). Escolha explícita, que muda o mapa compartilhado. */
+  async function makePlayable(modeV) {
+    const m = imageMap();
+    if (!m) return;
+    try {
+      if (!m.hasGrid || m.kind !== "tileset" || !!m.freeMovement !== (modeV === "free")) {
+        const gridPx = m.hasGrid && m.kind === "tileset" ? m.gridPixels : defaultGrid(m.pixelWidth, m.pixelHeight);
+        if (!gridPx) throw new Error("A imagem é pequena ou estreita demais para posicionar personagens.");
+        const updated = await api(`${base}/assets/maps/${m.id}`, "PUT", { name: m.name, folderId: m.folderId || null, gridPixels: gridPx, scaleMeters: Number(m.scaleMeters) || 1.5, revision: m.revision, hasGrid: true, gridOffsetX: m.gridOffsetX || 0, gridOffsetY: m.gridOffsetY || 0, freeMovement: modeV === "free" });
+        Object.assign(m, updated);
+        maps.items = (await api(`${base}/maps`, "GET", undefined, { background: true })).items;
+      }
+      commitTyping();
+      draft.kind = "map";
+      await loadLayer();
+      resetHistory("Cena jogável. O histórico de desfazer recomeça a partir daqui.");
+      say(modeV === "free" ? "Movimentação livre: posicione os personagens em qualquer ponto da imagem." : "Movimentação tática: ajuste a grade em Grade e escala, se precisar.");
+    } catch (e) { error = e.message; }
+    recomputeDirty(); renderAll(); renderPanels();
+  }
+  /** Novo mapa reutilizável com o fundo e as imagens visíveis aos jogadores (não altera esta cena nem o mapa original). */
+  async function mapFromComposition() {
+    if (!draft.composition || busy) return;
+    const name = prompt("Nome do novo mapa (até 120 caracteres)", `${imageMap()?.name || "Mapa"} (composição)`);
+    if (name == null || !name.trim()) return;
+    try {
+      say("Gerando o mapa…");
+      const doc = { ...draft.composition, layers: draft.composition.layers.map((l) => ({ ...l, visible: !l.secret })), elements: draft.composition.elements.filter((e) => !e.secret).map((e) => ({ ...e, visible: true })) };
+      const url = await flattenPreview(doc, imageCache);
+      const blob = await (await fetch(url)).blob();
+      URL.revokeObjectURL(url);
+      if (blob.size > 10 * 1024 * 1024) throw new Error("O mapa gerado passa de 10 MB.");
+      const m = imageMap();
+      const fd = new FormData();
+      fd.append("file", new File([blob], "composicao.png", { type: "image/png" }));
+      fd.append("name", name.trim().slice(0, 120));
+      fd.append("gridPixels", String(m.gridPixels || defaultGrid(m.pixelWidth, m.pixelHeight) || 64));
+      fd.append("scaleMeters", String(Number(m.scaleMeters) || 1.5));
+      fd.append("hasGrid", String(!!m.hasGrid));
+      fd.append("gridOffsetX", String(m.gridOffsetX || 0)); fd.append("gridOffsetY", String(m.gridOffsetY || 0));
+      fd.append("freeMovement", String(!!m.freeMovement));
+      await api(`${base}/assets/maps`, "POST", fd, { background: true });
+      maps.items = (await api(`${base}/maps`, "GET", undefined, { background: true })).items;
+      renderAssets();
+      say(`Mapa “${name.trim()}” criado em Preparação › Mapas. Esta cena continua como estava.`);
+    } catch (e) { say(e.message); }
+  }
+  /** Abre o mapa original no editor de mapas (outra janela de edição) e volta a esta cena ao fechar. */
+  async function openOriginalMap() {
+    const m = mapOf(draft.mapKey);
+    if (!m?.id) return say("Cenários prontos não são editados aqui; crie um mapa a partir do modelo em Preparação › Mapas.");
+    if (sceneDirty || layerDirty) {
+      if (!confirm("Salvar a preparação antes de abrir o mapa original?")) return;
+      await save();
+      if (sceneDirty || layerDirty || conflict || error) return;
+    }
+    if (!saved.id) return say("Salve a cena antes de abrir o mapa original.");
+    reopen = { mapId: m.id, tiles: !!m.isTileMap };
+    shell.close();
+  }
+  let reopen = null;
+
   // ---------- Menus de contexto ----------
   function onContext({ cell, token, x, y }) {
     const at = { x, y };
@@ -868,7 +1434,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       const i = Number(token.id.slice(1)), tok = draft.prepared[i];
       if (tok && layerOfToken(tok)?.visible !== false) return tokenMenu(i, at);
     }
-    cellMenu(cell, at);
+    void cellMenu(cell, at);
   }
   function tokenMenu(i, at) {
     const tok = draft.prepared[i];
@@ -893,20 +1459,27 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       { label: "Selecionar camada", hint: l?.name || "", run: () => selectLayer(l?.id || "elements") },
     ], { label: tok.label || "Marcador" });
   }
-  function cellMenu(cell, at) {
+  async function cellMenu(cell, at) {
     const items = [];
     const tactical = !!meta && mapKind();
+    // Personagens do mestre chegam sob demanda: espera a lista antes de abrir, para o submenu não nascer desabilitado.
+    if (cell && tactical && !mapOnly && npcs == null) { await loadNpcs(); if (closed) return; }
     if (cell && tactical && !mapOnly) {
       const placed = new Set(draft.prepared.map((t) => t.characterId).filter(Boolean));
-      if (npcs == null) loadNpcs();
-      const people = [
-        ...characters.filter((c) => !placed.has(c.id)).map((c) => ({ label: c.name, hint: "Personagem dos jogadores", run: () => placeRef(`pc:${c.id}`, cell) })),
-        ...(npcs || []).filter((n) => !n.copy).map((n) => ({ label: n.name, hint: "Personagem do mestre", run: () => placeRef(`npc:${n.id}`, cell) })),
-      ];
+      const pcs = characters.filter((c) => !placed.has(c.id)).map((c) => ({ label: c.name, run: () => placeRef(`pc:${c.id}`, cell) }));
+      const masters = (npcs || []).filter((n) => !n.copy).map((n) => ({ label: n.name, hint: n.summary || "", run: () => placeRef(`npc:${n.id}`, cell) }));
       items.push(
-        { label: "Adicionar marcador aqui", run: () => { pick = cell; selection = []; panel = "add"; renderSide(); showProps(); focusFirst(); } },
-        { label: "Colocar personagem aqui", items: people, disabled: !people.length, disabledReason: npcs == null ? "Carregando personagens…" : "Nenhum personagem disponível para colocar." },
+        { label: "Colocar personagem de jogador aqui", items: pcs, disabled: !pcs.length, disabledReason: characters.length ? "Todos os personagens dos jogadores já estão na cena." : "Nenhum personagem de jogador vinculado à campanha ainda." },
+        { label: "Colocar personagem do mestre aqui", items: masters, disabled: !masters.length, disabledReason: "Crie personagens do mestre na Preparação (pasta Personagens)." },
+        { label: "Adicionar marcador aqui", hint: "Criatura, aliado ou objeto", run: () => { pick = cell; selection = []; panel = "add"; renderSide(); showProps(); focusFirst(); } },
         { label: "Colar aqui", shortcut: "mod+v", disabled: !clipboard.length, disabledReason: "Copie ou recorte um marcador antes.", run: () => paste(cell) },
+      );
+    } else if (!mapOnly && draft.kind !== "text") {
+      // Sem mapa tático não há casas para posicionar personagens: explica e leva direto à troca do tipo de cena.
+      const why = !mapKind() ? "Personagens e marcadores entram em cenas de mapa tático." : "Escolha um cenário com grade para posicionar personagens.";
+      items.push(
+        { label: "Colocar personagem aqui", disabled: true, disabledReason: why, run: () => {} },
+        { label: mapKind() ? "Escolher mapa tático…" : "Usar mapa tático nesta cena…", run: () => openPanel("scenery") },
       );
     }
     if (cell && tactical && mode === "complete") {
@@ -940,6 +1513,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
           { label: "Ver como jogador", checked: simulate, disabled: !mapKind() || !meta, disabledReason: "A simulação vale para mapas táticos.", run: () => toggleSimulate() },
           ...(presenting ? [{ separator: true },
             { label: "Aplicar à cena atual…", disabled: dirty, disabledReason: "Salve a preparação antes de aplicar.", run: () => { applying = true; renderSide(); showProps(); } },
+            { label: "Recolocar personagens nas posições preparadas…", disabled: dirty || !mapKind(), disabledReason: dirty ? "Salve a preparação antes." : "Vale para cenas jogáveis.", run: () => { applying = "reposition"; loadReposition(); } },
             { label: "Reiniciar cena…", danger: true, disabled: dirty, disabledReason: "Salve a preparação antes de reiniciar a cena.", run: () => { applying = "restart"; renderSide(); showProps(); } }] : []),
           { separator: true },
           ...(drafts?.menuItems() || []),
@@ -968,7 +1542,14 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
         { label: "Recomeçar exploração", disabled: mode !== "complete" || !!toolProblem("resetExploration"), disabledReason: toolProblem("resetExploration") || "Disponível na interface Completa.", run: () => openPanel("resetExploration") },
         { label: "Ajustar grade…", disabled: mode !== "complete" || !!toolProblem("gridAdjust"), disabledReason: toolProblem("gridAdjust") || "Disponível na interface Completa.", run: () => openPanel("gridAdjust") },
       ] } : { id: "scene", label: "Cena", items: () => [
-        { label: "Cenário…", run: () => openPanel("scenery") },
+        { label: "Editar a composição (imagens desta cena)", disabled: draft.kind === "text", disabledReason: "Cenas textuais não têm imagem.", run: () => shell.setContext("compose") },
+        { label: "Adicionar imagem…", shortcut: "u", disabled: draft.kind === "text", disabledReason: "Cenas textuais não têm imagem.", run: () => pickImages() },
+        { label: "Abrir o mapa original…", disabled: !mapOf(draft.mapKey)?.id, disabledReason: "Cenários prontos não são editados aqui.", run: () => openOriginalMap() },
+        { label: "Criar mapa a partir da composição…", disabled: !compElements(), disabledReason: "Adicione imagens à composição antes.", run: () => mapFromComposition() },
+        { label: "Tornar a imagem jogável…", disabled: !(draft.kind === "image" && imageMap()), disabledReason: "Vale para cenas de imagem da campanha sem personagens.", run: () => { startChoice = { playable: true }; renderSide(); showProps(); } },
+        { label: "Área de entrada e posições iniciais", disabled: !mapKind() || !meta, disabledReason: "Vale para cenas jogáveis.", run: () => { shell.setContext("elements"); shell.togglePanel("characters", true); } },
+        { separator: true },
+        { label: "Selecionar outro mapa…", run: () => openPanel("scenery") },
         { label: "Texto compartilhável", run: () => openPanel("text") },
         { label: "Notas privadas", run: () => openPanel("notes") },
         { label: "Visibilidade", disabled: !mapKind(), disabledReason: "A visibilidade vale para mapas táticos.", run: () => openPanel("visibility") },
@@ -1013,6 +1594,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function renderLayers() {
     const host = shell.panel("layers");
     if (!host) return;
+    if (shell.context === "compose" && composable()) return renderCompLayers(host);
     if (!mapKind()) { host.innerHTML = '<p class="muted small se-empty-note">Camadas organizam marcadores de cenas com mapa tático.</p>'; host.onclick = host.ondblclick = host.onchange = null; return; }
     const mapName = meta?.name || mapOf(draft.mapKey)?.name || "sem cenário";
     // A Base é a referência do mapa (somente leitura): aparece com o nome do mapa e travada.
@@ -1053,9 +1635,12 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function renderCharacters() {
     const host = shell.panel("characters");
     if (!host) return;
-    if (!mapKind() || !meta) { host.innerHTML = '<p class="muted small se-empty-note">Personagens entram em cenas com mapa tático. Escolha um cenário com grade.</p>'; return; }
+    if (!mapKind() || !meta) {
+      host.innerHTML = `<p class="muted small se-empty-note">Personagens entram em cenas jogáveis (movimentação livre ou tática).${draft.kind === "image" && imageMap() ? "" : " Escolha um cenário com grade."}</p>${draft.kind === "image" && imageMap() ? button("Tornar esta imagem jogável…", "se-playable", "", "subtle small") : ""}`;
+      return;
+    }
     if (!host.querySelector("[data-se-char-search]")) {
-      host.innerHTML = `<div class="field se-char-search"><label for="se-char-q">Buscar personagem</label><input id="se-char-q" type="search" data-se-char-search maxlength="60" autocomplete="off" placeholder="Nome"></div><div data-se-char-list></div><p class="form-help">Arraste para o mapa ou use “Colocar no cursor” (a última casa apontada ou escolhida). A validação é a mesma de “Colocar aqui”.</p>`;
+      host.innerHTML = `<div class="field se-char-search"><label for="se-char-q">Buscar personagem</label><input id="se-char-q" type="search" data-se-char-search maxlength="60" autocomplete="off" placeholder="Nome"></div><div data-se-char-list></div><p class="form-help">Arraste para o mapa (arrastar de novo move o mesmo marcador) ou use “Colocar no cursor”. As posições ficam na preparação da cena e valem ao apresentá-la pela primeira vez ou ao reiniciá-la.</p>`;
     }
     renderCharacterList();
   }
@@ -1065,18 +1650,44 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (!list) return;
     const query = plain(host.querySelector("[data-se-char-search]")?.value);
     const match = (s) => !query || plain(s).includes(query);
-    const placed = new Set(draft.prepared.map((t) => t.characterId).filter(Boolean));
-    const pcs = characters.filter((c) => !placed.has(c.id) && match(c.name));
+    const pos = new Map(draft.prepared.map((t, i) => [t.characterId, i]).filter(([id]) => id));
+    // Todos os personagens dos jogadores: posicionados (arrastar move o mesmo marcador) e sem posição (entram pela área de entrada).
+    const pcs = characters.filter((c) => match(c.name));
     const masters = (npcs || []).filter((n) => !n.copy && match(`${n.name} ${n.summary || ""}`));
-    const item = (ref, name, sub) => `<li class="se-char" draggable="true" data-se-char="${esc(ref)}"><span>${esc(name)}${sub ? `<small>${esc(sub)}</small>` : ""}</span>${button(`Colocar <span class="sr-only">${esc(name)} </span>no cursor`, "se-place-cursor", ref, "subtle small")}</li>`;
-    list.innerHTML = `<h4 class="se-char-head">Personagens dos jogadores</h4>${pcs.length ? `<ul class="se-pick-list">${pcs.map((c) => item(`pc:${c.id}`, c.name, "Fora da cena")).join("")}</ul>` : `<p class="muted small">${query ? "Nenhum resultado." : characters.length ? "Todos os personagens da campanha já estão na cena." : "Nenhum personagem vinculado à campanha ainda."}</p>`}
-      <h4 class="se-char-head">Personagens do mestre</h4>${npcs == null ? '<p class="loading-line" role="status">Carregando…</p>' : masters.length ? `<ul class="se-pick-list">${masters.map((n) => item(`npc:${n.id}`, n.name, n.summary || "")).join("")}</ul>` : `<p class="muted small">${query ? "Nenhum resultado." : "Crie personagens do mestre na Preparação (pasta Personagens)."}</p>`}`;
+    const area = sceneEntryArea(draft.entry, mapEntries);
+    const item = (ref, name, sub, placedAt = -1) => `<li class="se-char${placedAt >= 0 ? " placed" : ""}" draggable="true" data-se-char="${esc(ref)}"><span>${esc(name)}${sub ? `<small>${esc(sub)}</small>` : ""}</span><span class="se-char-actions">${placedAt >= 0 ? `${button(`Mostrar<span class="sr-only"> ${esc(name)}</span>`, "se-char-show", String(placedAt), "subtle small")}${button(`Remover posição<span class="sr-only"> de ${esc(name)}</span>`, "se-char-unplace", String(placedAt), "text-button small")}` : button(`Colocar <span class="sr-only">${esc(name)} </span>no cursor`, "se-place-cursor", ref, "subtle small")}</span></li>`;
+    const where = (i) => { const t = draft.prepared[i]; return `Posicionado · coluna ${t.x + 1}, linha ${t.y + 1}${t.hidden ? " · oculto" : ""}`; };
+    const unplaced = area ? "Sem posição: entra pela área de entrada" : "Sem posição: entra pelo ponto padrão do mapa";
+    const missing = characters.filter((c) => !pos.has(c.id)).length;
+    list.innerHTML = `<h4 class="se-char-head">Personagens dos jogadores</h4>${pcs.length ? `<ul class="se-pick-list">${pcs.map((c) => item(`pc:${c.id}`, c.name, pos.has(c.id) ? where(pos.get(c.id)) : unplaced, pos.has(c.id) ? pos.get(c.id) : -1)).join("")}</ul>` : `<p class="muted small">${query ? "Nenhum resultado." : "Nenhum personagem vinculado à campanha ainda."}</p>`}
+      <h4 class="se-char-head">Personagens do mestre</h4>${npcs == null ? '<p class="loading-line" role="status">Carregando…</p>' : masters.length ? `<ul class="se-pick-list">${masters.map((n) => item(`npc:${n.id}`, n.name, n.summary || "")).join("")}</ul><p class="form-help">Marque “Oculto” no marcador para preparar NPCs e emboscadas que só você vê.</p>` : `<p class="muted small">${query ? "Nenhum resultado." : "Crie personagens do mestre na Preparação (pasta Personagens)."}</p>`}
+      ${entrySection(area, missing)}`;
+  }
+  /** Área de entrada da cena: escolha entre os pontos do mapa, área própria e distribuição automática do grupo. */
+  function entrySection(area, missing) {
+    const value = draft.entry?.ref ? `ref:${draft.entry.ref}` : draft.entry ? "scene" : "";
+    const source = !area ? "Nenhuma: personagens sem posição usam a regra antiga (primeira linha livre do mapa)." : area.source === "scene" ? `Área própria desta cena · ${area.rect.w} × ${area.rect.h} casas a partir da coluna ${area.rect.x + 1}, linha ${area.rect.y + 1}.` : area.source === "map-ref" ? `Ponto do mapa “${area.entry.name}” (${area.rect.w} × ${area.rect.h} casas).` : `Entrada do grupo do mapa “${area.entry.name}” (padrão).`;
+    const options = [["", "Automática (entrada do grupo do mapa)"], ...mapEntries.map((e) => [`ref:${e.id}`, `Ponto do mapa: ${e.name}`]), ...(draft.entry && !draft.entry.ref ? [["scene", "Área própria desta cena"]] : [])];
+    return `<section class="se-entry" aria-labelledby="se-entry-h"><h4 class="se-char-head" id="se-entry-h">Área de entrada${helpButton("campanhas.cenas.posicoes", "Posições iniciais e área de entrada")}</h4>
+      <div class="field"><label for="se-entry">Onde o grupo chega</label><select id="se-entry" data-se-entry>${opt(options, value)}</select></div>
+      <p class="form-help">${esc(source)} Prioridade: posição preparada na cena › área de entrada da cena › entrada do mapa › regra automática.</p>
+      <div class="form-actions">${button("Desenhar área da cena", "se-tool", "entry", "subtle small")}${draft.entry ? button("Usar a entrada do mapa", "se-entry-clear", "", "text-button small") : ""}${button(`Distribuir grupo na área inicial${missing ? ` (${missing})` : ""}`, "se-distribute", "", "subtle small", area && missing ? "" : `aria-disabled="true" data-tip="${esc(!area ? "Defina uma área de entrada antes." : "Todos os personagens já têm posição.")}"`)}</div></section>`;
+  }
+  /** Coloca os personagens sem posição na área de entrada, sem colisões, sem mexer nas posições fixadas manualmente. */
+  function distributeParty() {
+    const area = sceneEntryArea(draft.entry, mapEntries);
+    if (!area) return say("Defina uma área de entrada (Desenhar área da cena) ou escolha um ponto do mapa.");
+    const result = distributeInArea({ cells: layer?.cells, width: width(), height: height(), tokens: draft.prepared, area: area.rect, characters, free: freeOn(), layer: activeTokenLayer() });
+    if (!result.placed.length) return say(result.missing.length ? "Não há espaço livre na área de entrada: aumente a área ou libere casas." : "Todos os personagens já têm posição.");
+    change("Distribuir grupo na área inicial", () => { draft.prepared = result.tokens; });
+    refresh();
+    say(result.missing.length ? `${result.placed.length} posicionado(s); ${result.missing.length} sem espaço na área (entram pela regra automática ao apresentar).` : `${result.placed.length} personagem(ns) distribuído(s) na área de entrada. Ajuste à vontade.`);
   }
   function renderHistory() {
     const host = shell.panel("history");
     if (host) renderHistoryPanel(host, history);
   }
-  const renderPanels = () => { renderLayers(); renderStructure(); renderCharacters(); renderHistory(); };
+  const renderPanels = () => { renderLayers(); renderStructure(); renderCharacters(); renderHistory(); if (!mapOnly) renderAssets(); };
 
   // ---------- Renderização ----------
   function renderStatus() {
@@ -1090,6 +1701,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
         busy ? '<span class="ed-chip">Salvando…</span>' : dirty ? '<span class="ed-chip dirty">Alterações não salvas</span>' : saved.id || mapOnly ? '<span class="ed-chip ok">Preparação salva</span>' : "",
         pendingLive && !dirty ? '<span class="ed-chip pending">Alterações não aplicadas à mesa.</span>' : "",
         !presenting && meta?.inUse ? '<span class="ed-chip pending">Este mapa está na mesa: salvar guarda a preparação sem mudar a partida.</span>' : "",
+        composing() ? '<span class="ed-chip private">Composição: alterando só esta cena</span>' : "",
+        mapOnly && meta ? '<span class="ed-chip pending">Preparação do mapa: vale para as cenas que o compartilham</span>' : "",
       ].join(""),
     });
     q("#se-apply-slot").innerHTML = presenting && saved.id && (pendingLive || mapKind()) ? button(pendingLive ? "Aplicar à cena atual…" : "Aplicar preparação à cena atual…", "se-apply", "", "subtle", dirty ? 'aria-disabled="true" data-tip="Salve a preparação antes de aplicar."' : "") : "";
@@ -1100,17 +1713,29 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     q("[data-action=se-save]").disabled = busy || (!dirty && !!(saved.id || mapOnly));
   }
   function renderStage() {
-    const text = q("#se-text");
-    const showText = draft.kind === "text" || !draft.mapKey;
+    const text = q("#se-text"), start = q("#se-start"), comp = q("#se-compose");
+    const showText = draft.kind === "text";
+    // Cena sem fundo: o palco inteiro aceita imagens soltas; as opções aparecem no centro (ADR-090).
+    const showStart = !showText && !draft.mapKey && !mapOnly;
+    const showComp = !showText && !showStart && composing() && !simulate;
     text.hidden = !showText;
-    boardHost.hidden = showText;
-    if (showText) text.innerHTML = draft.kind === "text" ? `<article class="se-text-card"><span class="eyebrow">Apresentação textual</span><h3>${esc(draft.name || "Cena sem nome")}</h3><p>${esc(draft.sharedText || "Escreva o texto compartilhável em Cena › Texto compartilhável.")}</p></article>` : `<div class="empty ed-stage-empty"><h3>Escolha um cenário</h3><p>Use “Escolher cenário” para ver miniaturas de mapas prontos e imagens da campanha.</p>${button("Escolher cenário", "se-tool", "scenery", "primary")}</div>`;
+    start.hidden = !showStart;
+    comp.hidden = !showComp;
+    boardHost.hidden = showText || showStart || showComp;
+    if (showText) text.innerHTML = `<article class="se-text-card"><span class="eyebrow">Apresentação textual</span><h3>${esc(draft.name || "Cena sem nome")}</h3><p>${esc(draft.sharedText || "Escreva o texto compartilhável em Cena › Texto compartilhável.")}</p></article>`;
+    if (showStart && !start.querySelector(".se-start-card")) start.innerHTML = `<div class="se-start-card" role="region" aria-labelledby="se-start-h"><h3 id="se-start-h">Como deseja começar?</h3><p>Arraste uma imagem para qualquer ponto desta área ou escolha uma opção.</p><div class="se-start-grid">
+      <button type="button" class="se-start-option primary" data-action="se-start" data-id="upload">${icon("image")}<strong>Enviar imagem do computador</strong><small>PNG ou JPEG até 10 MB; várias de uma vez</small></button>
+      <button type="button" class="se-start-option" data-action="se-start" data-id="map">${icon("scenery")}<strong>Escolher um mapa existente</strong><small>Mapas e imagens da campanha</small></button>
+      <button type="button" class="se-start-option" data-action="se-start" data-id="model">${icon("layers")}<strong>Usar um modelo</strong><small>Cenários prontos do Eternnus</small></button>
+      <button type="button" class="se-start-option" data-action="se-start" data-id="blank">${icon("rect")}<strong>Começar com uma área em branco</strong><small>Fundo liso para compor com imagens</small></button>
+    </div><p class="form-help">Também dá para colar uma imagem (Ctrl+V) ou arrastar do painel Acervo. Nada é mostrado aos jogadores até você apresentar a cena.</p></div>`;
+    if (showComp) { mountComposer(); composer.invalidate(); }
     renderSimBanner();
-    const hint = simulate ? "" : PAINT.has(tool) ? `${helpOf(tool) || labelOf(tool)} Teclado: setas e Enter.` : helpOf(tool);
+    const hint = simulate || showComp ? "" : PAINT.has(tool) || tool === "entry" ? `${helpOf(tool) || labelOf(tool)} Teclado: setas e Enter.` : helpOf(tool);
     const hintEl = q("#se-hint");
-    hintEl.textContent = showText ? "" : hint;
-    hintEl.hidden = showText || !hint;
-    redraw();
+    hintEl.textContent = showText || showStart ? "" : hint;
+    hintEl.hidden = showText || showStart || !hint;
+    if (!showComp) redraw();
   }
   /** Simulação: escolher de quem é a visão (personagens posicionados). Sem personagem, só luz comum e revelações. */
   function renderSimBanner() {
@@ -1129,7 +1754,11 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function sidePanel() {
     if (error) return `<div class="se-panel"><p class="form-error" role="alert">${esc(error)}</p>${button("Entendi", "se-dismiss", "", "subtle")}</div>`;
     if (conflict) return `<div class="se-panel se-conflict" role="alert"><h3>Outra tela salvou antes</h3><p>${esc(conflict)}</p><p class="form-help">Suas alterações continuam aqui. Recarregar guarda este rascunho no navegador (Arquivo › Rascunho local…); "Salvar como nova cena" grava a cena numa cópia, sem tocar na outra.</p><div class="form-actions">${button("Continuar editando", "se-dismiss", "", "subtle")}${!mapOnly && saved.id ? button("Salvar como nova cena", "se-save-copy", "", "subtle") : ""}${button("Recarregar a versão salva", "se-reload", "", "danger")}</div></div>`;
+    if (startChoice && !startChoice.pick) return startPanel();
+    if (applying === "reposition") return repositionPanel();
     if (applying) return applyPanel();
+    if (shell.context === "compose" && !mapOnly && draft.kind !== "text") return composePanel();
+    if (panel === "entries" || (tool === "entry" && panel === "overview" && meta)) return entriesPanel();
     if (panel === "token" && selection.length > 1) return multiPanel();
     if (panel === "token" && selection.length === 1 && draft.prepared[selection[0]]) return tokenPanel(draft.prepared[selection[0]]);
     if (panel === "add" && pick) return addPanel();
@@ -1204,12 +1833,47 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   }
   function applyPanel() {
     if (applying === "restart") return `<div class="se-panel"><h3>Reiniciar cena com o novo cenário?</h3><p>Os jogadores passam a ver o cenário preparado:</p><ul><li>marcadores voltam ao arranjo preparado;</li><li>paredes, portas, luzes, marcas e névoa voltam à preparação salva;</li><li>a exploração recomeça.</li></ul><p class="form-help">Fichas, conversa, rolagens e histórico continuam.</p><div class="form-actions">${button("Cancelar", "se-apply", "", "subtle")}${button("Reiniciar cena", "se-restart", "", "danger")}</div></div>`;
-    const parts = [live.textPending && ["text", "Nome e texto para os jogadores"], !live.mapPending && ["vision", "Visibilidade da cena"], meta?.pending && !live.mapPending && ["layer", "Paredes, portas, luzes e marcas do mapa"]].filter(Boolean);
+    const parts = [live.textPending && ["text", "Nome e texto para os jogadores"], !live.mapPending && ["vision", "Visibilidade da cena"], meta?.pending && !live.mapPending && ["layer", "Paredes, portas, luzes e marcas do mapa"], live.compositionPending && !live.mapPending && ["composition", "Imagens da composição da cena"]].filter(Boolean);
     const tokens = mapKind() && !live.mapPending;
     // Revisar diferenças: o que muda na mesa se a preparação do mapa for aplicada (portas abertas/fechadas não contam).
     const diff = meta?.pending && meta.live && savedLayer ? diffSummary(layerDiff(meta.live, savedLayer)) : [];
     const review = meta?.pending ? `<div class="se-diff" role="note"><h4>Diferenças do mapa em relação à mesa</h4>${diff.length ? `<ul>${diff.map((d) => `<li>${esc(d)}</li>`).join("")}</ul>` : '<p class="small">Só ajustes que não mudam paredes, luzes nem marcas.</p>'}<p class="form-help">Posições, exploração, revelações, portas abertas ou fechadas, fichas e histórico continuam.</p></div>` : "";
     return `<form class="se-panel" data-apply-form><h3>Aplicar à cena atual${helpButton("campanhas.cenas.aplicar", "Aplicar à cena atual")}</h3><p>Escolha o que da preparação salva passa a valer na mesa agora. Os jogadores veem o resultado.</p>${review}<fieldset><legend>Aplicar</legend>${parts.map(([k, l]) => `<label class="check"><input type="checkbox" name="${k}" ${k !== "vision" ? "checked" : ""}> ${esc(l)}</label>`).join("")}${tokens ? `<label class="check"><input type="checkbox" name="tokens"> ${esc(APPLY_TOKENS.label)}</label><p class="form-help">${esc(APPLY_TOKENS.help)}</p>` : ""}</fieldset><p class="form-help">${esc(APPLY_PRESERVES)}</p>${live.mapPending ? `<div class="notice-box"><p>O cenário mudou na preparação. Trocar de cenário recomeça a exploração, então usa “Reiniciar cena”.</p>${button("Reiniciar cena com o novo cenário…", "se-restart-ask", "", "subtle")}</div>` : ""}<div class="form-actions">${button("Cancelar", "se-dismiss", "", "subtle")}<button type="submit" class="primary" ${parts.length || tokens ? "" : "disabled"}>Aplicar à mesa</button></div></form>`;
+  }
+
+  /** Pontos de entrada do mapa (reutilizáveis; editáveis na preparação do mapa) ou a área de entrada desta cena. */
+  function entriesPanel() {
+    const editable = mapOnly && meta?.entriesEditable;
+    const rows = mapEntries.map((e) => `<li class="se-entry-item"><div class="field"><label for="se-en-${esc(e.id)}">Nome</label><input id="se-en-${esc(e.id)}" maxlength="40" data-entry-field="${esc(e.id)}:name" value="${esc(e.name)}" ${editable ? "" : "disabled"}></div><div class="field"><label for="se-ek-${esc(e.id)}">Tipo</label><select id="se-ek-${esc(e.id)}" data-entry-field="${esc(e.id)}:kind" ${editable ? "" : "disabled"}>${opt(ENTRY_KINDS, e.kind)}</select></div><p class="form-help">${e.w} × ${e.h} casas a partir da coluna ${e.x + 1}, linha ${e.y + 1}.</p>${editable ? button(`Excluir<span class="sr-only"> ${esc(e.name)}</span>`, "se-entry-remove", e.id, "text-button small") : ""}</li>`).join("");
+    const problem = entriesProblem(mapEntries, width(), height());
+    if (mapOnly) return `<div class="se-panel"><h3>Pontos de entrada${helpButton("campanhas.cenas.posicoes", "Posições iniciais e área de entrada")}</h3><p class="form-help">${esc(helpOf("entry"))} São do mapa: valem para qualquer cena que o use e nunca movem personagens já posicionados numa cena.</p>${editable ? "" : `<p class="notice-box">${esc(toolProblem("entry") || "")}</p>`}${rows ? `<ol class="se-entry-list">${rows}</ol>` : '<p class="muted small">Nenhum ponto ainda. Use a ferramenta Área de entrada e arraste sobre as casas.</p>'}${problem && mapEntries.length ? `<p class="form-error" role="alert">${esc(problem)}</p>` : ""}<p class="form-help">A primeira “Entrada do grupo” é a padrão das cenas. Salve com “Salvar preparação”.</p></div>`;
+    return `<div class="se-panel"><h3>Área de entrada da cena</h3><p class="form-help">${esc(helpOf("entry"))}</p>${entrySection(sceneEntryArea(draft.entry, mapEntries), characters.filter((c) => !draft.prepared.some((t) => t.characterId === c.id)).length)}${rows ? `<h4>Pontos do mapa</h4><ol class="se-entry-list">${rows}</ol><p class="form-help">Edite os pontos do mapa na preparação do mapa (Preparação › Mapas › Preparar névoa e luz).</p>` : ""}</div>`;
+  }
+  /** Recolocar personagens nas posições preparadas: prévia das mudanças calculada pelo servidor e confirmação explícita. */
+  let reposition = null;
+  async function loadReposition() {
+    reposition = { loading: true }; renderSide(); showProps();
+    try {
+      const r = await api(`/sessions/${live.sessionId}/scene/reposition?sceneId=${encodeURIComponent(saved.id)}`, "GET", undefined, { background: true });
+      reposition = { moves: r.moves || [], unchanged: r.unchanged || 0 };
+    } catch (e) { reposition = { error: e.message }; }
+    if (applying === "reposition") renderSide();
+  }
+  function repositionPanel() {
+    const at = (p) => (p ? `coluna ${p.x + 1}, linha ${p.y + 1}` : "");
+    const body = !reposition || reposition.loading ? '<p class="loading-line" role="status">Calculando as mudanças…</p>'
+      : reposition.error ? `<p class="form-error" role="alert">${esc(reposition.error)}</p>`
+      : reposition.moves.length ? `<ul class="se-moves">${reposition.moves.map((m) => `<li><strong>${esc(m.label || "Marcador")}</strong>: ${m.from && m.to ? `${at(m.from)} → ${at(m.to)}` : m.to ? `entra em ${at(m.to)}` : "sai da mesa"}</li>`).join("")}</ul>${reposition.unchanged ? `<p class="small">${reposition.unchanged} marcador(es) já estão na posição preparada.</p>` : ""}`
+      : '<p class="small">Todos já estão nas posições preparadas. Nada muda.</p>';
+    return `<div class="se-panel" role="region" aria-labelledby="se-rp-h"><h3 id="se-rp-h">Recolocar personagens nas posições preparadas?</h3><p>Os jogadores veem os marcadores mudarem de lugar na mesa.</p>${body}<p class="form-help">Continuam: fichas, histórico, exploração, revelações, portas abertas ou fechadas e o estado dos personagens. Criaturas fora do arranjo preparado saem da mesa.</p><div class="form-actions">${button("Cancelar", "se-dismiss", "", "subtle")}${button("Recolocar agora", "se-reposition-go", "", "danger", reposition?.moves?.length ? "" : 'aria-disabled="true" data-tip="Nada a recolocar."')}</div></div>`;
+  }
+  async function applyReposition() {
+    try {
+      const result = await api(`/sessions/${live.sessionId}/scene/apply`, "POST", { sceneId: saved.id, text: false, vision: false, layer: false, tokens: true, composition: false, sceneRevision: saved.revision, prepVersion: meta?.prepVersion || null });
+      applying = false; reposition = null;
+      say(result.applied?.length ? "Personagens recolocados nas posições preparadas." : "Nada mudou: a mesa já estava assim.");
+      renderSide();
+    } catch (e) { if (e.status === 409) { applying = false; conflict = e.message; } else say(e.message); renderSide(); }
   }
 
   function renderSide() {
@@ -1218,7 +1882,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const hidden = mode === "basic" ? hiddenCustomizations({ layer: meta ? layer : null, scene: { layerMode: draft.layerMode, description: draft.description }, tokens: draft.prepared }) : [];
     const chip = hidden.length && panel !== "hidden" ? `<button type="button" class="se-hidden-chip" data-action="se-panel" data-id="hidden">Ajustes avançados ativos (${hidden.length}) · ver detalhes</button>` : "";
     shell.panel("props").innerHTML = chip + sidePanel();
-    syncWallBar();
+    if (composing()) syncComposeBar(); else syncWallBar();
     if (panel === "scenery" && q("#se-picker")) mountPicker();
     if (panel === "gridAdjust" && q("#se-grid")) mountGrid();
     if (applying || conflict || error) showProps();
@@ -1244,10 +1908,13 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   async function chooseMap(m) {
     if (!m || m.key === draft.mapKey) return;
     if (draft.prepared.length && !confirm("Trocar o cenário remove os marcadores preparados, porque as posições pertencem à grade anterior. Continuar?")) return renderSide();
+    if (compElements() && !confirm("Trocar o cenário remove a composição desta cena (imagens só desta cena). O mapa anterior continua em Mapas. Continuar?")) return renderSide();
     if (layerDirty && !confirm("As mudanças de paredes, luzes e névoa ainda não salvas deste mapa serão descartadas. Continuar?")) return renderSide();
     commitTyping();
-    draft.mapKey = m.key; draft.prepared = []; selection = [];
+    draft.mapKey = m.key; draft.prepared = []; draft.composition = null; draft.entry = null; pendingBlank = null; selection = [];
+    composer?.select([], false);
     try { await loadLayer(); } catch (e) { say(e.message); }
+    schedulePreview();
     resetHistory("Cenário trocado. O histórico de desfazer recomeça a partir daqui.");
     recomputeDirty();
     renderAll(false);
@@ -1292,6 +1959,11 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (dismissHelp()) return;
     if (isTypingTarget(e.target)) { commitTyping(); e.target.blur(); return; }
     if (simulate) return toggleSimulate(false);
+    if (startChoice) { startChoice = null; return renderSide(); }
+    if (composing() && composer) {
+      if (composer.surface.cancelInteraction()) return say("Ação cancelada.");
+      if (composer.selection.size) return composer.select([], false);
+    }
     if (wallPts.length) { wallPts = []; say("Traço de parede cancelado."); return redraw(); }
     if (vdrag) { vdrag = null; return redraw(); }
     if (wallSel.length) { wallSel = []; if (panel === "walls") panel = "overview"; return refreshSelection(); }
@@ -1306,9 +1978,21 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     name: mapOnly ? "" : draft.name.trim(), description: draft.description, kind: draft.kind, mapKind: null, mapKey: draft.kind === "text" ? null : draft.mapKey,
     sharedText: draft.sharedText, privateNotes: draft.privateNotes, visionMode: mapKind() ? draft.visionMode || null : null, order: Number(draft.order) || 0,
     revision: saved.revision, layerMode: draft.layerMode, layers: sceneLayers(draft.layers),
+    // Área de entrada (ADR-090): JSON da cena; "" limpa (vale a entrada do mapa).
+    entry: mapKind() && draft.entry ? JSON.stringify(draft.entry.ref ? { ref: draft.entry.ref } : { x: draft.entry.x, y: draft.entry.y, w: draft.entry.w, h: draft.entry.h }) : "",
     prepared: mapKind() ? draft.prepared.map((t) => ({ characterId: t.characterId || null, masterCharacterId: t.masterCharacterId || null, label: t.label, side: t.side, x: t.x, y: t.y, fx: freeOn() ? t.fx ?? null : null, fy: freeOn() ? t.fy ?? null : null, hidden: !!t.hidden, light: t.light ?? null, appearance: t.appearance ?? null, size: t.size ?? null, imageUrl: t.imageUrl ?? null, layer: tokenLayerOf(t.layer, draft.layers) })) : [],
   });
   async function saveLayer() {
+    // Pontos de entrada do mapa (preparação do mapa): recurso compartilhado, com a revisão do próprio mapa.
+    if (entriesDirty()) {
+      const problem = entriesProblem(mapEntries, width(), height());
+      if (problem) throw new Error(problem);
+      const sentEntries = clone(mapEntries);
+      const r = await api(`${base}/assets/entries?key=${encodeURIComponent(draft.mapKey)}`, "PUT", { entries: sentEntries, revision: meta.mapRevision }, { background: true });
+      meta.mapRevision = r.revision; savedEntries = sentEntries;
+      const m = mapOf(draft.mapKey); if (m) m.revision = r.revision;
+    }
+    if (sameSnapshot(layer, savedLayer) && !resetExploration) return;
     const sent = clone(layer);
     const result = await api(`${base}/assets/layers?key=${encodeURIComponent(draft.mapKey)}${saved.id ? `&scene=${encodeURIComponent(saved.id)}` : ""}`, "PUT", {
       fog: sent.fog, cells: sent.cells, revealed: sent.revealed,
@@ -1331,11 +2015,13 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       else if (!saved.id) {
         const sent = clone(draft);
         const created = await api(`${base}/scenes`, "POST", { ...sceneBody(), folderId: folderId || null }, { background: true });
-        saved = { id: created.id, revision: created.revision }; savedScene = sent;
+        saved = { id: created.id, revision: created.revision }; savedScene = { ...sent, composition: savedScene.composition };
         if (layerDirty) await saveLayer();
+        if (compositionDirty()) await saveComposition(sent.composition);
       } else {
         if (layerDirty) await saveLayer();
-        if (sceneDirty) { const sent = clone(draft); const r = await api(`${base}/scenes/${saved.id}`, "PUT", sceneBody(), { background: true }); saved.revision = r.revision; savedScene = sent; }
+        if (!sameSnapshot(sceneFields(draft), sceneFields(savedScene))) { const sent = clone(draft); const r = await api(`${base}/scenes/${saved.id}`, "PUT", sceneBody(), { background: true }); saved.revision = r.revision; savedScene = { ...sent, composition: savedScene.composition }; }
+        if (compositionDirty()) await saveComposition(clone(draft.composition));
       }
       if (layerLocked()) {
         savedLayerMode = draft.layerMode;
@@ -1350,11 +2036,26 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       renderSide();
     } finally { busy = false; recomputeDirty(); renderAll(false); }
   }
+  /**
+   * Composição da cena: documento + sobreposição achatada (só o que os jogadores podem ver, PNG transparente).
+   * Sem elementos, a composição é removida. A mesa só muda ao apresentar, reiniciar ou aplicar.
+   */
+  async function saveComposition(sent) {
+    const empty = !sent || !sent.elements.length;
+    if (!empty) { const problem = CP.validateComposition(sent); if (problem) throw new Error(problem); }
+    const fd = new FormData();
+    fd.append("composition", empty ? "" : CP.serializeComposition(sent));
+    fd.append("revision", String(saved.revision));
+    if (!empty) { const blob = await flattenOverlay(sent, imageCache); if (blob) fd.append("file", blob, "composicao.png"); }
+    const r = await api(`${base}/scenes/${saved.id}/composition`, "PUT", fd, { background: true });
+    saved.revision = r.revision;
+    savedScene = { ...savedScene, composition: sent };
+  }
   async function apply(form) {
     const data = Object.fromEntries(new FormData(form));
-    if (!data.text && !data.vision && !data.layer && !data.tokens) return say("Escolha o que aplicar.");
+    if (!data.text && !data.vision && !data.layer && !data.tokens && !data.composition) return say("Escolha o que aplicar.");
     try {
-      const result = await api(`/sessions/${live.sessionId}/scene/apply`, "POST", { sceneId: saved.id, text: !!data.text, vision: !!data.vision, layer: !!data.layer, tokens: !!data.tokens, sceneRevision: saved.revision, prepVersion: meta?.prepVersion || null });
+      const result = await api(`/sessions/${live.sessionId}/scene/apply`, "POST", { sceneId: saved.id, text: !!data.text, vision: !!data.vision, layer: !!data.layer, tokens: !!data.tokens, composition: !!data.composition, sceneRevision: saved.revision, prepVersion: meta?.prepVersion || null });
       applying = false;
       const fresh = await api(`${base}/scenes/${saved.id}`, "GET", undefined, { background: true }); live = fresh.live; saved.revision = fresh.revision;
       if (meta) await loadLayer();
@@ -1453,6 +2154,19 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       case "se-add-character": return pick && placeRef(`pc:${id}`, pick);
       case "se-add-npc": return pick && placeRef(`npc:${id}`, pick);
       case "se-light-remove": change("Apagar foco de luz", () => { layer = { ...layer, lights: layer.lights.filter((l) => l.x !== pick.x || l.y !== pick.y) }; }); pick = null; panel = "overview"; return refresh();
+      case "se-start": return startAction(id);
+      case "se-start-cancel": startChoice = null; return renderSide();
+      case "se-replace-bg": startChoice = { files: null, replace: true, pick: true }; return pickImages();
+      case "se-comp": return composeAction(id);
+      case "se-open-map": return openOriginalMap();
+      case "se-map-from-comp": return mapFromComposition();
+      case "se-playable": startChoice = { playable: true }; renderSide(); return showProps();
+      case "se-char-show": { const i = Number(id); if (!draft.prepared[i]) return; if (shell.context !== "elements") shell.setContext("elements"); selection = [i]; panel = "token"; lastCell = { x: draft.prepared[i].x, y: draft.prepared[i].y }; return refreshSelection(); }
+      case "se-char-unplace": { const i = Number(id); if (!draft.prepared[i]) return; return removeIndices([i], "Remover posição preparada"); }
+      case "se-entry-clear": change("Usar a entrada do mapa", () => { draft.entry = null; }); return refresh();
+      case "se-distribute": return distributeParty();
+      case "se-entry-remove": change("Excluir ponto de entrada", () => { mapEntries = mapEntries.filter((x) => x.id !== id); }); return refresh();
+      case "se-reposition-go": return applyReposition();
       case "se-mark-remove": change("Remover marca oculta", () => { layer = { ...layer, marks: layer.marks.filter((m) => m.x !== pick.x || m.y !== pick.y) }; }); pick = null; panel = "overview"; return refresh();
     }
   }
@@ -1469,6 +2183,20 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function onInput(e) {
     const t = e.target;
     if (t.matches("[data-se-char-search]")) return renderCharacterList();
+    if (t.matches("[data-asset-q]")) return renderAssets();
+    if (t.matches("[data-comp-name]")) {
+      const el = composer?.selected()[0];
+      if (!el || !composer.editable(el)) return;
+      beginTyping("Renomear imagem");
+      el.name = t.value.slice(0, 80); recomputeDirty(); syncComposeBar();
+      return;
+    }
+    if (t.dataset.entryField?.endsWith(":name")) {
+      const id = t.dataset.entryField.split(":")[0];
+      beginTyping("Renomear ponto de entrada");
+      mapEntries = mapEntries.map((x) => (x.id === id ? { ...x, name: t.value.slice(0, 40) } : x));
+      return recomputeDirty();
+    }
     if (t.id === "se-name") {
       beginTyping("Renomear cena");
       draft.name = t.value; recomputeDirty();
@@ -1503,10 +2231,35 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   async function onChange(e) {
     const t = e.target;
     if (t.dataset.wallDraw || t.dataset.wallPatch || t.dataset.wallCoord) return onWallInput(t);
+    if (t.id === "se-files") {
+      const files = [...(t.files || [])];
+      t.value = "";
+      if (startChoice?.pick) { startChoice = null; const { files: ok, problems } = splitImageFiles(files); if (problems.length) say(problems.join(" ")); if (ok.length) { startChoice = { files: ok, replace: true }; renderSide(); showProps(); } return; }
+      return handleFiles(files, null);
+    }
+    if (t.matches("[data-se-entry]")) {
+      const v = t.value;
+      if (v === "scene") return;
+      change(v ? "Entrada da cena pelo ponto do mapa" : "Usar a entrada do mapa", () => { draft.entry = v.startsWith("ref:") ? { ref: v.slice(4) } : null; });
+      return refresh();
+    }
+    if (t.dataset.entryField?.endsWith(":kind")) {
+      const id = t.dataset.entryField.split(":")[0];
+      change("Tipo do ponto de entrada", () => { mapEntries = mapEntries.map((x) => (x.id === id ? { ...x, kind: t.value } : x)); });
+      return refresh();
+    }
+    if (t.dataset.compFlag) { commitTyping(); composer?.toggle(t.dataset.compFlag); return afterCompose(); }
+    if (t.dataset.compSecret) {
+      const id = t.dataset.compSecret, on = t.checked;
+      compChange(on ? "Camada só do mestre" : "Camada visível aos jogadores", () => { draft.composition.layers = draft.composition.layers.map((l) => { if (l.id !== id) return l; const n = { ...l }; if (on) n.secret = true; else delete n.secret; return n; }); });
+      return;
+    }
     if (t.name === "se-kind") {
       if (draft.prepared.length && t.value !== "map" && !confirm("Sem grade, os marcadores preparados saem da cena. Continuar?")) { t.checked = false; return renderSide(); }
+      if (t.value === "text" && compElements() && !confirm("Cenas textuais não têm imagem: a composição desta cena será removida ao salvar. Continuar?")) { t.checked = false; return renderSide(); }
       commitTyping();
-      draft.kind = t.value; if (t.value !== "map") { draft.prepared = []; selection = []; }
+      draft.kind = t.value; if (t.value !== "map") { draft.prepared = []; selection = []; draft.entry = null; }
+      if (t.value === "text") { draft.composition = null; pendingBlank = null; }
       const m = mapOf(draft.mapKey);
       if (draft.kind === "text" || (m && !acceptsMap(draft.kind, m))) { draft.mapKey = ""; layer = null; meta = null; savedLayer = null; }
       else await loadLayer().catch((x) => say(x.message));
@@ -1533,6 +2286,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     e.preventDefault();
     const data = Object.fromEntries(new FormData(f));
     if (f.matches("[data-token-form]")) return;
+    if (f.matches("[data-start-form]")) return confirmStart(f);
     if (f.matches("[data-add-marker]")) {
       const label = String(data.label || "").trim();
       if (!label) return say("Dê um nome ao marcador.");
@@ -1607,7 +2361,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     e.dataTransfer.setData("text/plain", li.querySelector("span")?.firstChild?.textContent || "");
     e.dataTransfer.effectAllowed = "copy";
   };
-  const accepts = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes(DND) && !!meta && mapKind() && !simulate;
+  const accepts = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes(DND) && !!meta && mapKind() && !simulate && !composing();
   const onDragOver = (e) => {
     if (!accepts(e)) return;
     e.preventDefault();
@@ -1642,8 +2396,34 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   shell.stage.addEventListener("dragleave", onDragLeave);
   shell.stage.addEventListener("drop", onDrop2);
   boardHost.addEventListener("dblclick", onDoubleClick);
+  // Botão direito fora do canvas (imagem sem grade, palco vazio): mesmo menu do editor, nunca o do navegador.
+  const onStageMenu = (e) => {
+    if (e.target.closest("canvas, input, textarea, select, [contenteditable]")) return;
+    e.preventDefault();
+    onContext({ cell: null, token: null, x: e.clientX, y: e.clientY });
+  };
+  shell.stage.addEventListener("contextmenu", onStageMenu);
+  // Imagens: soltar no palco inteiro (também na cena vazia), colar com Ctrl+V e arrastar do Acervo (ADR-090).
+  const disposeDrop = mapOnly ? () => {} : mountImageDrop(shell.stage, {
+    enabled: () => !simulate && !busy && !uploading && draft.kind !== "text",
+    onFiles: (files, p) => handleFiles(files, p),
+    onAsset: (item, p) => addFromAsset(item, p),
+  });
+  const pasting = listenPaste((files) => handleFiles(files, null), {
+    enabled: () => !closed && !mapOnly && !simulate,
+    fallback: () => { if (composing()) { if (!composer?.paste(composer.lastPointer())) say("Nada para colar. Copie uma imagem ou um elemento antes."); else afterCompose(); } else paste(); },
+  });
+  function startAction(id) {
+    if (id === "upload") return pickImages();
+    if (id === "map" || id === "model") { openPanel("scenery"); return say(id === "model" ? "Os cenários prontos ficam no grupo “Cenários prontos”." : "Escolha um mapa da campanha."); }
+    if (id === "blank") { startChoice = { blank: true }; renderSide(); showProps(); }
+  }
 
   function cleanup() {
+    disposeDrop(); pasting.dispose(); composer?.destroy(); clearTimeout(previewTimer2);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    imageCache.clear();
+    shell.stage.removeEventListener("contextmenu", onStageMenu);
     closed = true;
     root.removeEventListener("click", onClick); root.removeEventListener("keydown", onWallKey); clearTimeout(previewTimer); root.removeEventListener("input", onInput); root.removeEventListener("change", onChange);
     root.removeEventListener("submit", onSubmit); root.removeEventListener("focusout", onFocusOut); root.removeEventListener("dragstart", onDragStart);
@@ -1695,12 +2475,22 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     try { await loadLayer(); } catch (e) { error = e.message; }
     if (closed) return;
     drafts = attachSceneDrafts();
-    if (!saved.id && !mapOnly && !draft.mapKey && draft.kind !== "text") panel = "scenery";
+    // Cena sem fundo: o palco mostra "Como deseja começar?" e aceita imagens soltas em qualquer ponto (ADR-090).
+    if (shell.context === "compose" && composable()) onWorkContext("compose");
     recomputeDirty();
     renderAll();
-    if (panel === "scenery") showProps();
+    schedulePreview();
     if (!mapOnly) loadNpcs();
     if (!mapOnly && !saved.id) nameInput?.focus(); else board.focus();
   })();
-  return shell.whenClosed.then(() => ({ id: saved.id }));
+  return shell.whenClosed.then(async () => {
+    // "Abrir o mapa original": edita o recurso compartilhado e volta a esta cena (já salva) ao fechar o editor do mapa.
+    if (!reopen || !saved.id) return { id: saved.id };
+    const m = mapOf(draft.mapKey) || { id: reopen.mapId };
+    try {
+      if (reopen.tiles) await (await import("./tile-map-editor.js")).openTileMapEditor(campaign, { item: m });
+      else await (await import("./image-map-editor.js")).openImageMapEditor(campaign, { item: m });
+    } catch { /* o editor do mapa mostra o próprio erro */ }
+    return openSceneEditor({ campaign, sceneId: saved.id, onClose });
+  });
 }

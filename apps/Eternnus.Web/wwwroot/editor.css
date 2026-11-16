@@ -1,12 +1,16 @@
 /* Núcleo gráfico dos editores de mapas e cenas (ADR-081): janela em tela cheia, menus, ferramentas, painéis e estado.
    Identidade Eternnus (fundo escuro, dourado envelhecido), com ornamentos reduzidos para dar espaço ao canvas. */
+/* 100% (não 100vw): a largura não inclui a barra de rolagem da página, que passaria por cima dos painéis.
+   A página por trás não rola enquanto o editor está aberto, e `clip` impede rolagem programática do próprio diálogo
+   (foco ou scrollIntoView deslocariam o editor inteiro). */
+html:has(dialog.editor-modal[open]) { overflow: hidden; }
 dialog.editor-modal {
-  width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 0;
-  border: 0; border-radius: 0; overflow: hidden; background: #0d0f0c;
+  inset: 0; width: 100%; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 0;
+  border: 0; border-radius: 0; overflow: clip; overscroll-behavior: contain; background: #0d0f0c;
 }
 dialog.editor-modal[open] { display: flex; flex-direction: column; }
 dialog.editor-modal .modal-head { display: none; }
-dialog.editor-modal #modal-body { flex: 1; min-height: 0; height: auto; margin: 0; padding: 0; overflow: hidden; }
+dialog.editor-modal #modal-body { flex: 1; min-height: 0; height: auto; margin: 0; padding: 0; overflow: clip; }
 dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 
 .ed-shell {
@@ -32,7 +36,22 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
   border-bottom: 1px solid var(--ed-line); background: linear-gradient(#1d2018, #15170f);
   padding-top: max(4px, env(safe-area-inset-top));
 }
-.ed-brand { display: flex; flex-direction: column; min-width: 0; max-width: 26ch; line-height: 1.2; }
+/* Nenhum bloco do topo encolhe até sumir: a marca só reduz com reticências; menus, contextos e ações mantêm o tamanho.
+   Quando falta espaço, o editor compacta o topo em etapas (data-compact, medido em editor-core.js) em vez de cortar. */
+.ed-brand { display: flex; flex-direction: column; flex: 0 1 auto; min-width: 10ch; max-width: 26ch; line-height: 1.2; }
+.ed-top > .ed-menubar, .ed-top > .ed-top-actions, .ed-top > .help-button { flex: none; }
+/* 1: contextos só com ícone (o nome continua acessível e aparece na dica). */
+.ed-top[data-compact] .ed-context span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ed-top[data-compact] .ed-context { padding: 3px 8px; }
+/* 2: sem subtítulo nem legenda da interface; ações só com ícone quando têm um. */
+.ed-top[data-compact="2"] .ed-sub, .ed-top[data-compact="3"] .ed-sub,
+.ed-top[data-compact="2"] .interface-toggle legend, .ed-top[data-compact="3"] .interface-toggle legend { display: none; }
+.ed-top[data-compact="2"] .ed-top-actions button:has(> .ed-icon) > span, .ed-top[data-compact="3"] .ed-top-actions button:has(> .ed-icon) > span {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+/* 3: ações descem para uma segunda linha, alinhadas à direita (nada fica fora da tela). */
+.ed-top[data-compact="3"] { flex-wrap: wrap; row-gap: 4px; }
+.ed-top[data-compact="3"] > .ed-top-actions { flex: 1 1 100%; justify-content: flex-end; }
 .ed-title { font-family: var(--serif, Georgia, serif); color: var(--bright, #e6cf98); font-size: 1.02rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ed-sub { color: var(--muted, #9da492); font-size: .76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ed-menubar { display: flex; gap: 2px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
@@ -80,7 +99,16 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 .ed-ruler { display: block; width: 100%; height: 100%; background: #12140f; pointer-events: none; }
 .ed-ruler-x { grid-column: 2; grid-row: 1; border-bottom: 1px solid var(--ed-line); }
 .ed-ruler-y { grid-column: 1; grid-row: 2; border-right: 1px solid var(--ed-line); }
-.ed-ruler-corner { grid-column: 1; grid-row: 1; display: grid; place-items: center; background: #12140f; border-right: 1px solid var(--ed-line); border-bottom: 1px solid var(--ed-line); color: #8d8a78; font-size: 9px; line-height: 1; pointer-events: none; }
+.ed-ruler-corner {
+  grid-column: 1; grid-row: 1; display: grid; place-items: center; min-width: 0; min-height: 0; margin: 0; padding: 0;
+  background: #12140f; border: 0; border-right: 1px solid var(--ed-line); border-bottom: 1px solid var(--ed-line); border-radius: 0;
+  color: var(--gold, #c6a463); font: 600 9px/1 system-ui, sans-serif; cursor: pointer;
+}
+.ed-ruler-corner:hover, .ed-scale-button:hover { color: var(--bright, #e6cf98); background: var(--ed-hover); }
+.ed-ruler-corner[aria-disabled="true"], .ed-scale-button[aria-disabled="true"] { cursor: help; }
+/* Escala da régua na barra de estado: texto curto e clicável (abre o ajuste da escala do editor). */
+.ed-scale-button { min-height: 28px; padding: 2px 8px; border: 1px solid var(--ed-line); border-radius: 6px; background: transparent; color: #d8d0b4; font: inherit; font-size: .76rem; white-space: nowrap; cursor: pointer; }
+.ed-scale-button[hidden] { display: none; }
 .ed-size-button { min-height: 30px; padding: 0 8px; border: 1px dashed var(--ed-line); border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .ed-size-button:hover, .ed-size-button:focus-visible { border-color: #8a6a2a; color: var(--text, #ecebe3); }
 .ed-resizer { cursor: col-resize; background: #181a14; border-left: 1px solid var(--ed-line); touch-action: none; }
@@ -217,11 +245,6 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 .ed-context .ed-icon { width: 18px; height: 18px; }
 .ed-context:hover { background: var(--ed-hover); border-color: var(--ed-line); }
 .ed-context.active, .ed-context[aria-pressed="true"] { color: var(--bright, #e6cf98); border-color: #8a6f3a; background: #2a2416; box-shadow: inset 0 -2px 0 #c6a463; }
-/* Em telas médias, só o ícone (o nome continua acessível e aparece na dica). */
-@media (max-width: 1500px) and (min-width: 901px) {
-  .ed-context span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .ed-context { padding: 3px 8px; }
-}
 .ed-panel-title > .ed-panel-menu { flex: none; min-width: 30px; min-height: 30px; padding: 4px; color: var(--muted, #9da492); }
 .ed-panel-title > .ed-panel-menu::before { content: none; }
 .ed-panel-title > .ed-panel-menu .ed-icon { width: 16px; height: 16px; }
@@ -284,3 +307,25 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 .ed-versions-items li > div:first-child { display: grid; }
 .ed-versions-items small { color: var(--muted, #b9b19a); }
 @media (pointer: coarse) { .ed-draft-actions button, .ed-versions-actions button { min-height: 44px; } }
+
+/* ---------- Entrada de imagens: soltar, colar e acervo (ADR-090) ---------- */
+.ed-drop { position: absolute; inset: 0; z-index: 6; pointer-events: none; border: 2px dashed var(--bright, #f1d79c); border-radius: var(--radius, 7px); background: #c6a46314; }
+.ed-drop[hidden] { display: none; }
+.ed-drop-ghost { position: absolute; left: 0; top: 0; width: 96px; height: 72px; margin: -36px 0 0 -48px; display: grid; place-items: center; border: 2px solid var(--bright, #f1d79c); border-radius: 6px; background: #12140fcc; color: var(--bright, #f1d79c); font: 600 28px/1 var(--serif, Georgia, serif); box-shadow: 0 8px 24px #0008; }
+.ed-drop-label { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); margin: 0; padding: 8px 14px; border: 1px solid var(--line, #494337); border-radius: 999px; background: #12140fee; color: var(--text, #f0ede5); font-size: .9rem; white-space: nowrap; }
+.ed-assets { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.ed-asset { display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 8px; padding: 4px; border: 1px solid transparent; border-radius: 6px; cursor: grab; }
+.ed-asset:hover, .ed-asset:focus-within { border-color: var(--line, #494337); background: #ffffff08; }
+.ed-asset img { width: 56px; height: 42px; object-fit: cover; border-radius: 4px; background: #0b0b0a; }
+.ed-asset span { min-width: 0; overflow-wrap: anywhere; font-size: .86rem; }
+.ed-asset small { display: block; color: var(--muted, #b0aea4); }
+@media (prefers-reduced-motion: no-preference) { .ed-drop { transition: background var(--motion-fast, 180ms); } }
+@media (pointer: coarse) { .ed-asset button { min-height: 44px; } }
+/* Celular (ADR-090): até sete contextos e as ações do topo não podem se sobrepor. Contextos só com ícone (nome acessível
+   e dica continuam) e ações quebram linha em vez de encolher por cima do nome da cena. */
+@media (max-width: 900px), (max-width: 1200px) and (pointer: coarse) {
+  .ed-context { flex: none; justify-content: center; }
+  .ed-context span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .ed-top-actions { flex-wrap: wrap; row-gap: 6px; min-width: 0; max-width: 100%; }
+  .ed-top-actions > * { flex: none; }
+}

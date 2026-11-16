@@ -9,6 +9,7 @@ import { addLayer, createHistory, isTypingTarget, moveLayer, patchLayer, removeL
 import * as P from "./composition-policy.js";
 import { createCompositionSurface, encodeFlat, flattenComposition, textHeight, textWidth } from "./composition-canvas.js";
 import { attachDrafts } from "./editor-drafts.js";
+import { mountImageDrop, listenPaste, splitImageFiles, baseName, assetListHtml, bindAssetList } from "./image-drop.js";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const TYPE_LABEL = { image: "Imagem", text: "Texto", rect: "Retângulo", ellipse: "Elipse" };
@@ -90,7 +91,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     kind: "image", contextBar: true,
     contextBarHint: "Selecione um elemento para editar posição, tamanho, rotação, opacidade e camada aqui.",
     contexts: [
-      { id: "elements", groups: ["edit", "create"], tools: ["grid"], panels: ["layers", "structure", "quick"], defaultTool: "select" },
+      { id: "elements", groups: ["edit", "create"], tools: ["grid"], panels: ["layers", "structure", "quick", "assets"], defaultTool: "select" },
       { id: "scene", label: "Documento", tip: "Tamanho e recorte da área visível, grade, escala e fundo do mapa.", tools: ["grid"], panels: ["structure"], defaultTool: "crop" },
     ],
     commonTools: ["select", "hand", "zoom"],
@@ -98,12 +99,13 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
       { id: "layers", title: "Camadas", help: ["campanhas.editor.camadas", "Camadas"] },
       { id: "structure", title: "Estrutura", help: ["campanhas.mapas.area-visivel", "Área visível e área externa"] },
       { id: "quick", title: "Propriedades" },
+      { id: "assets", title: "Acervo", help: ["campanhas.mapas.acervo-editor", "Imagens do acervo no editor"] },
       { id: "history", title: "Histórico", basic: false },
     ],
     actions: '<button type="button" class="primary small im-save" data-im="save">Salvar</button>',
     keys: {
       "mod+s": () => save(), "mod+z": () => undo(), "mod+shift+z": () => redo(), "mod+y": () => redo(),
-      "mod+c": () => copy(), "mod+x": () => cut(), "mod+v": () => paste(), "mod+j": () => duplicate(),
+      "mod+c": () => copy(), "mod+x": () => cut(), "mod+v": () => pasting.request(), "mod+j": () => duplicate(),
       "mod+a": () => selectAll(), "mod+d": () => select([], false), delete: () => removeSelected(), backspace: () => removeSelected(),
       "mod+]": () => zorder("front"), "mod+[": () => zorder("back"),
       "mod+g": () => groupSelection(), "mod+shift+g": () => ungroupSelection(),
@@ -113,7 +115,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     initialTool: "select",
     onTool: () => { surface.refreshCursor(); surface.invalidate(); },
     onModeChange: () => { quickKey = ""; scheduleUi(); },
-    onClose: () => { flushNudge(); closeFloating(); surface.destroy(); },
+    onClose: () => { flushNudge(); closeFloating(); disposeDrop(); pasting.dispose(); disposeAssets(); surface.destroy(); },
   });
   shell.root.classList.add("im-editor");
   shell.stage.innerHTML = `<div class="im-stage" data-im-stage></div><p class="sr-only" id="im-canvas-help">Setas movem a seleção 1 pixel (Shift: 10). Delete exclui. Enter abre as propriedades. Shift+F10 abre o menu do elemento. Tab leva aos painéis.</p>`;
@@ -161,8 +163,8 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
   shell.setCamera({ ...surface.camera, ruler: () => {
     const v = surface.camera.view();
     return meta.hasGrid
-      ? { x: v.left + meta.gridOffsetX * v.scale, y: v.top + meta.gridOffsetY * v.scale, cellPx: meta.gridPixels * v.scale, cellUnits: Number(meta.scaleMeters) || 1.5, unit: "m" }
-      : { x: v.left, y: v.top, cellPx: v.scale, cellUnits: 1, unit: "px" };
+      ? { x: v.left + meta.gridOffsetX * v.scale, y: v.top + meta.gridOffsetY * v.scale, cellPx: meta.gridPixels * v.scale, cellUnits: Number(meta.scaleMeters) || 1.5, unit: "m", onScale: () => openGridDialog() }
+      : { x: v.left, y: v.top, cellPx: v.scale, cellUnits: 1, unit: "px", onScale: () => openGridDialog() };
   } });
   surface.canvas.setAttribute("aria-describedby", "im-canvas-help");
   surface.canvas.addEventListener("keydown", onCanvasKey);
@@ -215,7 +217,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
   function scheduleUi() { if (uiQueued) return; uiQueued = true; queueMicrotask(() => { uiQueued = false; renderUi(); }); }
   function renderUi() {
     if (!shell.root.isConnected) return;
-    renderLayers(); renderStructure(); renderQuick(); renderContextBar();
+    renderLayers(); renderStructure(); renderQuick(); renderContextBar(); renderAssets();
     renderHistoryPanel(shell.panel("history"), history);
     updateStatus(); updateAria();
     shell.setTitle("Editor de mapa de imagem", meta.name);
@@ -475,8 +477,83 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     const w = Math.max(1, Math.min(P.LIMITS.sizeMax, Number(source.width) || 256)), h = Math.max(1, Math.min(P.LIMITS.sizeMax, Number(source.height) || 256));
     sources.set(key, { name: source.name || "", width: w, height: h });
     const p = point || surface.viewCenter();
-    addElement({ type: "image", name: String(source.name || "Imagem").slice(0, 80), src: key, x: Math.round(p.x - w / 2), y: Math.round(p.y - h / 2), width: w, height: h }, "Adicionar imagem");
+    const el = addElement({ type: "image", name: String(source.name || "Imagem").slice(0, 80), src: key, x: Math.round(p.x - w / 2), y: Math.round(p.y - h / 2), width: w, height: h }, "Adicionar imagem");
     shell.setTool("select");
+    return el;
+  }
+
+  // ---------- Imagens soltas, coladas ou do acervo (ADR-090) ----------
+  // Cada imagem entra no ponto da soltura (vista atual), no tamanho natural, selecionada e com as alças prontas.
+  const docPoint = (p) => { const r = surface.canvas.getBoundingClientRect(); return surface.toDoc(p.clientX - r.left, p.clientY - r.top); };
+  let uploading = false;
+  async function addFiles(list, at = null) {
+    if (saving || uploading) return shell.message(saving ? "Aguarde o salvamento terminar." : "Aguarde o envio em andamento terminar.");
+    const { files, problems } = splitImageFiles(list);
+    if (problems.length) shell.message(problems.join(" "));
+    if (!files.length || !canAdd(files.length)) return;
+    uploading = true;
+    const origin = at || surface.viewCenter();
+    const added = [];
+    try {
+      for (const [i, file] of files.entries()) {
+        shell.message(files.length > 1 ? `Enviando imagem ${i + 1} de ${files.length}…` : `Enviando “${baseName(file.name)}”…`);
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("name", baseName(file.name));
+        const source = await api(`${base}/sources`, "POST", fd, { background: true });
+        if (!shell.root.isConnected) return;
+        const el = addImageElement(source, { x: origin.x + i * 24, y: origin.y + i * 24 });
+        if (el) added.push(el.id);
+      }
+      shell.message(added.length > 1 ? `${added.length} imagens adicionadas e selecionadas.` : "Imagem adicionada: arraste para mover; as alças redimensionam e giram.");
+    } catch (e) {
+      shell.message(`${added.length ? `${added.length} imagem(ns) adicionada(s). ` : ""}${e?.message || "O envio falhou."} As restantes não foram enviadas; tente de novo.`);
+    } finally {
+      uploading = false;
+      if (added.length) select(added, false);
+    }
+  }
+  async function addAsset(item, at = null) {
+    if (saving || uploading) return shell.message("Aguarde a operação em andamento terminar.");
+    if (!canAdd()) return;
+    uploading = true;
+    try {
+      const source = await api(`${base}/sources/copy`, "POST", { from: item.src }, { background: true });
+      if (shell.root.isConnected) addImageElement(source, at || surface.viewCenter());
+    } catch (e) { shell.message(e?.message || "Não foi possível usar a imagem do acervo."); }
+    finally { uploading = false; }
+  }
+  const disposeDrop = mountImageDrop(stageHost, {
+    enabled: () => !saving,
+    onFiles: (files, p) => addFiles(files, docPoint(p)),
+    onAsset: (item, p) => addAsset(item, docPoint(p)),
+  });
+  const pasting = listenPaste((files) => addFiles(files, surface.lastPointer()), { enabled: () => shell.root.isConnected, fallback: () => paste() });
+  let assetItems = null, assetsLoading = false, disposeAssets = () => {};
+  async function renderAssets() {
+    const host = shell.panel("assets");
+    if (!host || assetsLoading || (assetItems && host.querySelector("[data-asset-q]"))) return; // carregado uma vez; a busca repinta
+    if (!host.querySelector("[data-asset-q]")) {
+      host.innerHTML = '<div class="field"><label for="im-asset-q">Buscar no acervo</label><input id="im-asset-q" type="search" data-asset-q maxlength="80" autocomplete="off"></div><div data-asset-list><p class="loading-line" role="status">Carregando imagens da campanha…</p></div><p class="form-help">Arraste para o mapa ou use Adicionar. Também dá para soltar arquivos do computador no mapa ou colar uma imagem (Ctrl+V).</p>';
+      host.querySelector("[data-asset-q]").addEventListener("input", () => paintAssets());
+      disposeAssets = bindAssetList(host, { onAdd: (item) => addAsset(item) });
+    }
+    if (assetItems == null && !assetsLoading) {
+      assetsLoading = true;
+      const root = `/campaigns/${campaign.id}`;
+      const [maps, portraits] = await Promise.all([
+        api(`${root}/prep/explorer`, "GET", undefined, { background: true }).then((r) => r?.maps || []).catch(() => []),
+        api(`${root}/assets/portraits`, "GET", undefined, { background: true }).then((r) => r?.items || []).catch(() => []),
+      ]);
+      assetsLoading = false;
+      assetItems = [...maps.filter((m) => !m.isTileMap && m.origin !== "tiles" && m.id !== map.id), ...portraits].map((m) => ({ ...m, key: m.key || `asset:${m.id}` }));
+    }
+    paintAssets();
+  }
+  function paintAssets() {
+    const host = shell.panel("assets");
+    const list = host?.querySelector("[data-asset-list]");
+    if (list && assetItems) list.innerHTML = assetListHtml(assetItems, { query: host.querySelector("[data-asset-q]")?.value || "" });
   }
 
   // ---------- Editar ----------
@@ -1080,7 +1157,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
       title: "Adicionar imagem", submit: "", wide: true,
       body: `<div class="im-tabs" role="tablist" aria-label="Origem da imagem">${tab("device", "Do dispositivo", true)}${tab("url", "Por endereço", false)}${tab("campaign", "Da campanha", false)}</div>
         <div role="tabpanel" id="im-pane-device" aria-labelledby="im-tab-device" data-pane="device">
-          <div class="field"><label for="im-a-file">Arquivo <small>(PNG, JPEG ou WebP, até 10 MB)</small></label><input id="im-a-file" type="file" name="file" accept="image/png,image/jpeg,image/webp"></div>
+          <div class="field"><label for="im-a-file">Arquivos <small>(PNG ou JPEG, até 10 MB cada; vários de uma vez)</small></label><input id="im-a-file" type="file" name="file" accept="image/png,image/jpeg" multiple></div>
           <div class="field"><label for="im-a-name">Nome <small>(opcional)</small></label><input id="im-a-name" name="name" maxlength="120"></div>
           <p class="form-help">PNG com transparência continua transparente. Imagens maiores que a área visível são permitidas: a parte de fora fica na área externa.</p>
           <div class="form-actions"><button type="button" class="primary" data-add="device">Enviar e adicionar</button></div></div>
@@ -1124,9 +1201,12 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
       finally { button.disabled = false; }
     }
     box.querySelector('[data-add="device"]').addEventListener("click", (e) => run(e.currentTarget, async () => {
-      const file = form.elements.namedItem("file").files?.[0];
-      if (!file) throw new Error("Escolha um arquivo de imagem.");
-      if (!/^image\/(png|jpeg|webp)$/.test(file.type)) throw new Error("Use PNG, JPEG ou WebP.");
+      const all = [...(form.elements.namedItem("file").files || [])];
+      if (!all.length) throw new Error("Escolha um arquivo de imagem.");
+      // Vários arquivos: cada um vira um elemento independente (mesmo fluxo de soltar no mapa).
+      if (all.length > 1) { dlg.close(); addFiles(all, point); return null; }
+      const file = all[0];
+      if (!/^image\/(png|jpeg)$/.test(file.type)) throw new Error("Use PNG ou JPEG.");
       if (file.size > MAX_IMAGE_BYTES) throw new Error("A imagem passa de 10 MB.");
       const fd = new FormData();
       fd.append("file", file);

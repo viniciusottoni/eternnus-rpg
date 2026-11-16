@@ -229,3 +229,17 @@ Grava pelos campos existentes (`gridPixels`, `gridOffsetX`, `gridOffsetY`, `scal
 - Navegador (Chrome headless, app em `SqliteTest` de desenvolvimento): gerenciador nas três raízes, criação (tiles vazio, modelo de tiles, cartografia oficial, área em branco, pasta), cena a partir de mapa com a ordem de grupos, cena do zero, editores de tiles/imagem/cena (roda com zoom no cursor, pintura e desfazer, menu de contexto, propriedades, camada extra, imagem parcialmente fora da área visível, texto, salvar e reabrir pela API), menus de contexto de itens e geometria do editor em 390 × 844.
 - Não executado aqui: integrações com PostgreSQL e Playwright (`tests/tile-map-editor.mjs`, `tests/help-ui.mjs`, `tests/table-viewport.mjs`, `tests/scene-editor.mjs`), atualizados para os seletores novos; a migração `PrepWorkspace` não foi aplicada a um PostgreSQL real.
 - Limitações: arrastar itens no gerenciador funciona com mouse; no toque use "Mover para…". O seletor "A partir de mapa" tem uma busca e um filtro para os três grupos. A ferramenta Zoom dos editores aproxima pelo centro (a roda aproxima no cursor). No editor de cenas, "Colocar no cursor" usa a última casa apontada. Camadas de cena duplicadas começam vazias (uma casa comporta um marcador). Imagens-fonte sem uso são removidas ao salvar: o histórico do editor de imagem é zerado após salvar.
+
+## 10. Composição da cena, pontos de entrada e entrada de imagens (ADR-090, 16/11/2026)
+
+| Entidade | Campo novo (migração `SceneComposition`, aditiva) | Uso |
+| --- | --- | --- |
+| `Scene` | `Composition`, `OverlayId`, `Entry` | Imagens só da cena (mesmo documento da composição de mapas), sobreposição achatada para a mesa e área de entrada (`{ref}` ou `{x,y,w,h}`). |
+| `CampaignMap` | `OwnerSceneId`, `Entries` | Imagens-fonte e sobreposições da cena (propósito `layer`, só o mestre lê) e pontos de entrada do mapa. |
+| `GameSession` | `OverlayId` | Sobreposição em uso na mesa (instantâneo de apresentar, reiniciar ou aplicar). |
+
+- `EditorLayer` e `CompositionElement` aceitam `secret` opcional ("Só o mestre vê"); mapas descartam o campo.
+- Editor de mapas de imagem: soltar arquivos no mapa, colar com Ctrl+V, "Adicionar imagem" com vários arquivos e painel **Acervo** (arrastar ou Adicionar). Cada imagem vira imagem-fonte do mapa, no tamanho natural, selecionada. Salvar com o mapa na mesa continua recusado (o rascunho fica aberto).
+- Preparação do mapa (`kind: "layer"`): ferramenta **Área de entrada** cria pontos de entrada; painel com nome, tipo e exclusão; salvos com "Salvar preparação" (`PUT /assets/entries`, revisão do mapa).
+- Módulos novos: `js/image-drop.js` (validação PNG/JPEG ≤ 10 MB, até 12 por vez, soltar, colar, acervo) e `js/scene-composition.js` (controlador da composição sobre `composition-canvas.js`). O núcleo (`editor-core.js`) não bloqueia mais a colagem nativa em Ctrl+V; `createCompositionSurface` aceita um cache de imagens externo; `flattenComposition` aceita fundo transparente. Contexto novo `compose` ("Composição") em `EDITOR_CONTEXTS`.
+- Contratos em [API.md](API.md); fluxo do mestre em [CENAS_EDITOR.md](CENAS_EDITOR.md); decisão em ADR-090.

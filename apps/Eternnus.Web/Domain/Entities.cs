@@ -146,6 +146,8 @@ public class GameSession
     /// <summary>Nome e texto da cena como foram apresentados ou aplicados. Editar a preparação não muda isto; nulos = sessões anteriores.</summary>
     [MaxLength(80)] public string? SceneName { get; set; }
     [MaxLength(2000)] public string? SceneText { get; set; }
+    /// <summary>Camada da composição da cena mostrada na mesa (retrato do momento da apresentação/aplicação); nula = só o mapa.</summary>
+    public Guid? OverlayId { get; set; }
     /// <summary>Resumo do mestre; jogadores leem somente depois de publicado.</summary>
     [MaxLength(10000)] public string Recap { get; set; } = "";
     public DateTime? RecapPublishedAt { get; set; }

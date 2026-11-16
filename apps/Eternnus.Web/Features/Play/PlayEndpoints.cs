@@ -78,6 +78,8 @@ public static class PlayEndpoints
         session.MapPost("/characters/{characterId:guid}/conditions", async (Guid sessionId, Guid characterId, ConditionsInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.SetConditionsAsync(sessionId, characterId, x, Id(u), ct); return Ok(); });
         session.MapPost("/undo", async (Guid sessionId, UndoInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.UndoAsync(sessionId, x, Id(u), ct); return Ok(); });
         session.MapPost("/scene", async (Guid sessionId, PresentSceneInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.PresentSceneAsync(sessionId, x, Id(u), ct); return Ok(); });
+        // Prévia (somente leitura) de "reposicionar marcadores": o que /scene/apply com tokens faria.
+        session.MapGet("/scene/reposition", (Guid sessionId, Guid sceneId, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.RepositionPreviewAsync(sessionId, sceneId, Id(u), ct));
         session.MapPost("/scene/apply", async (Guid sessionId, ApplySceneInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => Results.Ok(await s.ApplyScenePreparationAsync(sessionId, x, Id(u), ct)));
         session.MapPost("/scene/save-as", async (Guid sessionId, SaveSceneAsInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => Results.Ok(await s.SaveSceneAsAsync(sessionId, x, Id(u), ct)));
         session.MapPost("/scene/capture", async (Guid sessionId, CaptureSceneInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.CaptureSceneAsync(sessionId, x, Id(u), ct); return Ok(); });

@@ -4,8 +4,13 @@ namespace Eternnus.Web;
 public record PresentSceneInput(Guid SceneId, bool Restart);
 public record CaptureSceneInput(Guid SceneId);
 /// <summary>"Aplicar à cena atual": partes escolhidas pelo mestre; revisão da cena e versão da preparação do mapa que ele revisou.</summary>
-/// <summary>Partes da preparação a aplicar. <c>Tokens</c> recoloca os marcadores no arranjo preparado (opcional, desmarcado por padrão).</summary>
-public record ApplySceneInput(Guid SceneId, bool Text, bool Vision, bool Layer, int SceneRevision, string? PrepVersion = null, bool Tokens = false);
+/// <summary>Partes da preparação a aplicar. <c>Tokens</c> recoloca os marcadores no arranjo preparado (opcional, desmarcado por padrão).
+/// <c>Composition</c>: passa a mostrar na mesa a camada atual da composição visual da cena.</summary>
+public record ApplySceneInput(Guid SceneId, bool Text, bool Vision, bool Layer, int SceneRevision, string? PrepVersion = null, bool Tokens = false, bool Composition = false);
+/// <summary>Casa da grade.</summary>
+public record GridPoint(int X, int Y);
+/// <summary>Mudança prevista por "reposicionar marcadores": <c>From</c> nulo = entra na mesa; <c>To</c> nulo = sai.</summary>
+public record RepositionMove(string Label, Guid? CharacterId, Guid? TokenId, GridPoint? From, GridPoint? To);
 public record SaveSceneAsInput(string Name, string? SharedText = null);
 public record NpcTokenInput(Guid MasterCharacterId, int X, int Y, bool Hidden = false, bool Copy = false, int? Fx = null, int? Fy = null, string? Appearance = null, int? Size = null);
 /// <summary><c>Index</c>: recurso simples (NPC sem modelo). <c>Field</c>: recurso da ficha-modelo do NPC (bolhas do mapa).</summary>
@@ -35,8 +40,12 @@ public partial class SessionService
             a.Session.LayerKey = scene.Kind == SceneKinds.Map && scene.LayerMode == SceneLayerModes.Scene ? ScenePrep.LayerKey(scene) : null;
         }
         a.Session.SceneName = scene.Name; a.Session.SceneText = scene.SharedText;
+        // Composição visual: a mesa guarda a camada desta apresentação; salvar a composição depois não muda a mesa.
+        var previousOverlay = a.Session.OverlayId;
+        a.Session.OverlayId = scene.Kind != SceneKinds.Text && scene.MapKey.Length > 0 && a.Session.MapKey == scene.MapKey ? scene.OverlayId : null;
+        await CampaignAssetsService.ReleaseOverlayAsync(db, a.Campaign.Id, previousOverlay, a.Session.OverlayId, a.Session.Id, ct);
         var tactical = scene.Kind == SceneKinds.Map && a.Session.MapKind == MapKinds.Tileset;
-        if (tactical) await PlaceSceneTokensAsync(a, x.Restart || !scene.HasSaved ? scene.Prepared : scene.Saved, ct);
+        if (tactical) await PlaceSceneTokensAsync(a, scene, x.Restart || !scene.HasSaved ? scene.Prepared : scene.Saved, ct);
         a.Session.SceneId = scene.Id;
         await db.SaveChangesAsync(ct);
         if (tactical && await Fog.SceneAsync(a.Session, a.Campaign, true, ct) is { } fog)
@@ -64,7 +73,7 @@ public partial class SessionService
     /// </summary>
     public async Task<object> ApplyScenePreparationAsync(Guid sessionId, ApplySceneInput x, string user, CancellationToken ct)
     {
-        if (!x.Text && !x.Vision && !x.Layer && !x.Tokens) throw new RuleException(400, "Escolha o que aplicar à cena atual.");
+        if (!x.Text && !x.Vision && !x.Layer && !x.Tokens && !x.Composition) throw new RuleException(400, "Escolha o que aplicar à cena atual.");
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var a = await LockAsync(sessionId, user, ct); RequireMaster(a);
         if (a.Session.SceneId != x.SceneId) throw new RuleException(409, "Esta cena não está em apresentação. Apresente-a para usar a preparação.");
@@ -75,13 +84,25 @@ public partial class SessionService
         {
             a.Session.SceneName = scene.Name; a.Session.SceneText = scene.SharedText; applied.Add("nome e texto");
         }
+        if (x.Composition)
+        {
+            if (scene.Kind == SceneKinds.Text || a.Session.MapKey != scene.MapKey)
+                throw new RuleException(409, "O cenário desta cena mudou na preparação. Use “Reiniciar cena” para apresentar o novo cenário.");
+            if (a.Session.OverlayId != scene.OverlayId)
+            {
+                var previous = a.Session.OverlayId;
+                a.Session.OverlayId = scene.OverlayId;
+                await CampaignAssetsService.ReleaseOverlayAsync(db, a.Campaign.Id, previous, scene.OverlayId, a.Session.Id, ct);
+                applied.Add("composição visual");
+            }
+        }
         if (x.Vision || x.Layer || x.Tokens)
         {
             if (scene.Kind != SceneKinds.Map || a.Session.MapKind != MapKinds.Tileset || a.Session.MapKey != scene.MapKey)
                 throw new RuleException(409, "O cenário desta cena mudou na preparação. Use “Reiniciar cena” para apresentar o novo cenário.");
             if (x.Tokens)
             {
-                await PlaceSceneTokensAsync(a, scene.Prepared, ct);
+                await PlaceSceneTokensAsync(a, scene, scene.Prepared, ct);
                 await db.SaveChangesAsync(ct);
                 applied.Add("posições dos marcadores");
             }
@@ -151,45 +172,103 @@ public partial class SessionService
         Appearance = t.Appearance, Size = t.Size, ImageUrl = t.ImageUrl,
     };
 
-    /// <summary>Recoloca marcadores da cena. Posições inválidas ou ocupadas são descartadas (criaturas) ou trocadas pelo ponto de entrada (personagens).</summary>
-    async Task PlaceSceneTokensAsync(Access a, IReadOnlyList<SceneToken> source, CancellationToken ct)
+    /// <summary>
+    /// Recoloca marcadores da cena (<see cref="ScenePlacement"/>). Posições inválidas ou ocupadas são descartadas (criaturas) ou
+    /// trocadas pela entrada da cena, pela "Entrada do grupo" do mapa ou pelos pontos de entrada da grade (personagens).
+    /// </summary>
+    async Task PlaceSceneTokensAsync(Access a, Scene? scene, IReadOnlyList<SceneToken> source, CancellationToken ct)
     {
         var s = a.Session;
         await db.SessionTokens.Where(t => t.SessionId == s.Id).ExecuteDeleteAsync(ct);
-        var map = BattleMaps.Find(s.MapKey) ?? (await new CampaignAssetsService(db).ResolveMapAsync(s.CampaignId, s.MapKey, ct))?.Battle();
-        if (map == null) return;
-        var (_, layer) = await Fog.LayerAsync(s.CampaignId, map, TableSettings.Default, false, ct, ScenePrep.SessionLayer(s));
-        var grid = FogGrid.Of(map, layer);
-        var taken = new HashSet<(int, int)>();
+        if (await PlanSceneTokensAsync(s, scene, source, ct) is not { } plan) return;
         // Movimentação livre: várias criaturas por casa e posição fina preservada; com grade, uma por casa, no centro.
-        bool Free(int px, int py) => grid.Inside(px, py) && !grid.BlocksMove(px, py) && (map.Free || !taken.Contains((px, py)));
-        int? Fine(int? value) => map.Free && value is >= 0 and < FinePositions.Scale ? value : null;
+        int? Fine(int? value) => plan.Map.Free && value is >= 0 and < FinePositions.Scale ? value : null;
         var npcs = (await db.MasterCharacters.Where(m => m.CampaignId == s.CampaignId).Select(m => m.Id).ToListAsync(ct)).ToHashSet();
-        var present = await db.SessionParticipants.Where(p => p.SessionId == s.Id && p.CharacterId != null).OrderBy(p => p.JoinedAt)
-            .Join(db.Characters, p => p.CharacterId, c => c.Id, (p, c) => c).ToListAsync(ct);
-        foreach (var c in present)
+        foreach (var p in plan.Placements)
         {
-            var saved = source.FirstOrDefault(t => t.CharacterId == c.Id);
-            if (saved != null && Free(saved.X, saved.Y))
+            var t = p.Source;
+            if (p.CharacterId is { } cid)
             {
-                taken.Add((saved.X, saved.Y));
-                db.SessionTokens.Add(new() { SessionId = s.Id, CharacterId = c.Id, Label = c.Name.Length > 40 ? c.Name[..40] : c.Name, Side = "ally", X = saved.X, Y = saved.Y, Fx = Fine(saved.Fx), Fy = Fine(saved.Fy),
-                    Appearance = TokenLooks.Clean(saved.Appearance), Size = TokenLooks.CleanSize(saved.Size ?? TokenLooks.DefaultSize), ImageUrl = saved.ImageUrl });
+                var name = plan.Present[cid].Name;
+                var label = name.Length > 40 ? name[..40] : name;
+                db.SessionTokens.Add(t == null
+                    ? new() { SessionId = s.Id, CharacterId = cid, Label = label, Side = "ally", X = p.X, Y = p.Y }
+                    : new() { SessionId = s.Id, CharacterId = cid, Label = label, Side = "ally", X = p.X, Y = p.Y, Fx = Fine(t.Fx), Fy = Fine(t.Fy),
+                        Appearance = TokenLooks.Clean(t.Appearance), Size = TokenLooks.CleanSize(t.Size ?? TokenLooks.DefaultSize), ImageUrl = t.ImageUrl });
+                continue;
             }
-        }
-        foreach (var t in source.Where(t => t.CharacterId == null).Take(60))
-        {
-            if (!Free(t.X, t.Y)) continue;
-            taken.Add((t.X, t.Y));
             db.SessionTokens.Add(new()
             {
-                SessionId = s.Id, Label = t.Label, Side = Sides.Contains(t.Side) ? t.Side : "enemy", X = t.X, Y = t.Y, Fx = Fine(t.Fx), Fy = Fine(t.Fy), Hidden = t.Hidden,
+                SessionId = s.Id, Label = t!.Label, Side = Sides.Contains(t.Side) ? t.Side : "enemy", X = p.X, Y = p.Y, Fx = Fine(t.Fx), Fy = Fine(t.Fy), Hidden = t.Hidden,
                 Light = t.Light is >= 0 and <= TableFog.MaxRadius ? t.Light : null, MasterCharacterId = t.MasterCharacterId is { } m && npcs.Contains(m) ? m : null,
                 Appearance = TokenLooks.Clean(t.Appearance), Size = TokenLooks.CleanSize(t.Size ?? TokenLooks.DefaultSize), ImageUrl = t.ImageUrl,
             });
         }
-        // Personagens sem posição salva entram pelos pontos de entrada, como na troca de mapa.
-        foreach (var c in present.Where(c => !db.SessionTokens.Local.Any(t => t.SessionId == s.Id && t.CharacterId == c.Id))) await EnsureTokenAsync(s, c, ct);
+    }
+
+    sealed record ScenePlan(BattleMap Map, Dictionary<Guid, Character> Present, List<ScenePlacement.Placement> Placements);
+
+    /// <summary>Plano dos marcadores da cena no mapa da sessão, sem gravar: personagens presentes (ordem de entrada) e arranjo.</summary>
+    async Task<ScenePlan?> PlanSceneTokensAsync(GameSession s, Scene? scene, IReadOnlyList<SceneToken> source, CancellationToken ct)
+    {
+        var map = BattleMaps.Find(s.MapKey) ?? (await new CampaignAssetsService(db).ResolveMapAsync(s.CampaignId, s.MapKey, ct))?.Battle();
+        if (map == null) return null;
+        var (_, layer) = await Fog.LayerAsync(s.CampaignId, map, TableSettings.Default, false, ct, ScenePrep.SessionLayer(s));
+        var grid = FogGrid.Of(map, layer);
+        var present = (await db.SessionParticipants.Where(p => p.SessionId == s.Id && p.CharacterId != null).OrderBy(p => p.JoinedAt)
+            .Join(db.Characters, p => p.CharacterId, c => c.Id, (p, c) => c).ToListAsync(ct)).DistinctBy(c => c.Id).ToList();
+        var own = scene != null && scene.Kind == SceneKinds.Map && scene.MapKey == s.MapKey ? scene.Entry : null;
+        var entries = await EntryRectsAsync(s, own, ct);
+        return new(map, present.ToDictionary(c => c.Id), ScenePlacement.Plan(map, grid, source, present.Select(c => c.Id).ToList(), entries));
+    }
+
+    /// <summary>Áreas de entrada na ordem: a da cena (quando informada) e a "Entrada do grupo" do mapa da sessão.</summary>
+    async Task<List<EntryRect>> EntryRectsAsync(GameSession s, string? sceneEntry, CancellationToken ct) =>
+        ScenePlacement.Entries(SceneEntries.Parse(sceneEntry), await new CampaignAssetsService(db).EntriesAsync(s.CampaignId, s.MapKey, ct));
+
+    /// <summary>
+    /// Prévia de "reposicionar marcadores" (somente leitura): o que <c>POST …/scene/apply</c> com <c>tokens</c> faria com a mesa,
+    /// pela mesma regra. Lista quem muda de casa, entra ou sai; os demais contam em <c>unchanged</c>.
+    /// </summary>
+    public async Task<object> RepositionPreviewAsync(Guid sessionId, Guid sceneId, string user, CancellationToken ct)
+    {
+        var a = await SessionAccessAsync(sessionId, user, ct); RequireMaster(a);
+        var s = a.Session;
+        if (s.EndedAt != null) throw new RuleException(409, "Esta sessão foi encerrada pelo mestre.");
+        if (s.SceneId != sceneId) throw new RuleException(409, "Esta cena não está em apresentação. Apresente-a para usar a preparação.");
+        var scene = await db.Scenes.AsNoTracking().SingleOrDefaultAsync(x => x.Id == sceneId && x.CampaignId == a.Campaign.Id, ct) ?? throw new RuleException(404, "Cena não encontrada.");
+        if (scene.Kind != SceneKinds.Map || s.MapKind != MapKinds.Tileset || s.MapKey != scene.MapKey)
+            throw new RuleException(409, "O cenário desta cena mudou na preparação. Use “Reiniciar cena” para apresentar o novo cenário.");
+        var plan = await PlanSceneTokensAsync(s, scene, scene.Prepared, ct) ?? throw new RuleException(409, "Mapa com grade não encontrado.");
+        var current = await db.SessionTokens.AsNoTracking().Where(t => t.SessionId == sessionId).OrderBy(t => t.Label).ThenBy(t => t.Id).ToListAsync(ct);
+        var moves = new List<RepositionMove>();
+        var unchanged = 0;
+        static GridPoint At(int x, int y) => new(x, y);
+        void Compare(string label, Guid? character, SessionToken? from, ScenePlacement.Placement to)
+        {
+            if (from != null && from.X == to.X && from.Y == to.Y) { unchanged++; return; }
+            moves.Add(new(label, character, from?.Id, from == null ? null : At(from.X, from.Y), At(to.X, to.Y)));
+        }
+        var pool = current.ToList();
+        foreach (var p in plan.Placements)
+        {
+            if (p.CharacterId is { } cid)
+            {
+                var token = pool.FirstOrDefault(t => t.CharacterId == cid);
+                if (token != null) pool.Remove(token);
+                var name = plan.Present[cid].Name;
+                Compare(name.Length > 40 ? name[..40] : name, cid, token, p);
+                continue;
+            }
+            // Marcadores do mestre: o mesmo personagem do mestre e nome, de preferência já na casa planejada.
+            var src = p.Source!;
+            var same = pool.Where(t => t.CharacterId == null && t.MasterCharacterId == src.MasterCharacterId && t.Label == src.Label).ToList();
+            var match = same.FirstOrDefault(t => t.X == p.X && t.Y == p.Y) ?? same.FirstOrDefault();
+            if (match != null) pool.Remove(match);
+            Compare(src.Label, null, match, p);
+        }
+        foreach (var t in pool) moves.Add(new(t.Label, t.CharacterId, t.Id, At(t.X, t.Y), null));
+        return new { moves, unchanged };
     }
 
     /// <summary>Salva o arranjo atual da mesa como preparo da cena (posições iniciais de "reiniciar"). Atalho da mesa; a preparação privada fica no editor.</summary>
@@ -200,6 +279,12 @@ public partial class SessionService
         var scene = await db.Scenes.SingleOrDefaultAsync(s => s.Id == x.SceneId && s.CampaignId == a.Campaign.Id, ct) ?? throw new RuleException(404, "Cena não encontrada.");
         var tokens = await db.SessionTokens.AsNoTracking().Where(t => t.SessionId == sessionId).ToListAsync(ct);
         scene.Prepared = tokens.Select(ToSceneToken).ToList();
+        // Outro cenário: composição visual e entrada da cena eram do mapa anterior.
+        if (a.Session.MapKey.Length > 0 && scene.Kind != SceneKinds.Text && scene.MapKey != a.Session.MapKey)
+        {
+            scene.Composition = null; scene.OverlayId = null; scene.Entry = null;
+            await CampaignAssetsService.DeleteSceneAssetsAsync(db, a.Campaign.Id, scene.Id, ct);
+        }
         if (a.Session.MapKey.Length > 0 && scene.Kind != SceneKinds.Text) { scene.MapKind = a.Session.MapKind; scene.MapKey = a.Session.MapKey; scene.Kind = a.Session.MapKind == MapKinds.Tileset ? SceneKinds.Map : SceneKinds.Image; }
         scene.Revision++; scene.UpdatedAt = Now;
         Event(a.Session, user, await NameAsync(user, ct), EventKinds.Scene, $"Mestre guardou o arranjo da cena {scene.Name}", new { sceneId = scene.Id, captured = true }, masterOnly: true);

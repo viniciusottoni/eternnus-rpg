@@ -16,6 +16,18 @@ public sealed class UploadLimitsTests
     }
 
     [Theory]
+    [InlineData("POST", "/api/campaigns/00000000-0000-4000-8000-000000000001/scenes/00000000-0000-4000-8000-000000000002/sources", (long)CampaignAssetsService.MaxImageRequestBytes)]
+    [InlineData("PUT", "/api/campaigns/00000000-0000-4000-8000-000000000001/scenes/00000000-0000-4000-8000-000000000002/composition", CampaignAssetsService.MaxCompositionRequestBytes)]
+    [InlineData("PUT", "/api/campaigns/00000000-0000-4000-8000-000000000001/scenes/00000000-0000-4000-8000-000000000002/sources", null)]
+    [InlineData("POST", "/api/campaigns/00000000-0000-4000-8000-000000000001/scenes/not-an-id/sources", null)]
+    [InlineData("PUT", "/api/campaigns/00000000-0000-4000-8000-000000000001/scenes/00000000-0000-4000-8000-000000000002", null)]
+    public void Scene_composition_routes_receive_the_editor_body_caps(string method, string path, long? expected)
+    {
+        var context = new DefaultHttpContext(); context.Request.Method = method; context.Request.Path = path;
+        Assert.Equal(expected, UploadLimits.For(context.Request));
+    }
+
+    [Theory]
     [InlineData("POST", "/api/library", true)]
     [InlineData("PUT", "/api/library/00000000-0000-4000-8000-000000000001/file", true)]
     [InlineData("PUT", "/api/sheet-templates/00000000-0000-4000-8000-000000000001/versions/00000000-0000-4000-8000-000000000002/pdf", true)]

@@ -5,9 +5,10 @@ using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
 
 /// <summary>Preparação da cena. <c>Prepared</c> nulo mantém o arranjo; <c>LayerMode</c> nulo mantém o alcance da preparação do mapa.
-/// <c>FolderId</c>: pasta de Cenas (só na criação). <c>Layers</c>: camadas visuais do editor (nulo mantém).</summary>
+/// <c>FolderId</c>: pasta de Cenas (só na criação). <c>Layers</c>: camadas visuais do editor (nulo mantém).
+/// <c>Entry</c>: entrada da cena (JSON de <see cref="SceneEntry"/>); nulo mantém, vazio remove. Só cenas com grade; trocar o mapa remove.</summary>
 public record SceneInput(string Name, string? Description, string Kind, string? MapKind, string? MapKey, string? SharedText, string? PrivateNotes, string? VisionMode, int Order = 0, int Revision = 0, List<SceneTokenInput>? Prepared = null, string? LayerMode = null,
-    Guid? FolderId = null, List<EditorLayer?>? Layers = null);
+    Guid? FolderId = null, List<EditorLayer?>? Layers = null, string? Entry = null);
 /// <summary><c>FolderId</c>: pasta de Personagens (só na criação).</summary>
 public record NpcInput(string Name, string? Summary, string? Notes, string? Side, List<NpcResource>? Resources, int Revision = 0, string? Kind = null, string? ImageUrl = null, bool? SharedWithPlayers = null, Guid? FolderId = null);
 public record ScheduleInput(DateTimeOffset? At, string? Note);
@@ -63,7 +64,13 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
     public async Task<object> ScenesAsync(Guid campaignId, string user, CancellationToken ct)
     {
         await AccessAsync(campaignId, user, true, false, ct);
-        var items = await db.Scenes.AsNoTracking().Where(s => s.CampaignId == campaignId).OrderBy(s => s.Order).ThenBy(s => s.Name).Take(MaxScenes).ToListAsync(ct);
+        // Projeção sem a composição visual (até 400 mil caracteres por cena): a lista só indica se ela existe.
+        var items = await db.Scenes.AsNoTracking().Where(s => s.CampaignId == campaignId).OrderBy(s => s.Order).ThenBy(s => s.Name).Take(MaxScenes)
+            .Select(s => new
+            {
+                s.Id, s.Name, s.Description, s.Kind, s.MapKind, s.MapKey, s.SharedText, s.PrivateNotes, s.VisionMode, s.LayerMode, s.Order, s.Revision, s.HasSaved,
+                s.Prepared, s.UpdatedAt, s.Layers, s.FolderId, s.CreatedAt, s.Entry, HasComposition = s.Composition != null,
+            }).ToListAsync(ct);
         var active = await db.Sessions.AsNoTracking().Where(s => s.CampaignId == campaignId && s.EndedAt == null).Select(s => new { s.Id, s.SceneId }).SingleOrDefaultAsync(ct);
         return new
         {
@@ -72,6 +79,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
                 s.Id, s.Name, s.Description, s.Kind, s.MapKind, s.MapKey, s.SharedText, s.PrivateNotes, s.VisionMode, s.LayerMode, s.Order, s.Revision, s.HasSaved,
                 prepared = s.Prepared.Count, s.UpdatedAt, current = active?.SceneId == s.Id,
                 layers = EditorLayers.Parse(s.Layers), s.FolderId, s.CreatedAt,
+                entry = SceneEntries.View(s.Entry), hasComposition = s.HasComposition,
             }),
             activeSessionId = active?.Id,
             characters = await CampaignCharactersAsync(campaignId, ct),
@@ -84,18 +92,22 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         await AccessAsync(campaignId, user, true, false, ct);
         var s = await db.Scenes.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.CampaignId == campaignId, ct) ?? throw new RuleException(404, "Cena não encontrada.");
         var active = await db.Sessions.AsNoTracking().Where(x => x.CampaignId == campaignId && x.EndedAt == null)
-            .Select(x => new { x.Id, x.SceneId, x.MapKey, x.SceneName, x.SceneText }).SingleOrDefaultAsync(ct);
+            .Select(x => new { x.Id, x.SceneId, x.MapKey, x.SceneName, x.SceneText, x.OverlayId }).SingleOrDefaultAsync(ct);
         var current = active?.SceneId == s.Id;
         return new
         {
             s.Id, s.Name, s.Description, s.Kind, s.MapKind, s.MapKey, s.SharedText, s.PrivateNotes, s.VisionMode, s.LayerMode, s.Order, s.Revision, s.HasSaved,
             prepared = s.Prepared, s.UpdatedAt,
             layers = EditorLayers.Parse(s.Layers), s.FolderId, s.CreatedAt,
+            // Composição visual própria (elementos sobre a imagem do mapa) e a camada achatada atual; entrada da cena.
+            composition = MapComposition.Stored(s.Composition) is { } doc ? CampaignAssetsService.CompositionJson(doc) : (System.Text.Json.JsonElement?)null,
+            s.OverlayId, entry = SceneEntries.View(s.Entry),
             live = active == null ? null : new
             {
                 sessionId = active.Id, current,
                 textPending = current && ((active.SceneName ?? s.Name) != s.Name || (active.SceneText ?? s.SharedText) != s.SharedText),
                 mapPending = current && s.Kind != SceneKinds.Text && active.MapKey != s.MapKey,
+                compositionPending = current && s.Kind != SceneKinds.Text && active.OverlayId != s.OverlayId,
             },
             characters = await CampaignCharactersAsync(campaignId, ct),
         };
@@ -131,6 +143,12 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
                 throw new RuleException(409, "Esta cena está em apresentação. Troque o alcance da preparação do mapa com outra cena na mesa.");
             // Posições pertencem à grade anterior: trocar o cenário recomeça o arranjo e o estado salvo.
             if (scene.MapKey != key || scene.Kind != x.Kind) { scene.Prepared = []; scene.Saved = []; scene.HasSaved = false; }
+            // Composição visual e entrada desenham sobre a imagem anterior: trocar o mapa (ou virar texto) as remove com as imagens da cena.
+            if (scene.MapKey != key || x.Kind == SceneKinds.Text)
+            {
+                scene.Composition = null; scene.OverlayId = null; scene.Entry = null;
+                await CampaignAssetsService.DeleteSceneAssetsAsync(db, campaignId, scene.Id, ct);
+            }
             scene.Revision++;
         }
         else
@@ -147,6 +165,9 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         scene.VisionMode = x.Kind == SceneKinds.Map ? x.VisionMode : null; scene.Order = Math.Clamp(x.Order, 0, 10000); scene.UpdatedAt = Now;
         scene.LayerMode = x.Kind == SceneKinds.Map ? x.LayerMode ?? scene.LayerMode : SceneLayerModes.Map;
         if (layers != null) scene.Layers = EditorLayers.Serialize(layers);
+        // Entrada própria só vale com grade; nulo mantém, vazio remove.
+        if (x.Kind != SceneKinds.Map) scene.Entry = null;
+        else if (x.Entry != null) scene.Entry = x.Entry.Length == 0 ? null : await ValidEntryAsync(campaignId, key, x.Entry, ct);
         var layerIds = EditorLayers.Parse(scene.Layers).Select(l => l.Id).ToHashSet();
         if (x.Prepared != null) scene.Prepared = x.Kind == SceneKinds.Map ? await ValidArrangementAsync(campaignId, scene, x.Prepared, layerIds, ct) : [];
         // Camada removida: os marcadores dela voltam para Elementos (organização do editor; a mesa não muda).
@@ -156,6 +177,14 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         try { await db.SaveChangesAsync(ct); } catch (DbUpdateConcurrencyException) { throw new RuleException(409, "A cena mudou em outra tela. Recarregue antes de salvar."); }
         await tx.CommitAsync(ct);
         return new { scene.Id, scene.Revision };
+    }
+
+    /// <summary>Entrada da cena validada contra a grade e os pontos de entrada do mapa.</summary>
+    async Task<string> ValidEntryAsync(Guid campaignId, string key, string json, CancellationToken ct)
+    {
+        var map = await new TableFogService(db).MapAsync(campaignId, key, ct) ?? throw new RuleException(400, "Escolha um mapa com grade para definir a entrada da cena.");
+        var entries = await new CampaignAssetsService(db).EntriesAsync(campaignId, key, ct);
+        return SceneEntries.Validate(json, entries, map.Width, map.Height);
     }
 
     /// <summary>Arranjo privado validado contra a grade e a preparação do mapa da cena (paredes e obstáculos).</summary>
@@ -189,6 +218,10 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         };
         db.Scenes.Add(copy);
         await CopyOwnLayerAsync(db, s, copy, Now, ct);
+        // Composição visual: a cópia recebe imagens próprias (independentes) e a mesma entrada.
+        var added = await CampaignAssetsService.CopySceneAssetsAsync(db, s, copy, Now, ct);
+        if (added > 0 && await db.Set<CampaignMap>().Where(m => m.CampaignId == campaignId).SumAsync(m => (long)m.Content.Length, ct) + added > CampaignAssetsService.MaxStorage)
+            throw new RuleException(409, "Os mapas desta campanha excedem 250 MB.");
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return new { copy.Id, copy.Revision };
@@ -213,6 +246,8 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         // Remove somente a preparação própria desta cena; a camada compartilhada do mapa continua.
         var suffix = "@" + id.ToString("N");
         await db.Set<CampaignMapLayer>().Where(l => l.CampaignId == campaignId && l.MapKey.EndsWith(suffix)).ExecuteDeleteAsync(ct);
+        // Imagens da composição visual da cena saem com ela.
+        await CampaignAssetsService.DeleteSceneAssetsAsync(db, campaignId, id, ct);
         // Versões persistentes da cena (ADR-083).
         await DocumentVersionService.DeleteForAsync(db, campaignId, id, ct);
     }

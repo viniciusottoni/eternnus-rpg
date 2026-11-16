@@ -1,5 +1,16 @@
 # Validação
 
+## Composição da cena, imagens soltas e posições iniciais (ADR-090) — 16 de novembro de 2026
+
+| Verificação | Resultado |
+| --- | --- |
+| `dotnet build apps/Eternnus.Web` | 0 erros, 0 avisos |
+| `dotnet test tests/Eternnus.Tests --filter` SceneComposition, SceneEditor, PrepWorkspace, CampaignAssets, SessionService, TablePlayService, TableFog, DocumentVersion, PrepPreview, UploadLimits, MapCompositionGroup, VectorWall, CampaignTileMaps | 139 passaram, 0 falharam (inclui `SceneCompositionTests`, novo: entradas e conflito de revisão, prioridade de posicionamento, composição válida/inválida/obsoleta, independência entre cenas do mesmo mapa, imagens removidas com a cena e na troca de mapa, duplicação independente, 404 do jogador para fonte/sobreposição, mescla só com a sobreposição da sessão, aplicar composição, prévia de recolocar sem escrita, exclusão de mapa usado). Suíte completa não executada. |
+| `node --test` scene-composition-policy (novo), editor-contexts, help-catalog, scene-policy, composition-policy, pwa, soundtrack-policy, scene-editor-policy | 67 passaram; e mais 56 em draft-policy, free-move-policy, help-policy, service-worker e token-look (com nova rodada de scene-composition-policy, help-catalog e editor-contexts), 0 falhas |
+| Roteiro local (fora do repositório): app em `SqliteTest` + Chrome headless 1440×960 e 390×844, `reducedMotion: reduce` | 16 etapas passaram: tela "Como deseja começar?"; GIF recusado; JPG solto vira fundo com movimentação livre sem sair do editor; PNG solto vira elemento da cena (cena salva automaticamente); largura 450 com proporção mantida (300), giro 30°, duplicar, salvar, fechar e reabrir com tudo preservado e sobreposição gerada; dois personagens arrastados e o primeiro arrastado de novo (move, sem duplicar); sessão: posição preparada aplicada, `imageUrl` com `overlay`, jogador recebe 200 na mesa mesclada e 404 na sobreposição por id; mover, sair para outra cena e retomar preserva a posição; prévia de recolocar; reiniciar restaura a preparação; segunda cena do mesmo mapa sem a composição; ponto de entrada do mapa salvo sem mexer nas posições; Ctrl+V com imagem; painel com a área de entrada do mapa; editor de mapas recebe arquivo solto e salva (com a sessão encerrada; com o mapa na mesa o salvamento é recusado, como antes); editor no celular sem transbordo; nenhum erro de JavaScript. |
+
+Defeitos encontrados e corrigidos na verificação: dica fixa da barra de propriedades falava só de paredes; no celular os rótulos dos contextos se sobrepunham aos ícones (agora só ícone, com nome acessível). Não executado: PostgreSQL real (Docker indisponível), toque físico, upload interrompido por queda de rede real (o editor informa quantas imagens entraram e pede nova tentativa), arquivo de 10 MB real, conflito entre duas abas pela interface (coberto pelos testes .NET de revisão), carga.
+
 ## Editar marcador: nome, lado e ficha (ADR-080) — 12 de novembro de 2026
 
 Validação local com banco PostgreSQL exclusivo de teste (harness) e Chrome headless 1440×1000, `reducedMotion: reduce`.

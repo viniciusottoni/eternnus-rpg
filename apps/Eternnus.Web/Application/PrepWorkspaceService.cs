@@ -269,6 +269,7 @@ public sealed class PrepWorkspaceService(GameDb db)
             var ownKeys = sources.Where(s => s.LayerMode == SceneLayerModes.Scene && s.MapKey.Length > 0).Select(ScenePrep.LayerKey).ToList();
             var own = ownKeys.Count == 0 ? [] : await db.Set<CampaignMapLayer>().AsNoTracking().Where(l => l.CampaignId == campaign && ownKeys.Contains(l.MapKey))
                 .Select(l => new { l.MapKey, l.State, l.Prepared }).ToDictionaryAsync(l => l.MapKey, ct);
+            long added = 0;
             foreach (var s in sources)
             {
                 var top = topIds.Contains(s.Id);
@@ -281,8 +282,12 @@ public sealed class PrepWorkspaceService(GameDb db)
                 db.Scenes.Add(copy);
                 if (own.TryGetValue(ScenePrep.LayerKey(s), out var layer) && (MapFogState.Parse(layer.Prepared) ?? MapFogState.Parse(layer.State)) is { } state)
                     db.Add(new CampaignMapLayer { CampaignId = campaign, MapKey = ScenePrep.LayerKey(s.MapKey, copy.Id), State = ScenePrep.PrepOf(state).Serialize(), UpdatedAt = now });
+                // Composição visual e entrada: imagens próprias da cópia (independentes).
+                added += await CampaignAssetsService.CopySceneAssetsAsync(db, s, copy, now, ct);
                 if (top) created.Add(new { type = SceneType, copy.Id });
             }
+            if (added > 0 && await Maps.Where(m => m.CampaignId == campaign).SumAsync(m => (long)m.Content.Length, ct) + added > CampaignAssetsService.MaxStorage)
+                throw new RuleException(409, "Os mapas desta campanha excedem 250 MB.");
         }
         else if (category == PrepCategories.Maps)
         {
@@ -308,7 +313,7 @@ public sealed class PrepWorkspaceService(GameDb db)
                     CampaignId = campaign, FolderId = FolderFor(m.FolderId, top), Name = Named(m.Name, top, 120), GridPixels = m.GridPixels, ScaleMeters = m.ScaleMeters,
                     HasGrid = m.HasGrid, FreeMovement = m.FreeMovement, GridOffsetX = m.GridOffsetX, GridOffsetY = m.GridOffsetY, Width = m.Width, Height = m.Height,
                     Content = m.Content, TileData = m.TileData, Purpose = CampaignAssetPurposes.Map, Summary = m.Summary, SourceKey = m.SourceKey,
-                    Composition = m.Composition, CreatedAt = now, UpdatedAt = now,
+                    Composition = m.Composition, Entries = m.Entries, CreatedAt = now, UpdatedAt = now,
                 };
                 var renamed = new Dictionary<string, string>();
                 foreach (var source in rows.Where(r => r.OwnerMapId == m.Id && r.Purpose == CampaignAssetPurposes.Layer))

@@ -14,7 +14,8 @@ test("contexts keep catalog order, drop unknown ids and allow editor labels", ()
   assert.equal(list[1].label, "Documento");
   assert.equal(list[0].label, "Elementos");
   assert.ok(list[0].groups.has("create"));
-  assert.equal(E.EDITOR_CONTEXTS.length, 6);
+  assert.equal(E.EDITOR_CONTEXTS.length, 7);
+  assert.equal(E.EDITOR_CONTEXTS[0].id, "compose", "Composição (ADR-090) vem primeiro: fundo e imagens antes de personagens");
   assert.ok(Object.isFrozen(E.EDITOR_CONTEXTS));
 });
 

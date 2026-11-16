@@ -342,6 +342,7 @@ export function renderHistoryPanel(host, history) {
  * actions: html extra no topo, keys: { "mod+z": fn, … }, isDirty(), onTool(id), onClose(), onSize() (tamanho clicável na barra de estado) }.
  * A câmera (`setCamera`) pode expor `ruler()` → { x, y, cellPx, cellUnits, unit } | null: origem da área visível em coordenadas
  * da janela, pixels de tela por casa, metros (ou pixels) por casa e a unidade; sem ele, as réguas ficam ocultas.
+ * Opcionais no mesmo objeto: `onScale()` abre o ajuste da escala do editor; `scaleReason` explica quando ela não pode mudar.
  *
  * Contextos de trabalho (ADR-086), opcionais: `kind` (ex. "image", "tiles", "scene": chave das preferências visuais),
  * `contexts: [{ id, label?, tools?:[ids], groups?:[ids], panels?:[ids], defaultTool? }]` (ids de `EDITOR_CONTEXTS`),
@@ -372,7 +373,7 @@ export function createEditorShell(opts) {
       <nav class="ed-tools" role="toolbar" aria-orientation="vertical" aria-label="Ferramentas" data-ed-tools></nav>
       <div class="ed-canvas-area" data-rulers="on">
         ${opts.contextBar ? '<div class="ed-contextbar" role="toolbar" aria-label="Propriedades do selecionado" data-ed-contextbar></div>' : ""}
-        <span class="ed-ruler-corner" aria-hidden="true" data-ed-ruler-unit></span>
+        <button type="button" class="ed-ruler-corner" data-ed="scale" data-ed-ruler-unit aria-label="Escala da régua"></button>
         <canvas class="ed-ruler ed-ruler-x" aria-hidden="true" data-ed-ruler="x"></canvas>
         <canvas class="ed-ruler ed-ruler-y" aria-hidden="true" data-ed-ruler="y"></canvas>
         <section class="ed-stage" aria-label="Área de edição" data-ed-stage></section>
@@ -384,6 +385,7 @@ export function createEditorShell(opts) {
       <div class="ed-zoom" role="group" aria-label="Zoom"><button type="button" class="ed-icon-button" data-ed-zoom="out" aria-label="Afastar (Ctrl −)">−</button><button type="button" class="ed-zoom-value" data-ed-zoom="fit" aria-label="Ajustar à tela (Ctrl 0)"><span data-ed-zoom-label>100%</span></button><button type="button" class="ed-icon-button" data-ed-zoom="in" aria-label="Aproximar (Ctrl +)">+</button><button type="button" class="subtle small" data-ed-zoom="actual">100%</button></div>
       <span class="ed-status-cell" data-ed-coords aria-label="Posição do cursor"></span>
       ${opts.onSize ? `<button type="button" class="ed-status-cell ed-size-button" data-ed-size data-ed="size" data-tip="Alterar o tamanho" data-tip-detail="Abre o tamanho do documento: largura e altura da área visível."></button>` : '<span class="ed-status-cell" data-ed-size></span>'}
+      <button type="button" class="ed-status-cell ed-scale-button" data-ed="scale" data-ed-scale hidden></button>
       <span class="ed-status-cell ed-state" data-ed-state></span>
       <span class="ed-status-cell ed-draft-state" data-ed-draft></span>
       <span class="ed-status-msg" role="status" aria-live="polite" data-ed-message></span>
@@ -435,6 +437,25 @@ export function createEditorShell(opts) {
     setPanels(!matchMedia("(max-width: 900px)").matches);
     message("Layout padrão restaurado. O documento não mudou.");
   }
+
+  // Topo sem cortes: mede o transbordo e compacta em etapas (ícones nos contextos → ações compactas → segunda linha).
+  // Recalcula a cada redimensionamento e quando o conteúdo do topo muda (ações, contextos, título).
+  const topBar = q(".ed-top"), narrow = matchMedia("(max-width: 900px), (max-width: 1200px) and (pointer: coarse)");
+  function fitTop() {
+    delete topBar.dataset.compact;
+    if (closed || narrow.matches) return;
+    for (const level of ["1", "2", "3"]) {
+      if (topBar.scrollWidth <= topBar.clientWidth + 1) return;
+      topBar.dataset.compact = level;
+    }
+  }
+  const topFit = (() => {
+    const resize = new ResizeObserver(() => fitTop());
+    const mutate = new MutationObserver(() => fitTop());
+    resize.observe(topBar);
+    mutate.observe(topBar, { childList: true, subtree: true, characterData: true });
+    return { disconnect: () => { resize.disconnect(); mutate.disconnect(); } };
+  })();
 
   function setTitle(title, sub = "") { q("[data-ed-title]").textContent = title; q("[data-ed-sub]").textContent = sub; $("#modal-title").textContent = title; }
   function setPanels(open) { root.dataset.panels = open ? "open" : "closed"; q('[data-ed="panels"]').setAttribute("aria-pressed", String(open)); }
@@ -618,6 +639,7 @@ export function createEditorShell(opts) {
     if (action === "fullscreen") toggleFullscreen();
     if (action === "close") requestClose();
     if (action === "size") opts.onSize?.();
+    if (action === "scale") openScale();
     const zoom = e.target.closest("[data-ed-zoom]")?.dataset.edZoom;
     if (zoom && camera) { ({ in: () => camera.zoomIn(), out: () => camera.zoomOut(), fit: () => camera.fit(), actual: () => camera.actual() })[zoom]?.(); updateZoom(); }
   });
@@ -738,7 +760,7 @@ export function createEditorShell(opts) {
   const forgetPointer = () => { pointer = null; };
   stage.addEventListener("pointermove", trackPointer, { passive: true });
   stage.addEventListener("pointerleave", forgetPointer);
-  function paintRuler(canvas, rect, axis, origin, steps, cursor) {
+  function paintRuler(canvas, rect, axis, origin, steps, cursor, unit = "") {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const w = Math.max(1, Math.round(rect.width * dpr)), h = Math.max(1, Math.round(rect.height * dpr));
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
@@ -761,7 +783,8 @@ export function createEditorShell(opts) {
     for (let i = first; i <= last; i++) {
       const pos = origin + i * steps.majorPx;
       if (pos < -40 || pos > len + 4) continue;
-      const label = rulerLabel(i * steps.majorUnits);
+      // O zero leva a unidade ("0 m"): deixa claro que a régua mede distância no mapa, não pixels da tela.
+      const label = i === 0 && unit ? `0 ${unit}` : rulerLabel(i * steps.majorUnits);
       if (axis === "x") g.fillText(label, Math.round(pos) + 3, 2);
       else { g.save(); g.translate(2, Math.round(pos) - 3); g.rotate(-Math.PI / 2); g.textAlign = "left"; g.fillText(label, 0, 0); g.restore(); }
     }
@@ -769,18 +792,50 @@ export function createEditorShell(opts) {
       g.strokeStyle = "rgba(241,215,156,.95)"; g.beginPath(); line(cursor, thick); g.stroke();
     }
   }
+  // Escala da régua: o canto e a barra de estado dizem a unidade e quanto vale cada casa; clicar abre o ajuste do editor.
+  const scaleButton = q("[data-ed-scale]");
+  let scaleInfo = null, scaleSig = "";
+  function scaleText(info) {
+    if (!info) return { short: "", long: "" };
+    if (info.unit === "m") {
+      const v = rulerLabel(Number(info.cellUnits) || 0);
+      return { short: `Régua em metros · 1 casa = ${v} m`, long: `Régua em metros: cada casa da grade representa ${v} m.` };
+    }
+    return { short: `Régua em ${info.unit || "unidades"}`, long: `Régua em ${info.unit === "px" ? "pixels da imagem (sem grade)" : info.unit || "unidades"}.` };
+  }
+  function updateScale(info) {
+    scaleInfo = info;
+    const sig = info ? [info.unit, info.cellUnits, !!info.onScale, info.scaleReason || ""].join("|") : "";
+    if (sig === scaleSig) return;
+    scaleSig = sig;
+    const { short, long } = scaleText(info);
+    const how = info?.onScale ? "Clique para mudar a escala." : info?.scaleReason || "";
+    scaleButton.hidden = !info;
+    scaleButton.textContent = short;
+    rulerUnit.textContent = info?.unit || "";
+    for (const el of [scaleButton, rulerUnit]) {
+      el.setAttribute("aria-label", `${long} ${how}`.trim());
+      el.dataset.tip = long;
+      if (how) el.dataset.tipDetail = how; else delete el.dataset.tipDetail;
+      el.setAttribute("aria-disabled", String(!info?.onScale));
+    }
+  }
+  function openScale() {
+    if (scaleInfo?.onScale) { setMaximized(false); scaleInfo.onScale(); return; }
+    if (scaleInfo) message(scaleInfo.scaleReason || "A escala deste documento não pode ser alterada aqui.");
+  }
   function drawRulers() {
     const info = camera?.ruler?.() || null;
     const steps = info && rulerSteps(info.cellPx, info.cellUnits);
     area.classList.toggle("ed-no-ruler", !steps);
+    updateScale(steps ? info : null);
     if (!steps || area.dataset.rulers === "off" || !rulerX.offsetHeight) return;
     const rx = rulerX.getBoundingClientRect(), ry = rulerY.getBoundingClientRect();
     const sig = [info.x, info.y, info.cellPx, info.cellUnits, info.unit, rx.left, rx.width, ry.top, ry.height, pointer?.x, pointer?.y].join("|");
     if (sig === rulerSig) return;
     rulerSig = sig;
-    rulerUnit.textContent = info.unit || "";
-    paintRuler(rulerX, rx, "x", info.x - rx.left, steps, pointer ? pointer.x - rx.left : null);
-    paintRuler(rulerY, ry, "y", info.y - ry.top, steps, pointer ? pointer.y - ry.top : null);
+    paintRuler(rulerX, rx, "x", info.x - rx.left, steps, pointer ? pointer.x - rx.left : null, info.unit);
+    paintRuler(rulerY, ry, "y", info.y - ry.top, steps, pointer ? pointer.y - ry.top : null, info.unit);
   }
   function rulerLoop() {
     rulerFrame = 0;
@@ -819,7 +874,8 @@ export function createEditorShell(opts) {
     const cam = { "mod+0": () => camera?.fit(), "mod+1": () => camera?.actual(), "mod+plus": () => camera?.zoomIn(), "mod+minus": () => camera?.zoomOut() }[id];
     if (cam) { e.preventDefault(); cam(); updateZoom(); return; }
     const fn = opts.keys?.[id];
-    if (fn) { e.preventDefault(); e.stopPropagation(); fn(e); return; }
+    // Ctrl+V não bloqueia a colagem nativa: o evento "paste" traz imagens do sistema (ADR-090); o editor decide no paste.
+    if (fn) { if (id !== "mod+v") e.preventDefault(); e.stopPropagation(); fn(e); return; }
     if (id === "escape") { e.preventDefault(); return; }
     if (!e.ctrlKey && !e.metaKey && !e.altKey && id.length === 1) {
       const t = opts.tools.find((x) => x.key && x.key.toLowerCase() === id);
@@ -858,6 +914,7 @@ export function createEditorShell(opts) {
   dialog.addEventListener("close", () => {
     closed = true;
     cancelAnimationFrame(rulerFrame);
+    topFit.disconnect();
     closeAllMenus(false);
     document.querySelector(".ed-props")?.dispatchEvent(new Event("ed-close"));
     if (document.fullscreenElement === dialog) document.exitFullscreen().catch(() => {});
