@@ -153,19 +153,23 @@ public static class ScenePlacement
     public static List<Placement> Plan(BattleMap map, FogGrid grid, IReadOnlyList<SceneToken> source, IReadOnlyList<Guid> characters, IReadOnlyList<EntryRect> entries)
     {
         var taken = new HashSet<(int, int)>();
-        bool Free(int x, int y) => grid.Inside(x, y) && !grid.BlocksMove(x, y) && (map.Free || !taken.Contains((x, y)));
+        // Mapa tático: a criatura grande (ADR-092) precisa da área inteira livre e ocupa todas as casas dela.
+        TokenSpan SpanOf(SceneToken t) => map.Free ? TokenSpan.One : t.SpanOf();
+        bool Fits(SceneToken t) => grid.Inside(t.X, t.Y) && !grid.BlocksMove(t.X, t.Y)
+            && (map.Free || (SpanOf(t).Problem(grid, t.X, t.Y) == null && !SpanOf(t).Hits(t.X, t.Y, taken)));
+        void Take(SceneToken t) => taken.UnionWith(SpanOf(t).Cells(t.X, t.Y));
         var result = new List<Placement>();
         var placed = new HashSet<Guid>();
         foreach (var c in characters)
         {
-            if (source.FirstOrDefault(t => t.CharacterId == c) is not { } saved || !Free(saved.X, saved.Y)) continue;
-            taken.Add((saved.X, saved.Y)); placed.Add(c);
+            if (source.FirstOrDefault(t => t.CharacterId == c) is not { } saved || !Fits(saved)) continue;
+            Take(saved); placed.Add(c);
             result.Add(new(c, saved, saved.X, saved.Y));
         }
         foreach (var t in source.Where(t => t.CharacterId == null).Take(ScenePrep.MaxTokens))
         {
-            if (!Free(t.X, t.Y)) continue;
-            taken.Add((t.X, t.Y));
+            if (!Fits(t)) continue;
+            Take(t);
             result.Add(new(null, t, t.X, t.Y));
         }
         foreach (var c in characters.Where(c => !placed.Contains(c)))

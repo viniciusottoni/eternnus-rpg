@@ -994,3 +994,13 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 **Alternativas rejeitadas:** novo endpoint para a forma na preparação (o contrato de salvar a cena já aceita os campos, validados por `TokenLooks`); forma fixa por personagem na ficha (impediria variar por cena).
 
 **Consequências:** sem migração nem mudança de contrato. A escolha "ao colocar" vale só enquanto o editor está aberto. O servidor continua validando `appearance` e `size`; ao apresentar a cena, a forma preparada passa ao marcador da sessão.
+
+## ADR-092 — Imagem livre com largura e altura próprias e criaturas que ocupam várias casas (16/11/2026)
+
+**Contexto:** a imagem livre (ADR-079) tinha um só tamanho, quadrado, com a imagem encaixada mantendo a proporção. O mestre precisa redimensionar criaturas em qualquer direção (por exemplo 3 × 1 casas) na preparação da cena e na mesa.
+
+**Decisão:** marcadores ganham `Width`/`Height` (% da casa, 50–800, juntos ou nenhum). Com os dois e a forma imagem, a imagem estica para preencher a área. No mapa tático a área ocupa round(largura/100) × round(altura/100) casas a partir de (X, Y), canto superior esquerdo (`TokenSpan`): colocar, mover, desfazer, recolocar a cena, entrada de personagens e redimensionar exigem a área inteira dentro do mapa, sem casa que bloqueia movimento e sem outro marcador; o caminho com névoa confere a área em cada passo. No mapa de movimentação livre o tamanho é livre e a área fica centrada no ponto, sem ocupação (casas compartilhadas). Oito alças (cantos e lados) no editor de cenas e na mesa do mestre mudam a área; puxar a esquerda ou o topo move o canto (`POST …/appearance` com `x`/`y`). Com névoa, a criatura aparece quando qualquer casa da área está à vista.
+
+**Alternativas rejeitadas:** manter a proporção da imagem (a área escolhida não corresponderia ao desenho); só visual, sem ocupar casas (o mestre pediu que a criatura grande conte para as regras); área centrada na casa no tático (não alinharia a criaturas de 2 casas).
+
+**Consequências:** migração aditiva `TokenImageSpan` (duas colunas anuláveis em `SessionTokens`); cenas guardam os campos no JSON do arranjo e marcadores antigos não mudam. Luz, visão e percepção da criatura continuam a partir da casa do canto, e as paredes entre casas da área não são conferidas no caminho; o destaque de alcance do jogador usa a área dos outros marcadores, mas o servidor decide. Marcador apenas percebido não revela a área.

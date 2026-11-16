@@ -390,7 +390,9 @@ public partial class SessionService
             var (fromFx, fromFy, toFx, toFy) = (Fine("from", "fx"), Fine("from", "fy"), Fine("to", "fx"), Fine("to", "fy"));
             if (token.X != tx2 || token.Y != ty || (free && (token.Fx != toFx || token.Fy != toFy)))
                 throw new RuleException(409, "O marcador já mudou de lugar; desfazer não sobrescreve a mudança mais recente.");
-            if (!scene.Grid.Inside(fx, fy) || scene.Grid.BlocksMove(fx, fy) || (!free && scene.Raw.Values.Any(t => t.Id != tokenId && t.X == fx && t.Y == fy)))
+            // Mapa tático: a área inteira da criatura grande (ADR-092) precisa caber e estar livre na posição anterior.
+            var span = free ? TokenSpan.One : token.SpanOf();
+            if (span.Problem(scene.Grid, fx, fy) != null || (!free && span.Hits(fx, fy, TokenSpans.Taken(scene.Raw.Values, tokenId))))
                 throw new RuleException(409, "A posição anterior está ocupada ou bloqueada agora.");
             token.X = fx; token.Y = fy; token.Fx = fromFx; token.Fy = fromFy;
             if (d.TryGetProperty("movedTurn", out var mt) && mt.ValueKind == JsonValueKind.Number && PlayModes.LimitsMovement(a.Session.PlayMode)) token.LastMovedTurn = mt.GetInt32();

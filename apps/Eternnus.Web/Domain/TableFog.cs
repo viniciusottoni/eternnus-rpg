@@ -464,9 +464,12 @@ public static class Bits
 
 /// <summary>Marcador já resolvido com valores efetivos (ficha + sobrescrita do mestre + configuração).</summary>
 public sealed record FogToken(Guid Id, Guid? CharacterId, string? OwnerUserId, string Side, int X, int Y, int Light, int Vision, int Perception,
-    IReadOnlyList<(string Name, int? Cells)> Senses, bool Hidden, IReadOnlyCollection<string> RevealedTo, int? Dc, string? Sense, int? DetectRange)
+    IReadOnlyList<(string Name, int? Cells)> Senses, bool Hidden, IReadOnlyCollection<string> RevealedTo, int? Dc, string? Sense, int? DetectRange, int W = 1, int H = 1)
 {
     public bool IsCharacter => CharacterId != null;
+
+    /// <summary>Alguma casa da área do marcador (criatura grande no mapa tático, ADR-092) está marcada em <paramref name="cells"/>?</summary>
+    public bool AnyIn(FogGrid grid, bool[] cells) => new TokenSpan(W, H).Cells(X, Y).Any(c => grid.Inside(c.X, c.Y) && cells[grid.Index(c.X, c.Y)]);
 }
 
 /// <summary>O que um jogador enxerga num instante.</summary>
@@ -541,7 +544,8 @@ public static class FogRules
             var revealed = !t.Hidden || t.RevealedTo.Contains(user);
             if (!revealed) continue;
             if (!t.Hidden && t.Side == "ally" && settings.AlliesAlwaysVisible) { shown.Add(t.Id); continue; }
-            if (visible[grid.Index(t.X, t.Y)]) { shown.Add(t.Id); continue; }
+            // Criatura grande: aparece quando qualquer parte dela está à vista.
+            if (t.AnyIn(grid, visible)) { shown.Add(t.Id); continue; }
             if (t.Hidden && mine.Any(v => SensedBy(grid, v, t.Sense, t.X, t.Y, visible))) { shown.Add(t.Id); perceived.Add(t.Id); }
         }
         var marks = state.Marks.Where(m => m.IsRevealedTo(user)).Select(m => m.Id).ToHashSet();

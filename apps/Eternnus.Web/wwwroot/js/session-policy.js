@@ -1,4 +1,16 @@
 // Regras puras de apresentação da mesa. Espelham o servidor apenas para UX; o servidor sempre reaplica as regras.
+// Casas ocupadas, inclusive as áreas de criaturas grandes (ADR-092). Mesma conta de token-look.js (takenKeys);
+// fica local porque este módulo é carregado sozinho nos testes.
+function takenKeys(tokens) {
+  const set = new Set();
+  for (const t of tokens || []) {
+    const span = t?.appearance === "image" && t.width > 0 && t.height > 0;
+    const w = span ? Math.max(1, Math.round(t.width / 100)) : 1, h = span ? Math.max(1, Math.round(t.height / 100)) : 1;
+    for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) set.add(`${t.x + dx}:${t.y + dy}`);
+  }
+  return set;
+}
+
 export const HEARTBEAT_MS = 20000;
 export const MIN_POLL_GAP_MS = 400;
 export const ACTION_KINDS = Object.freeze([
@@ -101,9 +113,10 @@ export function canStand(rows, x, y) {
   );
 }
 
-/** Células alcançáveis por distância de Chebyshev, livres e não ocupadas. */
+/** Células alcançáveis por distância de Chebyshev, livres e não ocupadas (inclusive pelas áreas de criaturas grandes). */
 export function reachableCells(rows, tokens, from, squares) {
-  const taken = new Set(tokens.map((t) => t.x + ":" + t.y));
+  const taken = takenKeys(tokens.filter((t) => t !== from));
+  taken.add(from.x + ":" + from.y);
   const cells = [];
   for (let y = from.y - squares; y <= from.y + squares; y++)
     for (let x = from.x - squares; x <= from.x + squares; x++)

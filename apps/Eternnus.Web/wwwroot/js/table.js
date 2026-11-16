@@ -531,11 +531,20 @@ function mountTable(campaignId, sessionId, isMaster) {
     return { resizable, mode: paintTool ? "paint" : mode, reach: turn.reach, attack: turn.attack, reachCircle: turn.reachCircle ?? null, draggable, selected, grid: gridShown(), bubbles, fogTools: mode === "fog", viewAs: !!(viewAs && viewAsState) };
   }
 
-  /** Alça do mestre: muda só o tamanho, mantendo forma e imagem. True quando o servidor aceitou. */
-  async function onResize(token, size) {
+  /**
+   * Alça do mestre: muda o tamanho ou, na imagem livre, a largura/altura e o canto (ADR-092), mantendo forma e imagem.
+   * `patch` traz só os campos alterados. True quando o servidor aceitou.
+   */
+  async function onResize(token, patch) {
     if (!live.me.isMaster) return false;
+    const next = { ...token, ...patch };
+    const moved = patch.x != null;
     try {
-      await quick(`${base}/tokens/${token.id}/appearance`, "POST", { appearance: token.appearance || "round", size, imageUrl: token.imageUrl || null });
+      await quick(`${base}/tokens/${token.id}/appearance`, "POST", {
+        appearance: next.appearance || "round", size: next.size ?? 100, imageUrl: token.imageUrl || null,
+        width: next.width ?? null, height: next.height ?? null,
+        ...(moved ? { x: next.x, y: next.y, fx: next.fx ?? null, fy: next.fy ?? null } : {}),
+      });
       return true;
     } catch (error) {
       toast(error.message);

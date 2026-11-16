@@ -34,6 +34,9 @@ public sealed class SceneToken
     [MaxLength(8)] public string? Appearance { get; set; }
     public int? Size { get; set; }
     [MaxLength(500)] public string? ImageUrl { get; set; }
+    /// <summary>Largura e altura da imagem livre em % da casa (ADR-092); ausentes = imagem encaixada no quadrado de <see cref="Size"/>.</summary>
+    public int? Width { get; set; }
+    public int? Height { get; set; }
     /// <summary>Camada visual do editor de cena (<see cref="Scene.Layers"/>); ausente = <c>elements</c>. Só organização: não muda a mesa.</summary>
     [MaxLength(24)] public string? Layer { get; set; }
 }

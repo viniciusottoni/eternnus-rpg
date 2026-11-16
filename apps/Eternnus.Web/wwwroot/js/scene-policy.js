@@ -1,5 +1,6 @@
 import { decodeBits, encodeBits, lineClear, lightReach } from "./fog-policy.js";
 import { ensureLayers } from "./editor-policy.js";
+import { takenKeys, tokenSpan } from "./token-look.js";
 
 // Regras puras do editor de cenas e da mesa do mestre: apresentação Básica/Completa, inventário de ferramentas,
 // seletor de cenários, grade, visibilidade e estados de preparação. Sem DOM nem HTTP; o servidor sempre decide.
@@ -214,12 +215,21 @@ export function hiddenCustomizations({ layer = null, scene = null, tokens = [], 
  * Pré-validação do arranjo (o servidor confere de novo): casa dentro da grade, livre para movimento e sem outro marcador.
  * Devolve a mensagem de recusa ou "" quando a casa serve.
  */
-export function placementProblem(cells, width, height, tokens, x, y, ignoreIndex = -1, free = false) {
-  if (x < 0 || y < 0 || x >= width || y >= height) return "Escolha uma casa dentro do mapa.";
-  const c = cells?.[y]?.[x];
-  if (c === "m" || c === "#" || c === "d") return "Essa casa bloqueia movimento. Escolha outra.";
+export function placementProblem(cells, width, height, tokens, x, y, ignoreIndex = -1, free = false, span = { w: 1, h: 1 }) {
+  // Mapa tático: a criatura grande (ADR-092) ocupa a área inteira a partir de (x, y), como TokenSpan no servidor.
+  const area = free ? { w: 1, h: 1 } : span, big = area.w * area.h > 1;
+  if (x < 0 || y < 0 || x + area.w > width || y + area.h > height) return big ? "A criatura não cabe no mapa nessa posição." : "Escolha uma casa dentro do mapa.";
+  for (let dy = 0; dy < area.h; dy++)
+    for (let dx = 0; dx < area.w; dx++) {
+      const c = cells?.[y + dy]?.[x + dx];
+      if (c === "m" || c === "#" || c === "d") return big ? `A casa ${x + dx + 1}, ${y + dy + 1}, sob a criatura, bloqueia movimento.` : "Essa casa bloqueia movimento. Escolha outra.";
+    }
   // Movimentação livre: vários marcadores podem dividir a casa (ScenePrep.ValidateTokens com free).
-  if (!free && tokens.some((t, i) => i !== ignoreIndex && t.x === x && t.y === y)) return "Já há um marcador nessa casa.";
+  if (!free) {
+    const taken = takenKeys(tokens.filter((_, i) => i !== ignoreIndex));
+    for (let dy = 0; dy < area.h; dy++)
+      for (let dx = 0; dx < area.w; dx++) if (taken.has(`${x + dx}:${y + dy}`)) return big ? "A área da criatura encosta em outro marcador." : "Já há um marcador nessa casa.";
+  }
   if (ignoreIndex < 0 && tokens.length >= 60) return "Use até 60 marcadores por cena.";
   return "";
 }
@@ -299,7 +309,7 @@ export function layerAlpha(layer) {
 }
 
 /** Casa livre mais próxima de (x, y) em anéis crescentes; empate pela distância em linha reta. Null quando não há. */
-export function nearestFreeCell(cells, width, height, tokens, x, y, free = false) {
+export function nearestFreeCell(cells, width, height, tokens, x, y, free = false, span = { w: 1, h: 1 }) {
   if (!(width > 0 && height > 0)) return null;
   const sx = Math.max(0, Math.min(width - 1, Math.round(x))), sy = Math.max(0, Math.min(height - 1, Math.round(y)));
   const max = Math.max(width, height);
@@ -309,7 +319,7 @@ export function nearestFreeCell(cells, width, height, tokens, x, y, free = false
       for (let xx = sx - r; xx <= sx + r; xx++)
         if (Math.max(Math.abs(xx - sx), Math.abs(yy - sy)) === r && xx >= 0 && yy >= 0 && xx < width && yy < height) ring.push([xx, yy]);
     ring.sort((a, b) => ((a[0] - x) ** 2 + (a[1] - y) ** 2) - ((b[0] - x) ** 2 + (b[1] - y) ** 2));
-    for (const [xx, yy] of ring) if (!placementProblem(cells, width, height, tokens, xx, yy, -1, free)) return { x: xx, y: yy };
+    for (const [xx, yy] of ring) if (!placementProblem(cells, width, height, tokens, xx, yy, -1, free, span)) return { x: xx, y: yy };
   }
   return null;
 }
@@ -336,8 +346,8 @@ export function pastePlacement({ cells, width, height, tokens = [], items = [], 
     if (t.characterId && present.has(t.characterId)) { skipped++; continue; }
     const all = [...tokens, ...placed];
     const tx = anchor.x + item.dx, ty = anchor.y + item.dy;
-    const exact = !placementProblem(cells, width, height, all, tx, ty, -1, free);
-    const spot = exact ? { x: tx, y: ty } : nearestFreeCell(cells, width, height, all, tx, ty, free);
+    const exact = !placementProblem(cells, width, height, all, tx, ty, -1, free, tokenSpan(t));
+    const spot = exact ? { x: tx, y: ty } : nearestFreeCell(cells, width, height, all, tx, ty, free, tokenSpan(t));
     if (!spot) { skipped++; continue; }
     placed.push({ ...t, x: spot.x, y: spot.y, fx: free && exact ? t.fx ?? null : null, fy: free && exact ? t.fy ?? null : null });
     if (t.characterId) present.add(t.characterId);
@@ -354,7 +364,7 @@ export function moveTokensBy(cells, width, height, tokens, indices, dx, dy, free
   const moved = [];
   for (const i of set) {
     const x = tokens[i].x + dx, y = tokens[i].y + dy;
-    const problem = placementProblem(cells, width, height, [...others, ...moved], x, y, -1, free);
+    const problem = placementProblem(cells, width, height, [...others, ...moved], x, y, -1, free, tokenSpan(tokens[i]));
     if (problem) return { error: problem };
     next[i] = { ...tokens[i], x, y };
     moved.push(next[i]);

@@ -22,7 +22,7 @@ import {
 import { mountImageDrop, listenPaste, splitImageFiles, baseName, readImageSize, assetListHtml, bindAssetList } from "./image-drop.js";
 import { MAP_ELEMENT, blankSceneComposition, loadSceneComposition, sceneSourceResolver, flattenPreview, flattenOverlay, createImageCache, createSceneComposer } from "./scene-composition.js";
 import * as CP from "./composition-policy.js";
-import { LOOK_IMAGE, LOOK_ROUND, MIN_SIZE, MAX_SIZE, SIZE_STEP, DEFAULT_SIZE, clampSize } from "./token-look.js";
+import { LOOK_IMAGE, LOOK_ROUND, MIN_SIZE, MAX_SIZE, SIZE_STEP, DEFAULT_SIZE, clampSize, hasSpan, tokenSpan } from "./token-look.js";
 
 const SIDES = SCENE_SIDES;
 const opt = (list, current) => list.map(([v, l]) => `<option value="${esc(v)}" ${v === current ? "selected" : ""}>${esc(l)}</option>`).join("");
@@ -250,6 +250,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     onContext: (info) => onContext(info),
     onZoom: () => shell.updateZoom(),
     onVector: (e) => onVector(e),
+    onResize: (t, patch) => resizeToken(Number(String(t.id).slice(1)), patch),
   });
   // 100% = tamanho real da imagem enviada (pixels por casa); mapas de tiles usam 64 px por casa.
   const natural = () => (Number(meta?.gridPixels) >= 8 ? Number(meta.gridPixels) : 64);
@@ -345,12 +346,19 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     return typeof preview === "string" && (preview.startsWith("/api/") || preview.startsWith("https://")) ? preview : null;
   }
   const lookOf = (t) => (t?.appearance === LOOK_IMAGE ? LOOK_IMAGE : LOOK_ROUND);
+  /** Voltar à imagem com área própria (ADR-092) faz o marcador ocupar a área de novo: ela precisa caber e estar livre. */
+  function lookProblem(i, look) {
+    const t = draft.prepared[i], area = tokenSpan({ ...t, appearance: look === LOOK_IMAGE ? LOOK_IMAGE : null });
+    return area.w * area.h > 1 ? placementProblem(layer?.cells, width(), height(), draft.prepared, t.x, t.y, i, freeOn(), area) : "";
+  }
   const LOOK_OPTIONS = [[LOOK_ROUND, "Marcador redondo"], [LOOK_IMAGE, "Imagem livre do personagem"]];
   /** Troca a forma de um marcador (redondo ou imagem). A imagem exige uma imagem do personagem ou do marcador. */
   function setTokenLook(i, look) {
     const t = draft.prepared[i];
     if (!t || simulate || !editable(i) || lookOf(t) === look) return;
     if (look === LOOK_IMAGE && !tokenImage(t)) return say("Este personagem não tem imagem. Escolha uma na ficha dele, na Preparação.");
+    const problem = lookProblem(i, look);
+    if (problem) return say(problem);
     change(look === LOOK_IMAGE ? "Mostrar como imagem" : "Mostrar como marcador redondo", () => { draft.prepared[i] = { ...t, appearance: look === LOOK_IMAGE ? LOOK_IMAGE : null }; });
     refresh();
   }
@@ -364,7 +372,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     let tokens = draft.prepared.map((t, i) => {
       // Camadas da cena: olho e opacidade só mudam o desenho no editor; a simulação mostra o que os jogadores veem.
       const alpha = simulate ? 1 : layerAlpha(layerOfToken(t));
-      return { id: "p" + i, characterId: t.characterId || null, label: t.label, side: t.side || "ally", x: t.x, y: t.y, fx: t.fx ?? null, fy: t.fy ?? null, hidden: !!t.hidden, light: t.light ?? null, appearance: t.appearance ?? null, size: t.size ?? null, image: tokenImage(t), alpha: alpha < 1 ? alpha : null };
+      return { id: "p" + i, characterId: t.characterId || null, label: t.label, side: t.side || "ally", x: t.x, y: t.y, fx: t.fx ?? null, fy: t.fy ?? null, hidden: !!t.hidden, light: t.light ?? null, appearance: t.appearance ?? null, size: t.size ?? null, width: t.width ?? null, height: t.height ?? null, image: tokenImage(t), alpha: alpha < 1 ? alpha : null };
     });
     // Imagens de personagens do mestre chegam com a lista deles; sem ela, o desenho cai no marcador redondo até carregar.
     if (npcs == null && !mapOnly && draft.prepared.some((t) => t.masterCharacterId)) loadNpcs();
@@ -374,7 +382,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       fog = serverView.active ? { active: true, visible: serverView.visible, explored: serverView.explored, cells: serverView.cells, lights: serverView.lights, marks: serverView.marks, walls: serverView.walls } : { active: false };
       const shown = new Set(serverView.shown), perceived = new Set(serverView.perceived || []);
       // Percebido não revela nome, imagem, forma nem porte (como na mesa).
-      tokens = tokens.filter((_, i) => shown.has(i)).map((t) => (perceived.has(Number(t.id.slice(1))) ? { ...t, label: "?", perceived: true, image: null, appearance: null, size: null } : t));
+      tokens = tokens.filter((_, i) => shown.has(i)).map((t) => (perceived.has(Number(t.id.slice(1))) ? { ...t, label: "?", perceived: true, image: null, appearance: null, size: null, width: null, height: null } : t));
     } else if (simulate) {
       requestServerView();
       const sim = simulateView({ visionMode: draft.visionMode, layer, width: width(), height: height(), tokens, characters, settings: meta.settings || {}, scale: meta.scaleMeters || 1.5, viewer: viewer && viewer !== "party" ? viewer : null });
@@ -403,6 +411,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       diagnostic: !simulate && diag && layer ? diagnosticView() : null,
       selected: !simulate && selection.length === 1 ? "p" + selection[0] : null, selectedIds: simulate ? [] : selection.map((i) => "p" + i),
       draggable: !simulate && tool === "select" ? "*" : null, viewAs: simulate,
+      // Alças do marcador selecionado: tamanho do redondo; largura e altura da imagem livre (ADR-092).
+      resizable: !simulate && tool === "select" && selection.length === 1 && editable(selection[0]),
     };
   }
   const redraw = () => board.update(boardState(), boardView());
@@ -411,9 +421,24 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function moveToken(i, cell) {
     if (simulate || i == null || !draft.prepared[i]) return false;
     if (!editable(i)) { say("Esse marcador está numa camada oculta ou bloqueada."); return false; }
-    const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, cell.x, cell.y, i, freeOn());
+    const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, cell.x, cell.y, i, freeOn(), tokenSpan(draft.prepared[i]));
     if (problem) { say(problem); return false; }
     change("Mover marcador", () => { draft.prepared[i] = { ...draft.prepared[i], ...fineOf(cell) }; });
+    refresh();
+    return true;
+  }
+  /**
+   * Alça do tabuleiro: tamanho do redondo ou área da imagem livre (largura, altura e canto; ADR-092).
+   * No tático a área inteira precisa caber e estar livre, como no servidor. True quando aplicado.
+   */
+  function resizeToken(i, patch) {
+    const cur = draft.prepared[i];
+    if (simulate || !cur || !editable(i)) return false;
+    const next = { ...cur, ...patch };
+    if (!freeOn()) { delete next.fx; delete next.fy; }
+    const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, next.x, next.y, i, freeOn(), tokenSpan(next));
+    if (problem) { say(problem); return false; }
+    change(patch.width != null ? "Redimensionar imagem" : "Mudar tamanho do marcador", () => { draft.prepared[i] = { ...next, fx: freeOn() ? next.fx ?? null : null, fy: freeOn() ? next.fy ?? null : null }; });
     refresh();
     return true;
   }
@@ -935,6 +960,30 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   }
 
   // ---------- Propriedades do marcador (janela flutuante) ----------
+  /** Campos de largura e altura da imagem livre: casas no mapa tático, porcentagem da casa no modo livre. Vazios = encaixada no quadrado. */
+  function spanFields(t) {
+    const free = freeOn(), on = hasSpan({ ...t, appearance: LOOK_IMAGE });
+    const value = (p) => (on ? (free ? p : Math.max(1, Math.round(p / 100))) : "");
+    const common = free ? { unit: "% da casa", min: MIN_SIZE, max: MAX_SIZE, step: SIZE_STEP } : { unit: "casas", min: 1, max: MAX_SIZE / 100, step: 1 };
+    return [
+      { name: "spanW", label: "Largura da imagem", type: "number", ...common, value: value(t.width) },
+      { name: "spanH", label: "Altura da imagem", type: "number", ...common, value: value(t.height), help: free ? "Vazio: a imagem cabe no quadrado do tamanho acima. Com largura e altura, ela estica para preencher. Também dá para arrastar as alças no mapa." : "Casas ocupadas pela criatura. Vazio: uma casa. A imagem estica para preencher. Também dá para arrastar as alças no mapa." },
+    ];
+  }
+  /** Forma escolhida no diálogo; imagem só com imagem disponível. */
+  const lookFromDialog = (v, cur) => {
+    if (v.appearance === undefined) return cur.appearance ?? null;
+    return v.appearance === LOOK_IMAGE && tokenImage(cur) ? LOOK_IMAGE : null;
+  };
+  /** Largura/altura (%) a partir do diálogo; sem os campos, mantém o que havia. */
+  function spanFromDialog(v, cur) {
+    if (v.spanW === undefined && v.spanH === undefined) return { width: cur.width ?? null, height: cur.height ?? null };
+    if (v.spanW == null && v.spanH == null) return { width: null, height: null };
+    if (v.spanW == null || v.spanH == null) throw new Error("Informe a largura e a altura da imagem (ou deixe as duas vazias).");
+    const free = freeOn();
+    const pct = (n) => (free ? clampSize(Math.round(n / SIZE_STEP) * SIZE_STEP) : Math.min(MAX_SIZE / 100, Math.max(1, Math.round(n))) * 100);
+    return { width: pct(v.spanW), height: pct(v.spanH) };
+  }
   function openTokenProperties(i) {
     const t = draft.prepared[i];
     if (!t || simulate) return;
@@ -953,6 +1002,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
           ? { name: "appearance", label: "Forma no mapa", type: "select", value: lookOf(t), options: LOOK_OPTIONS }
           : { name: "appearance", label: "Forma no mapa", type: "static", value: "Marcador redondo (sem imagem)" },
         { name: "size", label: "Tamanho", unit: "% da casa", type: "number", min: MIN_SIZE, max: MAX_SIZE, step: SIZE_STEP, value: clampSize(t.size ?? DEFAULT_SIZE), required: true, help: "100% ocupa uma casa." },
+        // Imagem livre (ADR-092): largura e altura próprias, esticando a imagem. Tático: casas inteiras ocupadas; livre: % da casa.
+        ...(tokenImage(t) ? spanFields(t) : []),
       ]),
       { name: "pos", label: "Posição", type: "heading" },
       { name: "x", label: "Coluna", type: "number", min: 1, max: width(), step: 1, value: t.x + 1, required: true },
@@ -972,8 +1023,11 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
         const label = pc ? cur.label : String(v.label || "").trim().slice(0, 40);
         if (!label) throw new Error("Dê um nome ao marcador.");
         const x = Math.round(Number(v.x)) - 1, y = Math.round(Number(v.y)) - 1;
-        if (x !== cur.x || y !== cur.y) {
-          const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, x, y, i, freeOn());
+        const appearance = pc ? cur.appearance ?? null : lookFromDialog(v, cur);
+        const span = pc ? { width: cur.width ?? null, height: cur.height ?? null } : spanFromDialog(v, cur);
+        const area = tokenSpan({ ...cur, appearance, ...span }), before = tokenSpan(cur);
+        if (x !== cur.x || y !== cur.y || area.w !== before.w || area.h !== before.h) {
+          const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, x, y, i, freeOn(), area);
           if (problem) throw new Error(problem);
         }
         const fine = (n, old) => (freeOn() ? (n == null ? old ?? null : Math.max(0, Math.min(999, Math.round(n)))) : null);
@@ -983,8 +1037,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
           draft.prepared[i] = {
             ...cur, label, x, y, fx: fine(v.fx, cur.fx), fy: fine(v.fy, cur.fy), layer: target,
             ...(pc ? {} : {
-              side: v.side, hidden: !!v.hidden,
-              appearance: v.appearance === LOOK_IMAGE && tokenImage(cur) ? LOOK_IMAGE : v.appearance === undefined ? cur.appearance ?? null : null,
+              side: v.side, hidden: !!v.hidden, appearance, ...span,
               size: clampSize(v.size) === DEFAULT_SIZE && cur.size == null ? null : clampSize(v.size),
             }),
             ...(mode === "complete" && !pc ? { light: v.light == null ? null : Math.max(0, Math.min(30, Math.round(v.light))) } : {}),
@@ -2047,7 +2100,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     revision: saved.revision, layerMode: draft.layerMode, layers: sceneLayers(draft.layers),
     // Área de entrada (ADR-090): JSON da cena; "" limpa (vale a entrada do mapa).
     entry: mapKind() && draft.entry ? JSON.stringify(draft.entry.ref ? { ref: draft.entry.ref } : { x: draft.entry.x, y: draft.entry.y, w: draft.entry.w, h: draft.entry.h }) : "",
-    prepared: mapKind() ? draft.prepared.map((t) => ({ characterId: t.characterId || null, masterCharacterId: t.masterCharacterId || null, label: t.label, side: t.side, x: t.x, y: t.y, fx: freeOn() ? t.fx ?? null : null, fy: freeOn() ? t.fy ?? null : null, hidden: !!t.hidden, light: t.light ?? null, appearance: t.appearance ?? null, size: t.size ?? null, imageUrl: t.imageUrl ?? null, layer: tokenLayerOf(t.layer, draft.layers) })) : [],
+    prepared: mapKind() ? draft.prepared.map((t) => ({ characterId: t.characterId || null, masterCharacterId: t.masterCharacterId || null, label: t.label, side: t.side, x: t.x, y: t.y, fx: freeOn() ? t.fx ?? null : null, fy: freeOn() ? t.fy ?? null : null, hidden: !!t.hidden, light: t.light ?? null, appearance: t.appearance ?? null, size: t.size ?? null, imageUrl: t.imageUrl ?? null, width: t.width ?? null, height: t.height ?? null, layer: tokenLayerOf(t.layer, draft.layers) })) : [],
   });
   async function saveLayer() {
     // Pontos de entrada do mapa (preparação do mapa): recurso compartilhado, com a revisão do próprio mapa.
@@ -2294,7 +2347,11 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       if (key === "hidden") next.hidden = t.checked;
       else if (key === "light") next.light = t.value === "" ? null : Math.max(0, Math.min(30, Math.round(Number(t.value))));
       else if (key === "layer") next.layer = tokenLayerOf(t.value, draft.layers);
-      else if (key === "appearance") next.appearance = t.value === LOOK_IMAGE && tokenImage(tok) ? LOOK_IMAGE : null;
+      else if (key === "appearance") {
+        const problem = lookProblem(i, t.value);
+        if (problem) { t.value = lookOf(tok); commitTyping(); return say(problem); }
+        next.appearance = t.value === LOOK_IMAGE && tokenImage(tok) ? LOOK_IMAGE : null;
+      }
       else next[key] = t.value;
       draft.prepared[i] = next;
       if (t.type === "checkbox" || t.tagName === "SELECT") commitTyping();

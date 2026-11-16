@@ -8,7 +8,7 @@ import { helpButton } from "./help.js";
 import { mountMapGestures } from "./map-gestures.js";
 import { safeImageUrl } from "./play-policy.js";
 import { finePoint, isFreeMap, tokenCenter } from "./free-move-policy.js";
-import { drawOrder, imageBox, isImageLook, sizeFromHandle, tokenHalf, tokenScale, tokenUnder } from "./token-look.js";
+import { drawOrder, imageBox, isImageLook, sizeFromHandle, tokenHalf, tokenScale, tokenUnder, hasSpan, tokenSpan, covers, SPAN_HANDLES, boxFromHandle, spanFromBox, spanLabel, LOOK_IMAGE } from "./token-look.js";
 
 const reduceMotion = () =>
   matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -493,11 +493,25 @@ function drawLabel(g, token, s, cx, top) {
  * Imagem livre (PNG com transparência): sem moldura redonda; a sombra segue o recorte. O lado aparece num anel aos pés,
  * e oculto/percebido/selecionado usam contorno tracejado retangular. Falso se a imagem ainda não pode ser desenhada.
  */
+/**
+ * Área retangular da imagem livre (ADR-092) em pixels, a partir da posição visual (x, y = centro − 0,5 casa, como nos demais
+ * marcadores). Tático: canto na casa (x, y) e casas inteiras. Livre: centrada no ponto, largura/altura em % da casa.
+ */
+function visualBox(token, s, free) {
+  if (free) {
+    const w = (token.width / 100) * s, h = (token.height / 100) * s;
+    return { x: (token.x + 0.5) * s - w / 2, y: (token.y + 0.5) * s - h / 2, w, h };
+  }
+  const { w, h } = tokenSpan(token);
+  return { x: token.x * s, y: token.y * s, w: w * s, h: h * s };
+}
+
 function drawFreeImage(g, token, s, opts, t, cx, cy) {
   const img = opts.portrait;
   const width = img.naturalWidth || img.width, height = img.naturalHeight || img.height;
   if (!width || !height) return false;
-  const box = imageBox(cx, cy, s * tokenScale(token), width, height);
+  // Área própria: a imagem é esticada para preencher o retângulo escolhido pelo mestre.
+  const box = hasSpan(token) ? visualBox(token, s, opts.free) : imageBox(cx, cy, s * tokenScale(token), width, height);
   g.save();
   if (opts.offline) g.globalAlpha = 0.42;
   if (token.hidden || token.perceived) g.globalAlpha = 0.55;
@@ -534,9 +548,11 @@ function drawFreeImage(g, token, s, opts, t, cx, cy) {
 }
 
 function drawToken(g, token, s, opts, t) {
-  const cx = (token.x + 0.5) * s,
-    cy = (token.y + 0.5) * s,
-    radius = s * 0.4 * tokenScale(token);
+  // Área própria (ADR-092): sem a imagem pronta, o redondo de reserva fica no meio da área.
+  const span = hasSpan(token) ? visualBox(token, s, opts.free) : null;
+  const cx = span ? span.x + span.w / 2 : (token.x + 0.5) * s,
+    cy = span ? span.y + span.h / 2 : (token.y + 0.5) * s,
+    radius = span ? Math.min(span.w, span.h) * 0.4 : s * 0.4 * tokenScale(token);
   // Imagem livre ainda carregando (ou com falha): desenha o redondo com as iniciais.
   if (isImageLook(token) && opts.portrait && drawFreeImage(g, token, s, opts, t, cx, cy)) return;
   g.save();
@@ -627,9 +643,10 @@ const BUBBLE_TONE = { healthy: "#7cc35b", wounded: "#d9b44a", critical: "#d4533f
  * Bolhas de estado sobre o marcador (vida em barra e armadura em escudo). Devolve as áreas clicáveis
  * da barra de vida, em coordenadas do tabuleiro. Em casas pequenas a barra continua, sem números.
  */
-function drawBubbles(g, token, s, bubble) {
+function drawBubbles(g, token, s, bubble, free = false) {
   if (!bubble || s < 18) return null;
-  const cx = (token.x + 0.5) * s, cy = (token.y + 0.5) * s, radius = s * tokenHalf(token);
+  const span = hasSpan(token) ? visualBox(token, s, free) : null;
+  const cx = span ? span.x + span.w / 2 : (token.x + 0.5) * s, cy = span ? span.y + span.h / 2 : (token.y + 0.5) * s, radius = span ? span.h / 2 : s * tokenHalf(token);
   let hit = null;
   g.save();
   g.textAlign = "center";
@@ -710,9 +727,10 @@ export function createBoard(host, handlers = {}) {
   // Recusa ou falta de confirmação devolve o marcador com a mesma animação curta.
   const landing = new Map();
   const placeKey = (t) => `${t.x}:${t.y}:${t.fx ?? ""}:${t.fy ?? ""}`;
-  // Tamanho escolhido na alça aguardando o servidor (mesma ideia de `landing`).
+  // Tamanho/área escolhidos na alça aguardando o servidor (mesma ideia de `landing`): campos a sobrepor ao marcador.
   const sizing = new Map();
-  const sized = (t) => (sizing.has(t.id) ? { ...t, size: sizing.get(t.id).size } : t);
+  const sized = (t) => (sizing.has(t.id) ? { ...t, ...sizing.get(t.id).patch } : t);
+  const resizing = (raw) => (resize?.token.id === raw.id ? { ...sized(raw), ...resize.patch } : sized(raw));
   let resize = null, handleHit = null; // alça de redimensionar (mestre) em andamento / desenhada no último quadro
   let drag = null, suppressClick = false; // arraste de marcador em andamento
   let bubbleHits = []; // barras de vida clicáveis desenhadas no último quadro (coordenadas do tabuleiro)
@@ -1016,12 +1034,13 @@ export function createBoard(host, handlers = {}) {
     // Maiores primeiro: marcadores pequenos ficam por cima de uma criatura grande.
     for (const raw of drawOrder(state.tokens)) {
       if (drag?.moved && drag.token.id === raw.id) continue;
-      const token = resize?.token.id === raw.id ? { ...raw, size: resize.size } : sized(raw);
+      const token = resizing(raw);
       const land = landing.get(token.id);
       const move = land ? null : moves.get(token.id);
       const fraction = !animate || !move ? 1 : Math.min(1, (t - move.started) / 180);
       const eased = 1 - (1 - fraction) ** 3;
-      const placed = land ? { ...token, x: land.x, y: land.y } : visualOf(token);
+      // Durante o arraste de uma alça, a área segue o ponteiro (sem a animação de pouso).
+      const placed = land && resize?.token.id !== token.id ? { ...token, x: land.x, y: land.y } : visualOf(token);
       const visual = move && fraction < 1 ? { ...placed, x: move.x + (placed.x - move.x) * eased, y: move.y + (placed.y - move.y) * eased } : placed;
       if (fraction >= 1) moves.delete(token.id);
       // Opacidade/visibilidade de camada no editor (organização visual; não muda o que os jogadores veem).
@@ -1040,11 +1059,12 @@ export function createBoard(host, handlers = {}) {
           offline: token.characterId && !online.has(token.characterId),
           animate,
           portrait: portraitFor(token.image, redraw),
+          free: free(),
         },
         t,
       );
       if (token.alpha != null && token.alpha < 1) g.restore();
-      const hit = view.bubbles === false ? null : drawBubbles(g, visual, cell, token.bubble);
+      const hit = view.bubbles === false ? null : drawBubbles(g, visual, cell, token.bubble, free());
       if (hit) bubbleHits.push({ ...hit, token });
     }
     drawHandle();
@@ -1052,10 +1072,12 @@ export function createBoard(host, handlers = {}) {
       // Boneco arrastado acompanha o ponteiro; a casa de destino fica marcada.
       g.strokeStyle = "#f1d79c";
       g.lineWidth = 2;
-      if (drag.cell && !free()) g.strokeRect(drag.cell.x * cell + 2, drag.cell.y * cell + 2, cell - 4, cell - 4);
+      // Criatura grande no tático: marca a área inteira de destino.
+      const area = tokenSpan(drag.token);
+      if (drag.cell && !free()) g.strokeRect(drag.cell.x * cell + 2, drag.cell.y * cell + 2, cell * area.w - 4, cell * area.h - 4);
       g.save();
       g.globalAlpha = 0.85;
-      drawToken(g, { ...drag.token, x: drag.px / cell - 0.5, y: drag.py / cell - 0.5 }, cell, { mine: true, selected: true, animate: false, portrait: portraitFor(drag.token.image) }, t);
+      drawToken(g, { ...drag.token, x: drag.px / cell - 0.5, y: drag.py / cell - 0.5 }, cell, { mine: true, selected: true, animate: false, portrait: portraitFor(drag.token.image), free: free() }, t);
       g.restore();
     }
     if (cursor) {
@@ -1075,9 +1097,11 @@ export function createBoard(host, handlers = {}) {
     if (!view.resizable || !view.selected || drag?.moved || !state.tokens) return;
     const raw = state.tokens.find((t) => t.id === view.selected);
     if (!raw) return;
-    const token = resize ? { ...raw, size: resize.size } : sized(raw);
+    const token = resizing(raw);
     const land = landing.get(token.id);
-    const v = land ? { x: land.x, y: land.y } : visualOf(token);
+    const v = land && !resize ? { x: land.x, y: land.y } : visualOf(token);
+    // Imagem livre: oito alças (cantos e lados) mudam largura e altura em qualquer direção (ADR-092).
+    if (isImageLook(token) && token.image) return drawSpanHandles(raw, token, v);
     const half = tokenHalf(token) * cell;
     let x = (v.x + 0.5) * cell + half, y = (v.y + 0.5) * cell + half;
     // Imagem livre: alça no canto da figura (proporção da imagem), não do quadrado.
@@ -1095,20 +1119,46 @@ export function createBoard(host, handlers = {}) {
     g.rect(x - r / 2, y - r / 2, r, r);
     g.fill();
     g.stroke();
-    if (resize) {
-      g.font = `700 ${Math.max(11, cell * 0.22)}px "Segoe UI", Arial, sans-serif`;
-      g.textAlign = "left";
-      g.textBaseline = "middle";
-      const text = `${resize.size}%`, w = g.measureText(text).width + 10;
-      g.fillStyle = "#0b0a08e6";
-      roundRect(g, x + r, y - r, w, r * 2, 4);
-      g.fill();
-      g.fillStyle = "#f6ead0";
-      g.fillText(text, x + r + 5, y);
-    }
+    if (resize) handleReadout(`${token.size ?? 100}%`, x + r, y, r);
     g.restore();
     // Alvo de toque com folga (dedo): ao menos 22 px de raio em pixels de tela.
-    handleHit = { x, y, r: Math.max(r, 22 * dpr), token: raw, center: { x: (v.x + 0.5), y: (v.y + 0.5) } };
+    handleHit = { kind: "size", x, y, r: Math.max(r, 22 * dpr), token: raw, center: { x: (v.x + 0.5), y: (v.y + 0.5) } };
+  }
+  /** Rótulo escuro ao lado da alça durante o arraste (tamanho ou área). */
+  function handleReadout(text, x, y, r) {
+    g.font = `700 ${Math.max(11, cell * 0.22)}px "Segoe UI", Arial, sans-serif`;
+    g.textAlign = "left";
+    g.textBaseline = "middle";
+    const w = g.measureText(text).width + 10;
+    g.fillStyle = "#0b0a08e6";
+    roundRect(g, x, y - r, w, r * 2, 4);
+    g.fill();
+    g.fillStyle = "#f6ead0";
+    g.fillText(text, x + 5, y);
+  }
+  /** Área da imagem em casas a partir da posição visual: própria (tático = casas; livre = centrada) ou o quadrado do tamanho. */
+  function cellBox(token, v) {
+    if (hasSpan(token)) { const b = visualBox({ ...token, x: v.x, y: v.y }, 1, free()); return b; }
+    const half = tokenHalf(token);
+    return { x: v.x + 0.5 - half, y: v.y + 0.5 - half, w: half * 2, h: half * 2 };
+  }
+  function drawSpanHandles(raw, token, v) {
+    const box = cellBox(token, v);
+    const r = Math.max(7, cell * 0.12) * Math.max(1, dpr * 0.75);
+    const points = SPAN_HANDLES.map((h) => ({ handle: h, x: (box.x + box.w * (h.dx + 1) / 2) * cell, y: (box.y + box.h * (h.dy + 1) / 2) * cell }));
+    g.save();
+    g.strokeStyle = "#f1d79c";
+    g.lineWidth = Math.max(1, dpr);
+    g.setLineDash([cell * 0.08, cell * 0.06]);
+    g.strokeRect(box.x * cell, box.y * cell, box.w * cell, box.h * cell);
+    g.setLineDash([]);
+    g.fillStyle = "#f1d79c";
+    g.strokeStyle = "#0b0a08";
+    g.lineWidth = Math.max(1.5, dpr);
+    for (const p of points) { g.beginPath(); g.rect(p.x - r / 2, p.y - r / 2, r, r); g.fill(); g.stroke(); }
+    if (resize && hasSpan(token)) { const se = points[4]; handleReadout(spanLabel(token, free()), se.x + r, se.y, r); }
+    g.restore();
+    handleHit = { kind: "span", box, points, r: Math.max(r, 22 * dpr), token: raw };
   }
   // Retrato que terminou de carregar: redesenha uma vez.
   let destroyed = false;
@@ -1153,7 +1203,7 @@ export function createBoard(host, handlers = {}) {
   // Teclado (sem cx/cy) continua por casa; o ponteiro acha também marcadores maiores que uma casa (o menor fica por cima).
   const tokenAt = (c) => c.cx != null
     ? tokenUnder((state.tokens || []).map(sized), c.cx, c.cy, (t) => tokenCenter(t, free()), free())
-    : (state.tokens || []).find((t) => t.x === c.x && t.y === c.y);
+    : (state.tokens || []).find((t) => (free() ? t.x === c.x && t.y === c.y : covers(t, c.x, c.y)));
   function activate(c) {
     if (!c) return;
     const token = tokenAt(c);
@@ -1188,9 +1238,14 @@ export function createBoard(host, handlers = {}) {
     suppressClick = false;
     if (panning || panHold || panTool || e.button !== 0 || view.mode === "paint" || view.mode === "vector" || !tileset()) return;
     const p = boardPoint(e);
-    if (handleHit && handlers.onResize && Math.hypot(p.px - handleHit.x, p.py - handleHit.y) <= handleHit.r) {
+    const grabbed = handleHit && handlers.onResize && (handleHit.kind === "span"
+      ? handleHit.points.map((q) => ({ ...q, d: Math.hypot(p.px - q.x, p.py - q.y) })).filter((q) => q.d <= handleHit.r).sort((a, b) => a.d - b.d)[0]
+      : Math.hypot(p.px - handleHit.x, p.py - handleHit.y) <= handleHit.r && handleHit);
+    if (grabbed) {
       e.preventDefault();
-      resize = { token: handleHit.token, center: handleHit.center, size: sized(handleHit.token).size ?? 100, pointer: e.pointerId };
+      resize = handleHit.kind === "span"
+        ? { kind: "span", token: handleHit.token, handle: grabbed.handle, box: handleHit.box, patch: null, pointer: e.pointerId }
+        : { kind: "size", token: handleHit.token, center: handleHit.center, patch: null, pointer: e.pointerId };
       canvas.setPointerCapture?.(e.pointerId);
       canvas.style.touchAction = "none";
       return;
@@ -1206,9 +1261,14 @@ export function createBoard(host, handlers = {}) {
   });
   canvas.addEventListener("pointermove", (e) => {
     if (resize && e.pointerId === resize.pointer) {
-      const p = boardPoint(e);
-      const next = sizeFromHandle(resize.center, { x: p.px / cell, y: p.py / cell }, sized(resize.token));
-      if (next !== resize.size) { resize.size = next; draw(); }
+      const p = boardPoint(e), point = { x: p.px / cell, y: p.py / cell };
+      let patch;
+      if (resize.kind === "span") {
+        // Lado ou canto puxado segue o ponteiro; o oposto fica parado. Tático: casas inteiras; livre: qualquer tamanho.
+        const box = boxFromHandle(resize.box, resize.handle, point, free(), rows()[0].length, rows().length);
+        patch = { appearance: LOOK_IMAGE, ...spanFromBox(box, free()) };
+      } else patch = { size: sizeFromHandle(resize.center, point, sized(resize.token)) };
+      if (JSON.stringify(patch) !== JSON.stringify(resize.patch)) { resize.patch = patch; draw(); }
       return;
     }
     if (!drag || e.pointerId !== drag.pointer) return;
@@ -1242,18 +1302,23 @@ export function createBoard(host, handlers = {}) {
         .catch(() => settle(token.id, entry));
     }
   };
-  /** Solta a alça: o tamanho fica desenhado até o servidor confirmar; recusa ou silêncio devolvem o anterior. */
+  /**
+   * Solta a alça: o tamanho (ou a área e a posição, na imagem livre) fica desenhado até o servidor confirmar; recusa ou
+   * silêncio devolvem o anterior. `onResize(token, patch)` recebe só os campos alterados.
+   */
   function finishResize(cancel) {
-    const { token, size } = resize;
+    const { token, patch } = resize;
     resize = null;
     canvas.style.touchAction = view.mode === "paint" || view.mode === "vector" ? "none" : "";
     suppressClick = true;
-    if (cancel || size === (sized(token).size ?? 100)) { draw(); return; }
-    const entry = { size };
+    const current = sized(token);
+    if (cancel || !patch || Object.keys(patch).every((k) => patch[k] === (current[k] ?? (k === "size" ? 100 : null)))) { draw(); return; }
+    const entry = { patch };
     sizing.set(token.id, entry);
-    status.textContent = `${token.label}: tamanho ${size}% da casa.`;
+    const next = { ...current, ...patch };
+    status.textContent = hasSpan(next) ? `${token.label}: ${spanLabel(next, free())}.` : `${token.label}: tamanho ${next.size ?? 100}% da casa.`;
     draw();
-    Promise.resolve(handlers.onResize(token, size))
+    Promise.resolve(handlers.onResize(token, patch))
       .then((ok) => ok === false ? unsize(token.id, entry) : setTimeout(() => unsize(token.id, entry), 5000))
       .catch(() => unsize(token.id, entry));
   }

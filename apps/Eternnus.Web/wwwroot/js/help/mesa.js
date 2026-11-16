@@ -157,6 +157,7 @@ const entries = {
     "body": [
       "Redondo mostra o retrato recortado em círculo. Imagem livre desenha a imagem inteira, sem moldura: um PNG com fundo transparente aparece só com a figura.",
       "O tamanho vai de 50% a 800% da casa. Selecione o marcador e arraste a alça dourada no canto, ou informe o valor em “Forma e tamanho”.",
+      "Imagem livre: selecione a criatura e arraste qualquer uma das oito alças (cantos e lados) para mudar largura e altura em qualquer direção; a imagem estica para preencher a área. No mapa tático a área anda de casa em casa e a criatura ocupa todas essas casas: ninguém entra nelas, e ela só vai para onde a área inteira cabe livre. No mapa de movimentação livre o tamanho é livre.",
       "Só o Mestre muda forma, tamanho e imagem. A imagem escolhida aqui vale para o marcador, inclusive de personagens de Jogadores, sem mudar a ficha.",
       "Na preparação da cena, escolha em “Colocar personagens do mestre como” se a criatura entra redonda ou com a imagem da ficha. Depois, troque quando quiser no painel do marcador, em Propriedades ou no menu do botão direito (Forma no mapa). Sem imagem na ficha, o marcador fica redondo."
     ],
