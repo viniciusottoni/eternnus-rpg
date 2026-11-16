@@ -8,6 +8,8 @@ export function validHelpKey(value) {
   return typeof value === 'string' && value.length <= 150 && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*){2}$/.test(value) && HELP_AREAS.includes(value.split('.')[0]);
 }
 export const validTip = (value) => plain(value, 80);
+/** Descrição curta exibida em letras menores abaixo do nome (ferramentas dos editores). */
+export const validTipDetail = (value) => plain(value, 240);
 export function catalogModule(key) {
   return validHelpKey(key) ? `./help/${key.split('.')[0]}.js` : null;
 }

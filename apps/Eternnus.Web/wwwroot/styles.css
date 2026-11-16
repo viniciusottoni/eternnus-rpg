@@ -2799,6 +2799,9 @@ button.help-button:hover, button.help-button[aria-expanded="true"] { color: var(
 .help-popup:focus-visible { outline: none; }
 .tooltip, .help-popup { color: var(--text); background: var(--panel); border: 1px solid var(--gold); border-radius: var(--radius); box-shadow: var(--shadow); font: 1rem/1.55 system-ui, sans-serif; overflow-wrap: anywhere; }
 .tooltip { position: fixed; inset: auto; margin: 0; width: max-content; max-width: min(36ch, calc(100vw - 16px)); padding: .4rem .65rem; font-size: .8125rem; line-height: 1.45; z-index: 1; }
+.tooltip-rich { max-width: min(32ch, calc(100vw - 16px)); }
+.tooltip-rich strong { display: block; color: var(--bright, #f1d79c); }
+.tooltip-rich small { display: block; margin-top: 2px; color: var(--muted); font-size: .75rem; line-height: 1.4; }
 /* Popup de ajuda: sempre centralizado, fundo levemente escurecido, fecha pelo X, Esc ou clique fora. */
 .help-popup { position: fixed; inset: 0; margin: auto; width: min(440px, calc(100vw - 32px)); height: fit-content; max-height: min(72dvh, 560px); padding: 0; overflow: hidden; }
 .help-popup::backdrop { background: #02090b99; }

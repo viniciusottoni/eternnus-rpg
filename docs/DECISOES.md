@@ -849,3 +849,15 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 **Alternativas rejeitadas:** rasterizar no servidor (mais um decodificador de imagens e mais memória por requisição); enviar elementos soltos à mesa (exigiria máscara de névoa por elemento e exporia a área externa); manter dois editores independentes (duplicação de câmera, histórico e atalhos).
 
 **Consequências:** migração `PrepWorkspace` só acrescenta colunas e preenche datas; pastas antigas viram Mapas. Cada salvamento de mapa de imagem regrava `Content` a partir das fontes (sem recompressão acumulada). Visibilidade/opacidade das camadas de cena não mudam o que jogadores veem. Limites: 100 pastas por categoria, 8 camadas, 200 elementos e 40 imagens-fonte por mapa. Testes E2E com PostgreSQL e navegador não foram executados neste ambiente (ver TESTES.md).
+
+## ADR-082 — Tabuleiro desenha só a área visível e reaproveita a camada estática (16/11/2026)
+
+**Contexto:** com zoom, o canvas do tabuleiro cobria o mapa ampliado inteiro (até 4096 px por lado) e era redesenhado a 20 quadros/s; cada passo de zoom e cada pintura refaziam em vetor todas as casas do tileset (0,6–1,3 s num mapa 40 × 30), travando o editor de tiles e o de cenas. Além disso, ao criar um mapa pelo gerenciador, o editor era aberto dentro da espera do formulário e ficava inerte até ser fechado.
+
+**Decisão:**
+- O canvas tem o tamanho da área visível (`position: sticky` na superfície rolável); a superfície ampliada só dá a extensão da rolagem e a origem (`ox`/`oy`) desconta a rolagem. As contas de coordenada continuam as mesmas.
+- A camada estática (tiles + vinheta) é desenhada fora da tela com casas em pixels inteiros. O zoom reaproveita a camada escalada e refaz a resolução nova em fatias de ~10 ms depois que o zoom para. Uma grade alterada repinta só as casas afetadas (`affectedCells` em `tile-art.js`: vizinhança de 2 casas e entradas à direita na linha); mudanças globais (chão dominante, piso externo/madeira) ou acima de ⅓ das casas refazem tudo, também em fatias.
+- Máscaras de névoa ficam em cache por objeto de estado (antes eram recriadas a cada quadro).
+- Fluxos de criação nunca aguardam o editor dentro de uma espera em primeiro plano: o gerenciador abre o editor depois que o envio termina.
+
+**Consequências:** zoom de 1–7 ms por passo e pintura sem tarefas longas na medição local (Chrome headless, renderização por software). Acima de ~100 px por casa a camada é ampliada (limite de 4096 px). A mesa ao vivo usa o mesmo tabuleiro e recebe o ganho; o E2E `tests/table-viewport.mjs` (PostgreSQL + Playwright) não foi executado neste ambiente.

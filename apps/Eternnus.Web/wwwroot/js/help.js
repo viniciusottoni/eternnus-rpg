@@ -1,6 +1,6 @@
 import { esc } from './ui.js';
 import { state } from './state.js';
-import { HELP_KEYS, validHelpKey, validTip, validHelpEntry, canReadHelp, catalogModule, safeHelpRoute } from './help-policy.js';
+import { HELP_KEYS, validHelpKey, validTip, validTipDetail, validHelpEntry, canReadHelp, catalogModule, safeHelpRoute } from './help-policy.js';
 
 const localDevelopment = () => ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
 const context = () => ({ isMaster: state.liveTable ? state.liveTable.isMaster === true : state.campaign?.isMaster === true, isPlayer: state.liveTable?.isMaster === false });
@@ -81,6 +81,12 @@ function place(el, origin) {
   const bottom = availableBottom(), rect = origin.getBoundingClientRect();
   el.style.maxHeight = `${Math.max(44, bottom - 24)}px`;
   const size = el.getBoundingClientRect(), gap = 8;
+  // Barras verticais (ferramentas dos editores): a dica abre ao lado, sem cobrir os botões vizinhos.
+  if (origin.dataset.tipSide === 'right' && rect.right + gap + size.width <= innerWidth - 8) {
+    el.style.left = `${rect.right + gap}px`;
+    el.style.top = `${Math.max(8, Math.min(bottom - size.height - 8, rect.top + rect.height / 2 - size.height / 2))}px`;
+    return;
+  }
   el.style.left = `${Math.max(8, Math.min(innerWidth - size.width - 8, rect.left + rect.width / 2 - size.width / 2))}px`;
   const above = rect.top - size.height - gap;
   el.style.top = `${Math.max(8, Math.min(bottom - size.height - 8, above >= 8 ? above : rect.bottom + gap))}px`;
@@ -90,7 +96,17 @@ function showTip(el) {
   if (dismissed || !el.isConnected || !validTip(el.dataset.tip)) return;
   hideTip();
   tipTrigger = el;
-  tooltip.textContent = el.dataset.tip;
+  // Nome em destaque e, quando houver, uma descrição curta do que fazer, em letras menores.
+  const detail = el.dataset.tipDetail;
+  if (validTipDetail(detail)) {
+    tooltip.replaceChildren();
+    textNode('strong', el.dataset.tip, tooltip);
+    textNode('small', detail, tooltip);
+    tooltip.classList.add('tooltip-rich');
+  } else {
+    tooltip.textContent = el.dataset.tip;
+    tooltip.classList.remove('tooltip-rich');
+  }
   mount(tooltip, el);
   describe(el, true);
   tooltip.showPopover();

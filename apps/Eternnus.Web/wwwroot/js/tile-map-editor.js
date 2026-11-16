@@ -84,16 +84,16 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
 
   // ---------- Janela ----------
   const tools = [
-    { id: "brush", label: "Pincel", icon: "brush", key: "b", group: "paint" },
-    { id: "erase", label: "Borracha", icon: "eraser", key: "e", group: "paint" },
-    { id: "fill", label: "Preenchimento", icon: "fill", key: "g", group: "paint" },
-    { id: "rect", label: "Retângulo", icon: "rect", key: "u", group: "paint" },
-    { id: "pick", label: "Conta-gotas (capturar tile)", icon: "pick", key: "i", group: "paint", basic: false },
-    { id: "inspect", label: "Inspecionar casa", icon: "select", key: "v", group: "select", basic: false },
-    { id: "marquee", label: "Seleção de área", icon: "marquee", key: "m", group: "select" },
-    { id: "hand", label: "Mão", icon: "hand", key: "h", group: "view" },
-    { id: "zoom", label: "Zoom", icon: "zoom", key: "z", group: "view", basic: false },
-    { id: "grid", label: "Grade", icon: "grid", group: "view", pressed: () => grid, action: () => toggleGrid() },
+    { id: "brush", tip: "Pinta o tile escolhido na paleta. Clique numa casa ou arraste para pintar várias.", label: "Pincel", icon: "brush", key: "b", group: "paint" },
+    { id: "erase", tip: "Apaga o tile da camada ativa. Na Base, a casa volta ao piso escolhido em Propriedades.", label: "Borracha", icon: "eraser", key: "e", group: "paint" },
+    { id: "fill", tip: "Preenche com o tile escolhido a área contínua de casas iguais à clicada.", label: "Preenchimento", icon: "fill", key: "g", group: "paint" },
+    { id: "rect", tip: "Arraste para pintar um retângulo inteiro com o tile escolhido.", label: "Retângulo", icon: "rect", key: "u", group: "paint" },
+    { id: "pick", tip: "Clique numa casa para usar o tile dela no pincel.", label: "Conta-gotas (capturar tile)", icon: "pick", key: "i", group: "paint", basic: false },
+    { id: "inspect", tip: "Clique numa casa para ver o tile de cada camada e a regra que vale na mesa.", label: "Inspecionar casa", icon: "select", key: "v", group: "select", basic: false },
+    { id: "marquee", tip: "Arraste para selecionar uma área; depois copie, recorte, cole ou apague pelo menu Editar.", label: "Seleção de área", icon: "marquee", key: "m", group: "select" },
+    { id: "hand", tip: "Arraste para mover a vista. Espaço ou o botão do meio do mouse também movem.", label: "Mão", icon: "hand", key: "h", group: "view" },
+    { id: "zoom", tip: "Clique para aproximar; com Alt, afasta. A roda do mouse aproxima no ponto do cursor.", label: "Zoom", icon: "zoom", key: "z", group: "view", basic: false },
+    { id: "grid", tip: "Mostra ou esconde as linhas da grade no editor. Não muda o mapa.", label: "Grade", icon: "grid", group: "view", pressed: () => grid, action: () => toggleGrid() },
   ];
   const shell = createEditorShell({
     title: "Editor de mapa de tiles",
@@ -101,6 +101,7 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
     help: ["campanhas.mapas.tiles", "Criar mapas com tiles"],
     initialTool: "brush",
     tools,
+    onSize: () => sizeDialog(),
     groups: [{ id: "select", label: "Seleção" }, { id: "paint", label: "Pintura" }, { id: "view", label: "Vista" }],
     panels: [
       { id: "layers", title: "Camadas", help: ["campanhas.editor.camadas", "Camadas"] },
@@ -140,7 +141,8 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
     onContext: (at) => cellMenu(at),
     onZoom: () => shell.updateZoom(),
   });
-  shell.setCamera(board.camera);
+  // Réguas: 0 no canto do mapa; metros pela escala (metros por casa).
+  shell.setCamera({ ...board.camera, ruler: () => { const r = board.camera.cellRect({ x: 0, y: 0 }); return r.size > 0 ? { x: r.x, y: r.y, cellPx: r.size, cellUnits: Number(doc.scaleMeters) || 1.5, unit: "m" } : null; } });
   const canvas = shell.stage.querySelector("canvas");
   // Início do arraste (prévia do retângulo/seleção) e Alt do zoom; o tabuleiro entrega a pintura ao soltar.
   shell.stage.addEventListener("pointerdown", (e) => {
@@ -697,6 +699,7 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
         { label: "100%", hint: "64 px por casa", shortcut: "mod+1", run: () => { board.camera.actual(64); shell.updateZoom(); } },
         { separator: true },
         { label: "Mostrar grade", checked: grid, run: () => toggleGrid() },
+        shell.rulersMenuItem(),
         { label: "Painéis", checked: root.dataset.panels === "open", run: () => shell.setPanels(root.dataset.panels !== "open") },
         { label: "Tela cheia", run: () => root.querySelector('[data-ed="fullscreen"]')?.click() },
         { separator: true },

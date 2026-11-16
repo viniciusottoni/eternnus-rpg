@@ -1,7 +1,7 @@
 // Tabuleiro da mesa: tileset desenhado em canvas a partir da grade oficial do servidor, ou imagem cartográfica.
 // Camada estática em cache; luzes, água e marcadores animados respeitam prefers-reduced-motion e abas ocultas.
 // Névoa: o servidor envia as máscaras (visível/explorado); aqui só se desenha. O mestre vê um véu translúcido e as marcas.
-import { drawTile } from "./tile-art.js";
+import { drawTile, dominantGround, affectedCells } from "./tile-art.js";
 import { initials } from "./session-policy.js";
 import { decodeBits, MARK_KINDS } from "./fog-policy.js";
 import { helpButton } from "./help.js";
@@ -20,6 +20,25 @@ function hueOf(text) {
   for (const c of String(text)) h = (h * 31 + c.charCodeAt(0)) % 360;
   return h;
 }
+function tileFlags(rows) {
+  const outdoor = rows.some(row => row.includes(","));
+  const timber = !outdoor && rows.some(row => row.includes("d")) && !rows.some(row => row.includes("~"));
+  return { outdoor, timber };
+}
+/** Tudo o que muda o desenho de todas as casas de uma vez (piso externo, madeira, chão dominante). */
+function tileGlobals(rows) {
+  const { outdoor, timber } = tileFlags(rows);
+  return `${outdoor ? 1 : 0}${timber ? 1 : 0}${dominantGround(rows)}`;
+}
+// Vinheta para concentrar a atenção no centro da cena. `clip` = só uma casa (repintura), com o mesmo gradiente.
+function vignette(g, width, height, clip = null) {
+  const v = g.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.3, width / 2, height / 2, Math.max(width, height) * 0.75);
+  v.addColorStop(0, "#00000000");
+  v.addColorStop(1, "#07111766");
+  g.fillStyle = v;
+  if (clip) g.fillRect(clip.x, clip.y, clip.size, clip.size);
+  else g.fillRect(0, 0, width, height);
+}
 function buildStatic(rows, s, ground = null) {
   const w = rows[0].length,
     h = rows.length;
@@ -27,26 +46,11 @@ function buildStatic(rows, s, ground = null) {
   layer.width = w * s;
   layer.height = h * s;
   const g = layer.getContext("2d");
-  const outdoor = rows.some(row => row.includes(","));
-  const timber = !outdoor && rows.some(row => row.includes("d")) && !rows.some(row => row.includes("~"));
+  const { outdoor, timber } = tileFlags(rows);
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) drawTile(g, rows, x, y, s, outdoor, timber, ground);
-  // Vinheta para concentrar a atenção no centro da cena.
-  const v = g.createRadialGradient(
-    layer.width / 2,
-    layer.height / 2,
-    Math.min(layer.width, layer.height) * 0.3,
-    layer.width / 2,
-    layer.height / 2,
-    Math.max(layer.width, layer.height) * 0.75,
-  );
-  v.addColorStop(0, "#00000000");
-  v.addColorStop(1, "#07111766");
-  g.fillStyle = v;
-  g.fillRect(0, 0, layer.width, layer.height);
   return layer;
 }
-
 /** Miniatura do mapa para escolhas do mestre. */
 export function mapThumbnail(el, map) {
   if (!el || !map) return;
@@ -66,6 +70,7 @@ export function mapThumbnail(el, map) {
   canvas.height = layer.height;
   const g = canvas.getContext("2d");
   g.drawImage(layer, 0, 0);
+  vignette(g, canvas.width, canvas.height);
   drawLights(g, map.rows, s, 0, false);
   el.replaceChildren(canvas);
 }
@@ -182,31 +187,46 @@ const CELL_STYLE = {
   o: ["rgba(160,110,60,.18)", "rgba(241,215,156,.75)"],
 };
 
+// Máscaras por objeto de névoa: só mudam com um estado novo, nunca a cada quadro da animação.
+const fogMasks = new WeakMap();
+function masksOf(fog, w, h, master) {
+  const key = `${w}x${h}:${master ? 1 : 0}`;
+  const cached = fogMasks.get(fog);
+  if (cached?.key === key) return cached;
+  const n = w * h;
+  let entry;
+  if (master) {
+    // Véu do mestre: escurece o que os jogadores não veem pela luz/revelação compartilhada.
+    const shared = decodeBits(fog.shared, n);
+    entry = { key, veil: fogMask(w, h, (i) => (shared[i] ? 0 : 120)) };
+  } else {
+    const visible = decodeBits(fog.visible, n);
+    const explored = decodeBits(fog.explored, n);
+    entry = { key, dim: fogMask(w, h, (i) => (visible[i] ? 0 : explored[i] ? 150 : 0)), dark: fogMask(w, h, (i) => (explored[i] ? 0 : 255)) };
+  }
+  fogMasks.set(fog, entry);
+  return entry;
+}
+
 function drawFog(g, state, view, s, t, animate) {
   const fog = state.fog;
   const r = state.map.rows;
   if (!fog || !r?.length) return;
-  const w = r[0].length, h = r.length, n = w * h;
+  const w = r[0].length, h = r.length;
   const master = state.me?.isMaster && !view.viewAs;
   if (fog.active) {
+    const m = masksOf(fog, w, h, master);
+    g.save();
     if (master) {
-      // Véu do mestre: escurece o que os jogadores não veem pela luz/revelação compartilhada.
-      const shared = decodeBits(fog.shared, n);
-      const veil = fogMask(w, h, (i) => (shared[i] ? 0 : 120));
-      g.save();
       g.imageSmoothingEnabled = false;
-      g.drawImage(veil, 0, 0, w * s, h * s);
-      g.restore();
+      g.drawImage(m.veil, 0, 0, w * s, h * s);
     } else {
-      const visible = decodeBits(fog.visible, n);
-      const explored = decodeBits(fog.explored, n);
-      g.save();
       g.imageSmoothingEnabled = true;
-      g.drawImage(fogMask(w, h, (i) => (visible[i] ? 0 : explored[i] ? 150 : 0)), 0, 0, w * s, h * s);
+      g.drawImage(m.dim, 0, 0, w * s, h * s);
       g.imageSmoothingEnabled = false;
-      g.drawImage(fogMask(w, h, (i) => (explored[i] ? 0 : 255)), 0, 0, w * s, h * s);
-      g.restore();
+      g.drawImage(m.dark, 0, 0, w * s, h * s);
     }
+    g.restore();
   }
   for (const l of fog.lights || []) {
     drawGlow(g, l.x, l.y, l.radius, s, t, animate);
@@ -516,10 +536,11 @@ export function createBoard(host, handlers = {}) {
   let state = null,
     view = { mode: "none", reach: [], selected: null, grid: true },
     layer = null,
-    layerKey = "",
     cell = 0,
     ox = 0,
     oy = 0,
+    baseX = 0,
+    baseY = 0,
     frame = 0,
     last = 0,
     cursor = null,
@@ -592,6 +613,80 @@ export function createBoard(host, handlers = {}) {
   image.onerror = () => { status.textContent = "Não foi possível carregar o mapa. Tente atualizar a mesa."; };
   image.onload = () => { layout(); };
 
+  // Camada estática (ADR-081): desenhada fora da tela numa resolução própria e escalada ao desenhar.
+  // O zoom reaproveita a camada atual e refaz a nitidez em fatias curtas, sem travar a interface; quando a grade muda
+  // (pintura no editor, exploração na mesa), só as casas afetadas são repintadas.
+  const LAYER_MAX = 4096, SLICE_MS = 10, REFINE_DELAY = 160;
+  let layerInfo = null, job = null, jobTimer = 0;
+  // Resolução da casa igual à do tabuleiro: o desenho de cada quadro vira uma cópia 1:1 (escala só durante o zoom).
+  const layerScale = (r) => Math.max(4, Math.min(cell, Math.floor(LAYER_MAX / Math.max(r[0].length, r.length))));
+  function cancelJob() { clearTimeout(jobTimer); jobTimer = 0; job = null; }
+  function startJob(r, ground, s, info, delay) {
+    cancelJob();
+    const target = document.createElement("canvas");
+    target.width = r[0].length * s; target.height = r.length * s;
+    job = { target, g: target.getContext("2d"), rows: r, ground, s, i: 0, flags: tileFlags(r), info: { ...info, s, rows: r, ground } };
+    // Sem camada para mostrar: a nova aparece enquanto é desenhada.
+    if (!layer) { layer = target; layerInfo = job.info; }
+    jobTimer = setTimeout(stepJob, delay);
+  }
+  function stepJob() {
+    jobTimer = 0;
+    if (!job || destroyed) return;
+    const { rows: r, s, g: lg, flags, ground } = job, w = r[0].length, n = w * r.length, until = performance.now() + SLICE_MS;
+    while (job.i < n && performance.now() < until) { drawTile(lg, r, job.i % w, (job.i / w) | 0, s, flags.outdoor, flags.timber, ground); job.i++; }
+    if (job.i < n) { jobTimer = setTimeout(stepJob, 0); return; }
+    vignette(lg, w * s, r.length * s);
+    layer = job.target; layerInfo = job.info; job = null;
+    syncLayer(); // o zoom pode ter mudado durante a montagem
+    draw();
+  }
+  function repaint(target, info, r, ground, cells) {
+    const lg = target.getContext("2d"), w = r[0].length, s = info.s, { outdoor, timber } = tileFlags(r);
+    // Camada ainda sendo montada (sem vinheta): a vinheta entra no fim, para todas as casas.
+    const finished = !job || job.target !== target;
+    for (const i of cells) {
+      const x = i % w, y = (i / w) | 0;
+      lg.clearRect(x * s, y * s, s, s);
+      drawTile(lg, r, x, y, s, outdoor, timber, ground);
+      if (finished) vignette(lg, w * s, r.length * s, { x: x * s, y: y * s, size: s });
+    }
+    info.rows = r; info.ground = ground;
+  }
+  function syncLayer() {
+    if (!tileset() || uploaded()) { cancelJob(); layer = null; layerInfo = null; return; }
+    const r = rows(), ground = state.map.terrain || null, s = layerScale(r);
+    const id = `${state.map.key}:${r[0].length}x${r.length}:${ground ? 1 : 0}`, globals = tileGlobals(r);
+    const info = layerInfo;
+    // Outro mapa, outro tamanho ou mudança global de piso: refaz tudo (já, sem esperar).
+    if (!info || info.id !== id || info.globals !== globals) { layer = null; startJob(r, ground, s, { id, globals }, 0); return; }
+    // Primeira montagem em andamento: só recomeça se a grade mudou; a resolução é revista ao terminar.
+    if (job && job.target === layer) {
+      if (info.rows !== r || info.ground !== ground) { layer = null; startJob(r, ground, s, { id, globals }, 0); }
+      return;
+    }
+    if (info.rows !== r || info.ground !== ground) {
+      const cells = affectedCells(info.rows, r, info.ground, ground);
+      if (!cells) { startJob(r, ground, s, { id, globals }, 0); return; }
+      if (cells.length) repaint(layer, info, r, ground, cells);
+      else { info.rows = r; info.ground = ground; }
+      // Nitidez em andamento com a grade antiga: recomeça com a nova.
+      if (job && job.target !== layer) startJob(r, ground, job.s, { id, globals }, REFINE_DELAY);
+    }
+    // Zoom: a camada atual é escalada; a nova resolução é desenhada quando o zoom para.
+    if (s !== info.s && (!job || job.s !== s)) startJob(r, ground, s, { id, globals }, REFINE_DELAY);
+    else if (s === info.s && job && job.target !== layer) cancelJob();
+  }
+  /** Origem do tabuleiro no canvas visível: posição na superfície menos a rolagem atual. */
+  function syncOrigin() {
+    ox = baseX - Math.round(host.scrollLeft * dpr);
+    oy = baseY - Math.round(host.scrollTop * dpr);
+  }
+  let scrollFrame = 0;
+  host.addEventListener("scroll", () => {
+    syncOrigin();
+    if (!scrollFrame) scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; if (!destroyed) draw(); });
+  }, { passive: true });
   function layout() {
     const rect = host.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return;
@@ -611,9 +706,14 @@ export function createBoard(host, handlers = {}) {
     }
     surface.style.width = `${width}px`;
     surface.style.height = `${height}px`;
-    dpr = Math.min(2, window.devicePixelRatio || 1, 4096 / Math.max(width, height));
-    canvas.width = Math.max(1, Math.round(width * dpr));
-    canvas.height = Math.max(1, Math.round(height * dpr));
+    // O canvas cobre só a área visível (fixo na rolagem); a superfície ampliada só dá a extensão da rolagem.
+    // Assim cada quadro desenha a janela visível, não o mapa ampliado inteiro.
+    const viewW = Math.max(1, host.clientWidth), viewH = Math.max(1, host.clientHeight);
+    dpr = Math.min(2, window.devicePixelRatio || 1, 4096 / Math.max(viewW, viewH));
+    canvas.width = Math.max(1, Math.round(viewW * dpr));
+    canvas.height = Math.max(1, Math.round(viewH * dpr));
+    canvas.style.width = `${viewW}px`;
+    canvas.style.height = `${viewH}px`;
     if (resetCamera) {
       const mine = (state?.tokens || []).find(t => t.characterId && t.characterId === state?.me?.characterId);
       const at = mine && tileset() ? tokenCenter(mine, free()) : null;
@@ -627,18 +727,15 @@ export function createBoard(host, handlers = {}) {
     updateCamera();
     if (!tileset()) return;
     const r = rows();
+    // Casa em pixels inteiros: camada em cache alinhada (repintura sem emendas) e grade nítida.
     cell = Math.max(
       1,
-      Math.min(canvas.width / r[0].length, canvas.height / r.length),
+      Math.floor(Math.min(width * dpr / r[0].length, height * dpr / r.length)),
     );
-    ox = Math.floor((canvas.width - cell * r[0].length) / 2);
-    oy = Math.floor((canvas.height - cell * r.length) / 2);
-    // As linhas mudam quando o jogador explora (casas "?" passam a ter terreno): a camada estática é refeita.
-    const key = state.map.key + ":" + cell + ":" + (uploaded() ? "" : r.join("|") + "/" + (state.map.terrain || []).join("|"));
-    if (key !== layerKey) {
-      layer = uploaded() ? null : buildStatic(r, cell, state.map.terrain || null);
-      layerKey = key;
-    }
+    baseX = Math.floor((width * dpr - cell * r[0].length) / 2);
+    baseY = Math.floor((height * dpr - cell * r.length) / 2);
+    syncOrigin();
+    syncLayer();
   }
   function zoomAt(value, clientX, clientY) {
     if (!camera) return;
@@ -657,6 +754,7 @@ export function createBoard(host, handlers = {}) {
   function draw(t = performance.now()) {
     if (!tileset() || (!uploaded() && !layer) || host.clientHeight < 1) return;
     const animate = !reduceMotion();
+    syncOrigin();
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.fillStyle = "#0b0a08";
     g.fillRect(0, 0, canvas.width, canvas.height);
@@ -666,7 +764,10 @@ export function createBoard(host, handlers = {}) {
       // A grade começa no deslocamento definido no mapa (mesma grade autoritativa do servidor).
       if (background?.naturalWidth) g.drawImage(background, Number(state.map.gridOffsetX) || 0, Number(state.map.gridOffsetY) || 0, r[0].length * state.map.gridPixels, r.length * state.map.gridPixels, 0, 0, r[0].length * cell, r.length * cell);
     } else {
-      g.drawImage(layer, 0, 0);
+      const bw = r[0].length * cell, bh = r.length * cell;
+      g.imageSmoothingEnabled = true;
+      if (layerInfo?.s === cell) g.drawImage(layer, 0, 0);
+      else g.drawImage(layer, 0, 0, bw, bh);
       drawWater(g, r, cell, animate ? t : 0);
       drawLights(g, r, cell, t, animate);
     }
@@ -856,6 +957,7 @@ export function createBoard(host, handlers = {}) {
   }
   function cellAt(clientX, clientY) {
     if (!tileset() || cell <= 0) return null;
+    syncOrigin();
     const rect = canvas.getBoundingClientRect();
     const x = Math.floor(((clientX - rect.left) * dpr - ox) / cell),
       y = Math.floor(((clientY - rect.top) * dpr - oy) / cell);
@@ -871,6 +973,7 @@ export function createBoard(host, handlers = {}) {
   function pointAt(clientX, clientY) {
     if (!free()) return cellAt(clientX, clientY);
     if (cell <= 0) return null;
+    syncOrigin();
     const rect = canvas.getBoundingClientRect();
     const cx = ((clientX - rect.left) * dpr - ox) / cell, cy = ((clientY - rect.top) * dpr - oy) / cell;
     const p = finePoint(cx, cy, rows()[0].length, rows().length);
@@ -906,6 +1009,7 @@ export function createBoard(host, handlers = {}) {
   host.addEventListener("pointercancel", endCameraDrag);
   // Arrastar marcador: o jogador arrasta o próprio boneco no turno; o mestre arrasta qualquer marcador.
   const boardPoint = (e) => {
+    syncOrigin();
     const rect = canvas.getBoundingClientRect();
     return { px: (e.clientX - rect.left) * dpr - ox, py: (e.clientY - rect.top) * dpr - oy };
   };
@@ -1077,8 +1181,8 @@ export function createBoard(host, handlers = {}) {
       );
       status.textContent = `Coluna ${cursor.x + 1}, linha ${cursor.y + 1}${token ? ": " + token.label : ""}`;
       if (enlarged) {
-        host.scrollLeft = (ox + (cursor.x + .5) * cell) / dpr - host.clientWidth / 2;
-        host.scrollTop = (oy + (cursor.y + .5) * cell) / dpr - host.clientHeight / 2;
+        host.scrollLeft = (baseX + (cursor.x + .5) * cell) / dpr - host.clientWidth / 2;
+        host.scrollTop = (baseY + (cursor.y + .5) * cell) / dpr - host.clientHeight / 2;
       }
       draw();
     } else if ((e.key === "Enter" || e.key === " ") && cursor) {
@@ -1111,6 +1215,7 @@ export function createBoard(host, handlers = {}) {
     canvas.addEventListener("keydown", (e) => {
       if ((e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) && cursor) {
         e.preventDefault();
+        syncOrigin();
         const rect = canvas.getBoundingClientRect();
         handlers.onContext?.({ cell: cursor, token: (state.tokens || []).find((t) => t.x === cursor.x && t.y === cursor.y) || null, x: rect.left + (ox + (cursor.x + 1) * cell) / dpr, y: rect.top + (oy + (cursor.y + 1) * cell) / dpr });
       }
@@ -1199,13 +1304,15 @@ export function createBoard(host, handlers = {}) {
       cellAt: (x, y) => cellAt(x, y),
       pointAt: (x, y) => pointAt(x, y),
       /** Retângulo de uma casa em coordenadas da janela (para posicionar menus/alças). */
-      cellRect: (c) => { const r = canvas.getBoundingClientRect(); return { x: r.left + (ox + c.x * cell) / dpr, y: r.top + (oy + c.y * cell) / dpr, size: cell / dpr }; },
+      cellRect: (c) => { syncOrigin(); const r = canvas.getBoundingClientRect(); return { x: r.left + (ox + c.x * cell) / dpr, y: r.top + (oy + c.y * cell) / dpr, size: cell / dpr }; },
     },
     focus() {
       canvas.focus();
     },
     destroy() {
       destroyed = true;
+      cancelJob();
+      cancelAnimationFrame(scrollFrame);
       moves.clear();
       landing.clear();
       sizing.clear();

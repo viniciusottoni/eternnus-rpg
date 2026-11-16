@@ -111,6 +111,12 @@ Navegação: roda do mouse = zoom centrado no cursor; espaço + arrastar e botã
 
 Interface Básica/Completa: a Básica mostra as ferramentas essenciais e esconde grupos avançados e painéis secundários; nada nos dados ou nas regras muda.
 
+Réguas, dicas e tamanho (16/11/2026):
+
+- **Réguas** superior e esquerda, discretas (18 px), desenhadas pelo núcleo a partir de `camera.ruler()` de cada editor → `{ x, y, cellPx, cellUnits, unit }` (origem em coordenadas da janela, pixels de tela por casa, metros por casa). Valem em metros pela grade: 0 no canto do mapa (tiles e cenas) ou na primeira linha da grade (imagem); valores negativos na área externa. Marcas maiores a cada 1, 2, 5, 10… casas com pelo menos 56 px (`rulerSteps`, `editor-policy.js`), menores por casa; linha dourada na posição do cursor. Mapa de imagem sem grade mostra pixels. Cena textual não mostra réguas. Liga/desliga em Exibir › Réguas (preferência local); ocultas no celular. Só redesenham quando a vista, o tamanho ou o cursor mudam.
+- **Dicas das ferramentas**: ao passar o mouse (400 ms) ou focar pelo teclado, a dica compartilhada de `help.js` abre ao lado da barra com o nome e o atalho em destaque e, em letras menores, o que fazer com a ferramenta (`tool.tip`; na cena, o texto de `scene-policy.HELP`). Ferramenta indisponível mostra o motivo. Não abre por toque.
+- **Área visível**: fica centralizada no palco com a área externa escura em volta. O tamanho na barra de estado é um botão que abre o diálogo de tamanho (mapa de tiles: Tamanho do mapa; imagem: Tamanho do documento).
+
 ## 7. Fluxos
 
 - **Novo mapa** → "Criar do zero" (enviar imagem, importar URL, arquivo VTT, mapa vazio com tiles, área em branco) ou "A partir de modelo" (catálogo oficial com miniaturas, busca, filtro por tipo e prévia ampliada). Um modelo de tiles vira mapa de tiles editável (camadas preservadas, nada é rasterizado); a cartografia oficial vira mapa de imagem. O original nunca é alterado. Após criar, o editor abre.

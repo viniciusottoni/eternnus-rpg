@@ -95,7 +95,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (id === "gridAdjust" && !draft.mapKey?.startsWith("asset:")) return "A grade de cenários prontos já está definida.";
     return null;
   }
-  const T = (id, iconName, key, group, basic, extra = {}) => ({ id, label: labelOf(id), icon: iconName, key, group, basic, disabled: () => toolProblem(id), ...extra });
+  // Dica da ferramenta: o texto de ajuda dela sem o nome repetido no início ("Nome: o que fazer").
+  const tipOf = (id) => { const h = helpOf(id), i = h.indexOf(": "), t = i > 0 && i < 60 ? h.slice(i + 2) : h; return t.charAt(0).toUpperCase() + t.slice(1); };
+  const T = (id, iconName, key, group, basic, extra = {}) => ({ id, label: labelOf(id), tip: tipOf(id), icon: iconName, key, group, basic, disabled: () => toolProblem(id), ...extra });
   const panelTool = (id) => ({ action: () => openPanel(id), pressed: () => panel === id });
   const notMap = () => !mapKind();
   const tools = [
@@ -178,6 +180,12 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     zoomIn: () => board.camera.zoomIn(), zoomOut: () => board.camera.zoomOut(), fit: () => board.camera.fit(),
     actual: () => board.camera.actual(natural()), zoom: () => board.camera.zoom(natural()),
     setPanHold: (on) => board.camera.setPanHold(on), setPan: (on) => board.camera.setPan(on),
+    // Réguas só em mapa tático: 0 no canto do mapa, metros pela escala da grade.
+    ruler: () => {
+      if (!mapKind() || !meta) return null;
+      const r = board.camera.cellRect({ x: 0, y: 0 });
+      return r.size > 0 ? { x: r.x, y: r.y, cellPx: r.size, cellUnits: Number(meta.scaleMeters) || 1.5, unit: "m" } : null;
+    },
   });
 
   // ---------- Histórico (instantâneos do rascunho e da preparação do mapa) ----------
@@ -695,6 +703,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
         { label: "Tamanho real (100%)", shortcut: "mod+1", run: zoom(() => board.camera.actual(natural())) },
         { separator: true },
         { label: "Mostrar grade", checked: grid, disabled: !mapKind(), disabledReason: "A grade vale para mapas táticos.", run: () => { grid = !grid; redraw(); shell.refreshTools(); } },
+        shell.rulersMenuItem(),
         { label: "Painéis", checked: root.dataset.panels === "open", run: () => shell.setPanels(root.dataset.panels !== "open") },
         { label: "Tela cheia", checked: document.fullscreenElement === shell.dialog, run: () => q('[data-ed="fullscreen"]')?.click() },
       ] },

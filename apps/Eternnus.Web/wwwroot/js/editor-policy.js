@@ -220,3 +220,24 @@ export function stepZoom(scale, direction, min = 0.05, max = 16) {
 
 /** Porcentagem legível do zoom. */
 export const zoomLabel = (scale) => `${Math.round(scale * 100)}%`;
+
+// ---------- Réguas ----------
+const RULER_STEPS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
+/**
+ * Divisões da régua alinhadas à grade: cada marca maior vale um número "redondo" de casas (1, 2, 5, 10…) com pelo menos
+ * `minMajorPx` pixels de tela; as menores marcam cada casa (ou frações da casa quando ela está grande na tela).
+ * `cellPx`: pixels de tela por casa; `cellUnits`: metros (ou pixels) por casa.
+ */
+export function rulerSteps(cellPx, cellUnits, minMajorPx = 56) {
+  if (!(cellPx > 0) || !(cellUnits > 0) || !Number.isFinite(cellPx) || !Number.isFinite(cellUnits)) return null;
+  const k = RULER_STEPS.find((n) => n * cellPx >= minMajorPx) ?? RULER_STEPS.at(-1);
+  const majorPx = k * cellPx;
+  const options = k === 1 ? [4, 2] : [k, 10, 5, 2].filter((d) => k % d === 0);
+  const d = options.find((n) => majorPx / n >= 6) || 1;
+  return { majorPx, majorUnits: k * cellUnits, minorPx: d > 1 ? majorPx / d : 0 };
+}
+/** Rótulo curto da régua (até duas casas decimais, vírgula decimal). */
+export const rulerLabel = (value) => {
+  const v = Math.round(value * 100) / 100;
+  return (Object.is(v, -0) ? 0 : v).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+};

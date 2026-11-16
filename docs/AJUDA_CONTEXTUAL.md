@@ -626,7 +626,9 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | Atalhos de teclado e mouse do editor | ⓘ `campanhas.editor.atalhos` na barra de estado |
 | Camadas da cena (só organização no editor) | ⓘ `campanhas.cenas.camadas` + nota visível no painel |
 | Editor de mapa de imagem e área visível/externa | ⓘ `campanhas.mapas.imagem` e `campanhas.mapas.area-visivel` |
-| Ferramentas da barra lateral (só ícone) | Nome acessível com atalho (`aria-label`), tooltip automático do componente compartilhado; motivo de indisponibilidade em `data-tip` |
+| Ferramentas da barra lateral (só ícone) | Nome acessível com atalho (`aria-label`); tooltip do componente compartilhado aberto ao lado (`data-tip-side="right"`) com nome + atalho e descrição curta do uso em letras menores (`data-tip-detail`, até 240 caracteres); ferramenta indisponível descreve o motivo (`aria-describedby`) e mostra-o na dica |
+| Réguas do editor (metros pela grade) | Decorativas (`aria-hidden`), sem foco nem tooltip; coordenadas acessíveis continuam na barra de estado; Exibir › Réguas liga/desliga |
+| Tamanho na barra de estado (tiles e imagem) | Botão com texto visível e nome acessível "Tamanho: … Alterar o tamanho"; tooltip curto com o que abre |
 | Menus, menus de contexto e janela de propriedades | Rótulos visíveis e atalho exibido; navegação por setas, Enter e Esc |
 | Zoom, coordenadas, dimensões e estado | Texto visível na barra de estado; mensagens em região `aria-live` |
 | Excluir, mudar a grade de mapa preparado, sair sem salvar | Confirmação com consequências explícitas |

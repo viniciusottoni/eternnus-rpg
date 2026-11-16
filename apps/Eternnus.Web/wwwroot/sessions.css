@@ -2905,6 +2905,8 @@ dialog.fog-editor-modal {
 
 /* Câmera compartilhada: amplia sem deformar a grade; bordas acessíveis por rolagem. */
 .board-surface { width: 100%; height: 100%; position: relative; }
+/* O canvas do tabuleiro tem o tamanho da área visível e acompanha a rolagem (só a janela visível é desenhada). */
+.board-surface > .board-canvas { position: sticky; top: 0; left: 0; }
 .board-viewport { overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .board-viewport.camera-pan { cursor: grab; touch-action: none; }
 .board-viewport.camera-pan .board-canvas { cursor: grab; }

@@ -11,7 +11,7 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 
 .ed-shell {
   --ed-panel-width: 300px; --ed-line: #3a3f31; --ed-bg: #12140f; --ed-raised: #1b1e17; --ed-hover: #262a20;
-  display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; min-height: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; min-height: 0;
   color: var(--text, #ecebe3); background: var(--ed-bg);
   padding-bottom: env(safe-area-inset-bottom);
 }
@@ -71,6 +71,18 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
   background: #090a08 repeating-conic-gradient(#11130f 0 25%, #0b0c0a 0 50%) 0 0 / 24px 24px;
 }
 .ed-shell.ed-space .ed-stage { cursor: grab; }
+/* Área de desenho com réguas discretas (superior e esquerda) em metros pela grade. */
+.ed-canvas-area { --ed-ruler: 18px; position: relative; display: grid; grid-template-columns: var(--ed-ruler) minmax(0, 1fr); grid-template-rows: var(--ed-ruler) minmax(0, 1fr); min-width: 0; min-height: 0; }
+.ed-canvas-area[data-rulers="off"], .ed-canvas-area.ed-no-ruler { --ed-ruler: 0px; }
+.ed-canvas-area[data-rulers="off"] .ed-ruler, .ed-canvas-area[data-rulers="off"] .ed-ruler-corner,
+.ed-canvas-area.ed-no-ruler .ed-ruler, .ed-canvas-area.ed-no-ruler .ed-ruler-corner { display: none; }
+.ed-canvas-area > .ed-stage { grid-column: 2; grid-row: 2; }
+.ed-ruler { display: block; width: 100%; height: 100%; background: #12140f; pointer-events: none; }
+.ed-ruler-x { grid-column: 2; grid-row: 1; border-bottom: 1px solid var(--ed-line); }
+.ed-ruler-y { grid-column: 1; grid-row: 2; border-right: 1px solid var(--ed-line); }
+.ed-ruler-corner { grid-column: 1; grid-row: 1; display: grid; place-items: center; background: #12140f; border-right: 1px solid var(--ed-line); border-bottom: 1px solid var(--ed-line); color: #8d8a78; font-size: 9px; line-height: 1; pointer-events: none; }
+.ed-size-button { min-height: 30px; padding: 0 8px; border: 1px dashed var(--ed-line); border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.ed-size-button:hover, .ed-size-button:focus-visible { border-color: #8a6a2a; color: var(--text, #ecebe3); }
 .ed-resizer { cursor: col-resize; background: #181a14; border-left: 1px solid var(--ed-line); touch-action: none; }
 .ed-resizer:hover, .ed-resizer:focus-visible { background: #3a3220; }
 .ed-panels { min-width: 0; overflow-y: auto; background: var(--ed-raised); scrollbar-width: thin; }
@@ -171,6 +183,8 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 
 /* Tablets e celulares: ferramentas em faixa horizontal, painéis em gaveta sobre o palco. */
 @media (max-width: 900px), (max-width: 1200px) and (pointer: coarse) {
+  .ed-canvas-area { --ed-ruler: 0px; }
+  .ed-ruler, .ed-ruler-corner { display: none; }
   .ed-top { flex-wrap: wrap; gap: 6px; }
   .ed-brand { max-width: 50vw; }
   .ed-menubar { order: 3; width: 100%; }

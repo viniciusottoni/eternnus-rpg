@@ -68,21 +68,22 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
 
   // ---------- Janela ----------
   const tools = [
-    { id: "select", label: "Selecionar e mover", icon: "select", key: "v", group: "edit" },
-    { id: "hand", label: "Mão (mover a vista)", icon: "hand", key: "h", group: "edit" },
-    { id: "zoom", label: "Zoom (Alt afasta)", icon: "zoom", key: "z", group: "edit", basic: false },
-    { id: "crop", label: "Recortar documento", icon: "marquee", key: "c", group: "edit", basic: false },
-    { id: "text", label: "Texto", icon: "text", key: "t", group: "create" },
-    { id: "rect", label: "Retângulo", icon: "rect", key: "u", group: "create", basic: false },
-    { id: "ellipse", label: "Elipse", icon: "ellipse", key: "e", group: "create", basic: false },
-    { id: "image", label: "Adicionar imagem", icon: "image", key: "i", group: "create", action: () => openAddImage() },
-    { id: "grid", label: "Grade", icon: "grid", key: "g", group: "view", action: () => toggleGrid(), pressed: () => view.showGrid && meta.hasGrid },
+    { id: "select", tip: "Clique num elemento para selecioná-lo e arraste para mover. As alças redimensionam e giram; Shift soma à seleção.", label: "Selecionar e mover", icon: "select", key: "v", group: "edit" },
+    { id: "hand", tip: "Arraste para mover a vista. Espaço ou o botão do meio do mouse também movem.", label: "Mão (mover a vista)", icon: "hand", key: "h", group: "edit" },
+    { id: "zoom", tip: "Clique para aproximar; com Alt, afasta. A roda do mouse aproxima no ponto do cursor.", label: "Zoom (Alt afasta)", icon: "zoom", key: "z", group: "edit", basic: false },
+    { id: "crop", tip: "Arraste para definir um novo recorte da área visível. O que ficar fora vai para a área externa.", label: "Recortar documento", icon: "marquee", key: "c", group: "edit", basic: false },
+    { id: "text", tip: "Clique na área de trabalho para criar um texto; ajuste fonte e cor em Propriedades.", label: "Texto", icon: "text", key: "t", group: "create" },
+    { id: "rect", tip: "Arraste para desenhar um retângulo na camada ativa.", label: "Retângulo", icon: "rect", key: "u", group: "create", basic: false },
+    { id: "ellipse", tip: "Arraste para desenhar uma elipse na camada ativa.", label: "Elipse", icon: "ellipse", key: "e", group: "create", basic: false },
+    { id: "image", tip: "Adiciona uma imagem do dispositivo como novo elemento da camada ativa.", label: "Adicionar imagem", icon: "image", key: "i", group: "create", action: () => openAddImage() },
+    { id: "grid", tip: "Mostra ou esconde a grade sobre o mapa. Não altera a imagem salva.", label: "Grade", icon: "grid", key: "g", group: "view", action: () => toggleGrid(), pressed: () => view.showGrid && meta.hasGrid },
   ];
   const shell = createEditorShell({
     title: "Editor de mapa de imagem", subtitle: meta.name,
     help: ["campanhas.mapas.imagem", "Editor de mapas de imagem"],
     menus: () => menus(),
     tools,
+    onSize: () => openDocSize("canvas"),
     groups: [{ id: "edit", label: "Seleção e vista" }, { id: "create", label: "Criar" }, { id: "view", label: "Exibição" }],
     panels: [
       { id: "layers", title: "Camadas", help: ["campanhas.editor.camadas", "Camadas"] },
@@ -128,7 +129,13 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     cursor: (p) => shell.setStatus({ coords: p ? `${Math.round(p.x)}, ${Math.round(p.y)} px` : "" }),
     camera: () => shell.updateZoom(),
   });
-  shell.setCamera(surface.camera);
+  // Réguas: com grade, em metros a partir da primeira linha da grade; sem grade, em pixels a partir do canto da área visível.
+  shell.setCamera({ ...surface.camera, ruler: () => {
+    const v = surface.camera.view();
+    return meta.hasGrid
+      ? { x: v.left + meta.gridOffsetX * v.scale, y: v.top + meta.gridOffsetY * v.scale, cellPx: meta.gridPixels * v.scale, cellUnits: Number(meta.scaleMeters) || 1.5, unit: "m" }
+      : { x: v.left, y: v.top, cellPx: v.scale, cellUnits: 1, unit: "px" };
+  } });
   surface.canvas.setAttribute("aria-describedby", "im-canvas-help");
   surface.canvas.addEventListener("keydown", onCanvasKey);
 
@@ -584,6 +591,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
         { separator: true },
         { label: "Mostrar grade", checked: view.showGrid && meta.hasGrid, run: toggleGrid, disabled: !meta.hasGrid, disabledReason: "Mapa sem grade. Ative em Imagem › Grade e escala." },
         { label: "Encaixar", checked: view.snap, run: () => { view.snap = !view.snap; shell.message(view.snap ? "Encaixe ligado (bordas e centro da área visível e grade). Ctrl ao arrastar ignora." : "Encaixe desligado."); } },
+        shell.rulersMenuItem(),
         { label: "Mostrar área externa", checked: !view.hideOutside, run: () => { view.hideOutside = !view.hideOutside; surface.invalidate(); }, hint: "Escurecida quando ligada; encoberta quando desligada" },
         { separator: true },
         { label: "Painéis", checked: shell.root.dataset.panels === "open", run: () => shell.setPanels(shell.root.dataset.panels !== "open") },

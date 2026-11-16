@@ -623,7 +623,9 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
     if (!e) return;
     if (!P.sameLocation(loc(), { category: e.category, folderId: e.folderId })) { navigate({ category: e.category, folderId: e.folderId }); setSelection([key], { anchor: key, focus: key }); }
     focusOption(key);
-    if (open) await openEntry(e);
+    // O editor fica aberto até o mestre fechar: nunca aguardá-lo aqui. Quem chama costuma estar dentro de um envio
+    // de formulário (espera em primeiro plano), que deixaria a página — e o próprio editor — inerte até o fechamento.
+    if (open) setTimeout(() => { if (!st.disposed) Promise.resolve(openEntry(e)).catch((error) => toast(error.message)); }, 0);
   }
   async function createNew(category = loc().category) {
     if (blocked()) return toast(ARCHIVED);

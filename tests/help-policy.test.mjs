@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validHelpKey, validTip, validHelpEntry, canReadHelp, catalogModule, safeHelpRoute } from '../apps/Eternnus.Web/wwwroot/js/help-policy.js';
+import { validHelpKey, validTip, validTipDetail, validHelpEntry, canReadHelp, catalogModule, safeHelpRoute } from '../apps/Eternnus.Web/wwwroot/js/help-policy.js';
 
 test('chaves têm área conhecida e três segmentos estritos', () => {
   assert.equal(validHelpKey('mesa.rolagem.visibilidade'), true);
@@ -31,4 +31,10 @@ test('audiência depende do papel global ou contexto explícito de recurso', () 
 test('saiba mais aceita só rota interna segmentada', () => {
   assert.equal(safeHelpRoute('#campaign/a-b/settings'), true);
   for (const value of ['https://x', '#', '#x?token=x', '#x//y', '#x/<b>', '#x/%2e%2e', '#x/../y', '##x', null]) assert.equal(safeHelpRoute(value), false);
+});
+
+test('descrição curta da dica: texto puro de até 240 caracteres', () => {
+  assert.equal(validTipDetail('Pinta o tile escolhido na paleta.'), true);
+  assert.equal(validTipDetail('a'.repeat(240)), true);
+  for (const detail of ['', ' ', 'a'.repeat(241), '<b>x</b>', 'a\nb', undefined, 3]) assert.equal(validTipDetail(detail), false);
 });

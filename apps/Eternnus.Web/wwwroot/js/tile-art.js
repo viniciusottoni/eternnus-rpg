@@ -237,13 +237,40 @@ const SURFACES = { t: ",", p: "n", a: "s", C: ":", P: ":", R: "e", i: "v", X: "v
 const GROUND = ".,d:nsevufc", groundCache = new WeakMap();
 // Objetos acompanham o chão vizinho: rocha na neve e árvore na mata não ganham um quadrado de outro bioma.
 // Cada grade é imutável; o cache fraco desaparece junto com a camada de desenho.
-function objectGround(rows, x, y, fallback) {
+/** Chão mais comum da grade: dependência global do desenho (muda → a camada inteira precisa ser refeita). */
+export function dominantGround(rows) {
   let dominant=groundCache.get(rows);
   if(dominant===undefined) {
     const counts=new Map();
     for(const row of rows)for(const c of row)if(GROUND.includes(c))counts.set(c,(counts.get(c)||0)+1);
     dominant=[...counts].sort((a,b)=>b[1]-a[1])[0]?.[0]||"";groundCache.set(rows,dominant);
   }
+  return dominant;
+}
+/** Alcance, em casas, dos vizinhos que mudam o desenho de uma casa (piso de objetos olha ±2). */
+export const TILE_REACH = 2;
+/**
+ * Casas a repintar quando a grade muda: as alteradas, as vizinhas cujo desenho depende delas
+ * e as entradas (S) à direita na mesma linha, que herdam o piso à esquerda. `null` = muitas casas, refazer tudo.
+ */
+export function affectedCells(prev, next, prevGround = null, nextGround = null) {
+  const h = next.length, w = next[0].length, hit = new Uint8Array(w * h);
+  const list = [];
+  const mark = (x, y) => { if (x >= 0 && y >= 0 && x < w && y < h && !hit[y * w + x]) { hit[y * w + x] = 1; list.push(y * w + x); } };
+  for (let y = 0; y < h; y++) {
+    const a = prev[y], b = next[y], ga = prevGround?.[y], gb = nextGround?.[y];
+    if (a === b && ga === gb) continue;
+    for (let x = 0; x < w; x++) {
+      if (a[x] === b[x] && ga?.[x] === gb?.[x]) continue;
+      for (let dy = -TILE_REACH; dy <= TILE_REACH; dy++) for (let dx = -TILE_REACH; dx <= TILE_REACH; dx++) mark(x + dx, y + dy);
+      for (let xx = x + 1; xx < w; xx++) if (b[xx] === "S") mark(xx, y);
+    }
+    if (list.length > (w * h) / 3) return null;
+  }
+  return list;
+}
+function objectGround(rows, x, y, fallback) {
+  const dominant=dominantGround(rows);
   const nearby=new Map();
   for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++) {
     if(!dx&&!dy)continue;

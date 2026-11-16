@@ -4,7 +4,11 @@
 import { $, esc, modal, toast } from "./ui.js";
 import { helpButton } from "./help.js";
 import { interfaceMode, interfaceToggle, mountInterfaceToggle, onInterfaceChange } from "./interface-mode.js";
-import { FIELD_SAFE, clampMenu, isTypingTarget, isRequiredLayer, shortcutLabel, shortcutOf, zoomLabel } from "./editor-policy.js";
+import { FIELD_SAFE, clampMenu, isTypingTarget, isRequiredLayer, rulerLabel, rulerSteps, shortcutLabel, shortcutOf, zoomLabel } from "./editor-policy.js";
+
+let shellSequence = 0;
+/** Descrição curta das dicas (o componente de ajuda aceita até 240 caracteres). */
+const tipDetail = (text) => { const s = String(text || "").trim(); return s.length > 240 ? `${s.slice(0, 237).trimEnd()}…` : s; };
 
 // ---------- Ícones (SVG estático, sem dados do usuário) ----------
 const P = {
@@ -319,11 +323,14 @@ export function renderHistoryPanel(host, history) {
 // ---------- Janela do editor ----------
 /**
  * Abre o editor em tela cheia no diálogo comum.
- * opts: { title, subtitle, help:[chave, rótulo], menus: () => [{ id, label, items: () => [...] }], tools: [{ id, label, icon, key, group, basic,
- * hidden(), disabled() → motivo|null, pressed(), action }], groups: [{ id, label }], panels: [{ id, title, basic, open }],
- * actions: html extra no topo, keys: { "mod+z": fn, … }, isDirty(), onTool(id), onClose() }.
+ * opts: { title, subtitle, help:[chave, rótulo], menus: () => [{ id, label, items: () => [...] }], tools: [{ id, label, tip, icon, key, group,
+ * basic, hidden(), disabled() → motivo|null, pressed(), action }], groups: [{ id, label }], panels: [{ id, title, basic, open }],
+ * actions: html extra no topo, keys: { "mod+z": fn, … }, isDirty(), onTool(id), onClose(), onSize() (tamanho clicável na barra de estado) }.
+ * A câmera (`setCamera`) pode expor `ruler()` → { x, y, cellPx, cellUnits, unit } | null: origem da área visível em coordenadas
+ * da janela, pixels de tela por casa, metros (ou pixels) por casa e a unidade; sem ele, as réguas ficam ocultas.
  */
 export function createEditorShell(opts) {
+  const uid = ++shellSequence;
   let mode = interfaceMode(), tool = opts.initialTool || opts.tools[0]?.id, camera = null, closed = false, resolveClosed;
   const whenClosed = new Promise((r) => (resolveClosed = r));
   modal(opts.title, `<div class="ed-shell" data-interface="${mode}" data-panels="open">
@@ -338,14 +345,19 @@ export function createEditorShell(opts) {
     </header>
     <div class="ed-body">
       <nav class="ed-tools" role="toolbar" aria-orientation="vertical" aria-label="Ferramentas" data-ed-tools></nav>
-      <section class="ed-stage" aria-label="Área de edição" data-ed-stage></section>
+      <div class="ed-canvas-area" data-rulers="on">
+        <span class="ed-ruler-corner" aria-hidden="true" data-ed-ruler-unit></span>
+        <canvas class="ed-ruler ed-ruler-x" aria-hidden="true" data-ed-ruler="x"></canvas>
+        <canvas class="ed-ruler ed-ruler-y" aria-hidden="true" data-ed-ruler="y"></canvas>
+        <section class="ed-stage" aria-label="Área de edição" data-ed-stage></section>
+      </div>
       <div class="ed-resizer" role="separator" aria-orientation="vertical" aria-label="Largura dos painéis" tabindex="0" aria-valuemin="220" aria-valuemax="520" data-ed-resizer></div>
       <aside class="ed-panels" aria-label="Painéis" data-ed-panels>${opts.panels.map((p) => `<section class="ed-panel" data-panel="${esc(p.id)}" data-basic="${p.basic !== false}" data-open="${p.open !== false}"><h2 class="ed-panel-title"><button type="button" data-ed-panel-toggle="${esc(p.id)}" aria-expanded="${p.open !== false}">${esc(p.title)}</button>${p.help ? helpButton(p.help[0], p.help[1]) : ""}</h2><div class="ed-panel-body" data-panel-body="${esc(p.id)}"></div></section>`).join("")}</aside>
     </div>
     <footer class="ed-status" data-ed-status>
       <div class="ed-zoom" role="group" aria-label="Zoom"><button type="button" class="ed-icon-button" data-ed-zoom="out" aria-label="Afastar (Ctrl −)">−</button><button type="button" class="ed-zoom-value" data-ed-zoom="fit" aria-label="Ajustar à tela (Ctrl 0)"><span data-ed-zoom-label>100%</span></button><button type="button" class="ed-icon-button" data-ed-zoom="in" aria-label="Aproximar (Ctrl +)">+</button><button type="button" class="subtle small" data-ed-zoom="actual">100%</button></div>
       <span class="ed-status-cell" data-ed-coords aria-label="Posição do cursor"></span>
-      <span class="ed-status-cell" data-ed-size></span>
+      ${opts.onSize ? `<button type="button" class="ed-status-cell ed-size-button" data-ed-size data-ed="size" data-tip="Alterar o tamanho" data-tip-detail="Abre o tamanho do documento: largura e altura da área visível."></button>` : '<span class="ed-status-cell" data-ed-size></span>'}
       <span class="ed-status-cell ed-state" data-ed-state></span>
       <span class="ed-status-msg" role="status" aria-live="polite" data-ed-message></span>
       ${opts.help ? `<span class="ed-status-help">${helpButton(opts.help[0], opts.help[1])}</span>` : ""}
@@ -415,7 +427,11 @@ export function createEditorShell(opts) {
         const reason = t.disabled?.() || null;
         const pressed = t.pressed ? t.pressed() : t.id === tool;
         const name = `${t.label}${t.key ? ` (${t.key.toUpperCase()})` : ""}`;
-        return `<button type="button" class="ed-tool${pressed ? " active" : ""}" data-ed-tool="${esc(t.id)}" aria-pressed="${!!pressed}" aria-label="${esc(name)}" ${reason ? `aria-disabled="true" data-tip="${esc(reason)}"` : ""} tabindex="-1">${icon(t.icon)}<span class="ed-tool-label">${esc(t.label)}</span></button>`;
+        // Dica ao passar o mouse ou focar: nome e atalho em destaque e, em letras menores, o que fazer com a ferramenta
+        // (ou por que ela está indisponível agora). O motivo também fica no nome acessível descrito.
+        const detail = tipDetail(reason ? `Indisponível agora: ${reason}` : t.tip);
+        const reasonId = `ed-${uid}-why-${t.id}`;
+        return `<button type="button" class="ed-tool${pressed ? " active" : ""}" data-ed-tool="${esc(t.id)}" aria-pressed="${!!pressed}" aria-label="${esc(name)}" data-tip="${esc(name)}" data-tip-side="right"${detail ? ` data-tip-detail="${esc(detail)}"` : ""} ${reason ? `aria-disabled="true" aria-describedby="${esc(reasonId)}"` : ""} tabindex="-1">${icon(t.icon)}<span class="ed-tool-label">${esc(t.label)}</span>${reason ? `<span class="sr-only" id="${esc(reasonId)}">${esc(reason)}</span>` : ""}</button>`;
       }).join("")}</div>`;
     }).join("");
     const host = q("[data-ed-tools]");
@@ -453,6 +469,7 @@ export function createEditorShell(opts) {
     if (action === "panels") setPanels(root.dataset.panels !== "open");
     if (action === "fullscreen") toggleFullscreen();
     if (action === "close") requestClose();
+    if (action === "size") opts.onSize?.();
     const zoom = e.target.closest("[data-ed-zoom]")?.dataset.edZoom;
     if (zoom && camera) { ({ in: () => camera.zoomIn(), out: () => camera.zoomOut(), fit: () => camera.fit(), actual: () => camera.actual() })[zoom]?.(); updateZoom(); }
   });
@@ -471,9 +488,79 @@ export function createEditorShell(opts) {
   /** `state` é HTML já escapado pelo editor (selos fixos); coordenadas e tamanho são texto. */
   function setStatus({ coords, size, state } = {}) {
     if (coords !== undefined) q("[data-ed-coords]").textContent = coords || "";
-    if (size !== undefined) q("[data-ed-size]").textContent = size || "";
+    if (size !== undefined) {
+      const cell = q("[data-ed-size]");
+      cell.textContent = size || "";
+      if (opts.onSize) cell.setAttribute("aria-label", size ? `Tamanho: ${size}. Alterar o tamanho` : "Alterar o tamanho");
+    }
     if (state !== undefined) q("[data-ed-state]").innerHTML = state || "";
     updateZoom();
+  }
+
+  // ---------- Réguas ----------
+  // Superior e esquerda, discretas, em metros pela grade (0 no canto da área visível; negativos na área externa).
+  // Só redesenham quando a vista, o tamanho ou o cursor mudam; o laço de quadros para quando o editor fecha.
+  const area = q(".ed-canvas-area"), rulerX = q('[data-ed-ruler="x"]'), rulerY = q('[data-ed-ruler="y"]'), rulerUnit = q("[data-ed-ruler-unit]");
+  let pointer = null, rulerSig = "", rulerFrame = 0;
+  if (pref.rulers === false) area.dataset.rulers = "off";
+  const trackPointer = (e) => { pointer = { x: e.clientX, y: e.clientY }; };
+  const forgetPointer = () => { pointer = null; };
+  stage.addEventListener("pointermove", trackPointer, { passive: true });
+  stage.addEventListener("pointerleave", forgetPointer);
+  function paintRuler(canvas, rect, axis, origin, steps, cursor) {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.max(1, Math.round(rect.width * dpr)), h = Math.max(1, Math.round(rect.height * dpr));
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    const g = canvas.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, rect.width, rect.height);
+    const len = axis === "x" ? rect.width : rect.height, thick = axis === "x" ? rect.height : rect.width;
+    const line = (pos, size) => { const p = Math.round(pos) + 0.5; if (axis === "x") { g.moveTo(p, thick); g.lineTo(p, thick - size); } else { g.moveTo(thick, p); g.lineTo(thick - size, p); } };
+    g.strokeStyle = "rgba(216,208,180,.28)"; g.lineWidth = 1; g.beginPath();
+    if (steps.minorPx > 0) {
+      const first = Math.ceil(-origin / steps.minorPx), last = Math.floor((len - origin) / steps.minorPx);
+      for (let i = first; i <= last; i++) line(origin + i * steps.minorPx, thick * 0.28);
+    }
+    g.stroke();
+    g.strokeStyle = "rgba(216,208,180,.5)"; g.beginPath();
+    const first = Math.floor(-origin / steps.majorPx), last = Math.ceil((len - origin) / steps.majorPx);
+    for (let i = first; i <= last; i++) line(origin + i * steps.majorPx, thick * 0.62);
+    g.stroke();
+    g.fillStyle = "rgba(216,208,180,.62)"; g.font = "9px system-ui, sans-serif"; g.textBaseline = "top";
+    for (let i = first; i <= last; i++) {
+      const pos = origin + i * steps.majorPx;
+      if (pos < -40 || pos > len + 4) continue;
+      const label = rulerLabel(i * steps.majorUnits);
+      if (axis === "x") g.fillText(label, Math.round(pos) + 3, 2);
+      else { g.save(); g.translate(2, Math.round(pos) - 3); g.rotate(-Math.PI / 2); g.textAlign = "left"; g.fillText(label, 0, 0); g.restore(); }
+    }
+    if (cursor != null && cursor >= 0 && cursor <= len) {
+      g.strokeStyle = "rgba(241,215,156,.95)"; g.beginPath(); line(cursor, thick); g.stroke();
+    }
+  }
+  function drawRulers() {
+    const info = camera?.ruler?.() || null;
+    const steps = info && rulerSteps(info.cellPx, info.cellUnits);
+    area.classList.toggle("ed-no-ruler", !steps);
+    if (!steps || area.dataset.rulers === "off" || !rulerX.offsetHeight) return;
+    const rx = rulerX.getBoundingClientRect(), ry = rulerY.getBoundingClientRect();
+    const sig = [info.x, info.y, info.cellPx, info.cellUnits, info.unit, rx.left, rx.width, ry.top, ry.height, pointer?.x, pointer?.y].join("|");
+    if (sig === rulerSig) return;
+    rulerSig = sig;
+    rulerUnit.textContent = info.unit || "";
+    paintRuler(rulerX, rx, "x", info.x - rx.left, steps, pointer ? pointer.x - rx.left : null);
+    paintRuler(rulerY, ry, "y", info.y - ry.top, steps, pointer ? pointer.y - ry.top : null);
+  }
+  function rulerLoop() {
+    rulerFrame = 0;
+    if (closed) return;
+    try { drawRulers(); } catch { /* régua é só apresentação: nunca derruba o editor */ }
+    rulerFrame = requestAnimationFrame(rulerLoop);
+  }
+  rulerFrame = requestAnimationFrame(rulerLoop);
+  function setRulers(on) {
+    area.dataset.rulers = on ? "on" : "off";
+    pref.rulers = !!on; savePref(); rulerSig = "";
   }
 
   // ---------- Tela cheia ----------
@@ -531,6 +618,7 @@ export function createEditorShell(opts) {
   });
   dialog.addEventListener("close", () => {
     closed = true;
+    cancelAnimationFrame(rulerFrame);
     closeAllMenus(false);
     document.querySelector(".ed-props")?.dispatchEvent(new Event("ed-close"));
     if (document.fullscreenElement === dialog) document.exitFullscreen().catch(() => {});
@@ -565,6 +653,8 @@ export function createEditorShell(opts) {
     refreshTools: renderTools,
     refreshMenus: renderMenus,
     togglePanel, setPanels, setTitle, setStatus, message,
+    /** Item de menu "Réguas" (Exibir), igual nos três editores. */
+    rulersMenuItem: () => ({ label: "Réguas", checked: area.dataset.rulers !== "off", run: () => setRulers(area.dataset.rulers === "off") }),
     setCamera(adapter) { camera = adapter; updateZoom(); },
     updateZoom,
     requestClose,

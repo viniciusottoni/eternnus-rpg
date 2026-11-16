@@ -213,6 +213,8 @@ export function createCompositionSurface(host, ctl) {
     zoom: () => cam.scale,
     setPanHold(on) { panHold = !!on; updateCursor(); },
     setPan(x, y) { setView({ ...cam, x, y }); },
+    /** Origem do documento (canto da área visível) em coordenadas da janela e a escala atual (réguas). */
+    view: () => { const r = canvas.getBoundingClientRect(); return { left: r.left + cam.x, top: r.top + cam.y, scale: cam.scale }; },
   };
 
   // ---------- Tamanho ----------
