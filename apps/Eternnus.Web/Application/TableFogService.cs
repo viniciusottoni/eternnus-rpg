@@ -23,7 +23,7 @@ public sealed class FogScene
     public bool Manual => State.Manual ?? Settings.ManualReveal;
     bool[]? shared;
     public bool[] Shared => shared ??= Manual ? Bits.Decode(State.Revealed, Grid.Width * Grid.Height) : FogRules.Shared(Grid, State, Tokens);
-    public void Invalidate() { shared = null; Grid = new FogGrid(Map.Width, Map.Height, State.Cells); }
+    public void Invalidate() { shared = null; Grid = FogGrid.Of(Map, State); }
     public FogView View(string user) => FogRules.View(Grid, State, Tokens, Shared, user, Settings);
 }
 
@@ -134,7 +134,7 @@ public sealed class TableFogService(GameDb db)
         }).ToList();
         return new FogScene
         {
-            Map = map, Grid = new FogGrid(map.Width, map.Height, state.Cells), State = state, Row = row, Settings = settings,
+            Map = map, Grid = FogGrid.Of(map, state), State = state, Row = row, Settings = settings,
             Tokens = resolved, Raw = tokens.ToDictionary(t => t.Id), LayerKey = layerKey,
         };
     }
@@ -182,6 +182,39 @@ public sealed class TableFogService(GameDb db)
     public static string[] MaskRows(string[] rows, bool[] known, int width) =>
         rows.Select((row, y) => new string(row.Select((c, x) => known[y * width + x] ? c : TableFog.Unknown).ToArray())).ToArray();
 
+    /// <summary>
+    /// Paredes que o jogador recebe: só as que bloqueiam movimento agora e tocam casas conhecidas (para o destaque de alcance
+    /// seguir as mesmas regras do servidor). Sem id, tipo ou flag de oculta; porta só aparece como porta se não for oculta.
+    /// Janelas e paredes só de visão não afetam o movimento e não são enviadas.
+    /// </summary>
+    public static List<object> PlayerWalls(IEnumerable<FogWall> walls, bool[] known, int width, int height)
+    {
+        bool Known(int x, int y) => x >= 0 && y >= 0 && x < width && y < height && known[y * width + x];
+        bool Touches(FogWall w)
+        {
+            // Amostras ao longo do segmento (a cada meia casa); cada amostra toca as casas em volta dela.
+            int u = TableFog.WallUnit, dx = w.X2 - w.X1, dy = w.Y2 - w.Y1;
+            var steps = Math.Max(1, (int)Math.Ceiling(Math.Sqrt((double)dx * dx + (double)dy * dy) / (u / 2.0)));
+            for (var i = 0; i <= steps; i++)
+            {
+                long px = w.X1 + (long)dx * i / steps, py = w.Y1 + (long)dy * i / steps;
+                for (var oy = -1; oy <= 1; oy += 2) for (var ox = -1; ox <= 1; ox += 2)
+                    if (Known((int)Math.Floor((px + ox) / (double)u), (int)Math.Floor((py + oy) / (double)u))) return true;
+            }
+            return false;
+        }
+        var result = new List<object>();
+        foreach (var w in walls)
+        {
+            var door = w.Kind == FogWallKinds.Door && !w.Hidden;
+            if (!FogWallKinds.BlocksMove(w) && !door) continue;
+            if (!Touches(w)) continue;
+            string? state = door ? (w.Open ? "open" : "closed") : null;
+            result.Add(new { w.X1, w.Y1, w.X2, w.Y2, door = state });
+        }
+        return result;
+    }
+
     public static string ImageVersion(bool[] known) => Convert.ToHexString(SHA256.HashData(Convert.FromBase64String(Bits.Encode(known) is { Length: > 0 } b ? b : "AA==")))[..16];
 
     /// <summary>Tudo o que o mestre precisa para preparar e conduzir; inclui a união das explorações para avisar ao escurecer.</summary>
@@ -192,7 +225,7 @@ public sealed class TableFogService(GameDb db)
         return new
         {
             active = scene.Active, inherited = scene.State.Fog == null, cells = scene.State.Cells, revealed = scene.State.Revealed, shared = Bits.Encode(scene.Shared),
-            explored = Bits.Encode(explored), lights = scene.State.Lights, marks = scene.State.Marks, revision = scene.Row?.Revision ?? 0, settings = scene.Settings, players,
+            explored = Bits.Encode(explored), lights = scene.State.Lights, marks = scene.State.Marks, walls = scene.State.Walls, revision = scene.Row?.Revision ?? 0, settings = scene.Settings, players,
         };
     }
 

@@ -84,6 +84,11 @@ Auditoria inicial: 59 conceitos e 202 linhas de controles/opções, antes de edi
 | Recolocar os marcadores no arranjo preparado | `scene-editor.js`, `table-scenes.js` | Texto visível | — | `APPLY_TOKENS.help` abaixo da opção, desmarcada por padrão. | Aplicado |
 | Reiniciar cena com o novo cenário… | `scene-editor.js`, `table-scenes.js` | Texto visível | — | Explicação ao lado do botão e confirmação com o que muda. | Aplicado |
 | Grade e escala | `grid-adjust.js`; `scene-editor.js` | ⓘ | `campanhas.mapas.grade` | Ajuste a grade antes de preparar paredes e névoa. | Aplicado |
+| Assistente de alinhamento (Detectar, Marcar uma casa, Marcar N casas) | `grid-adjust.js` | ⓘ | `campanhas.mapas.alinhamento` | Alinhe a grade em poucos cliques. | Aplicado |
+| Etapas e resultado do assistente | `grid-adjust.js` | Texto visível | — | Instrução do passo, contagem "N × M casas" e avisos ao lado da prévia; sem ⓘ redundante. | Aplicado |
+| Pincel e borracha (tamanho e formato) | `tile-map-editor.js` | ⓘ | `campanhas.mapas.pincel` | Pinte ou apague várias casas de uma vez. | Aplicado |
+| Mistura de tiles | `tile-map-editor.js` | ⓘ | `campanhas.mapas.mistura` | Varie o terreno sem pintar casa por casa. | Aplicado |
+| Substituir tile… | `tile-map-editor.js` | Texto visível | — | Janela com "Trocar/Por/Onde" e a contagem de casas destacadas no mapa; explicação em `campanhas.mapas.pincel`. | Aplicado |
 | Manter conectado | `auth.js` | ⓘ | `conta.acesso.persistencia` | Use esta opção apenas em um dispositivo pessoal. | Aplicado |
 | Acesso com Google ou Discord | `auth.js` | ⓘ | `conta.acesso.social` | O provedor precisa informar um e-mail verificado. | Aplicado |
 | Autenticador | `auth.js` | ⓘ | `conta.acesso.autenticador` | Uma segunda etapa protege o acesso à conta. | Aplicado |
@@ -106,6 +111,8 @@ Auditoria inicial: 59 conceitos e 202 linhas de controles/opções, antes de edi
 | Aliados visíveis | `table-settings.js` | ⓘ | `mesa.config.aliados` | Esta opção mantém criaturas aliadas visíveis no escuro. | Aplicado |
 | Luz e visão | `table-settings.js` | ⓘ | `mesa.config.luz-visao` | Luz ilumina o mapa; visão própria serve ao dono da ficha. | Aplicado |
 | Ferramentas de névoa | `scene-editor.js`; `table.js` | ⓘ | `mesa.nevoa.ferramentas` | O Mestre edita casas, portas, luzes e marcas. | Aplicado |
+| Paredes vetoriais (ferramentas Parede vetorial e Editar paredes, painel de paredes) | `scene-editor.js` | ⓘ | `mesa.nevoa.paredes` | Desenho por pontos, tipos de bloqueio, ímã, edição de vértices e conversão de casas. | Aplicado |
+| Diagnóstico de visão | `scene-editor.js` | ⓘ | `mesa.nevoa.diagnostico` | Bloqueios, áreas sem luz e problemas de geometria; só o Mestre vê. | Aplicado |
 | Modos de visão | `table.js` | ⓘ | `mesa.nevoa.visao` | O Mestre pode conferir a visão de um Jogador. | Aplicado |
 | Ordem de turnos | `table-tools.js`; `table.js` | ⓘ | `mesa.turnos.ordem` | O Mestre organiza a vez de personagens e grupos. | Aplicado |
 | Como ler os dados | `table-tools.js` | ⓘ | `mesa.rolagem.mecanicas` | Escolha a mecânica da rolagem. | Aplicado |
@@ -620,13 +627,33 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | Elemento | Nível / chave |
 | --- | --- |
 | Gerenciador da Preparação (árvore, conteúdo, detalhes, arrastar, atalhos) | ⓘ `campanhas.preparo.explorador` no título da área |
+| Coleções inteligentes e salvas, favoritos, recentes (ADR-084) | ⓘ `campanhas.preparo.colecoes` no título "Coleções" da árvore e no detalhe da coleção; contagem com nome acessível ("N itens"); excluir coleção salva com `aria-label` e tooltip |
+| Barra de filtros, abrangência e critérios de item incompleto (ADR-084) | ⓘ `campanhas.preparo.filtros` na barra de filtros e no título "Pendências" do detalhe; campos com `label`; motivo de "Limpar"/"Salvar como coleção" indisponíveis em `aria-disabled` + tooltip |
+| Selos "favorito", "incompleta: …", "não usado" e estrela | Texto visível no selo (não só cor); estrela com `aria-pressed` e nome "Adicionar/Remover dos favoritos" |
 | Novo mapa (do zero / a partir de modelo) | ⓘ `campanhas.mapas.novo` no diálogo de escolha |
 | Nova cena (do zero / a partir de mapa) | ⓘ `campanhas.cenas.nova` no diálogo de escolha |
 | Painel Camadas (olho, cadeado, opacidade, ordem, obrigatórias) | ⓘ `campanhas.editor.camadas` no título do painel |
 | Atalhos de teclado e mouse do editor | ⓘ `campanhas.editor.atalhos` na barra de estado |
 | Camadas da cena (só organização no editor) | ⓘ `campanhas.cenas.camadas` + nota visível no painel |
 | Editor de mapa de imagem e área visível/externa | ⓘ `campanhas.mapas.imagem` e `campanhas.mapas.area-visivel` |
-| Ferramentas da barra lateral (só ícone) | Nome acessível com atalho (`aria-label`), tooltip automático do componente compartilhado; motivo de indisponibilidade em `data-tip` |
+| Ferramentas da barra lateral (só ícone) | Nome acessível com atalho (`aria-label`); tooltip do componente compartilhado aberto ao lado (`data-tip-side="right"`) com nome + atalho e descrição curta do uso em letras menores (`data-tip-detail`, até 240 caracteres); ferramenta indisponível descreve o motivo (`aria-describedby`) e mostra-o na dica |
+| Réguas do editor (metros pela grade) | Decorativas (`aria-hidden`), sem foco nem tooltip; coordenadas acessíveis continuam na barra de estado; Exibir › Réguas liga/desliga |
+| Tamanho na barra de estado (tiles e imagem) | Botão com texto visível e nome acessível "Tamanho: … Alterar o tamanho"; tooltip curto com o que abre |
 | Menus, menus de contexto e janela de propriedades | Rótulos visíveis e atalho exibido; navegação por setas, Enter e Esc |
 | Zoom, coordenadas, dimensões e estado | Texto visível na barra de estado; mensagens em região `aria-live` |
 | Excluir, mudar a grade de mapa preparado, sair sem salvar | Confirmação com consequências explícitas |
+| Barra de contextos de trabalho (ADR-086) | ⓘ `campanhas.editor.contextos` ao lado da barra; botões com rótulo visível (só ícone em telas médias, nome mantido para leitores), `aria-pressed`, atalho Alt+N na dica e descrição curta em `data-tip-detail`; setas navegam |
+| Barra contextual de propriedades (ADR-086) | Mesma ⓘ `campanhas.editor.contextos`; região `role="toolbar"` "Propriedades do selecionado"; campos com `label` visível e unidade; ações só ícone com `aria-label` e tooltip; dica em texto quando nada está selecionado |
+| Maximizar área de edição, ⋮ de painel, Restaurar layout padrão (ADR-086) | Botão com `aria-pressed`, nome com atalho (Ctrl+\) e tooltip; ⋮ com nome "Opções do painel N" e menu acessível; mensagem de estado em `aria-live` |
+| Agrupar/desagrupar, alças de conjunto e guias magnéticas no editor de imagem (ADR-086) | Menus Objeto e de contexto com atalhos (Ctrl+G, Ctrl+Shift+G); seleção anunciada na região de estado; dimensões e porcentagem em texto durante o arraste; descrito em ⓘ `campanhas.editor.contextos` |
+
+## Classificação — rascunho local, conflitos e versões (ADR-083)
+
+| Elemento | Arquivo | Nível / chave |
+| --- | --- | --- |
+| Aviso "Rascunho local não salvo" (Restaurar / Descartar / Decidir depois) | `editor-drafts.js` | `role="alertdialog"` com texto visível (data, conflito quando houver); ⓘ `campanhas.editor.rascunhos` (mestre); botões com rótulo visível |
+| Estado "Salvo às hh:mm" / "Rascunho local hh:mm" | `editor-core.js` | Texto visível na barra de estado; mensagens em `aria-live` |
+| Arquivo › Versões… e Arquivo › Rascunho local… | três editores | Itens de menu com rótulo e dica; indisponível com motivo ("Salve o documento…") |
+| Janela "Versões salvas" (guardar com nome, Carregar, Nomear/Renomear, Excluir) | `editor-drafts.js` | ⓘ `campanhas.editor.rascunhos` no título; campo com `label`; estados de carregando, vazio e erro (`role="alert"`); excluir com confirmação e `aria-label` com a data |
+| "Salvar como nova cena" no conflito da cena | `scene-editor.js` | Rótulo visível; consequência descrita no texto do aviso |
+| Recarregar a versão salva (conflito) | três editores | Confirmação informa que o rascunho fica guardado em Arquivo › Rascunho local… |

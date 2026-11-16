@@ -80,7 +80,10 @@ public sealed partial class CampaignAssetsService
             doc = MapComposition.WithSources(doc, s => s == MapComposition.Self ? key : s);
         }
         if (sources.Count + (snapshot == null ? 0 : 1) > MapComposition.MaxSources) throw new RuleException(409, $"Limite de {MapComposition.MaxSources} imagens-fonte por mapa.");
-        var removed = owned.Where(o => !sources.Contains(o.Id)).ToList();
+        // Fontes que versões persistentes ainda usam (ADR-083) ficam guardadas; as demais sem uso saem.
+        var versionRefs = (await db.Set<DocumentVersion>().AsNoTracking().Where(v => v.CampaignId == campaign && v.Kind == DocumentVersionKinds.ImageMap && v.DocumentId == map.Id)
+            .Select(v => v.Refs).ToListAsync(ct)).SelectMany(DocumentVersionModel.ParseRefs).ToHashSet();
+        var removed = owned.Where(o => !sources.Contains(o.Id) && !versionRefs.Contains(o.Id)).ToList();
         var stored = await Maps.Where(m => m.CampaignId == campaign).SumAsync(m => (long)m.Content.Length, ct);
         if (stored - map.Content.Length + flat.Bytes.Length + (snapshot?.Content.Length ?? 0) - removed.Sum(o => (long)o.Size) > MaxStorage)
             throw new RuleException(409, "Os mapas desta campanha excedem 250 MB.");
@@ -99,10 +102,16 @@ public sealed partial class CampaignAssetsService
         if (snapshot != null) db.Add(snapshot);
         map.Content = flat.Bytes; map.Width = flat.Width; map.Height = flat.Height;
         map.Name = name; if (summary != null) map.Summary = summary;
+        if (map.HasGrid && hasGrid) await RegridWallsAsync(campaign, map.Id, map.GridPixels, map.GridOffsetX, map.GridOffsetY, x.GridPixels, x.GridOffsetX, x.GridOffsetY, ct);
         map.HasGrid = hasGrid; map.GridPixels = x.GridPixels; map.ScaleMeters = x.ScaleMeters; map.FreeMovement = free;
         map.GridOffsetX = hasGrid ? x.GridOffsetX : 0; map.GridOffsetY = hasGrid ? x.GridOffsetY : 0;
         map.Composition = MapComposition.Serialize(doc);
         map.Revision++; map.UpdatedAt = DateTime.UtcNow;
+        // Versão automática (ADR-083). Fontes liberadas por versões que saíram da retenção também são removidas.
+        HashSet<Guid> current = snapshot == null ? sources : [.. sources, snapshot.Id];
+        var kept = await DocumentVersionModel.RecordAsync(db, campaign, DocumentVersionKinds.ImageMap, map.Id, map.Revision, DocumentVersionModel.ImagePayload(map, doc), current, map.UpdatedAt, ct);
+        var released = owned.Where(o => versionRefs.Contains(o.Id) && !current.Contains(o.Id) && !kept.Contains(o.Id)).Select(o => o.Id).ToList();
+        if (released.Count > 0) await Maps.Where(m => m.CampaignId == campaign && m.OwnerMapId == map.Id && released.Contains(m.Id)).ExecuteDeleteAsync(ct);
         try { await db.SaveChangesAsync(ct); } catch (DbUpdateConcurrencyException) { throw Stale(); }
         await tx.CommitAsync(ct);
         return new { map = View(map), summary = map.Summary, composition = CompositionJson(doc) };

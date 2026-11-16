@@ -274,6 +274,70 @@ span.px-colhead { cursor: default; }
 .pc-big { aspect-ratio: 4 / 3; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: #0d0f0d; }
 .pc-side .form-actions { margin-top: 4px; }
 
+/* ---------- Coleções, filtros, favoritos e estado de preparo (ADR-084) ---------- */
+.px-collections { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.px-coll-title { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; padding: 0 6px; font-family: var(--serif); font-size: 14px; font-weight: normal; color: var(--bright); }
+.px-coll-title .ed-icon { width: 18px; height: 18px; color: var(--gold); }
+.px-coll-list { list-style: none; margin: 0; padding: 0; }
+.px-coll-row { display: flex; align-items: center; gap: 2px; }
+.px-coll {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.px-coll:hover { background: #ffffff0a; }
+.px-coll.current { background: var(--px-sel); border-color: var(--px-sel-line); }
+.px-coll:focus-visible { outline: 2px solid var(--bright); outline-offset: -1px; }
+.px-coll .ed-icon { width: 18px; height: 18px; flex: none; color: var(--gold); }
+.px-coll-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.px-count { flex: none; min-width: 22px; padding: 0 5px; border: 1px solid var(--line); border-radius: 999px; color: var(--quiet); font-size: 11px; text-align: center; }
+.px-coll-remove { min-height: 28px; min-width: 28px; }
+.px-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: #15161380; }
+.px-filters[hidden] { display: none; }
+.px-filter { display: grid; gap: 2px; min-width: 150px; font-size: 12px; color: var(--muted); }
+.px-filter select { min-height: 34px; }
+.px-filter-check { display: flex; align-items: center; gap: 6px; min-height: 34px; color: var(--text); }
+.px-filter-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.px-badge.fav { border-color: #c6a46399; color: var(--bright); }
+.px-badge.warn { border-color: #e2a18c88; color: var(--danger); }
+.px-where { color: var(--quiet); }
+.px-details-head .px-fav { flex: none; margin-left: auto; }
+.px-fav.on .ed-icon, .px-tb[data-px="favorite"][aria-pressed="true"] .ed-icon { fill: currentColor; color: var(--gold); }
+.px-issues h4, .px-uses h4 { display: flex; align-items: center; gap: 4px; margin: 10px 0 4px; font-family: var(--serif); font-size: 13px; font-weight: normal; color: var(--bright); }
+.px-issues ul, .px-uses ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.px-issues li { color: var(--danger); font-size: 12px; }
+.px-ready { margin: 8px 0 0; color: #b9e6a0; }
+.px-uses-none { margin: 8px 0 0; color: var(--quiet); }
+.px-goto {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: #c6a46366;
+  cursor: pointer;
+}
+.px-goto:hover { color: var(--bright); }
+.px-goto:focus-visible { outline: 2px solid var(--bright); outline-offset: 1px; }
+.px-goto .ed-icon { width: 16px; height: 16px; flex: none; color: var(--gold); }
+.px-more { display: flex; justify-content: center; padding: 12px 0 4px; }
+
 /* ---------- Telas médias: detalhes passam para baixo ---------- */
 @media (max-width: 1180px) {
   .px-body { grid-template-columns: minmax(180px, 220px) minmax(0, 1fr); }
@@ -318,6 +382,10 @@ span.px-colhead { cursor: default; }
   .pc-side { position: static; }
   .pc-choice { min-height: 64px; }
   .pc-card { min-height: 44px; }
+  .px-coll, .px-coll-remove, .px-filter select, .px-filter-check, .px-goto, .px-more button { min-height: 44px; }
+  .px-coll-remove { min-width: 44px; }
+  .px-filter { flex: 1 1 140px; min-width: 0; }
+  .px-filter-actions { flex-wrap: wrap; margin-left: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

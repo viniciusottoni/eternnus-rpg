@@ -21,6 +21,74 @@ export function encodeBits(set) {
 }
 
 export const CELL = { free: ".", move: "m", light: "l", wall: "#", doorClosed: "d", doorOpen: "o", unknown: "?" };
+
+// ---------- Paredes vetoriais (ADR-087) ----------
+// Coordenadas inteiras em centésimos de casa: a casa (x, y) ocupa [100x, 100x+100]; o centro fica em 100x+50.
+// Mesmas contas de FogGrid.Crosses no servidor, só com inteiros (resultado idêntico).
+export const WALL_UNIT = 100;
+export const MAX_WALLS = 2000;
+/** Tipos de parede: o texto e o traço distinguem os tipos sem depender de cor. */
+export const WALL_KINDS = [
+  { id: "wall", label: "Parede", short: "Parede", move: true, sight: true, dash: [], help: "Bloqueia movimento e visão." },
+  { id: "door", label: "Porta", short: "Porta", move: true, sight: true, dash: [], help: "Fechada, bloqueia como parede; aberta, deixa passar. Abre e fecha na mesa." },
+  { id: "window", label: "Janela", short: "Janela", move: true, sight: false, dash: [2, 3], help: "Bloqueia movimento; luz e visão atravessam." },
+  { id: "sight", label: "Bloqueia só visão", short: "Só visão", move: false, sight: true, dash: [8, 4], help: "Cortina ou ilusão: dá para atravessar, mas não para ver através." },
+  { id: "move", label: "Bloqueia só movimento", short: "Só movimento", move: true, sight: false, dash: [1, 5], help: "Barreira invisível ou beirada: a visão passa." },
+];
+const KIND = Object.fromEntries(WALL_KINDS.map((k) => [k.id, k]));
+export const wallKind = (id) => KIND[id] || KIND.wall;
+
+/** Bloqueia movimento agora? Aceita parede completa (mestre) ou a forma reduzida do jogador (`door: "open"|"closed"|null`). */
+export function wallBlocksMove(w) {
+  if (!w) return false;
+  if (!w.kind) return w.door !== "open";
+  if (w.kind === "door") return !w.open;
+  return !!KIND[w.kind]?.move;
+}
+export function wallBlocksSight(w) {
+  if (!w?.kind) return false;
+  if (w.kind === "door") return !w.open;
+  return !!KIND[w.kind]?.sight;
+}
+
+const orient = (ax, ay, bx, by, cx, cy) => Math.sign((bx - ax) * (cy - ay) - (by - ay) * (cx - ax));
+
+/**
+ * A→B atravessa algum segmento? Cruzamento próprio bloqueia; reta passando exatamente por uma ponta de parede bloqueia só
+ * quando há parede dos dois lados nessa ponta (junção ou canto fechado). Terminar sobre a parede ou correr ao longo dela não bloqueia.
+ */
+export function wallsCross(segs, ax, ay, bx, by) {
+  let touches = null;
+  const minX = Math.min(ax, bx), maxX = Math.max(ax, bx), minY = Math.min(ay, by), maxY = Math.max(ay, by);
+  for (const s of segs) {
+    if (Math.max(s.x1, s.x2) < minX || Math.min(s.x1, s.x2) > maxX || Math.max(s.y1, s.y2) < minY || Math.min(s.y1, s.y2) > maxY) continue;
+    const d1 = orient(ax, ay, bx, by, s.x1, s.y1), d2 = orient(ax, ay, bx, by, s.x2, s.y2);
+    if (d1 === d2) continue;
+    const d3 = orient(s.x1, s.y1, s.x2, s.y2, ax, ay), d4 = orient(s.x1, s.y1, s.x2, s.y2, bx, by);
+    if (d3 === 0 || d4 === 0 || d3 === d4) continue;
+    if (d1 !== 0 && d2 !== 0) return true;
+    (touches ||= []).push(d1 === 0 ? [s.x1, s.y1, d2] : [s.x2, s.y2, d1]);
+  }
+  if (!touches) return false;
+  for (let i = 0; i < touches.length; i++)
+    for (let j = i + 1; j < touches.length; j++)
+      if (touches[i][0] === touches[j][0] && touches[i][1] === touches[j][1] && touches[i][2] !== touches[j][2]) return true;
+  return false;
+}
+
+const prepared = new WeakMap();
+/** Separa uma vez as paredes que bloqueiam visão e as que bloqueiam movimento (cache por lista). */
+export function wallSets(walls) {
+  if (!Array.isArray(walls) || !walls.length) return { sight: [], move: [] };
+  let sets = prepared.get(walls);
+  if (!sets) prepared.set(walls, (sets = { sight: walls.filter(wallBlocksSight), move: walls.filter(wallBlocksMove) }));
+  return sets;
+}
+const center = (c) => c * WALL_UNIT + WALL_UNIT / 2;
+/** Parede que bloqueia movimento entre duas casas vizinhas (passo do caminho). */
+export const stepBlocked = (walls, x0, y0, x1, y1) => { const m = wallSets(walls).move; return m.length > 0 && wallsCross(m, center(x0), center(y0), center(x1), center(y1)); };
+/** Parede que bloqueia visão entre os centros de duas casas. */
+export const sightBlocked = (walls, x0, y0, x1, y1) => { const v = wallSets(walls).sight; return v.length > 0 && wallsCross(v, center(x0), center(y0), center(x1), center(y1)); };
 export const blocksMove = (c) => c === "m" || c === "#" || c === "d";
 export const blocksLight = (c) => c === "l" || c === "#" || c === "d";
 
@@ -95,6 +163,7 @@ export function fogReach(fog, width, height, tokens, from, squares, pathMovement
         const x = c.x + ox, y = c.y + oy, key = x + ":" + y;
         if (dist.has(key) || !free(x, y)) continue;
         if (ox && oy && blocksMove(at(c.x + ox, c.y)) && blocksMove(at(c.x, c.y + oy))) continue;
+        if (stepBlocked(fog.walls, c.x, c.y, x, y)) continue;
         dist.set(key, d + 1);
         out.push({ x, y });
         queue.push({ x, y });
@@ -116,8 +185,13 @@ export function attackCells(width, height, from, squares) {
   return out;
 }
 
-/** Linha entre centros de casas, idêntica a FogGrid.LineClear do servidor (prévia do editor). */
-export function lineClear(cells, width, height, x0, y0, x1, y1) {
+/** Linha entre centros de casas, idêntica a FogGrid.LineClear do servidor (prévia do editor). `walls`: paredes vetoriais. */
+export function lineClear(cells, width, height, x0, y0, x1, y1, walls = null) {
+  if (!cellLineClear(cells, width, height, x0, y0, x1, y1)) return false;
+  return !sightBlocked(walls, x0, y0, x1, y1);
+}
+
+function cellLineClear(cells, width, height, x0, y0, x1, y1) {
   const solid = (x, y) => x < 0 || y < 0 || x >= width || y >= height || blocksLight(cells[y][x]);
   const nx = Math.abs(x1 - x0), ny = Math.abs(y1 - y0), sx = Math.sign(x1 - x0), sy = Math.sign(y1 - y0);
   let x = x0, y = y0;
@@ -137,16 +211,19 @@ export function lineClear(cells, width, height, x0, y0, x1, y1) {
 export function sharedPreview(layer, width, height) {
   const lit = [...decodeBits(layer.revealed, width * height)].map(Boolean);
   for (const l of layer.lights || []) {
-    const r = l.radius;
+    const r = lightReach(l);
     for (let y = Math.max(0, l.y - r); y <= Math.min(height - 1, l.y + r); y++)
       for (let x = Math.max(0, l.x - r); x <= Math.min(width - 1, l.x + r); x++) {
         const i = y * width + x;
         if (lit[i] || (x - l.x) ** 2 + (y - l.y) ** 2 > r * r) continue;
-        if (lineClear(layer.cells, width, height, l.x, l.y, x, y)) lit[i] = true;
+        if (lineClear(layer.cells, width, height, l.x, l.y, x, y, layer.walls)) lit[i] = true;
       }
   }
   return encodeBits(lit);
 }
+
+/** Alcance de um foco para as regras: luz plena ou penumbra, o maior (FogLight.Reach). */
+export const lightReach = (l) => Math.max(l?.radius || 0, l?.dim || 0);
 
 /** Campos da configuração da mesa (mesmos nomes de TableSettings no servidor). */
 export const SETTING_FIELDS = [

@@ -105,6 +105,25 @@ const entries = {
     ],
     "audience": "master"
   },
+  "mesa.nevoa.paredes": {
+    "title": "Paredes vetoriais",
+    "summary": "Paredes precisas, por pontos, independentes da grade.",
+    "body": [
+      "Parede vetorial: clique ponto a ponto; Enter ou duplo clique termina e Esc desiste. O ímã prende em vértices, outras paredes e cantos ou meios das casas; Shift trava em 45°; Alt desliga o ímã.",
+      "Tipos: parede (bloqueia tudo), porta (fechada bloqueia; aberta deixa passar), janela (bloqueia movimento, deixa ver), só visão e só movimento. “Não mostrar aos jogadores” esconde a porta ou a barreira na mesa, mas ela continua valendo.",
+      "Editar paredes: clique para selecionar, arraste vértices ou o segmento, arraste no vazio para selecionar por área e use Alt+clique para dividir. As casas pintadas continuam valendo junto; “Converter casas em paredes” cria o contorno sem apagar as casas."
+    ],
+    "audience": "master"
+  },
+  "mesa.nevoa.diagnostico": {
+    "title": "Diagnóstico de visão",
+    "summary": "Confira bloqueios, luz e problemas antes de apresentar.",
+    "body": [
+      "Mostra casas que bloqueiam movimento (hachura), áreas sem luz para o grupo (azul), paredes por tipo de traço e problemas como frestas entre paredes, portas soltas e luzes dentro de paredes.",
+      "Só o Mestre vê. Para a visão exata de um personagem, use “Ver como jogador”: a prévia é calculada pelo servidor com as regras da mesa, sem alterar a sessão."
+    ],
+    "audience": "master"
+  },
   "mesa.nevoa.visao": {
     "title": "Modos de visão",
     "summary": "O Mestre pode conferir a visão de um Jogador.",

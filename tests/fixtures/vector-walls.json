@@ -1,0 +1,40 @@
+{
+  "comment": "Paridade servidor/cliente das paredes vetoriais (ADR-087). Grade 6x6; coordenadas em centésimos de casa. A: parede vertical x=300 (y 0..300) e B: horizontal y=300 (x 300..600) formam um L que fecha o canto superior direito com as bordas do mapa. Porta fechada d entre e/f em y=400; janela g; parede só de visão h.",
+  "width": 6,
+  "height": 6,
+  "walls": [
+    { "id": "a", "x1": 300, "y1": 0, "x2": 300, "y2": 300, "kind": "wall" },
+    { "id": "b", "x1": 300, "y1": 300, "x2": 600, "y2": 300, "kind": "wall" },
+    { "id": "e", "x1": 0, "y1": 400, "x2": 100, "y2": 400, "kind": "wall" },
+    { "id": "d", "x1": 100, "y1": 400, "x2": 200, "y2": 400, "kind": "door", "open": false },
+    { "id": "f", "x1": 200, "y1": 400, "x2": 300, "y2": 400, "kind": "wall" },
+    { "id": "g", "x1": 400, "y1": 400, "x2": 400, "y2": 600, "kind": "window" },
+    { "id": "h", "x1": 500, "y1": 400, "x2": 600, "y2": 400, "kind": "sight" }
+  ],
+  "sight": [
+    { "from": [1, 1], "to": [4, 1], "clear": false, "why": "atravessa a parede A" },
+    { "from": [1, 4], "to": [4, 4], "clear": true, "why": "janela deixa ver" },
+    { "from": [2, 2], "to": [4, 4], "clear": true, "why": "tangencia o canto externo do L" },
+    { "from": [3, 2], "to": [2, 3], "clear": false, "why": "passa pelo canto fechado do L (paredes dos dois lados)" },
+    { "from": [1, 3], "to": [1, 5], "clear": false, "why": "porta fechada" },
+    { "from": [2, 3], "to": [2, 5], "clear": false, "why": "parede f" },
+    { "from": [5, 3], "to": [5, 5], "clear": false, "why": "parede só de visão" },
+    { "from": [3, 4], "to": [5, 4], "clear": true, "why": "janela" },
+    { "from": [0, 3], "to": [1, 4], "clear": false, "why": "passa pela junção parede/porta" },
+    { "from": [0, 0], "to": [2, 2], "clear": true, "why": "livre" }
+  ],
+  "steps": [
+    { "from": [2, 2], "to": [3, 2], "blocked": true },
+    { "from": [2, 2], "to": [3, 3], "blocked": false },
+    { "from": [3, 2], "to": [2, 3], "blocked": true },
+    { "from": [3, 4], "to": [4, 4], "blocked": true },
+    { "from": [5, 3], "to": [5, 4], "blocked": false },
+    { "from": [1, 3], "to": [1, 4], "blocked": true },
+    { "from": [0, 0], "to": [1, 0], "blocked": false }
+  ],
+  "paths": [
+    { "from": [2, 2], "to": [3, 2], "limit": 20, "length": null, "why": "sala fechada pelo L e pelas bordas" },
+    { "from": [2, 2], "to": [4, 4], "limit": 20, "length": 2 }
+  ],
+  "light": { "x": 4, "y": 1, "radius": 3, "lit": [[5, 2], [3, 0], [4, 2]], "dark": [[2, 1], [4, 4], [4, 3]] }
+}

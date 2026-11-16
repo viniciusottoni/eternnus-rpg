@@ -235,3 +235,110 @@ export function dominantGround(rows, catalog, fallback = ",") {
 
 /** Escala válida: 0,01–1.000 metros com até duas casas decimais. */
 export const validScale = (v) => Number.isFinite(v) && v >= .01 && v <= 1000 && Math.round(v * 100) / 100 === v;
+
+// ---------- Ferramentas de pintura (§8.1) ----------
+
+/** Tamanhos de pincel (casas por lado) e formatos. */
+export const BRUSH_SIZES = Object.freeze([1, 2, 3, 5]);
+export const BRUSH_SHAPES = Object.freeze([["square", "Quadrado"], ["round", "Redondo"]]);
+/** Preenchimento e substituição acima disto mostram a prévia e pedem confirmação com a contagem. */
+export const LARGE_OPERATION = 250;
+
+const insideGrid = (x, y, width, height) => Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < width && y < height;
+const insideRect = (x, y, r) => !r || (x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h);
+
+/**
+ * Casas cobertas pelo pincel com a casa `cell` no centro (tamanhos pares crescem para a direita/baixo).
+ * Redondo: casas cujo centro fica a até (n/2 − 0,25) casas do centro do pincel (3 = cruz, 5 = disco).
+ */
+export function brushFootprint(cell, size = 1, shape = "square", width = Infinity, height = Infinity) {
+  const n = BRUSH_SIZES.includes(size) ? size : 1;
+  const start = -Math.floor((n - 1) / 2), center = start + (n - 1) / 2, r = n / 2 - .25;
+  const cells = [];
+  for (let j = start; j < start + n; j++) for (let i = start; i < start + n; i++) {
+    if (shape === "round" && n > 2 && (i - center) ** 2 + (j - center) ** 2 > r * r) continue;
+    const x = cell.x + i, y = cell.y + j;
+    if (insideGrid(x, y, width, height)) cells.push({ x, y });
+  }
+  return cells;
+}
+
+/** Casas de um traço (lista de casas do arraste) com o pincel aplicado em cada uma, sem repetição e na ordem. */
+export function strokeCells(cells, size = 1, shape = "square", width = Infinity, height = Infinity) {
+  const seen = new Set(), out = [];
+  for (const c of cells || []) for (const p of brushFootprint(c, size, shape, width, height)) {
+    const k = `${p.x},${p.y}`;
+    if (!seen.has(k)) { seen.add(k); out.push(p); }
+  }
+  return out;
+}
+
+/** Região contígua (4 vizinhos) do mesmo código da casa `start` na camada, opcionalmente limitada a um retângulo. */
+export function floodCells(rows, start, bounds = null) {
+  const height = rows?.length || 0, width = rows?.[0]?.length || 0;
+  if (!start || !insideGrid(start.x, start.y, width, height) || !insideRect(start.x, start.y, bounds)) return [];
+  const from = rows[start.y][start.x], seen = new Uint8Array(width * height), out = [], stack = [start.x, start.y];
+  while (stack.length) {
+    const y = stack.pop(), x = stack.pop();
+    if (!insideGrid(x, y, width, height) || !insideRect(x, y, bounds) || seen[y * width + x] || rows[y][x] !== from) continue;
+    seen[y * width + x] = 1;
+    out.push({ x, y });
+    stack.push(x - 1, y, x + 1, y, x, y - 1, x, y + 1);
+  }
+  return out;
+}
+
+/** Todas as casas com o código `code` na camada (ou dentro do retângulo). */
+export function matchCells(rows, code, bounds = null) {
+  const out = [];
+  (rows || []).forEach((row, y) => { for (let x = 0; x < row.length; x++) if (row[x] === code && insideRect(x, y, bounds)) out.push({ x, y }); });
+  return out;
+}
+
+/** Contagem de cada código numa camada, do mais frequente ao menos: [[código, quantidade]]. */
+export function codeCounts(rows) {
+  const count = new Map();
+  for (const r of rows || []) for (const c of r) count.set(c, (count.get(c) || 0) + 1);
+  return [...count].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+}
+
+/**
+ * Grava `value` nas casas indicadas. `value` é um código ou função (x, y) → código. Ignora casas fora da grade.
+ * Devolve a mesma referência quando nada muda (o editor não registra histórico vazio).
+ */
+export function setCells(rows, cells, value) {
+  const height = rows.length, width = rows[0]?.length || 0, copy = rows.map((r) => r.split(""));
+  let changed = false;
+  for (const { x, y } of cells || []) {
+    if (!insideGrid(x, y, width, height)) continue;
+    const code = typeof value === "function" ? value(x, y) : value;
+    if (!code || copy[y][x] === code) continue;
+    copy[y][x] = code; changed = true;
+  }
+  return changed ? copy.map((r) => r.join("")) : rows;
+}
+
+/** Substitui um código por outro na camada inteira ou no retângulo. → { rows, count }. */
+export function replaceTiles(rows, from, to, bounds = null, { base = false } = {}) {
+  if (!from || !to || from === to || (base && to === EMPTY)) return { rows, count: 0 };
+  const cells = matchCells(rows, from, bounds);
+  return { rows: setCells(rows, cells, to), count: cells.length };
+}
+
+/** Variação determinística: escolhe um dos códigos pela casa e pela semente (mesma entrada, mesmo resultado). */
+export function variantCode(x, y, codes, seed = 0) {
+  if (!codes?.length) return "";
+  let h = Math.imul(x + 1, 73856093) ^ Math.imul(y + 1, 19349663) ^ Math.imul(seed + 1, 83492791);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return codes[((h ^ (h >>> 16)) >>> 0) % codes.length];
+}
+
+/**
+ * Tiles podem formar uma mistura quando vão para a mesma camada pela camada automática: todos terrenos ou nenhum terreno.
+ * Entradas do grupo ("S") nunca entram na mistura (mudariam a contagem de entradas aleatoriamente).
+ */
+export function canMix(tiles) {
+  const list = (tiles || []).filter(Boolean);
+  if (list.some((t) => t.code === "S")) return false;
+  return list.every((t) => (t.group === TERRAIN_GROUP) === (list[0]?.group === TERRAIN_GROUP));
+}

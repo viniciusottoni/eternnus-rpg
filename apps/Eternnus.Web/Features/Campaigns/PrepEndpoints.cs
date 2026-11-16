@@ -14,6 +14,8 @@ public static class PrepEndpoints
         api.MapDelete("/folders/{id:guid}", async (Guid campaignId, Guid id, PrepWorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeleteFolderAsync(campaignId, id, Id(u), ct); return Results.NoContent(); });
         api.MapPost("/move", (Guid campaignId, PrepItemsInput x, PrepWorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.MoveAsync(campaignId, Id(u), x, ct));
         api.MapPost("/copy", (Guid campaignId, PrepItemsInput x, PrepWorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.CopyAsync(campaignId, Id(u), x, ct));
+        // Prévia somente leitura (ADR-088): POST porque leva a preparação não salva do editor; não grava nada.
+        api.MapPost("/preview-view", (Guid campaignId, PrepPreviewInput x, PreparationService s, ClaimsPrincipal u, CancellationToken ct) => s.PreviewViewAsync(campaignId, x, Id(u), ct));
         api.MapPut("/rename", (Guid campaignId, PrepRenameInput x, PrepWorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.RenameAsync(campaignId, Id(u), x, ct));
     }
 }

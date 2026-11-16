@@ -159,7 +159,7 @@ public partial class SessionService
         var map = BattleMaps.Find(s.MapKey) ?? (await new CampaignAssetsService(db).ResolveMapAsync(s.CampaignId, s.MapKey, ct))?.Battle();
         if (map == null) return;
         var (_, layer) = await Fog.LayerAsync(s.CampaignId, map, TableSettings.Default, false, ct, ScenePrep.SessionLayer(s));
-        var grid = new FogGrid(map.Width, map.Height, layer.Cells);
+        var grid = FogGrid.Of(map, layer);
         var taken = new HashSet<(int, int)>();
         // Movimentação livre: várias criaturas por casa e posição fina preservada; com grade, uma por casa, no centro.
         bool Free(int px, int py) => grid.Inside(px, py) && !grid.BlocksMove(px, py) && (map.Free || !taken.Contains((px, py)));

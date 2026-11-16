@@ -304,7 +304,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         taken.UnionWith(db.SessionTokens.Local.Where(t => t.SessionId == s.Id).Select(t => (t.X, t.Y)));
         // Paredes e obstáculos pintados pelo mestre também valem para o ponto de entrada.
         var (_, layer) = await Fog.LayerAsync(s.CampaignId, map, TableSettings.Default, false, ct);
-        var grid = new FogGrid(map.Width, map.Height, layer.Cells);
+        var grid = FogGrid.Of(map, layer);
         var spot = FreeSpot(map, taken, (x, y) => grid.Inside(x, y) && !grid.BlocksMove(x, y));
         if (spot is { } p) db.SessionTokens.Add(new() { SessionId = s.Id, CharacterId = character.Id, Label = character.Name.Length > 40 ? character.Name[..40] : character.Name, Side = "ally", X = p.X, Y = p.Y });
     }

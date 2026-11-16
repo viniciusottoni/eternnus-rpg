@@ -4,7 +4,7 @@
 import { api } from "./api.js";
 import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
 import { helpButton } from "./help.js";
-import { IMAGE_LIMITS, MAX_UVTT_BYTES, fitScale, guessGridPixels, imageKind, isImageType, isUvttName, mapNameFrom, parseUvtt, scaledGrid, uvttLayer } from "./vtt-import-policy.js";
+import { IMAGE_LIMITS, MAX_UVTT_BYTES, fitScale, guessGridPixels, imageKind, isImageType, isUvttName, mapNameFrom, parseUvtt, scaledGrid, uvttLights, uvttWalls } from "./vtt-import-policy.js";
 
 /** Arquivo que a mesa aceita ao soltar: imagem PNG/JPEG/WebP ou UVTT. */
 export const acceptsDrop = (file) => !!file && (isImageType(file.type) || isUvttName(file.name));
@@ -50,14 +50,20 @@ async function uploadMap(campaignId, { blob, name, gridPixels }) {
   return api(`/campaigns/${campaignId}/assets/maps`, "POST", form);
 }
 
-/** Grava paredes, portas e luzes do UVTT na preparação do mapa recém-enviado (antes de ir à mesa). */
+/**
+ * Grava paredes, portas e luzes do UVTT na preparação do mapa recém-enviado (antes de ir à mesa). Paredes e portas entram
+ * como paredes vetoriais (geometria exata, diagonais incluídas); as casas do mapa não são alteradas.
+ */
 async function saveUvttLayer(campaignId, mapKey, parsed) {
   const path = `/campaigns/${campaignId}/assets/layers?key=${encodeURIComponent(mapKey)}`;
   const layer = await api(path);
-  const converted = uvttLayer(parsed, layer.width, layer.height, layer.cells);
+  const vector = uvttWalls(parsed, layer.width, layer.height);
+  const light = uvttLights(parsed, layer.width, layer.height);
+  const converted = { counts: { ...vector.counts, lights: light.lights.length, skippedLights: light.skipped } };
   await api(path, "PUT", {
-    fog: layer.fog, cells: converted.cells, revealed: layer.revealed,
-    lights: [...(layer.lights || []).map((l) => ({ x: l.x, y: l.y, radius: l.radius })), ...converted.lights].slice(0, 100),
+    fog: layer.fog, cells: layer.cells, revealed: layer.revealed,
+    walls: [...(layer.walls || []), ...vector.walls].slice(0, 2000),
+    lights: [...(layer.lights || []), ...light.lights].slice(0, 100),
     marks: (layer.marks || []).map((m) => ({ id: m.id || null, x: m.x, y: m.y, kind: m.kind, label: m.label, dc: m.dc ?? null, sense: m.sense || null, maxDistance: m.maxDistance ?? null })),
     revision: layer.revision, prepVersion: layer.prepVersion,
   });
@@ -95,7 +101,8 @@ function importSummary(result) {
   const m = result.map;
   const parts = [`${m.width} × ${m.height} casas`];
   const n = (count, one, many) => `${count} ${count === 1 ? one : many}`;
-  if (result.counts) parts.push(n(result.counts.walls, "casa de parede", "casas de parede"), n(result.counts.doors, "casa de porta", "casas de porta"), n(result.counts.lights, "foco de luz", "focos de luz"));
+  if (result.counts) parts.push(n(result.counts.walls, "segmento de parede", "segmentos de parede"), n(result.counts.doors, "porta", "portas"), n(result.counts.lights, "foco de luz", "focos de luz"));
+  if (result.counts?.skippedWalls) parts.push(`${result.counts.skippedWalls} segmentos além do limite de 2.000 ficaram de fora`);
   if (result.counts?.skippedLights) parts.push(`${result.counts.skippedLights} luzes além do limite de 100 ficaram de fora`);
   if (result.scaled) parts.push("imagem reduzida para caber nos limites");
   return parts.join(" · ");

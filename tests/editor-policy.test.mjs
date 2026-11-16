@@ -89,3 +89,22 @@ test("zoom keeps the point under the cursor fixed and menus stay inside the wind
   assert.deepEqual(P.clampMenu(990, 790, 200, 100, 1000, 800), { x: 794, y: 694 });
   assert.equal(P.zoomLabel(1.5), "150%");
 });
+
+test("régua: marcas maiores em casas inteiras com espaço legível, menores por casa", () => {
+  assert.deepEqual(P.rulerSteps(40, 1.5), { majorPx: 80, majorUnits: 3, minorPx: 40 });
+  assert.deepEqual(P.rulerSteps(5, 1.5), { majorPx: 100, majorUnits: 30, minorPx: 10 });
+  assert.deepEqual(P.rulerSteps(200, 1.5), { majorPx: 200, majorUnits: 1.5, minorPx: 50 });
+  assert.equal(P.rulerSteps(0, 1.5), null);
+  assert.equal(P.rulerSteps(40, 0), null);
+  assert.equal(P.rulerSteps(Infinity, 1), null);
+  // Sem grade (pixels): 1 px por unidade ainda gera marcas legíveis.
+  assert.deepEqual(P.rulerSteps(1, 1), { majorPx: 100, majorUnits: 100, minorPx: 10 });
+});
+
+test("régua: rótulos com vírgula decimal e sem -0", () => {
+  assert.equal(P.rulerLabel(4.5), "4,5");
+  assert.equal(P.rulerLabel(-3), "-3");
+  assert.equal(P.rulerLabel(-0.0001), "0");
+  assert.equal(P.rulerLabel(1.25), "1,25");
+  assert.equal(P.rulerLabel(1500), "1.500");
+});

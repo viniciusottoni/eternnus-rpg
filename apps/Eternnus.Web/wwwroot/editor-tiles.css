@@ -42,6 +42,19 @@
 .tme-tile[aria-pressed="true"] { border-color: #e6cf98; background: #3a3220; box-shadow: 0 0 0 1px #e6cf98 inset; }
 .tme-tile[hidden] { display: none; }
 
+/* Pincel e mistura */
+.tme-brush, .tme-mix { margin: 0 0 8px; padding: 6px 8px 8px; border: 1px solid var(--ed-line, #3a3f31); border-radius: 8px; min-width: 0; }
+.tme-brush legend, .tme-mix legend { display: flex; align-items: center; gap: 4px; padding: 0 4px; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--gold, #c6a463); }
+.tme-seg { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.tme-seg button { min-width: 36px; min-height: 32px; }
+.tme-seg button[aria-pressed="true"] { border-color: #e6cf98; background: #3a3220; color: var(--bright, #e6cf98); box-shadow: 0 0 0 1px #e6cf98 inset; font-weight: 600; }
+.tme-mix .check { font-size: .84rem; }
+.tme-mix-list { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.tme-mix-list li { display: inline-flex; align-items: center; gap: 2px; padding: 0 0 0 8px; border: 1px solid #5b4a2a; border-radius: 999px; background: #1f1b12; font-size: .78rem; }
+.tme-mix-list li.muted { border: 0; background: none; padding: 0; }
+.tme-mix-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.tme-mix-actions button { min-height: 32px; }
+
 /* Propriedades */
 .tme-info { display: grid; gap: 2px; margin: 0 0 8px; }
 .tme-info div { display: flex; justify-content: space-between; gap: 8px; font-size: .84rem; }
@@ -65,6 +78,7 @@
 /* Toque: alvos de 44 px */
 @media (pointer: coarse) {
   .tme-current, .tme-save, .tme-prop-actions button, .tme-filters input, .tme-filters select { min-height: 44px; }
+  .tme-seg button, .tme-mix-actions button, .tme-mix-list button { min-height: 44px; min-width: 44px; }
   .tme-grid { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
   .tme-tile { min-height: 64px; }
   .tme-choice .form-actions button { min-height: 44px; }

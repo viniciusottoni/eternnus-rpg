@@ -14,7 +14,7 @@ public record CampaignMapInput(string Name, Guid? FolderId, int GridPixels, deci
 /// <summary>Mapa importado de um link https: o servidor baixa uma vez e trata como upload (ver RemoteImageFetcher).</summary>
 public record CampaignMapImportInput(string Url, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, bool FreeMovement = false, string? Summary = null, string? SourceKey = null);
 /// <summary>Preparação de névoa/luz de um mapa: estado completo editado no editor e a revisão lida.</summary>
-public record MapLayerInput(bool? Fog, string[] Cells, List<FogLight>? Lights, string? Revealed, List<FogMarkInput>? Marks, int Revision, bool ResetExploration = false, string? PrepVersion = null);
+public record MapLayerInput(bool? Fog, string[] Cells, List<FogLight>? Lights, string? Revealed, List<FogMarkInput>? Marks, int Revision, bool ResetExploration = false, string? PrepVersion = null, List<FogWall>? Walls = null);
 public record CampaignMapView(Guid Id, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int PixelWidth, int PixelHeight, int Revision, string? ImageUrl, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, bool FreeMovement = false, [property: System.Text.Json.Serialization.JsonIgnore] string? TileData = null,
     [property: System.Text.Json.Serialization.JsonIgnore] string? Composition = null)
 {
@@ -223,6 +223,7 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
             var scenes = await db.Scenes.CountAsync(s => s.CampaignId == campaign && s.MapKey == assetKey && s.Kind == SceneKinds.Map, ct);
             if (scenes > 0) throw new RuleException(409, $"{scenes} cena(s) usam este mapa com grade. Troque o cenário delas antes de deixar só a imagem.");
         }
+        if (id != null && map.HasGrid && x.HasGrid) await RegridWallsAsync(campaign, map.Id, map.GridPixels, map.GridOffsetX, map.GridOffsetY, x.GridPixels, x.GridOffsetX, x.GridOffsetY, ct);
         map.Name = name; map.FolderId = x.FolderId; map.GridPixels = x.GridPixels; map.ScaleMeters = x.ScaleMeters;
         map.HasGrid = x.HasGrid; map.GridOffsetX = x.HasGrid ? x.GridOffsetX : 0; map.GridOffsetY = x.HasGrid ? x.GridOffsetY : 0; map.Purpose = purpose;
         // Voltar de livre para grade: posições finas preparadas ficam guardadas, mas a grade usa o centro da casa
@@ -233,6 +234,32 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
         if (id == null) db.Add(map); else map.Revision++;
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return View(map);
     }
+    /// <summary>
+    /// A grade de um mapa enviado mudou (lado/deslocamento): as paredes vetoriais de todas as camadas do mapa (compartilhada e
+    /// próprias de cenas, estado e preparação pendente) são convertidas para continuar sobre o mesmo ponto da imagem.
+    /// Casas bloqueadas seguem a regra antiga (<see cref="TableFog.Fit"/>). Chamar dentro da transação da escrita do mapa.
+    /// </summary>
+    internal async Task RegridWallsAsync(Guid campaign, Guid mapId, int oldPixels, int oldX, int oldY, int newPixels, int newX, int newY, CancellationToken ct)
+    {
+        if (oldPixels == newPixels && oldX == newX && oldY == newY) return;
+        if (oldPixels <= 0 || newPixels <= 0) return;
+        var key = "asset:" + mapId;
+        var rows = await db.Set<CampaignMapLayer>().Where(l => l.CampaignId == campaign && (l.MapKey == key || l.MapKey.StartsWith(key + "@"))).ToListAsync(ct);
+        string? Convert(string? json)
+        {
+            var state = MapFogState.Parse(json);
+            if (state?.Walls is not { Count: > 0 }) return json;
+            state.Walls = TableFog.Regrid(state.Walls, oldPixels, oldX, oldY, newPixels, newX, newY);
+            return state.Serialize();
+        }
+        foreach (var row in rows)
+        {
+            var state = Convert(row.State); var prepared = Convert(row.Prepared);
+            if (state == row.State && prepared == row.Prepared) continue;
+            row.State = state ?? row.State; row.Prepared = prepared; row.Revision++; row.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
     /// <summary>Virar retrato tira a imagem das listas de mapas: cenas e atlas que a usam trocam de mapa antes.</summary>
     async Task EnsureNotUsedAsMapAsync(Guid campaign, Guid id, CancellationToken ct)
     {
@@ -251,6 +278,8 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
         await Maps.Where(m => m.CampaignId == campaign && m.OwnerMapId == id && m.Purpose == CampaignAssetPurposes.Layer).ExecuteDeleteAsync(ct);
         // Camada compartilhada e camadas próprias de cenas ({chave}@{cena}).
         await db.Set<CampaignMapLayer>().Where(l => l.CampaignId == campaign && (l.MapKey == key || l.MapKey.StartsWith(key + "@"))).ExecuteDeleteAsync(ct);
+        // Versões persistentes do mapa (ADR-083) saem com ele.
+        await DocumentVersionService.DeleteForAsync(db, campaign, id, ct);
         db.Remove(map); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
 
@@ -314,10 +343,13 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
             key = map.Key, layerKey, mode = layerKey == map.Key ? SceneLayerModes.Map : SceneLayerModes.Scene, name = map.Name, kind = map.Kind, width = map.Width, height = map.Height, rows = map.Rows, imageUrl = map.ImageUrl, scaleMeters = map.ScaleMeters,
             gridPixels = asset?.GridPixels, gridOffsetX = asset?.GridOffsetX, gridOffsetY = asset?.GridOffsetY, pixelWidth = asset?.PixelWidth, pixelHeight = asset?.PixelHeight,
             freeMovement = map.Free,
-            fog = prep.Fog, manual = prep.Manual, cells = prep.Cells, lights = prep.Lights, revealed = prep.Revealed, marks = prep.Marks, explored = Bits.Encode(explored),
+            fog = prep.Fog, manual = prep.Manual, cells = prep.Cells, lights = prep.Lights, revealed = prep.Revealed, marks = prep.Marks, walls = prep.Walls, explored = Bits.Encode(explored),
             revision = row?.Revision ?? 0, prepVersion = TableFogService.PrepVersion(prep), settings,
             inUse = await LiveOn(campaign, map.Key, layerKey).AnyAsync(ct),
             pending = row?.Prepared != null,
+            // Estrutura ao vivo (sem explorações) para o mestre revisar as diferenças antes de "Aplicar à cena atual".
+            live = row != null ? new { cells = state.Cells, lights = state.Lights, walls = state.Walls, revealed = state.Revealed, fog = state.Fog,
+                marks = state.Marks.Select(m => new { m.Id, m.X, m.Y, m.Kind, m.Label, m.Dc, m.Sense, m.MaxDistance }) } : null,
             sharedWith = shared.Where(s => s.Id != scene?.Id),
         };
     }
@@ -337,8 +369,9 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
         if (lights.Count > TableFog.MaxLights) throw new RuleException(409, $"Limite de {TableFog.MaxLights} focos de luz por mapa.");
         var marks = x.Marks ?? [];
         if (marks.Count > TableFog.MaxMarks) throw new RuleException(409, $"Limite de {TableFog.MaxMarks} marcas ocultas por mapa.");
-        var draft = new MapFogState { Fog = x.Fog, Cells = x.Cells };
-        foreach (var l in lights) FogEdits.UpsertLight(draft, map.Width, map.Height, new FogLightInput(null, l.X, l.Y, l.Radius));
+        // Ausente = editor antigo: mantém as paredes vetoriais atuais (lidas abaixo, depois da checagem de versão).
+        var draft = new MapFogState { Fog = x.Fog, Cells = x.Cells, Walls = x.Walls == null ? [] : TableFog.ValidWalls(x.Walls, map.Width, map.Height) };
+        foreach (var l in lights) FogEdits.UpsertLight(draft, map.Width, map.Height, new FogLightInput(null, l.X, l.Y, l.Radius, l.Dim, l.Color, l.Intensity, l.Animation));
         draft.Revealed = Bits.Resize(x.Revealed, map.Width * map.Height);
         var fog = new TableFogService(db);
         var owner = await db.Campaigns.SingleAsync(x2 => x2.Id == campaign, ct);
@@ -348,6 +381,7 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
         // Versão da preparação lida (não muda com explorações ao vivo); sem ela, a revisão da linha.
         if (x.PrepVersion != null ? x.PrepVersion != TableFogService.PrepVersion(basePrep) : (row?.Revision ?? 0) != x.Revision) throw Stale();
         draft.Manual = basePrep.Manual;
+        if (x.Walls == null) draft.Walls = basePrep.Walls.Select(w => w.Clone()).ToList();
         // Explorações e quem já percebeu cada marca continuam com o servidor.
         foreach (var m in marks)
         {

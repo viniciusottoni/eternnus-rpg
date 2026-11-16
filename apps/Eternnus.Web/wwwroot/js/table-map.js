@@ -1,9 +1,9 @@
 // Tabuleiro da mesa: tileset desenhado em canvas a partir da grade oficial do servidor, ou imagem cartográfica.
 // Camada estática em cache; luzes, água e marcadores animados respeitam prefers-reduced-motion e abas ocultas.
 // Névoa: o servidor envia as máscaras (visível/explorado); aqui só se desenha. O mestre vê um véu translúcido e as marcas.
-import { drawTile } from "./tile-art.js";
+import { drawTile, dominantGround, affectedCells } from "./tile-art.js";
 import { initials } from "./session-policy.js";
-import { decodeBits, MARK_KINDS } from "./fog-policy.js";
+import { decodeBits, MARK_KINDS, WALL_UNIT, lightReach, wallKind } from "./fog-policy.js";
 import { helpButton } from "./help.js";
 import { mountMapGestures } from "./map-gestures.js";
 import { safeImageUrl } from "./play-policy.js";
@@ -20,6 +20,25 @@ function hueOf(text) {
   for (const c of String(text)) h = (h * 31 + c.charCodeAt(0)) % 360;
   return h;
 }
+function tileFlags(rows) {
+  const outdoor = rows.some(row => row.includes(","));
+  const timber = !outdoor && rows.some(row => row.includes("d")) && !rows.some(row => row.includes("~"));
+  return { outdoor, timber };
+}
+/** Tudo o que muda o desenho de todas as casas de uma vez (piso externo, madeira, chão dominante). */
+function tileGlobals(rows) {
+  const { outdoor, timber } = tileFlags(rows);
+  return `${outdoor ? 1 : 0}${timber ? 1 : 0}${dominantGround(rows)}`;
+}
+// Vinheta para concentrar a atenção no centro da cena. `clip` = só uma casa (repintura), com o mesmo gradiente.
+function vignette(g, width, height, clip = null) {
+  const v = g.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.3, width / 2, height / 2, Math.max(width, height) * 0.75);
+  v.addColorStop(0, "#00000000");
+  v.addColorStop(1, "#07111766");
+  g.fillStyle = v;
+  if (clip) g.fillRect(clip.x, clip.y, clip.size, clip.size);
+  else g.fillRect(0, 0, width, height);
+}
 function buildStatic(rows, s, ground = null) {
   const w = rows[0].length,
     h = rows.length;
@@ -27,26 +46,11 @@ function buildStatic(rows, s, ground = null) {
   layer.width = w * s;
   layer.height = h * s;
   const g = layer.getContext("2d");
-  const outdoor = rows.some(row => row.includes(","));
-  const timber = !outdoor && rows.some(row => row.includes("d")) && !rows.some(row => row.includes("~"));
+  const { outdoor, timber } = tileFlags(rows);
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) drawTile(g, rows, x, y, s, outdoor, timber, ground);
-  // Vinheta para concentrar a atenção no centro da cena.
-  const v = g.createRadialGradient(
-    layer.width / 2,
-    layer.height / 2,
-    Math.min(layer.width, layer.height) * 0.3,
-    layer.width / 2,
-    layer.height / 2,
-    Math.max(layer.width, layer.height) * 0.75,
-  );
-  v.addColorStop(0, "#00000000");
-  v.addColorStop(1, "#07111766");
-  g.fillStyle = v;
-  g.fillRect(0, 0, layer.width, layer.height);
   return layer;
 }
-
 /** Miniatura do mapa para escolhas do mestre. */
 export function mapThumbnail(el, map) {
   if (!el || !map) return;
@@ -66,6 +70,7 @@ export function mapThumbnail(el, map) {
   canvas.height = layer.height;
   const g = canvas.getContext("2d");
   g.drawImage(layer, 0, 0);
+  vignette(g, canvas.width, canvas.height);
   drawLights(g, map.rows, s, 0, false);
   el.replaceChildren(canvas);
 }
@@ -143,15 +148,31 @@ function roundRect(g, x, y, w, h, r) {
   g.closePath();
 }
 
-/** Brilho suave das fontes de luz que não vêm da legenda do tileset (focos do mestre e luz dos marcadores). */
-function drawGlow(g, x, y, radius, s, t, animate) {
+const rgb = (hex) => { const m = /^#([0-9a-f]{6})$/i.exec(hex || ""); const n = m ? parseInt(m[1], 16) : 0xffbe64; return [n >> 16, (n >> 8) & 255, n & 255]; };
+/**
+ * Brilho suave das fontes de luz que não vêm da legenda do tileset (focos do mestre e luz dos marcadores).
+ * `light` opcional: cor, intensidade, penumbra (queda gradual entre a luz plena e o alcance) e animação sutil.
+ * Animação só com `animate` (prefers-reduced-motion desliga; a aba oculta pausa o laço).
+ */
+function drawGlow(g, x, y, radius, s, t, animate, light = null) {
   if (!radius) return;
-  const flicker = animate ? 0.97 + 0.03 * Math.sin(t / 530 + x * 2.3 + y) : 1;
-  const cx = (x + 0.5) * s, cy = (y + 0.5) * s, r = Math.max(s, radius * s * flicker);
+  const kind = light?.animation;
+  let wave = 1;
+  if (animate) {
+    if (kind === "pulse") wave = 0.9 + 0.1 * Math.sin(t / 700 + x);
+    else if (kind === "flicker") wave = 0.92 + 0.05 * Math.sin(t / 90 + x * 3.1) + 0.03 * Math.sin(t / 37 + y);
+    else wave = 0.97 + 0.03 * Math.sin(t / 530 + x * 2.3 + y);
+  }
+  const cx = (x + 0.5) * s, cy = (y + 0.5) * s, r = Math.max(s, radius * s * wave);
+  const [cr, cg, cb] = rgb(light?.color);
+  const k = Math.min(1, Math.max(0.1, (light?.intensity ?? 100) / 100));
+  // Luz plena até `light.radius`; penumbra até o alcance (`dim`).
+  const bright = light?.dim > light?.radius ? Math.max(0.15, Math.min(0.9, light.radius / light.dim)) : 0.6;
+  const edge = `${cr},${Math.round(cg * 0.8)},${Math.round(cb * 0.6)}`;
   const glow = g.createRadialGradient(cx, cy, 0, cx, cy, r);
-  glow.addColorStop(0, "rgba(255,190,100,.22)");
-  glow.addColorStop(0.6, "rgba(255,150,60,.08)");
-  glow.addColorStop(1, "rgba(255,150,60,0)");
+  glow.addColorStop(0, `rgba(${cr},${cg},${cb},${(0.22 * k).toFixed(3)})`);
+  glow.addColorStop(bright, `rgba(${edge},${(0.1 * k).toFixed(3)})`);
+  glow.addColorStop(1, `rgba(${edge},0)`);
   g.save();
   g.globalCompositeOperation = "lighter";
   g.fillStyle = glow;
@@ -182,34 +203,49 @@ const CELL_STYLE = {
   o: ["rgba(160,110,60,.18)", "rgba(241,215,156,.75)"],
 };
 
+// Máscaras por objeto de névoa: só mudam com um estado novo, nunca a cada quadro da animação.
+const fogMasks = new WeakMap();
+function masksOf(fog, w, h, master) {
+  const key = `${w}x${h}:${master ? 1 : 0}`;
+  const cached = fogMasks.get(fog);
+  if (cached?.key === key) return cached;
+  const n = w * h;
+  let entry;
+  if (master) {
+    // Véu do mestre: escurece o que os jogadores não veem pela luz/revelação compartilhada.
+    const shared = decodeBits(fog.shared, n);
+    entry = { key, veil: fogMask(w, h, (i) => (shared[i] ? 0 : 120)) };
+  } else {
+    const visible = decodeBits(fog.visible, n);
+    const explored = decodeBits(fog.explored, n);
+    entry = { key, dim: fogMask(w, h, (i) => (visible[i] ? 0 : explored[i] ? 150 : 0)), dark: fogMask(w, h, (i) => (explored[i] ? 0 : 255)) };
+  }
+  fogMasks.set(fog, entry);
+  return entry;
+}
+
 function drawFog(g, state, view, s, t, animate) {
   const fog = state.fog;
   const r = state.map.rows;
   if (!fog || !r?.length) return;
-  const w = r[0].length, h = r.length, n = w * h;
+  const w = r[0].length, h = r.length;
   const master = state.me?.isMaster && !view.viewAs;
   if (fog.active) {
+    const m = masksOf(fog, w, h, master);
+    g.save();
     if (master) {
-      // Véu do mestre: escurece o que os jogadores não veem pela luz/revelação compartilhada.
-      const shared = decodeBits(fog.shared, n);
-      const veil = fogMask(w, h, (i) => (shared[i] ? 0 : 120));
-      g.save();
       g.imageSmoothingEnabled = false;
-      g.drawImage(veil, 0, 0, w * s, h * s);
-      g.restore();
+      g.drawImage(m.veil, 0, 0, w * s, h * s);
     } else {
-      const visible = decodeBits(fog.visible, n);
-      const explored = decodeBits(fog.explored, n);
-      g.save();
       g.imageSmoothingEnabled = true;
-      g.drawImage(fogMask(w, h, (i) => (visible[i] ? 0 : explored[i] ? 150 : 0)), 0, 0, w * s, h * s);
+      g.drawImage(m.dim, 0, 0, w * s, h * s);
       g.imageSmoothingEnabled = false;
-      g.drawImage(fogMask(w, h, (i) => (explored[i] ? 0 : 255)), 0, 0, w * s, h * s);
-      g.restore();
+      g.drawImage(m.dark, 0, 0, w * s, h * s);
     }
+    g.restore();
   }
   for (const l of fog.lights || []) {
-    drawGlow(g, l.x, l.y, l.radius, s, t, animate);
+    drawGlow(g, l.x, l.y, lightReach(l), s, t, animate, l);
     if (master && view.fogTools) {
       g.fillStyle = "#ffd27a";
       g.font = `600 ${Math.max(10, s * 0.5)}px Georgia, serif`;
@@ -234,6 +270,7 @@ function drawFog(g, state, view, s, t, animate) {
           if (c === "o") { g.beginPath(); g.moveTo(x * s + s * 0.2, y * s + s * 0.15); g.lineTo(x * s + s * 0.55, y * s + s * 0.3); g.lineTo(x * s + s * 0.55, y * s + s * 0.95); g.stroke(); }
         } else g.strokeRect(x * s + 1.5, y * s + 1.5, s - 3, s - 3);
       }
+  drawWalls(g, fog.walls, s, master, master && view.fogTools);
   for (const m of fog.marks || []) {
     const icon = MARK_KINDS.find((k) => k[0] === m.kind)?.[2] || "✦";
     const cx = (m.x + 0.5) * s, cy = (m.y + 0.5) * s;
@@ -255,6 +292,149 @@ function drawFog(g, state, view, s, t, animate) {
     g.fillText(icon, cx, cy + s * 0.02);
     g.restore();
   }
+}
+
+/** Símbolo de porta no meio do segmento: retângulo cheio (fechada) ou vazado com a folha girada (aberta). Não depende de cor. */
+function drawDoorGlyph(g, w, s, open) {
+  const k = s / WALL_UNIT, mx = ((w.x1 + w.x2) / 2) * k, my = ((w.y1 + w.y2) / 2) * k;
+  const angle = Math.atan2(w.y2 - w.y1, w.x2 - w.x1), half = Math.max(4, s * 0.22);
+  g.save();
+  g.translate(mx, my);
+  g.rotate(angle);
+  g.fillStyle = open ? "#0b0a08cc" : "#a06e3ce6";
+  g.strokeStyle = "#f1d79c";
+  g.lineWidth = Math.max(1, s * 0.05);
+  g.fillRect(-half, -half * 0.35, half * 2, half * 0.7);
+  g.strokeRect(-half, -half * 0.35, half * 2, half * 0.7);
+  if (open) { g.beginPath(); g.moveTo(-half, 0); g.lineTo(-half + half * 0.9, -half * 1.2); g.stroke(); }
+  g.restore();
+}
+
+const WALL_COLORS = { wall: "#e8d3a2", door: "#c08a52", window: "#8ec5e8", sight: "#b48ee8", move: "#e6a03c" };
+
+/**
+ * Paredes vetoriais. Mestre preparando: todas, com traço por tipo (sólido, tracejado, pontilhado) e porta com símbolo;
+ * ocultas ficam translúcidas. Mestre conduzindo sem ferramentas e jogadores: só portas que não são secretas.
+ */
+function drawWalls(g, walls, s, master, tools) {
+  if (!walls?.length) return;
+  const k = s / WALL_UNIT;
+  g.save();
+  g.lineCap = "round";
+  for (const w of walls) {
+    const isDoor = w.kind ? w.kind === "door" : w.door != null;
+    const open = w.kind ? !!w.open : w.door === "open";
+    if (!tools) {
+      if (isDoor && !(master && w.hidden)) drawDoorGlyph(g, w, s, open);
+      continue;
+    }
+    const kind = wallKind(w.kind);
+    g.globalAlpha = w.hidden ? 0.5 : 1;
+    g.setLineDash(kind.dash.map((d) => d * Math.max(1, s * 0.08)));
+    g.strokeStyle = "#0b0a08cc";
+    g.lineWidth = Math.max(3, s * 0.16);
+    g.beginPath(); g.moveTo(w.x1 * k, w.y1 * k); g.lineTo(w.x2 * k, w.y2 * k); g.stroke();
+    g.strokeStyle = WALL_COLORS[w.kind] || WALL_COLORS.wall;
+    g.lineWidth = Math.max(1.5, s * 0.08);
+    g.stroke();
+    g.setLineDash([]);
+    if (isDoor) drawDoorGlyph(g, w, s, open);
+  }
+  g.restore();
+}
+
+/** Sobreposição do editor de paredes: prévia do traço, selecionadas, vértices e o ponto magnético sob o cursor. */
+function drawVectorOverlay(g, vector, walls, s) {
+  if (!vector) return;
+  const k = s / WALL_UNIT;
+  const selected = new Set(vector.selected || []);
+  g.save();
+  g.lineCap = "round";
+  for (const w of walls || []) {
+    if (!selected.has(w.id)) continue;
+    g.strokeStyle = "#ffffff";
+    g.lineWidth = Math.max(2, s * 0.06);
+    g.setLineDash([Math.max(3, s * 0.12), Math.max(3, s * 0.1)]);
+    g.beginPath(); g.moveTo(w.x1 * k, w.y1 * k); g.lineTo(w.x2 * k, w.y2 * k); g.stroke();
+  }
+  g.setLineDash([]);
+  if (vector.vertices) {
+    const seen = new Set();
+    g.fillStyle = "#0b0a08";
+    g.strokeStyle = "#f1d79c";
+    g.lineWidth = 1.5;
+    const r = Math.max(3, Math.min(7, s * 0.09));
+    for (const w of walls || []) for (const [x, y] of [[w.x1, w.y1], [w.x2, w.y2]]) {
+      const key = x + ":" + y;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      g.beginPath(); g.rect(x * k - r, y * k - r, r * 2, r * 2); g.fill(); g.stroke();
+    }
+  }
+  if (vector.preview?.length) {
+    g.strokeStyle = "#f1d79c";
+    g.lineWidth = Math.max(2, s * 0.07);
+    g.setLineDash([Math.max(4, s * 0.15), Math.max(3, s * 0.1)]);
+    g.beginPath();
+    for (const p of vector.preview) { g.moveTo(p.x1 * k, p.y1 * k); g.lineTo(p.x2 * k, p.y2 * k); }
+    g.stroke();
+    g.setLineDash([]);
+  }
+  if (vector.box) {
+    const b = vector.box;
+    g.strokeStyle = "#f1d79c";
+    g.lineWidth = 1;
+    g.setLineDash([4, 3]);
+    g.strokeRect(Math.min(b.x1, b.x2) * k, Math.min(b.y1, b.y2) * k, Math.abs(b.x2 - b.x1) * k, Math.abs(b.y2 - b.y1) * k);
+    g.setLineDash([]);
+  }
+  if (vector.point) {
+    const r = Math.max(4, Math.min(9, s * 0.12));
+    g.strokeStyle = vector.point.snapped ? "#7cc35b" : "#f1d79c";
+    g.lineWidth = 2;
+    g.beginPath(); g.arc(vector.point.x * k, vector.point.y * k, r, 0, Math.PI * 2); g.stroke();
+    if (vector.point.snapped) { g.beginPath(); g.moveTo(vector.point.x * k - r, vector.point.y * k); g.lineTo(vector.point.x * k + r, vector.point.y * k); g.stroke(); }
+  }
+  g.restore();
+}
+
+/**
+ * Diagnóstico (só no editor do mestre): casas que bloqueiam movimento hachuradas, áreas sem luz em azul e problemas de
+ * geometria com triângulo "!" (forma + lista no painel, não só cor).
+ */
+function drawDiagnostic(g, diag, w, h, s) {
+  if (!diag) return;
+  g.save();
+  if (diag.dark) {
+    const dark = decodeBits(diag.dark, w * h);
+    g.fillStyle = "rgba(60,90,200,.22)";
+    for (let i = 0; i < w * h; i++) if (dark[i]) g.fillRect((i % w) * s, Math.floor(i / w) * s, s, s);
+  }
+  if (diag.blocked) {
+    const blocked = decodeBits(diag.blocked, w * h);
+    g.strokeStyle = "rgba(230,160,60,.75)";
+    g.lineWidth = 1;
+    g.beginPath();
+    for (let i = 0; i < w * h; i++) {
+      if (!blocked[i]) continue;
+      const x = (i % w) * s, y = Math.floor(i / w) * s;
+      g.moveTo(x, y + s); g.lineTo(x + s, y);
+      g.moveTo(x, y + s / 2); g.lineTo(x + s / 2, y);
+      g.moveTo(x + s / 2, y + s); g.lineTo(x + s, y + s / 2);
+    }
+    g.stroke();
+  }
+  const k = s / WALL_UNIT;
+  for (const issue of diag.issues || []) {
+    const cx = issue.x * k, cy = issue.y * k, r = Math.max(7, s * 0.22);
+    g.fillStyle = "#d4533f";
+    g.beginPath(); g.moveTo(cx, cy - r); g.lineTo(cx + r, cy + r * 0.8); g.lineTo(cx - r, cy + r * 0.8); g.closePath(); g.fill();
+    g.fillStyle = "#fff";
+    g.font = `700 ${Math.max(9, r)}px Georgia, serif`;
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText("!", cx, cy + r * 0.2);
+  }
+  g.restore();
 }
 
 // Retratos dos marcadores (NPC/criatura com imagem): uma carga por endereço, desenhada recortada no círculo do marcador.
@@ -516,10 +696,11 @@ export function createBoard(host, handlers = {}) {
   let state = null,
     view = { mode: "none", reach: [], selected: null, grid: true },
     layer = null,
-    layerKey = "",
     cell = 0,
     ox = 0,
     oy = 0,
+    baseX = 0,
+    baseY = 0,
     frame = 0,
     last = 0,
     cursor = null,
@@ -592,6 +773,80 @@ export function createBoard(host, handlers = {}) {
   image.onerror = () => { status.textContent = "Não foi possível carregar o mapa. Tente atualizar a mesa."; };
   image.onload = () => { layout(); };
 
+  // Camada estática (ADR-081): desenhada fora da tela numa resolução própria e escalada ao desenhar.
+  // O zoom reaproveita a camada atual e refaz a nitidez em fatias curtas, sem travar a interface; quando a grade muda
+  // (pintura no editor, exploração na mesa), só as casas afetadas são repintadas.
+  const LAYER_MAX = 4096, SLICE_MS = 10, REFINE_DELAY = 160;
+  let layerInfo = null, job = null, jobTimer = 0;
+  // Resolução da casa igual à do tabuleiro: o desenho de cada quadro vira uma cópia 1:1 (escala só durante o zoom).
+  const layerScale = (r) => Math.max(4, Math.min(cell, Math.floor(LAYER_MAX / Math.max(r[0].length, r.length))));
+  function cancelJob() { clearTimeout(jobTimer); jobTimer = 0; job = null; }
+  function startJob(r, ground, s, info, delay) {
+    cancelJob();
+    const target = document.createElement("canvas");
+    target.width = r[0].length * s; target.height = r.length * s;
+    job = { target, g: target.getContext("2d"), rows: r, ground, s, i: 0, flags: tileFlags(r), info: { ...info, s, rows: r, ground } };
+    // Sem camada para mostrar: a nova aparece enquanto é desenhada.
+    if (!layer) { layer = target; layerInfo = job.info; }
+    jobTimer = setTimeout(stepJob, delay);
+  }
+  function stepJob() {
+    jobTimer = 0;
+    if (!job || destroyed) return;
+    const { rows: r, s, g: lg, flags, ground } = job, w = r[0].length, n = w * r.length, until = performance.now() + SLICE_MS;
+    while (job.i < n && performance.now() < until) { drawTile(lg, r, job.i % w, (job.i / w) | 0, s, flags.outdoor, flags.timber, ground); job.i++; }
+    if (job.i < n) { jobTimer = setTimeout(stepJob, 0); return; }
+    vignette(lg, w * s, r.length * s);
+    layer = job.target; layerInfo = job.info; job = null;
+    syncLayer(); // o zoom pode ter mudado durante a montagem
+    draw();
+  }
+  function repaint(target, info, r, ground, cells) {
+    const lg = target.getContext("2d"), w = r[0].length, s = info.s, { outdoor, timber } = tileFlags(r);
+    // Camada ainda sendo montada (sem vinheta): a vinheta entra no fim, para todas as casas.
+    const finished = !job || job.target !== target;
+    for (const i of cells) {
+      const x = i % w, y = (i / w) | 0;
+      lg.clearRect(x * s, y * s, s, s);
+      drawTile(lg, r, x, y, s, outdoor, timber, ground);
+      if (finished) vignette(lg, w * s, r.length * s, { x: x * s, y: y * s, size: s });
+    }
+    info.rows = r; info.ground = ground;
+  }
+  function syncLayer() {
+    if (!tileset() || uploaded()) { cancelJob(); layer = null; layerInfo = null; return; }
+    const r = rows(), ground = state.map.terrain || null, s = layerScale(r);
+    const id = `${state.map.key}:${r[0].length}x${r.length}:${ground ? 1 : 0}`, globals = tileGlobals(r);
+    const info = layerInfo;
+    // Outro mapa, outro tamanho ou mudança global de piso: refaz tudo (já, sem esperar).
+    if (!info || info.id !== id || info.globals !== globals) { layer = null; startJob(r, ground, s, { id, globals }, 0); return; }
+    // Primeira montagem em andamento: só recomeça se a grade mudou; a resolução é revista ao terminar.
+    if (job && job.target === layer) {
+      if (info.rows !== r || info.ground !== ground) { layer = null; startJob(r, ground, s, { id, globals }, 0); }
+      return;
+    }
+    if (info.rows !== r || info.ground !== ground) {
+      const cells = affectedCells(info.rows, r, info.ground, ground);
+      if (!cells) { startJob(r, ground, s, { id, globals }, 0); return; }
+      if (cells.length) repaint(layer, info, r, ground, cells);
+      else { info.rows = r; info.ground = ground; }
+      // Nitidez em andamento com a grade antiga: recomeça com a nova.
+      if (job && job.target !== layer) startJob(r, ground, job.s, { id, globals }, REFINE_DELAY);
+    }
+    // Zoom: a camada atual é escalada; a nova resolução é desenhada quando o zoom para.
+    if (s !== info.s && (!job || job.s !== s)) startJob(r, ground, s, { id, globals }, REFINE_DELAY);
+    else if (s === info.s && job && job.target !== layer) cancelJob();
+  }
+  /** Origem do tabuleiro no canvas visível: posição na superfície menos a rolagem atual. */
+  function syncOrigin() {
+    ox = baseX - Math.round(host.scrollLeft * dpr);
+    oy = baseY - Math.round(host.scrollTop * dpr);
+  }
+  let scrollFrame = 0;
+  host.addEventListener("scroll", () => {
+    syncOrigin();
+    if (!scrollFrame) scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; if (!destroyed) draw(); });
+  }, { passive: true });
   function layout() {
     const rect = host.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return;
@@ -611,9 +866,14 @@ export function createBoard(host, handlers = {}) {
     }
     surface.style.width = `${width}px`;
     surface.style.height = `${height}px`;
-    dpr = Math.min(2, window.devicePixelRatio || 1, 4096 / Math.max(width, height));
-    canvas.width = Math.max(1, Math.round(width * dpr));
-    canvas.height = Math.max(1, Math.round(height * dpr));
+    // O canvas cobre só a área visível (fixo na rolagem); a superfície ampliada só dá a extensão da rolagem.
+    // Assim cada quadro desenha a janela visível, não o mapa ampliado inteiro.
+    const viewW = Math.max(1, host.clientWidth), viewH = Math.max(1, host.clientHeight);
+    dpr = Math.min(2, window.devicePixelRatio || 1, 4096 / Math.max(viewW, viewH));
+    canvas.width = Math.max(1, Math.round(viewW * dpr));
+    canvas.height = Math.max(1, Math.round(viewH * dpr));
+    canvas.style.width = `${viewW}px`;
+    canvas.style.height = `${viewH}px`;
     if (resetCamera) {
       const mine = (state?.tokens || []).find(t => t.characterId && t.characterId === state?.me?.characterId);
       const at = mine && tileset() ? tokenCenter(mine, free()) : null;
@@ -627,18 +887,15 @@ export function createBoard(host, handlers = {}) {
     updateCamera();
     if (!tileset()) return;
     const r = rows();
+    // Casa em pixels inteiros: camada em cache alinhada (repintura sem emendas) e grade nítida.
     cell = Math.max(
       1,
-      Math.min(canvas.width / r[0].length, canvas.height / r.length),
+      Math.floor(Math.min(width * dpr / r[0].length, height * dpr / r.length)),
     );
-    ox = Math.floor((canvas.width - cell * r[0].length) / 2);
-    oy = Math.floor((canvas.height - cell * r.length) / 2);
-    // As linhas mudam quando o jogador explora (casas "?" passam a ter terreno): a camada estática é refeita.
-    const key = state.map.key + ":" + cell + ":" + (uploaded() ? "" : r.join("|") + "/" + (state.map.terrain || []).join("|"));
-    if (key !== layerKey) {
-      layer = uploaded() ? null : buildStatic(r, cell, state.map.terrain || null);
-      layerKey = key;
-    }
+    baseX = Math.floor((width * dpr - cell * r[0].length) / 2);
+    baseY = Math.floor((height * dpr - cell * r.length) / 2);
+    syncOrigin();
+    syncLayer();
   }
   function zoomAt(value, clientX, clientY) {
     if (!camera) return;
@@ -657,6 +914,7 @@ export function createBoard(host, handlers = {}) {
   function draw(t = performance.now()) {
     if (!tileset() || (!uploaded() && !layer) || host.clientHeight < 1) return;
     const animate = !reduceMotion();
+    syncOrigin();
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.fillStyle = "#0b0a08";
     g.fillRect(0, 0, canvas.width, canvas.height);
@@ -666,12 +924,17 @@ export function createBoard(host, handlers = {}) {
       // A grade começa no deslocamento definido no mapa (mesma grade autoritativa do servidor).
       if (background?.naturalWidth) g.drawImage(background, Number(state.map.gridOffsetX) || 0, Number(state.map.gridOffsetY) || 0, r[0].length * state.map.gridPixels, r.length * state.map.gridPixels, 0, 0, r[0].length * cell, r.length * cell);
     } else {
-      g.drawImage(layer, 0, 0);
+      const bw = r[0].length * cell, bh = r.length * cell;
+      g.imageSmoothingEnabled = true;
+      if (layerInfo?.s === cell) g.drawImage(layer, 0, 0);
+      else g.drawImage(layer, 0, 0, bw, bh);
       drawWater(g, r, cell, animate ? t : 0);
       drawLights(g, r, cell, t, animate);
     }
     drawFog(g, state, view, cell, t, animate);
     for (const token of state.tokens || []) if (token.light > 0 && !token.hidden) { const v = visualOf(token); drawGlow(g, v.x, v.y, token.light, cell, t, animate); }
+    drawDiagnostic(g, view.diagnostic, r[0].length, r.length, cell);
+    drawVectorOverlay(g, view.vector, state.fog?.walls, cell);
     if (view.paint?.length) {
       g.fillStyle = "rgba(241,215,156,.28)";
       for (const c of view.paint) g.fillRect(c.x * cell + 1, c.y * cell + 1, cell - 2, cell - 2);
@@ -856,6 +1119,7 @@ export function createBoard(host, handlers = {}) {
   }
   function cellAt(clientX, clientY) {
     if (!tileset() || cell <= 0) return null;
+    syncOrigin();
     const rect = canvas.getBoundingClientRect();
     const x = Math.floor(((clientX - rect.left) * dpr - ox) / cell),
       y = Math.floor(((clientY - rect.top) * dpr - oy) / cell);
@@ -871,6 +1135,7 @@ export function createBoard(host, handlers = {}) {
   function pointAt(clientX, clientY) {
     if (!free()) return cellAt(clientX, clientY);
     if (cell <= 0) return null;
+    syncOrigin();
     const rect = canvas.getBoundingClientRect();
     const cx = ((clientX - rect.left) * dpr - ox) / cell, cy = ((clientY - rect.top) * dpr - oy) / cell;
     const p = finePoint(cx, cy, rows()[0].length, rows().length);
@@ -906,12 +1171,13 @@ export function createBoard(host, handlers = {}) {
   host.addEventListener("pointercancel", endCameraDrag);
   // Arrastar marcador: o jogador arrasta o próprio boneco no turno; o mestre arrasta qualquer marcador.
   const boardPoint = (e) => {
+    syncOrigin();
     const rect = canvas.getBoundingClientRect();
     return { px: (e.clientX - rect.left) * dpr - ox, py: (e.clientY - rect.top) * dpr - oy };
   };
   canvas.addEventListener("pointerdown", (e) => {
     suppressClick = false;
-    if (panning || panHold || panTool || e.button !== 0 || view.mode === "paint" || !tileset()) return;
+    if (panning || panHold || panTool || e.button !== 0 || view.mode === "paint" || view.mode === "vector" || !tileset()) return;
     const p = boardPoint(e);
     if (handleHit && handlers.onResize && Math.hypot(p.px - handleHit.x, p.py - handleHit.y) <= handleHit.r) {
       e.preventDefault();
@@ -949,7 +1215,7 @@ export function createBoard(host, handlers = {}) {
     if (!drag || e.pointerId !== drag.pointer) return;
     const { token, start, cell: target, moved } = drag;
     drag = null;
-    canvas.style.touchAction = view.mode === "paint" ? "none" : "";
+    canvas.style.touchAction = view.mode === "paint" || view.mode === "vector" ? "none" : "";
     if (!moved) return;
     suppressClick = true;
     draw();
@@ -971,7 +1237,7 @@ export function createBoard(host, handlers = {}) {
   function finishResize(cancel) {
     const { token, size } = resize;
     resize = null;
-    canvas.style.touchAction = view.mode === "paint" ? "none" : "";
+    canvas.style.touchAction = view.mode === "paint" || view.mode === "vector" ? "none" : "";
     suppressClick = true;
     if (cancel || size === (sized(token).size ?? 100)) { draw(); return; }
     const entry = { size };
@@ -1029,6 +1295,32 @@ export function createBoard(host, handlers = {}) {
     handlers.onPaint?.(cells, cellAt(e.clientX, e.clientY));
   };
   canvas.addEventListener("pointerup", finishStroke);
+  // Paredes vetoriais (ADR-087): ponto exato do ponteiro em centésimos de casa, independente do zoom.
+  const worldAt = (e) => { const { px, py } = boardPoint(e); return cell > 0 ? { x: Math.round((px / cell) * WALL_UNIT), y: Math.round((py / cell) * WALL_UNIT) } : null; };
+  let vectorPointer = null;
+  const vectorEvent = (type, e) => {
+    const p = worldAt(e);
+    if (p) handlers.onVector?.({ type, ...p, shiftKey: e.shiftKey, altKey: e.altKey, ctrlKey: e.ctrlKey || e.metaKey, button: e.button, pixels: cell / dpr });
+  };
+  canvas.addEventListener("pointerdown", (e) => {
+    if (view.mode !== "vector" || panning || panHold || panTool || e.button !== 0 || !tileset()) return;
+    e.preventDefault();
+    canvas.focus({ preventScroll: true });
+    canvas.setPointerCapture?.(e.pointerId);
+    vectorPointer = e.pointerId;
+    vectorEvent("down", e);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (view.mode !== "vector" || cameraDrag) return;
+    vectorEvent(vectorPointer === e.pointerId ? "drag" : "move", e);
+  });
+  canvas.addEventListener("pointerup", (e) => {
+    if (vectorPointer !== e.pointerId) return;
+    vectorPointer = null;
+    if (view.mode === "vector") vectorEvent("up", e);
+  });
+  canvas.addEventListener("pointercancel", (e) => { if (vectorPointer === e.pointerId) { vectorPointer = null; handlers.onVector?.({ type: "cancel" }); } });
+  canvas.addEventListener("dblclick", (e) => { if (view.mode === "vector") { e.preventDefault(); vectorEvent("dbl", e); } });
   canvas.addEventListener("pointercancel", () => { stroke = null; view = { ...view, paint: [] }; draw(); });
   const bubbleAt = (e) => {
     if (!handlers.onBubble || !bubbleHits.length) return null;
@@ -1043,7 +1335,7 @@ export function createBoard(host, handlers = {}) {
   canvas.addEventListener("click", (e) => {
     if (suppressClick) { suppressClick = false; return; }
     if (panHold || panTool) return;
-    if (view.mode === "paint") return;
+    if (view.mode === "paint" || view.mode === "vector") return;
     // Névoa, paredes, luzes e marcas continuam por casa; posicionar usa o ponto fino no modo livre.
     if (view.mode === "fog") { if (!panning) activate(cellAt(e.clientX, e.clientY)); return; }
     if (view.mode === "place") { if (!panning) activate(pointAt(e.clientX, e.clientY)); return; }
@@ -1077,8 +1369,8 @@ export function createBoard(host, handlers = {}) {
       );
       status.textContent = `Coluna ${cursor.x + 1}, linha ${cursor.y + 1}${token ? ": " + token.label : ""}`;
       if (enlarged) {
-        host.scrollLeft = (ox + (cursor.x + .5) * cell) / dpr - host.clientWidth / 2;
-        host.scrollTop = (oy + (cursor.y + .5) * cell) / dpr - host.clientHeight / 2;
+        host.scrollLeft = (baseX + (cursor.x + .5) * cell) / dpr - host.clientWidth / 2;
+        host.scrollTop = (baseY + (cursor.y + .5) * cell) / dpr - host.clientHeight / 2;
       }
       draw();
     } else if ((e.key === "Enter" || e.key === " ") && cursor) {
@@ -1111,6 +1403,7 @@ export function createBoard(host, handlers = {}) {
     canvas.addEventListener("keydown", (e) => {
       if ((e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) && cursor) {
         e.preventDefault();
+        syncOrigin();
         const rect = canvas.getBoundingClientRect();
         handlers.onContext?.({ cell: cursor, token: (state.tokens || []).find((t) => t.x === cursor.x && t.y === cursor.y) || null, x: rect.left + (ox + (cursor.x + 1) * cell) / dpr, y: rect.top + (oy + (cursor.y + 1) * cell) / dpr });
       }
@@ -1167,7 +1460,7 @@ export function createBoard(host, handlers = {}) {
       if (uploaded()) loadBackground(src);
       else if (src && image.getAttribute("src") !== src) image.src = src;
       image.alt = "Mapa: " + state.map.name;
-      canvas.style.touchAction = view.mode === "paint" ? "none" : "";
+      canvas.style.touchAction = view.mode === "paint" || view.mode === "vector" ? "none" : "";
       updateCamera();
       if (!isTile) cancelAnimationFrame(frame);
       layout();
@@ -1182,7 +1475,7 @@ export function createBoard(host, handlers = {}) {
     setView(nextView) {
       if (camera) panning = false;
       view = { ...view, ...nextView };
-      canvas.style.touchAction = view.mode === "paint" ? "none" : "";
+      canvas.style.touchAction = view.mode === "paint" || view.mode === "vector" ? "none" : "";
       updateCamera();
       draw();
     },
@@ -1199,13 +1492,15 @@ export function createBoard(host, handlers = {}) {
       cellAt: (x, y) => cellAt(x, y),
       pointAt: (x, y) => pointAt(x, y),
       /** Retângulo de uma casa em coordenadas da janela (para posicionar menus/alças). */
-      cellRect: (c) => { const r = canvas.getBoundingClientRect(); return { x: r.left + (ox + c.x * cell) / dpr, y: r.top + (oy + c.y * cell) / dpr, size: cell / dpr }; },
+      cellRect: (c) => { syncOrigin(); const r = canvas.getBoundingClientRect(); return { x: r.left + (ox + c.x * cell) / dpr, y: r.top + (oy + c.y * cell) / dpr, size: cell / dpr }; },
     },
     focus() {
       canvas.focus();
     },
     destroy() {
       destroyed = true;
+      cancelJob();
+      cancelAnimationFrame(scrollFrame);
       moves.clear();
       landing.clear();
       sizing.clear();

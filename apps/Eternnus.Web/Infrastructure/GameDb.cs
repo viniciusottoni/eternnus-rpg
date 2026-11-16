@@ -95,6 +95,7 @@ public class GameDb(DbContextOptions<GameDb> options) : IdentityDbContext<AppUse
         PreparationModel.Configure(b);
         MusicModel.Configure(b);
         NoticeModel.Configure(b);
+        DocumentVersionModel.Configure(b);
     }
 
     /// <summary>Plataforma: papéis, sistemas, auditoria, suporte, biblioteca, fichas-modelo, Guilda e progressão.</summary>

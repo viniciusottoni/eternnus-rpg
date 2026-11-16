@@ -8,6 +8,7 @@ import { createEditorShell, openContextMenu, openPropertiesDialog, renderHistory
 import { addLayer, createHistory, isTypingTarget, moveLayer, patchLayer, removeLayer, clampMenu } from "./editor-policy.js";
 import * as P from "./composition-policy.js";
 import { createCompositionSurface, encodeFlat, flattenComposition, textHeight, textWidth } from "./composition-canvas.js";
+import { attachDrafts } from "./editor-drafts.js";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const TYPE_LABEL = { image: "Imagem", text: "Texto", rect: "Retângulo", ellipse: "Elipse" };
@@ -52,7 +53,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
   let doc = P.normalizeComposition(data.composition, { width: map.pixelWidth, height: map.pixelHeight });
   let meta = metaFrom(map, data.summary);
   let selection = new Set(), activeLayer = "elements", saving = false, quickKey = "", pasteCount = 0, conflict = null;
-  const view = { showGrid: meta.hasGrid, snap: true, hideOutside: false };
+  const view = { showGrid: meta.hasGrid, snap: true, snapObjects: true, hideOutside: false };
   const sources = new Map(); // src → { name, width, height } das imagens adicionadas nesta sessão
 
   // ---------- Histórico e estado salvo ----------
@@ -68,22 +69,31 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
 
   // ---------- Janela ----------
   const tools = [
-    { id: "select", label: "Selecionar e mover", icon: "select", key: "v", group: "edit" },
-    { id: "hand", label: "Mão (mover a vista)", icon: "hand", key: "h", group: "edit" },
-    { id: "zoom", label: "Zoom (Alt afasta)", icon: "zoom", key: "z", group: "edit", basic: false },
-    { id: "crop", label: "Recortar documento", icon: "marquee", key: "c", group: "edit", basic: false },
-    { id: "text", label: "Texto", icon: "text", key: "t", group: "create" },
-    { id: "rect", label: "Retângulo", icon: "rect", key: "u", group: "create", basic: false },
-    { id: "ellipse", label: "Elipse", icon: "ellipse", key: "e", group: "create", basic: false },
-    { id: "image", label: "Adicionar imagem", icon: "image", key: "i", group: "create", action: () => openAddImage() },
-    { id: "grid", label: "Grade", icon: "grid", key: "g", group: "view", action: () => toggleGrid(), pressed: () => view.showGrid && meta.hasGrid },
+    { id: "select", tip: "Clique num elemento para selecioná-lo e arraste para mover. As alças redimensionam e giram; Shift soma à seleção.", label: "Selecionar e mover", icon: "select", key: "v", group: "edit" },
+    { id: "hand", tip: "Arraste para mover a vista. Espaço ou o botão do meio do mouse também movem.", label: "Mão (mover a vista)", icon: "hand", key: "h", group: "edit" },
+    { id: "zoom", tip: "Clique para aproximar; com Alt, afasta. A roda do mouse aproxima no ponto do cursor.", label: "Zoom (Alt afasta)", icon: "zoom", key: "z", group: "edit", basic: false },
+    { id: "crop", tip: "Arraste para definir um novo recorte da área visível. O que ficar fora vai para a área externa.", label: "Recortar documento", icon: "marquee", key: "c", group: "edit", basic: false, context: "scene" },
+    { id: "text", tip: "Clique na área de trabalho para criar um texto; ajuste fonte e cor em Propriedades.", label: "Texto", icon: "text", key: "t", group: "create" },
+    { id: "rect", tip: "Arraste para desenhar um retângulo na camada ativa.", label: "Retângulo", icon: "rect", key: "u", group: "create", basic: false },
+    { id: "ellipse", tip: "Arraste para desenhar uma elipse na camada ativa.", label: "Elipse", icon: "ellipse", key: "e", group: "create", basic: false },
+    { id: "image", tip: "Adiciona uma imagem do dispositivo como novo elemento da camada ativa.", label: "Adicionar imagem", icon: "image", key: "i", group: "create", action: () => openAddImage() },
+    { id: "grid", tip: "Mostra ou esconde a grade sobre o mapa. Não altera a imagem salva.", label: "Grade", icon: "grid", key: "g", group: "view", action: () => toggleGrid(), pressed: () => view.showGrid && meta.hasGrid },
   ];
   const shell = createEditorShell({
     title: "Editor de mapa de imagem", subtitle: meta.name,
     help: ["campanhas.mapas.imagem", "Editor de mapas de imagem"],
     menus: () => menus(),
     tools,
+    onSize: () => openDocSize("canvas"),
     groups: [{ id: "edit", label: "Seleção e vista" }, { id: "create", label: "Criar" }, { id: "view", label: "Exibição" }],
+    // Contextos (ADR-086): Elementos (criar e transformar) e Documento (recorte, grade, tamanho). Só apresentação.
+    kind: "image", contextBar: true,
+    contextBarHint: "Selecione um elemento para editar posição, tamanho, rotação, opacidade e camada aqui.",
+    contexts: [
+      { id: "elements", groups: ["edit", "create"], tools: ["grid"], panels: ["layers", "structure", "quick"], defaultTool: "select" },
+      { id: "scene", label: "Documento", tip: "Tamanho e recorte da área visível, grade, escala e fundo do mapa.", tools: ["grid"], panels: ["structure"], defaultTool: "crop" },
+    ],
+    commonTools: ["select", "hand", "zoom"],
     panels: [
       { id: "layers", title: "Camadas", help: ["campanhas.editor.camadas", "Camadas"] },
       { id: "structure", title: "Estrutura", help: ["campanhas.mapas.area-visivel", "Área visível e área externa"] },
@@ -96,6 +106,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
       "mod+c": () => copy(), "mod+x": () => cut(), "mod+v": () => paste(), "mod+j": () => duplicate(),
       "mod+a": () => selectAll(), "mod+d": () => select([], false), delete: () => removeSelected(), backspace: () => removeSelected(),
       "mod+]": () => zorder("front"), "mod+[": () => zorder("back"),
+      "mod+g": () => groupSelection(), "mod+shift+g": () => ungroupSelection(),
       escape: (e) => onEscape(e),
     },
     isDirty,
@@ -108,15 +119,33 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
   shell.stage.innerHTML = `<div class="im-stage" data-im-stage></div><p class="sr-only" id="im-canvas-help">Setas movem a seleção 1 pixel (Shift: 10). Delete exclui. Enter abre as propriedades. Shift+F10 abre o menu do elemento. Tab leva aos painéis.</p>`;
   const stageHost = shell.stage.querySelector("[data-im-stage]");
   shell.root.addEventListener("click", (e) => { if (e.target.closest('[data-im="save"]')) save(); });
+  // Rascunho local e versões (ADR-083). O rascunho referencia imagens-fonte já enviadas (`asset:{id}`), nunca bytes.
+  const drafts = attachDrafts(shell, {
+    campaignId: campaign.id, kind: "imagemap", versionKind: "imagemap",
+    docId: () => map.id, label: () => meta.name, revision: () => map.revision, capture, isDirty,
+    restore: (snap, rev) => {
+      history.record("Restaurar rascunho");
+      doc = P.normalizeComposition(snap.doc, { width: doc.artboard.width, height: doc.artboard.height }); meta = { ...meta, ...snap.meta };
+      if (Number.isInteger(rev)) map = { ...map, revision: rev };
+      afterRestore();
+    },
+    loadVersion: (payload) => {
+      history.record("Carregar versão");
+      doc = P.normalizeComposition(payload.composition, { width: doc.artboard.width, height: doc.artboard.height });
+      meta = { ...meta, ...metaFrom({ ...map, ...payload }, payload.summary) };
+      selection = new Set(); afterRestore();
+    },
+  });
 
   // ---------- Superfície ----------
   const surface = createCompositionSurface(stageHost, {
     doc: () => doc,
     selection: () => selection,
     tool: () => shell.tool,
-    options: () => ({ showGrid: view.showGrid && meta.hasGrid, snap: view.snap, hideOutside: view.hideOutside, grid: meta.hasGrid ? { size: meta.gridPixels, offsetX: meta.gridOffsetX, offsetY: meta.gridOffsetY } : null }),
+    options: () => ({ showGrid: view.showGrid && meta.hasGrid, snap: view.snap, snapObjects: view.snapObjects, hideOutside: view.hideOutside, grid: meta.hasGrid ? { size: meta.gridPixels, offsetX: meta.gridOffsetX, offsetY: meta.gridOffsetY } : null }),
     resolveSrc,
-    select: (ids, additive) => select(ids, additive),
+    // No canvas, clicar num membro seleciona o grupo inteiro; a Estrutura continua escolhendo um elemento só.
+    select: (ids, additive) => select(P.expandGroups(doc, ids), additive),
     begin: (label) => { flushNudge(); history.begin(label); },
     changed: () => liveUpdate(),
     commit: () => { history.commit(); scheduleUi(); },
@@ -128,7 +157,13 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     cursor: (p) => shell.setStatus({ coords: p ? `${Math.round(p.x)}, ${Math.round(p.y)} px` : "" }),
     camera: () => shell.updateZoom(),
   });
-  shell.setCamera(surface.camera);
+  // Réguas: com grade, em metros a partir da primeira linha da grade; sem grade, em pixels a partir do canto da área visível.
+  shell.setCamera({ ...surface.camera, ruler: () => {
+    const v = surface.camera.view();
+    return meta.hasGrid
+      ? { x: v.left + meta.gridOffsetX * v.scale, y: v.top + meta.gridOffsetY * v.scale, cellPx: meta.gridPixels * v.scale, cellUnits: Number(meta.scaleMeters) || 1.5, unit: "m" }
+      : { x: v.left, y: v.top, cellPx: v.scale, cellUnits: 1, unit: "px" };
+  } });
   surface.canvas.setAttribute("aria-describedby", "im-canvas-help");
   surface.canvas.addEventListener("keydown", onCanvasKey);
 
@@ -180,7 +215,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
   function scheduleUi() { if (uiQueued) return; uiQueued = true; queueMicrotask(() => { uiQueued = false; renderUi(); }); }
   function renderUi() {
     if (!shell.root.isConnected) return;
-    renderLayers(); renderStructure(); renderQuick();
+    renderLayers(); renderStructure(); renderQuick(); renderContextBar();
     renderHistoryPanel(shell.panel("history"), history);
     updateStatus(); updateAria();
     shell.setTitle("Editor de mapa de imagem", meta.name);
@@ -201,7 +236,53 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     surface.canvas.setAttribute("aria-label", `Mapa ${meta.name}: área visível de ${doc.artboard.width} por ${doc.artboard.height} pixels, ${doc.elements.length} elementos; ${sel}.`);
   }
   /** Durante arrastes: só desenho, leitura rápida e estado (painéis completos ao soltar). */
-  function liveUpdate() { updateQuickValues(); }
+  function liveUpdate() { updateQuickValues(); shell.contextBar.update(quickValues()); }
+
+  // Barra contextual (ADR-086): campos simples do selecionado junto ao canvas, sem janela. Cada mudança = uma entrada de histórico.
+  function renderContextBar() {
+    const els = selected();
+    if (!els.length) { shell.contextBar.hide(); return; }
+    const locked = !els.every(editable), one = els.length === 1 ? els[0] : null, v = quickValues();
+    const num = (name, label, unit, extra = {}) => ({ name, label, unit, type: "number", value: v[name], disabled: locked, ...extra });
+    const layerId = els.every((e) => e.layer === els[0].layer) ? els[0].layer : "";
+    const fields = [
+      num("x", "X", "px", { step: 1, min: P.LIMITS.coordMin, max: P.LIMITS.coordMax }), num("y", "Y", "px", { step: 1, min: P.LIMITS.coordMin, max: P.LIMITS.coordMax }),
+      ...(one ? [num("width", "L", "px", { step: 1, min: 1, max: P.LIMITS.sizeMax }), num("height", "A", "px", { step: 1, min: 1, max: P.LIMITS.sizeMax }), num("rotation", "Giro", "°", { step: 0.5, min: -360, max: 360 })] : []),
+      num("opacity", "Opac.", "%", { step: 5, min: 0, max: 100 }),
+      { name: "layer", label: "Camada", type: "select", value: layerId, disabled: locked, options: [...(layerId ? [] : [["", "Várias"]]), ...doc.layers.slice().reverse().map((l) => [l.id, l.name])] },
+      { name: "locked", label: "Bloqueado", type: "checkbox", value: els.every((e) => e.locked) },
+    ];
+    const many = els.length >= 2, grouped = els.some((e) => e.group);
+    const actions = [
+      ...(one ? [{ id: "props", label: "Todas as propriedades (Enter)", icon: "settings" }] : []),
+      ...(many ? [["left", "alignLeft", "Alinhar à esquerda"], ["center", "alignCenter", "Centralizar na horizontal"], ["right", "alignRight", "Alinhar à direita"], ["top", "alignTop", "Alinhar ao topo"], ["middle", "alignMiddle", "Centralizar na vertical"], ["bottom", "alignBottom", "Alinhar à base"]].map(([m, ic, label]) => ({ id: `align-${m}`, label, icon: ic, disabled: locked })) : []),
+      ...(els.length >= 3 ? [{ id: "dist-x", label: "Distribuir na horizontal", icon: "distributeX", disabled: locked }, { id: "dist-y", label: "Distribuir na vertical", icon: "distributeY", disabled: locked }] : []),
+      ...(many ? [{ id: "group", label: "Agrupar (Ctrl+G)", icon: "group", disabled: locked }] : []),
+      ...(grouped ? [{ id: "ungroup", label: "Desagrupar (Ctrl+Shift+G)", icon: "layers", disabled: locked }] : []),
+      { id: "duplicate", label: "Duplicar (Ctrl+J)", icon: "copy" },
+      { id: "delete", label: "Excluir (Delete)", icon: "trash", danger: true, disabled: locked },
+    ];
+    shell.contextBar.show({
+      key: `${els.map((e) => `${e.id}:${editable(e)}:${e.group || ""}`).join(",")}|${doc.layers.map((l) => l.id + l.name).join(",")}`,
+      title: one ? elementLabel(one) : `${els.length} elementos${grouped ? " (grupo)" : ""}`, icon: one ? TYPE_ICON[one.type] : "group",
+      fields, actions,
+      onChange: (name, value) => {
+        if (name === "layer") { if (value) moveSelectionTo(value); return; }
+        if (name === "locked") { const els2 = selected(); if (els2.length) change(value ? "Bloquear" : "Desbloquear", () => { for (const el of els2) el.locked = !!value; }); return; }
+        applyQuick({ name, value: String(value) });
+      },
+      onAction: (id) => {
+        if (id === "props" && one) return openProps(one.id);
+        if (id.startsWith("align-")) return align(id.slice(6));
+        if (id === "dist-x") return distribute("x");
+        if (id === "dist-y") return distribute("y");
+        if (id === "group") return groupSelection();
+        if (id === "ungroup") return ungroupSelection();
+        if (id === "duplicate") return duplicate();
+        if (id === "delete") return removeSelected();
+      },
+    });
+  }
 
   function renderLayers() {
     const els = selected();
@@ -420,7 +501,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     pasteCount++;
     let dx = 16 * pasteCount, dy = 16 * pasteCount;
     if (at) { const b = P.unionBounds(clipboard); dx = at.x - (b.x + b.width / 2); dy = at.y - (b.y + b.height / 2); }
-    const copies = P.cloneElements(clipboard, doc.elements, dx, dy).map((e) => ({ ...e, layer: activeLayer, locked: false }));
+    const copies = P.regroupCopies(P.cloneElements(clipboard, doc.elements, dx, dy).map((e) => ({ ...e, layer: activeLayer, locked: false })), doc.elements);
     change("Colar", () => { doc.elements.push(...copies); selection = new Set(copies.map((e) => e.id)); });
     announce();
   }
@@ -428,7 +509,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     const els = selected();
     if (!els.length) return shell.message("Selecione algo para duplicar.");
     if (doc.elements.length + els.length > P.LIMITS.elements) return shell.message(`Use até ${P.LIMITS.elements} elementos por mapa.`);
-    const copies = P.cloneElements(els, doc.elements, 16, 16).map((e) => ({ ...e, locked: false }));
+    const copies = P.regroupCopies(P.cloneElements(els, doc.elements, 16, 16).map((e) => ({ ...e, locked: false })), doc.elements);
     change("Duplicar", () => { doc.elements.push(...copies); selection = new Set(copies.map((e) => e.id)); });
     announce();
   }
@@ -468,6 +549,22 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
       const at = surface.clientPointOf(el);
       if (el) openElementMenu(at); else openCanvasMenu(at, surface.viewCenter());
     }
+  }
+
+  // ---------- Grupos (ADR-086): só organização no editor; a imagem salva e a mesa não mudam ----------
+  function groupSelection() {
+    const els = editableSelection();
+    const plan = P.planGroup(doc, els.map((e) => e.id));
+    if (plan.error) return shell.message(plan.error);
+    change("Agrupar", () => { for (const el of doc.elements) if (plan.ids.includes(el.id)) el.group = plan.group; });
+    shell.message(`${plan.ids.length} elementos agrupados. Clique num deles para selecionar o grupo; a Estrutura escolhe um só.`);
+  }
+  function ungroupSelection() {
+    const els = editableSelection().filter((e) => e.group);
+    if (!els.length) return shell.message("Selecione um grupo desbloqueado para desagrupar.");
+    const groups = new Set(els.map((e) => e.group));
+    change("Desagrupar", () => { for (const el of doc.elements) if (el.group && groups.has(el.group)) delete el.group; });
+    shell.message(groups.size === 1 ? "Grupo desfeito." : `${groups.size} grupos desfeitos.`);
   }
 
   // ---------- Objeto ----------
@@ -525,6 +622,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
         { label: "Propriedades do mapa…", run: openMapProps },
         { label: "Preparar névoa e luz…", run: prepareFog, disabled: !meta.hasGrid, disabledReason: "Ative a grade (Imagem › Grade e escala) para preparar névoa e luz.", hint: meta.hasGrid ? "Salva antes de abrir" : "Requer grade" },
         { separator: true },
+        ...drafts.menuItems(),
         { label: "Fechar", run: () => shell.requestClose() },
       ] },
       { id: "edit", label: "Editar", items: () => [
@@ -565,6 +663,9 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
         { label: "Alinhar", items: alignItems(), disabled: !many, hint: many >= 2 ? "à seleção" : "à área visível" },
         { label: "Distribuir", items: [{ label: "Horizontalmente", run: () => distribute("x") }, { label: "Verticalmente", run: () => distribute("y") }], disabled: many < 3 },
         { separator: true },
+        { label: "Agrupar", shortcut: "mod+g", run: groupSelection, disabled: many < 2 },
+        { label: "Desagrupar", shortcut: "mod+shift+g", run: ungroupSelection, disabled: !editableSelection().some((e) => e.group) },
+        { separator: true },
         { label: "Girar 90° à direita", run: () => rotateBy(90), disabled: !many },
         { label: "Girar 90° à esquerda", run: () => rotateBy(-90), disabled: !many },
         { label: "Espelhar na horizontal", run: () => flip("x"), disabled: !many },
@@ -584,6 +685,8 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
         { separator: true },
         { label: "Mostrar grade", checked: view.showGrid && meta.hasGrid, run: toggleGrid, disabled: !meta.hasGrid, disabledReason: "Mapa sem grade. Ative em Imagem › Grade e escala." },
         { label: "Encaixar", checked: view.snap, run: () => { view.snap = !view.snap; shell.message(view.snap ? "Encaixe ligado (bordas e centro da área visível e grade). Ctrl ao arrastar ignora." : "Encaixe desligado."); } },
+        { label: "Encaixar em objetos", checked: view.snap && view.snapObjects, disabled: !view.snap, disabledReason: "Ligue Encaixar primeiro.", run: () => { view.snapObjects = !view.snapObjects; shell.message(view.snapObjects ? "Guias magnéticas: bordas e centros dos outros elementos." : "Guias de objetos desligadas; continuam a área visível e a grade."); } },
+        shell.rulersMenuItem(),
         { label: "Mostrar área externa", checked: !view.hideOutside, run: () => { view.hideOutside = !view.hideOutside; surface.invalidate(); }, hint: "Escurecida quando ligada; encoberta quando desligada" },
         { separator: true },
         { label: "Painéis", checked: shell.root.dataset.panels === "open", run: () => shell.setPanels(shell.root.dataset.panels !== "open") },
@@ -608,6 +711,8 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
       { label: "Trazer para frente", shortcut: "mod+]", run: () => zorder("front"), disabled: !many },
       { label: "Enviar para trás", shortcut: "mod+[", run: () => zorder("back"), disabled: !many },
       { label: "Mover para camada", items: layerSubmenu() },
+      ...(els.length >= 2 ? [{ label: "Agrupar", shortcut: "mod+g", run: groupSelection, disabled: many < 2 }] : []),
+      ...(els.some((e) => e.group) ? [{ label: "Desagrupar", shortcut: "mod+shift+g", run: ungroupSelection, disabled: !many }] : []),
       { separator: true },
       { label: locked ? "Desbloquear" : "Bloquear", run: () => toggleFlag("locked") },
       { label: hidden ? "Mostrar" : "Ocultar", run: () => toggleFlag("visible") },
@@ -1149,8 +1254,8 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
       const action = e.target.closest("[data-conflict]")?.dataset.conflict;
       if (action === "keep") { conflict.remove(); conflict = null; surface.canvas.focus(); }
       if (action === "reload") {
-        if (isDirty() && !confirm("Descartar o rascunho e abrir a versão salva? Alterações deste editor serão perdidas.")) return;
-        try { await reload(); conflict?.remove(); conflict = null; surface.canvas.focus(); }
+        if (isDirty() && !confirm("Abrir a versão salva? Seu rascunho fica guardado neste navegador (Arquivo › Rascunho local…).")) return;
+        try { await drafts.preserve(); await reload(); conflict?.remove(); conflict = null; surface.canvas.focus(); }
         catch (err) { shell.message(err?.message || "Não foi possível recarregar."); }
       }
     });

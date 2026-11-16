@@ -187,3 +187,128 @@ test("names are trimmed and limited per type", () => {
   assert.match(P.validateName("character", "x".repeat(41)).error, /40/);
   assert.match(P.validateName("map", "   ").error, /nome/);
 });
+
+// ---------- ADR-084: favoritos, recentes, coleções inteligentes e filtros ----------
+const NOW = Date.parse("2026-11-16T12:00:00Z");
+const DAYMS = 86_400_000;
+const rich = {
+  folders: [{ id: "fa", name: "Ato I", parentId: null, category: "scenes" }, { id: "fb", name: "Cap 1", parentId: "fa", category: "scenes" }, { id: "fm", name: "Masmorras", parentId: null, category: "maps" }],
+  scenes: [
+    { id: "s1", name: "Pronta", kind: "map", mapKey: "asset:m1", prepared: 3, hasText: true, folderId: "fb", updatedAt: new Date(NOW - 2 * DAYMS).toISOString() },
+    { id: "s2", name: "Sem mapa", kind: "image", mapKey: "", hasText: true, folderId: "fa", updatedAt: new Date(NOW - 40 * DAYMS).toISOString() },
+    { id: "s3", name: "Vazia", kind: "map", mapKey: "asset:m1", prepared: 0, hasText: false, folderId: null, current: true },
+    { id: "s4", name: "Leitura", kind: "text", mapKey: "", hasText: true, folderId: null, hasSaved: true },
+    { id: "s5", name: "Fantasma", kind: "map", mapKey: "asset:gone", prepared: 2, hasText: true, folderId: null },
+  ],
+  maps: [
+    { id: "m1", key: "asset:m1", name: "Cripta", isTileMap: true, kind: "tileset", scenes: 2, folderId: "fm", updatedAt: new Date(NOW - 1000).toISOString() },
+    { id: "m2", key: "asset:m2", name: "Praça", kind: "tileset", scenes: 0, inUse: true, sourceKey: "crypt", folderId: null },
+    { id: "m3", key: "asset:m3", name: "Esquecido", kind: "cartographic", hasGrid: false, scenes: 0, folderId: null },
+  ],
+  characters: [
+    { id: "c1", name: "Completo", kind: "npc", templateName: "Herói", summary: "líder" },
+    { id: "c2", name: "Rascunho", kind: "creature", templateName: null, summary: "" },
+  ],
+};
+const all = P.toEntries(rich);
+const mapExists = (key) => all.items.some((e) => e.type === "map" && e.raw.key === key);
+const ids = (list) => list.map((e) => e.key);
+
+test("scene and character readiness criteria are explicit", () => {
+  assert.deepEqual(P.sceneIssues(rich.scenes[0], mapExists), []);
+  assert.deepEqual(P.sceneIssues(rich.scenes[1], mapExists).map((i) => i.id), ["map"]);
+  assert.deepEqual(P.sceneIssues(rich.scenes[2], mapExists).map((i) => i.id), ["tokens", "text"]);
+  assert.deepEqual(P.sceneIssues(rich.scenes[3], mapExists), [], "cena textual não precisa de mapa nem marcadores");
+  assert.equal(P.sceneIssues(rich.scenes[4], mapExists)[0].label, "Mapa não encontrado");
+  assert.deepEqual(P.sceneIssues({ kind: "map", mapKey: "asset:m1", prepared: 1 }, mapExists), [], "hasText ausente (servidor antigo) não conta");
+  assert.deepEqual(P.characterIssues(rich.characters[0]), []);
+  assert.deepEqual(P.characterIssues(rich.characters[1]).map((i) => i.id), ["sheet", "summary"]);
+  const m = (id) => all.items.find((e) => e.key === `map:${id}`);
+  assert.equal(P.isUnusedMap(m("m1")), false);
+  assert.equal(P.isUnusedMap(m("m2")), false, "na mesa conta como uso");
+  assert.equal(P.isUnusedMap(m("m3")), true);
+  assert.deepEqual(ids(P.scenesUsingMap(all.items, "asset:m1")), ["scene:s1", "scene:s3"]);
+});
+
+test("user preferences are validated, bounded and pruned", () => {
+  const p = P.normalizeUserPrefs({ favorites: ["map:m1", "map:m1", "x:1", 3], recents: [{ key: "scene:s1", at: 5 }, { key: "scene:s1", at: 9 }, { key: "bad", at: 1 }, { key: "map:m2", at: 7 }], collections: [{ id: "cabc", name: "  Minhas  ", filters: { type: "map-tiles", origin: "nope" } }, { id: "<x>", name: "Má" }] });
+  assert.deepEqual(p.favorites, ["map:m1"]);
+  assert.deepEqual(p.recents, [{ key: "map:m2", at: 7 }, { key: "scene:s1", at: 5 }], "primeira ocorrência válida vence");
+  assert.equal(p.collections.length, 1);
+  assert.equal(p.collections[0].name, "Minhas");
+  assert.deepEqual(p.collections[0].filters, { ...P.FILTER_DEFAULTS, type: "map-tiles" });
+  assert.deepEqual(P.normalizeUserPrefs("lixo"), { favorites: [], recents: [], collections: [] });
+  assert.equal(P.userPrefsKey("u1", "c9"), "eternnus.prep.user.u1.c9");
+  let q = P.toggleFavorites(p, ["map:m1", "scene:s1"]);
+  assert.deepEqual([...q.favorites].sort(), ["map:m1", "scene:s1"], "algum não favorito: todos viram favoritos");
+  q = P.toggleFavorites(q, ["map:m1", "scene:s1"]);
+  assert.deepEqual(q.favorites, []);
+  q = P.touchRecent(p, "scene:s1", 100);
+  assert.deepEqual(q.recents[0], { key: "scene:s1", at: 100 });
+  assert.equal(q.recents.filter((r) => r.key === "scene:s1").length, 1);
+  assert.equal(P.touchRecent(p, "folder:fa", 100), p, "pastas não entram nos recentes");
+  let many = P.normalizeUserPrefs({});
+  for (let i = 0; i < 40; i++) many = P.touchRecent(many, `map:m${i}`, i + 1);
+  assert.equal(many.recents.length, P.RECENT_LIMIT);
+  assert.equal(many.recents[0].key, "map:m39");
+  const pruned = P.pruneUserPrefs({ favorites: ["map:m1", "map:gone"], recents: [{ key: "map:gone", at: 1 }], collections: [] }, new Set(["map:m1"]));
+  assert.deepEqual(pruned, { favorites: ["map:m1"], recents: [], collections: [] });
+});
+
+test("filters cover type, origin, date, usage, status and favorites", () => {
+  const ctx = { favorites: new Set(["map:m3"]), now: NOW, mapExists };
+  const pick = (filters) => ids(all.items.filter((e) => P.matchesFilters(e, filters, ctx))).sort();
+  assert.deepEqual(pick({ type: "map-tiles" }), ["map:m1"]);
+  assert.deepEqual(pick({ type: "creature" }), ["character:c2"]);
+  assert.deepEqual(pick({ origin: "template" }), ["map:m2"]);
+  assert.deepEqual(pick({ origin: "image" }), ["map:m3"]);
+  assert.deepEqual(pick({ modified: "7" }), ["map:m1", "scene:s1"]);
+  assert.deepEqual(pick({ modified: "older" }), ["scene:s2"]);
+  assert.deepEqual(pick({ usage: "unused" }), ["map:m3", "scene:s1", "scene:s2", "scene:s5"]);
+  assert.deepEqual(pick({ usage: "live" }), ["map:m2", "scene:s3"]);
+  assert.deepEqual(pick({ status: "incomplete" }), ["character:c2", "scene:s2", "scene:s3", "scene:s5"]);
+  assert.deepEqual(pick({ status: "ready" }), ["character:c1", "scene:s1", "scene:s4"]);
+  assert.deepEqual(pick({ favorites: true }), ["map:m3"]);
+  assert.deepEqual(pick({ type: "scene-map", status: "ready" }), ["scene:s1"]);
+  assert.equal(P.matchesFilters(all.folders[0], { type: "" }, ctx), true, "sem filtro, pastas passam");
+  assert.equal(P.matchesFilters(all.folders[0], { usage: "used" }, ctx), false);
+  assert.equal(P.activeFilterCount({ type: "map-tiles", favorites: true, origin: "inválido" }), 2);
+  assert.equal(P.filterSummary({ type: "map-tiles", usage: "unused" }), "Tipo: Mapa de tiles · Uso: Não usados");
+});
+
+test("smart collections are virtual views; only favorites may include folders", () => {
+  const ctx = { favorites: new Set(["folder:fa", "map:m1"]), recents: [{ key: "character:c2", at: NOW - 10 }], now: NOW, mapExists };
+  assert.deepEqual(ids(P.collectionEntries("favorites", all, ctx)).sort(), ["folder:fa", "map:m1"]);
+  assert.deepEqual(ids(P.collectionEntries("recent", all, ctx)), ["character:c2", "map:m1", "scene:s1"], "aberto agora, modificado há 1 s, há 2 dias");
+  assert.deepEqual(ids(P.collectionEntries("ready-scenes", all, ctx)).sort(), ["scene:s1", "scene:s4"]);
+  assert.deepEqual(ids(P.collectionEntries("incomplete-scenes", all, ctx)).sort(), ["scene:s2", "scene:s3", "scene:s5"]);
+  assert.deepEqual(ids(P.collectionEntries("incomplete-characters", all, ctx)), ["character:c2"]);
+  assert.deepEqual(ids(P.collectionEntries("unused-maps", all, ctx)), ["map:m3"]);
+  assert.deepEqual(P.collectionEntries("desconhecida", all, ctx), []);
+  const base = P.normalizeUserPrefs({});
+  assert.match(P.saveCollection(base, { name: "  " }).error, /nome/);
+  assert.match(P.saveCollection(base, { name: "Nada" }).error, /busca ou um filtro/);
+  const r = P.saveCollection(base, { name: "Tiles", filters: { type: "map-tiles" } }, "ctiles");
+  assert.equal(r.collection.id, "ctiles");
+  assert.match(P.saveCollection(r.prefs, { name: "tiles", query: "x" }).error, /Já existe/);
+  assert.deepEqual(ids(P.collectionEntries("ctiles", all, { ...ctx, saved: r.prefs.collections })), ["map:m1"]);
+  assert.deepEqual(P.removeCollection(r.prefs, "ctiles").collections, []);
+  let full = base;
+  for (let i = 0; i < P.COLLECTION_LIMIT; i++) full = P.saveCollection(full, { name: `C${i}`, query: "a" }, `c${i}`).prefs;
+  assert.match(P.saveCollection(full, { name: "Extra", query: "a" }).error, /até 20/);
+});
+
+test("browse combines scope, search, filters and collections without moving files", () => {
+  const ctx = { favorites: new Set(), recents: [], now: NOW, mapExists };
+  const opts = { category: "scenes", folderId: null };
+  assert.deepEqual(ids(P.browseEntries(all, opts, ctx)), ["folder:fa", "scene:s5", "scene:s4", "scene:s3"], "nesta pasta: subpastas e itens da raiz");
+  assert.deepEqual(ids(P.browseEntries(all, { ...opts, folderId: "fa", scope: "subtree" }, ctx)), ["scene:s1", "scene:s2"], "subpastas: só itens, sem a própria pasta");
+  assert.deepEqual(ids(P.browseEntries(all, { ...opts, folderId: "fa", scope: "subtree", query: "cap" }, ctx)), ["folder:fb"], "buscando, subpastas também aparecem");
+  assert.equal(P.browseEntries(all, { ...opts, scope: "all" }, ctx).length, all.items.length);
+  assert.deepEqual(ids(P.browseEntries(all, { ...opts, query: "cripta", everywhere: true }, ctx)), ["map:m1"], "busca em todas as pastas = campanha inteira");
+  assert.deepEqual(ids(P.browseEntries(all, { ...opts, filters: { status: "incomplete" } }, ctx)), ["scene:s5", "scene:s3"], "filtro esconde pastas");
+  assert.deepEqual(ids(P.browseEntries(all, { ...opts, collection: "unused-maps", query: "esq" }, ctx)), ["map:m3"]);
+  const recent = P.browseEntries(all, { ...opts, collection: "recent", sort: "name" }, { ...ctx, recents: [{ key: "scene:s4", at: NOW }] });
+  assert.deepEqual(ids(recent), ["scene:s4", "map:m1", "scene:s1"], "Recentes ignora a ordenação por nome");
+  assert.equal(all.items.find((e) => e.key === "scene:s1").folderId, "fb", "coleções e filtros nunca mudam os dados");
+});

@@ -73,3 +73,26 @@ test("paredes da sala ficam do lado de fora, porta e luzes viram casas", () => {
   assert.equal(layer.cells.length, 6);
   assert.ok(layer.cells.every((r) => r.length === 8 && /^[.mld#o]+$/.test(r)));
 });
+
+test("UVTT vetorial: segmentos exatos, porta como porta, casas intactas e mesmas regras de bloqueio", async () => {
+  const { stepBlocked, lineClear } = await import("../apps/Eternnus.Web/wwwroot/js/fog-policy.js");
+  const diagonal = [{ x: 0, y: 0 }, { x: 3, y: 3 }];
+  const p = v.parseUvtt(uvtt({ line_of_sight: [room(1, 1, 7, 5), diagonal, [{ x: -2, y: 2 }, { x: 0.5, y: 2 }]] }));
+  const { walls, counts } = v.uvttWalls(p, 8, 6);
+  assert.equal(counts.doors, 1);
+  assert.equal(counts.walls, 6, "4 lados da sala + diagonal + trecho preso à borda");
+  const door = walls.find((w) => w.kind === "door");
+  assert.deepEqual([door.x1, door.y1, door.x2, door.y2, door.open], [310, 100, 390, 100, false]);
+  assert.ok(walls.some((w) => w.x1 === 0 && w.y1 === 0 && w.x2 === 300 && w.y2 === 300), "diagonal preservada");
+  assert.ok(walls.every((w) => /^[a-z0-9]+$/.test(w.id) && w.x1 >= 0 && w.x2 <= 800 && w.y2 <= 600));
+  // Dentro da sala (2,2) não enxerga fora (2,0) pela parede de cima; passar pela porta fechada também é bloqueado.
+  const cells = Array(6).fill("........");
+  assert.equal(lineClear(cells, 8, 6, 2, 2, 2, 0, walls), false);
+  assert.equal(stepBlocked(walls, 3, 1, 3, 0), true);
+  // Exportações reais deixam um vão na parede onde fica o portal: aberta, a porta deixa passar.
+  const gap = v.uvttWalls(v.parseUvtt(uvtt({ line_of_sight: [[{ x: 1, y: 1 }, { x: 3.1, y: 1 }], [{ x: 3.9, y: 1 }, { x: 7, y: 1 }]] })), 8, 6).walls;
+  assert.equal(stepBlocked(gap, 3, 1, 3, 0), true);
+  assert.equal(stepBlocked(gap.map((w) => (w.kind === "door" ? { ...w, open: true } : w)), 3, 1, 3, 0), false);
+  assert.equal(v.uvttWalls(p, 8, 6, 2).counts.skippedWalls, 5);
+  assert.deepEqual(v.uvttLights(p, 8, 6).lights, [{ x: 3, y: 3, radius: 5 }]);
+});

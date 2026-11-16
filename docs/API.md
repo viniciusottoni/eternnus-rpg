@@ -481,7 +481,7 @@ Fonte de verdade: [PREPARACAO_EDITOR.md](PREPARACAO_EDITOR.md). Todas as rotas e
 
 | Rota relativa a `/api/campaigns/{id}` | Contrato |
 | --- | --- |
-| GET `/prep/explorer` | `{folders:[{id,name,parentId,category}], scenes, maps, characters, activeSessionId, archived, limits:{foldersPerCategory:100,depth:8,scenes:100,maps:50,characters:200}}`. Cenas: `id,name,description,kind,mapKey,mapName,layerMode,visionMode,prepared,hasSaved,current,order,revision,folderId,createdAt,updatedAt`. Mapas: campos de `CampaignMapView` (inclui `rows` e `terrain`) + `summary,sourceKey,origin('tiles'|'image'),createdAt,updatedAt,scenes,inUse`. Personagens: `id,name,summary,kind,side,copy,sharedWithPlayers,imagePreview,templateName,folderId,revision,createdAt,updatedAt`. Retratos, imagens-fonte e cenários oficiais não aparecem. |
+| GET `/prep/explorer` | `{folders:[{id,name,parentId,category}], scenes, maps, characters, activeSessionId, archived, limits:{foldersPerCategory:100,depth:8,scenes:100,maps:50,characters:200}}`. Cenas: `id,name,description,kind,mapKey,mapName,layerMode,visionMode,prepared,hasSaved,hasText,current,order,revision,folderId,createdAt,updatedAt` (`hasText`: há texto compartilhável — só o booleano; o texto e as notas privadas não são listados; ADR-084). Mapas: campos de `CampaignMapView` (inclui `rows` e `terrain`) + `summary,sourceKey,origin('tiles'|'image'),createdAt,updatedAt,scenes,inUse`. Personagens: `id,name,summary,kind,side,copy,sharedWithPlayers,imagePreview,templateName,folderId,revision,createdAt,updatedAt`. Retratos, imagens-fonte e cenários oficiais não aparecem. |
 | POST `/prep/folders` | `{name,parentId,category}` → `{id,name,parentId,category}`. 400 nome (1–100)/categoria/pai de outra categoria/mais de oito níveis; 404 pai inexistente; 409 mais de 100 pastas na categoria. |
 | PUT `/prep/folders/{fid}` | `{name}` → pasta. |
 | DELETE `/prep/folders/{fid}` | 204; 409 com subpasta ou item da categoria. |
@@ -498,7 +498,7 @@ Camadas (cena, tiles e composição): 2–8; a primeira `{id:'base',kind:'base'}
 | GET `/tile-maps/{mid}` | Projeção anterior + `layers:[{id,name,kind,visible,locked,opacity,rows}]` (sintetizadas para mapas antigos), `summary`, `sourceKey`, `terrain`. |
 | POST/PUT `/tile-maps` | Corpo anterior + `summary` (≤ 500; nulo mantém), `sourceKey` (criação; precisa ser cenário oficial, senão 400), `layers` (opcional; ausente = `rows` vira a Base), `keepFolder` (edição sem mexer na pasta). Base com tiles em todas as casas; demais camadas do mesmo tamanho com `_` = vazio. `rows` efetivo = camada visível mais alta não vazia, senão Base; validado por `MapTiles.Validate`. A confirmação `resetPreparation` só é exigida quando a grade efetiva muda. |
 | GET `/maps/{mid}/composition` | `{map, summary, composition}`. Mapa sem composição: artboard = tamanho da imagem, Base com um elemento `src:'self'`, Elementos vazio. Mapa de tiles: 409. |
-| PUT `/maps/{mid}/composition` | multipart (até 10 MB de imagem + 2 MB): `file` (PNG/JPEG achatado), `composition` (JSON, até 400 mil caracteres), `revision`, `name`, `summary`, `gridPixels`, `scaleMeters`, `hasGrid`, `gridOffsetX`, `gridOffsetY`, `freeMovement`. → `{map, summary, composition}`. 400: composição inválida (campo/tipo desconhecido, `src` fora de `self`/`asset:{guid}` do próprio mapa, limites), imagem com tamanho diferente do artboard, grade. 409: revisão, mapa na mesa, limites, `hasGrid:false` com cenas de grade. `self` vira imagem-fonte; fontes não referenciadas são removidas; marcadores preparados fora da nova grade saem das cenas. |
+| PUT `/maps/{mid}/composition` | multipart (até 10 MB de imagem + 2 MB): `file` (PNG/JPEG achatado), `composition` (JSON, até 400 mil caracteres), `revision`, `name`, `summary`, `gridPixels`, `scaleMeters`, `hasGrid`, `gridOffsetX`, `gridOffsetY`, `freeMovement`. → `{map, summary, composition}`. 400: composição inválida (campo/tipo desconhecido, `src` fora de `self`/`asset:{guid}` do próprio mapa, limites), imagem com tamanho diferente do artboard, grade. 409: revisão, mapa na mesa, limites, `hasGrid:false` com cenas de grade. `self` vira imagem-fonte; fontes não referenciadas são removidas; marcadores preparados fora da nova grade saem das cenas. Elementos aceitam `group` opcional (ADR-086: `^[a-z0-9-]{1,24}$`, só organização no editor; ausente = sem grupo; inválido = 400). |
 | POST `/maps/{mid}/sources` | multipart `file` (+`name`): PNG com transparência preservada → `{id,key,name,width,height,imageUrl}`. |
 | POST `/maps/{mid}/sources/import` | `{url,name}` pelo baixador seguro → mesma resposta. |
 | POST `/maps/{mid}/sources/copy` | `{from:"asset:{guid}"}` de mapa de imagem ou retrato da campanha (tiles: 404) → mesma resposta. |
@@ -507,3 +507,31 @@ Camadas (cena, tiles e composição): 2–8; a primeira `{id:'base',kind:'base'}
 Composição: `{v:1, artboard:{width,height,background:'#rrggbb'}, layers:[…], elements:[{id,layer,type:'image'|'text'|'rect'|'ellipse',name?,src?,x,y,width,height,rotation,opacity,visible,locked,flipX,flipY,text?,fontSize?,fontFamily?:'serif'|'sans'|'display',color?,fill?,stroke?,strokeWidth?,align?:'left'|'center'|'right',bold?,italic?}]}`. Artboard 64–4.096 por lado e até 8 milhões de pixels; até 200 elementos com id `[A-Za-z0-9_-]{1,40}` único; x/y −16.384 a 20.480; largura/altura 1–16.384; rotação ±360; opacidade 0–100; texto ≤ 500; fonte 6–400; contorno 0–100; até 40 imagens-fonte por mapa.
 
 Imagens-fonte (`purpose` interno `layer`): não aparecem em listas de mapas/retratos, não contam no limite de 50 mapas, contam nos 250 MB, são excluídas com o mapa e não servem como imagem de NPC/marcador (400). `/maps/{fid}/image` só as entrega ao mestre; editar/excluir uma fonte pelas rotas de mapa responde 404. `GET …/live` envia `terrain` (Base de mapas de tiles com objetos; nulo nos demais); para jogadores, com névoa ativa, `terrain` recebe a mesma máscara de `rows`.
+
+## Versões persistentes de mapas e cenas — ADR-083
+
+Todas exigem `Verified`; só o mestre (403 jogador, 404 sem vínculo); escritas pela proteção antiforgery comum (`js/api.js`); campanha arquivada responde 409 nas escritas. Versões automáticas não têm rota própria: são gravadas na mesma transação de `POST/PUT /assets/tile-maps`, `PUT /assets/maps/{mid}/composition` e `POST/PUT /scenes`, deduplicadas por SHA-256 do conteúdo.
+
+| Método e caminho (`/api/campaigns/{id}/versions`) | Contrato |
+| --- | --- |
+| GET `?kind=tilemap\|imagemap\|scene&document={docId}` | `{items:[{id,label,auto,revision,createdAt,size}], maxAuto:20, maxNamed:20}`, mais recentes primeiro (até 40), sem conteúdo. 400 tipo inválido. |
+| GET `/{vid}` | `{id,kind,documentId,label,auto,revision,createdAt,payload}`. `payload`: tiles `{name,summary,scaleMeters,rows,layers}`; imagem `{name,summary,gridPixels,scaleMeters,hasGrid,gridOffsetX,gridOffsetY,freeMovement,composition}`; cena `{name,description,kind,mapKey,sharedText,privateNotes,visionMode,layerMode,order,prepared,layers}`. 404 versão de outra campanha. |
+| POST | `{kind,documentId,label}` (rótulo 1–80): guarda o documento **salvo** atual como versão nomeada (se igual a uma automática, ela vira nomeada). 404 documento; 400 tipo incompatível; 409 já há 20 nomeadas, documento acima de 2 MiB ou mapa de imagem antigo sem composição salva. → `{id,label,auto,revision,createdAt,size}`. |
+| PUT `/{vid}` | `{label}` renomeia e torna nomeada. 409 limite de nomeadas. |
+| DELETE `/{vid}` | 204. Imagens-fonte usadas só por ela saem no próximo salvamento do mapa. |
+
+Não há rota de restauração: o editor carrega `payload` como rascunho e grava pelas rotas normais de salvar (mesma revisão, mesmas validações e proteções). Retenção: 20 automáticas + 20 nomeadas por documento. Excluir mapa (`DELETE /assets/maps/{mid}`) ou cena (`DELETE /scenes/{sid}`) exclui as versões. `PUT …/composition` não remove imagens-fonte referenciadas por versões retidas.
+
+## Paredes vetoriais, luzes e prévia real do jogador (ADR-087/088 — 16/11/2026)
+
+Todas as rotas exigem `Verified`; só o mestre (403 jogador, 404 sem vínculo); escritas pela proteção antiforgery comum (`js/api.js`). Detalhes de regras em [NEVOA_ILUMINACAO.md](NEVOA_ILUMINACAO.md).
+
+| Método/caminho | Contrato |
+| --- | --- |
+| GET `/api/campaigns/{id}/assets/layers?key=&scene=` | Acrescenta `walls: [{id,x1,y1,x2,y2,kind,open,hidden}]` (centésimos de casa) e `live` (estrutura ao vivo: `cells, lights, walls, revealed, fog, marks`, sem explorações; nulo antes da primeira gravação). Luzes trazem `dim, color, intensity, animation`. |
+| PUT `/api/campaigns/{id}/assets/layers?key=&scene=` | Corpo anterior + `walls` (opcional; ausente mantém as atuais). 400 parede fora do mapa, de comprimento zero ou tipo inválido; 409 acima de 2.000 segmentos. Luzes: `dim` (raio–30), `color` `#rrggbb`, `intensity` 10–100, `animation` `flicker`/`pulse`. |
+| POST `/api/sessions/{id}/fog/walls` | `{ walls }`: substitui as paredes vetoriais da camada ao vivo (evento só do mestre, `Revision++`, sinal). |
+| POST `/api/sessions/{id}/fog/wall-door` | `{ id }`: abre/fecha porta vetorial. 404 sem o segmento; 409 se não for porta. |
+| POST `/api/sessions/{id}/fog/lights` | Aceita também `dim, color, intensity, animation` (nulos = luz quente padrão). |
+| POST `/api/campaigns/{id}/prep/preview-view` | `{ mapKey, sceneId?, layer? (corpo de PUT layers), tokens (arranjo da cena), visionMode?, viewerCharacterId? \| viewerUserId? \| party }` → `{ active, viewer, remember?, visible, explored, cells, lights, walls, marks, shown, perceived }`; `shown`/`perceived` são índices de `tokens`. Somente leitura: nada é gravado. 400 entrada inválida ou personagem não posicionado. |
+| GET `/api/sessions/{id}/live` (jogador) | `fog.walls`: só segmentos que bloqueiam movimento agora e tocam casas conhecidas, `{x1,y1,x2,y2,door}` com `door` = `"open"`/`"closed"` para portas não secretas e nulo nos demais. Mestre recebe `fog.walls` completo. |

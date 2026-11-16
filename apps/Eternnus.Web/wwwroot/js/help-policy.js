@@ -8,6 +8,8 @@ export function validHelpKey(value) {
   return typeof value === 'string' && value.length <= 150 && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*){2}$/.test(value) && HELP_AREAS.includes(value.split('.')[0]);
 }
 export const validTip = (value) => plain(value, 80);
+/** Descrição curta exibida em letras menores abaixo do nome (ferramentas dos editores). */
+export const validTipDetail = (value) => plain(value, 240);
 export function catalogModule(key) {
   return validHelpKey(key) ? `./help/${key.split('.')[0]}.js` : null;
 }
@@ -39,6 +41,8 @@ export function validHelpEntry(entry) {
 // Índice pequeno, sem parágrafos. Catálogos longos são importados ao abrir um ⓘ.
 export const HELP_KEYS = Object.freeze({
   "campanhas.preparo.explorador": "master",
+  "campanhas.preparo.colecoes": "master",
+  "campanhas.preparo.filtros": "master",
   "campanhas.mapas.novo": "master",
   "campanhas.cenas.nova": "master",
   "campanhas.cenas.camadas": "master",
@@ -46,6 +50,8 @@ export const HELP_KEYS = Object.freeze({
   "campanhas.mapas.area-visivel": "master",
   "campanhas.editor.camadas": "master",
   "campanhas.editor.atalhos": "master",
+  "campanhas.editor.rascunhos": "master",
+  "campanhas.editor.contextos": "master",
 
   "campanhas.mapas.tiles": "master",
   "mesa.tela.horizontal": "all",
@@ -86,6 +92,8 @@ export const HELP_KEYS = Object.freeze({
   "mesa.config.aliados": "all",
   "mesa.config.luz-visao": "all",
   "mesa.nevoa.ferramentas": "master",
+  "mesa.nevoa.paredes": "master",
+  "mesa.nevoa.diagnostico": "master",
   "mesa.nevoa.visao": "master",
   "mesa.turnos.ordem": "all",
   "mesa.turnos.liberar-movimento": "master",
@@ -134,5 +142,8 @@ export const HELP_KEYS = Object.freeze({
   "campanhas.cenas.aplicar": "master",
   "campanhas.cenas.alcance": "master",
   "campanhas.cenas.simulacao": "master",
-  "campanhas.mapas.grade": "master"
+  "campanhas.mapas.grade": "master",
+  "campanhas.mapas.alinhamento": "master",
+  "campanhas.mapas.pincel": "master",
+  "campanhas.mapas.mistura": "master"
 });

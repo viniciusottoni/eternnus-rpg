@@ -5,6 +5,7 @@ import { fitScale, stepZoom, zoomAround } from "./editor-policy.js";
 import {
   HANDLES, artboardStatus, center, elementBounds, elementsInRect, handleAngle, handlePoints, hitTest, paintOrder,
   rectFromPoints, resizeFromHandle, rotateFromPointer, snapMove, snapPoint, clampGeometry, unionBounds, isSelectable,
+  snapLines, scaleGroup, rotateGroup, boundsHandlePoints, pointerAngle, snapAngle,
 } from "./composition-policy.js";
 
 const MIN_SCALE = 0.02, MAX_SCALE = 16;
@@ -213,6 +214,8 @@ export function createCompositionSurface(host, ctl) {
     zoom: () => cam.scale,
     setPanHold(on) { panHold = !!on; updateCursor(); },
     setPan(x, y) { setView({ ...cam, x, y }); },
+    /** Origem do documento (canto da área visível) em coordenadas da janela e a escala atual (réguas). */
+    view: () => { const r = canvas.getBoundingClientRect(); return { left: r.left + cam.x, top: r.top + cam.y, scale: cam.scale }; },
   };
 
   // ---------- Tamanho ----------
@@ -261,6 +264,7 @@ export function createCompositionSurface(host, ctl) {
     if (selected.length > 1) { const b = unionBounds(selected); const p = toScreen(b.x, b.y); ctx.save(); ctx.setLineDash([3, 3]); ctx.strokeStyle = "#4fc3f7"; ctx.strokeRect(p.x - 0.5, p.y - 0.5, b.width * s + 1, b.height * s + 1); ctx.restore(); }
     const single = handleTarget();
     if (single) drawHandles(single);
+    else { const group = groupTarget(); if (group) drawHandles({ ...group.bounds, rotation: 0 }); }
     if (drag?.kind === "marquee" || drag?.kind === "draw" || drag?.kind === "crop") drawRubber(drag);
     if (drag?.guides?.length) drawGuides(drag.guides);
     if (drag?.readout) drawReadout(drag.readout, drag.at);
@@ -334,17 +338,30 @@ export function createCompositionSurface(host, ctl) {
     const el = ctl.doc().elements.find((e) => sel.has(e.id));
     return el && !isLocked(el) ? el : null;
   }
+  /** Dois ou mais selecionados, todos editáveis: alças no retângulo de limites do conjunto (ADR-086). */
+  function groupTarget() {
+    const sel = ctl.selection();
+    if (sel.size < 2) return null;
+    const doc = ctl.doc();
+    const els = doc.elements.filter((e) => sel.has(e.id));
+    if (els.length < 2 || els.some((e) => isLocked(e) || !isSelectable(doc, e))) return null;
+    return { els, bounds: unionBounds(els) };
+  }
   function handleAt(sp, touch) {
-    const el = handleTarget(); if (!el) return null;
+    const el = handleTarget();
+    const group = el ? null : groupTarget();
+    if (!el && !group) return null;
     const r = touch ? 16 : 8;
-    const pts = handlePoints(el, ROTATE_GAP / cam.scale);
+    const pts = el ? handlePoints(el, ROTATE_GAP / cam.scale) : boundsHandlePoints(group.bounds, ROTATE_GAP / cam.scale);
     const near = (p) => { const q = toScreen(p.x, p.y); return Math.hypot(q.x - sp.x, q.y - sp.y) <= r; };
-    if (near(pts.rotate)) return { el, handle: "rotate" };
-    for (const h of HANDLES) if (near(pts[h])) return { el, handle: h };
+    if (near(pts.rotate)) return { el, group, handle: "rotate" };
+    for (const h of HANDLES) if (near(pts[h])) return { el, group, handle: h };
     return null;
   }
   const effectiveTool = () => (panHold ? "hand" : ctl.tool());
-  const snapOpts = () => { const o = ctl.options(); return { artboard: ctl.doc().artboard, grid: o.showGrid ? o.grid : null, threshold: 6 / cam.scale }; };
+  /** Opções de encaixe; `lines` (bordas e centros dos outros elementos) é calculado uma vez no começo do arraste. */
+  const snapOpts = () => { const o = ctl.options(); return { artboard: ctl.doc().artboard, grid: o.showGrid ? o.grid : null, lines: o.snapObjects === false ? null : drag?.lines, threshold: 6 / cam.scale }; };
+  const linesExcept = (ids) => (ctl.options().snapObjects === false ? null : snapLines(ctl.doc(), new Set(ids)));
   function resizeCursor(angle) {
     const a = ((angle % 180) + 180) % 180;
     return a < 22.5 || a >= 157.5 ? "ew-resize" : a < 67.5 ? "nwse-resize" : a < 112.5 ? "ns-resize" : "nesw-resize";
@@ -359,7 +376,7 @@ export function createCompositionSurface(host, ctl) {
     else if (["rect", "ellipse", "crop"].includes(tool)) c = "crosshair";
     else if (tool === "select" && sp) {
       const h = handleAt(sp, touch);
-      if (h) c = h.handle === "rotate" ? "grab" : resizeCursor(handleAngle(h.handle, h.el.rotation));
+      if (h) c = h.handle === "rotate" ? "grab" : resizeCursor(handleAngle(h.handle, h.el?.rotation || 0));
       else if (hover) c = "move";
     }
     canvas.style.cursor = c;
@@ -389,11 +406,20 @@ export function createCompositionSurface(host, ctl) {
     }
     // Selecionar / mover
     const h = handleAt(sp, e.pointerType === "touch");
+    if (h?.group) {
+      // Conjunto: redimensiona/gira pelo retângulo de limites; cada elemento parte do próprio estado inicial.
+      const starts = h.group.els.map((el) => ({ ...el }));
+      const bounds = h.group.bounds;
+      drag = h.handle === "rotate"
+        ? { kind: "group-rotate", id: e.pointerId, els: h.group.els, starts, pivot: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }, p0: dp, began: false, at: sp }
+        : { kind: "group-resize", id: e.pointerId, els: h.group.els, starts, bounds, handle: h.handle, began: false, at: sp, lines: linesExcept(h.group.els.map((x) => x.id)) };
+      return;
+    }
     if (h) {
       const start = { ...h.el };
       drag = h.handle === "rotate"
         ? { kind: "rotate", id: e.pointerId, el: h.el, start, p0: dp, began: false, at: sp }
-        : { kind: "resize", id: e.pointerId, el: h.el, start, handle: h.handle, began: false, at: sp };
+        : { kind: "resize", id: e.pointerId, el: h.el, start, handle: h.handle, began: false, at: sp, lines: linesExcept([h.el.id]) };
       return;
     }
     const doc = ctl.doc();
@@ -405,7 +431,7 @@ export function createCompositionSurface(host, ctl) {
       if (!sel.has(hit.id)) ctl.select([hit.id], false);
       const now = ctl.selection();
       const moving = doc.elements.filter((el) => now.has(el.id) && isSelectable(doc, el));
-      drag = { kind: "move", id: e.pointerId, p0: dp, sp0: sp, start: new Map(moving.map((el) => [el.id, { x: el.x, y: el.y }])), els: moving, bounds: unionBounds(moving), began: false, at: sp };
+      drag = { kind: "move", id: e.pointerId, p0: dp, sp0: sp, start: new Map(moving.map((el) => [el.id, { x: el.x, y: el.y }])), els: moving, bounds: unionBounds(moving), began: false, at: sp, lines: linesExcept(moving.map((x) => x.id)) };
       return;
     }
     if (!additive && sel.size) ctl.select([], false);
@@ -473,6 +499,29 @@ export function createCompositionSurface(host, ctl) {
       if (!drag.began) { drag.began = true; ctl.begin("Girar"); }
       drag.el.rotation = rotateFromPointer(drag.start, drag.p0, dp, e.shiftKey);
       drag.readout = `${Math.round(drag.el.rotation * 10) / 10}°`;
+      ctl.changed(); invalidate();
+      return;
+    }
+    if (drag.kind === "group-resize") {
+      if (!drag.began) { drag.began = true; ctl.begin(`Redimensionar ${drag.els.length} elementos`); }
+      drag.guides = [];
+      const s = snapIf(dp, e);
+      // Proporção mantida por padrão (Shift solta); Alt redimensiona a partir do centro.
+      const r = resizeFromHandle({ ...drag.bounds, rotation: 0 }, drag.handle, s.point, { keepRatio: !e.shiftKey, fromCenter: e.altKey });
+      drag.guides = s.guides;
+      const next = scaleGroup(drag.starts, drag.bounds, r);
+      for (const el of drag.els) { Object.assign(el, next.get(el.id)); clampGeometry(el); }
+      drag.readout = `${Math.round(r.width)} × ${Math.round(r.height)} px (${Math.round((r.width / drag.bounds.width) * 100)}%)`;
+      ctl.changed(); invalidate();
+      return;
+    }
+    if (drag.kind === "group-rotate") {
+      if (!drag.began) { drag.began = true; ctl.begin(`Girar ${drag.els.length} elementos`); }
+      let deg = pointerAngle(drag.pivot, dp) - pointerAngle(drag.pivot, drag.p0);
+      deg = e.shiftKey ? snapAngle(deg) : Math.round(deg * 10) / 10;
+      const next = rotateGroup(drag.starts, drag.pivot, deg);
+      for (const el of drag.els) { Object.assign(el, next.get(el.id)); clampGeometry(el); }
+      drag.readout = `${Math.round(deg * 10) / 10}°`;
       ctl.changed(); invalidate();
     }
   }

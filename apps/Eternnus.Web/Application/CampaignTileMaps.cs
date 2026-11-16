@@ -84,6 +84,8 @@ public sealed partial class CampaignAssetsService
         map.Width = rows[0].Length * 64; map.Height = rows.Length * 64;
         map.GridPixels = 64; map.GridOffsetX = 0; map.GridOffsetY = 0; map.HasGrid = true; map.FreeMovement = false;
         map.UpdatedAt = DateTime.UtcNow;
+        // Versão automática do documento salvo (ADR-083), na mesma transação.
+        await DocumentVersionModel.RecordAsync(db, campaign, DocumentVersionKinds.TileMap, map.Id, map.Revision, DocumentVersionModel.TilePayload(map), null, map.UpdatedAt, ct);
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
         return View(map);
     }

@@ -1,4 +1,4 @@
-import { decodeBits, encodeBits, lineClear } from "./fog-policy.js";
+import { decodeBits, encodeBits, lineClear, lightReach } from "./fog-policy.js";
 import { ensureLayers } from "./editor-policy.js";
 
 // Regras puras do editor de cenas e da mesa do mestre: apresentação Básica/Completa, inventário de ferramentas,
@@ -227,13 +227,14 @@ export function placementProblem(cells, width, height, tokens, x, y, ignoreIndex
 /** Metros → casas, igual a TableFog.MetersToCells (raio máximo 30). */
 export const metersToCells = (meters, scale) => (!(meters > 0) || !(scale > 0) ? 0 : Math.min(30, Math.floor(meters / scale)));
 
-function reach(cells, width, height, sx, sy, radius, into) {
+function reach(layer, width, height, sx, sy, radius, into) {
+  const cells = layer.cells, walls = layer.walls;
   if (!(radius > 0) || sx < 0 || sy < 0 || sx >= width || sy >= height) return;
   for (let y = Math.max(0, sy - radius); y <= Math.min(height - 1, sy + radius); y++)
     for (let x = Math.max(0, sx - radius); x <= Math.min(width - 1, sx + radius); x++) {
       const i = y * width + x;
       if (into[i] || (x - sx) ** 2 + (y - sy) ** 2 > radius * radius) continue;
-      if (lineClear(cells, width, height, sx, sy, x, y)) into[i] = true;
+      if (lineClear(cells, width, height, sx, sy, x, y, walls)) into[i] = true;
     }
 }
 
@@ -252,16 +253,16 @@ export function simulateView({ visionMode, layer, width, height, tokens, charact
   const lit = [...decodeBits(layer.revealed, count)].map(Boolean);
   const byId = new Map(characters.map((c) => [c.id, c]));
   if (!manual) {
-    for (const l of layer.lights || []) reach(layer.cells, width, height, l.x, l.y, l.radius, lit);
+    for (const l of layer.lights || []) reach(layer, width, height, l.x, l.y, lightReach(l), lit);
     for (const t of visibleTokens) {
       const ch = t.characterId ? byId.get(t.characterId) : null;
       const light = t.light ?? (t.characterId ? metersToCells(ch?.lightMeters ?? settings.playerLightMeters ?? 0, scale) : settings.creatureLight ?? 0);
-      reach(layer.cells, width, height, t.x, t.y, Math.min(30, light), lit);
+      reach(layer, width, height, t.x, t.y, Math.min(30, light), lit);
     }
     const v = viewer != null ? tokens.find((t) => t.characterId && t.characterId === viewer) : null;
     if (v) {
       const ch = byId.get(v.characterId);
-      reach(layer.cells, width, height, v.x, v.y, metersToCells(ch?.visionMeters ?? settings.playerVisionMeters ?? 0, scale), lit);
+      reach(layer, width, height, v.x, v.y, metersToCells(ch?.visionMeters ?? settings.playerVisionMeters ?? 0, scale), lit);
     }
   }
   const allies = settings.alliesAlwaysVisible ?? true;
