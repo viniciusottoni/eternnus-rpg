@@ -22,6 +22,7 @@ import {
 import { mountImageDrop, listenPaste, splitImageFiles, baseName, readImageSize, assetListHtml, bindAssetList } from "./image-drop.js";
 import { MAP_ELEMENT, blankSceneComposition, loadSceneComposition, sceneSourceResolver, flattenPreview, flattenOverlay, createImageCache, createSceneComposer } from "./scene-composition.js";
 import * as CP from "./composition-policy.js";
+import { LOOK_IMAGE, LOOK_ROUND, MIN_SIZE, MAX_SIZE, SIZE_STEP, DEFAULT_SIZE, clampSize } from "./token-look.js";
 
 const SIDES = SCENE_SIDES;
 const opt = (list, current) => list.map(([v, l]) => `<option value="${esc(v)}" ${v === current ? "selected" : ""}>${esc(l)}</option>`).join("");
@@ -89,6 +90,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   /** Trocar o alcance só passa a valer depois de salvar: até lá, a camada do mapa não é editada. */
   const layerLocked = () => draft.layerMode !== savedLayerMode;
   let npcs = null, npcLoading = null;
+  /** Forma escolhida para os próximos personagens do mestre colocados no mapa (ADR-079): redondo ou a própria imagem. */
+  let placeLook = LOOK_ROUND;
   let layer = null, meta = null;
   // Estado salvo (para recalcular "alterações não salvas" depois de desfazer/refazer).
   let savedScene = clone(draft), savedLayer = null;
@@ -328,6 +331,29 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   /** Marcadores que podem ser editados agora (camada visível e desbloqueada no editor). */
   const editable = (i) => { const t = draft.prepared[i]; const l = t && layerOfToken(t); return !!t && !l?.locked && l?.visible !== false; };
   const editableSelection = () => selection.filter(editable);
+  /**
+   * Imagem de prévia do marcador no editor: a própria (acervo da campanha ou link https) ou a do personagem do mestre.
+   * Sem imagem, o marcador só pode ser redondo. Personagens dos jogadores não têm imagem na preparação.
+   */
+  function tokenImage(t) {
+    if (!t || t.characterId) return null;
+    const own = typeof t.imageUrl === "string" ? t.imageUrl : "";
+    if (own.startsWith("asset:")) return /^asset:[0-9a-f-]{32,36}$/i.test(own) ? `/api/campaigns/${encodeURIComponent(campaign.id)}/assets/maps/${own.slice(6)}/image` : null;
+    if (own.startsWith("https://")) return own;
+    if (!t.masterCharacterId) return null;
+    const preview = (npcs || []).find((n) => n.id === t.masterCharacterId)?.imagePreview;
+    return typeof preview === "string" && (preview.startsWith("/api/") || preview.startsWith("https://")) ? preview : null;
+  }
+  const lookOf = (t) => (t?.appearance === LOOK_IMAGE ? LOOK_IMAGE : LOOK_ROUND);
+  const LOOK_OPTIONS = [[LOOK_ROUND, "Marcador redondo"], [LOOK_IMAGE, "Imagem livre do personagem"]];
+  /** Troca a forma de um marcador (redondo ou imagem). A imagem exige uma imagem do personagem ou do marcador. */
+  function setTokenLook(i, look) {
+    const t = draft.prepared[i];
+    if (!t || simulate || !editable(i) || lookOf(t) === look) return;
+    if (look === LOOK_IMAGE && !tokenImage(t)) return say("Este personagem não tem imagem. Escolha uma na ficha dele, na Preparação.");
+    change(look === LOOK_IMAGE ? "Mostrar como imagem" : "Mostrar como marcador redondo", () => { draft.prepared[i] = { ...t, appearance: look === LOOK_IMAGE ? LOOK_IMAGE : null }; });
+    refresh();
+  }
 
   function boardState() {
     const m = mapOf(draft.mapKey);
@@ -338,14 +364,17 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     let tokens = draft.prepared.map((t, i) => {
       // Camadas da cena: olho e opacidade só mudam o desenho no editor; a simulação mostra o que os jogadores veem.
       const alpha = simulate ? 1 : layerAlpha(layerOfToken(t));
-      return { id: "p" + i, characterId: t.characterId || null, label: t.label, side: t.side || "ally", x: t.x, y: t.y, fx: t.fx ?? null, fy: t.fy ?? null, hidden: !!t.hidden, light: t.light ?? null, appearance: t.appearance ?? null, size: t.size ?? null, alpha: alpha < 1 ? alpha : null };
+      return { id: "p" + i, characterId: t.characterId || null, label: t.label, side: t.side || "ally", x: t.x, y: t.y, fx: t.fx ?? null, fy: t.fy ?? null, hidden: !!t.hidden, light: t.light ?? null, appearance: t.appearance ?? null, size: t.size ?? null, image: tokenImage(t), alpha: alpha < 1 ? alpha : null };
     });
+    // Imagens de personagens do mestre chegam com a lista deles; sem ela, o desenho cai no marcador redondo até carregar.
+    if (npcs == null && !mapOnly && draft.prepared.some((t) => t.masterCharacterId)) loadNpcs();
     let fog;
     if (simulate && serverView) {
       // Resultado do servidor: idêntico ao que o jogador receberia (paredes, luz, visão, sentidos, percepção e exploração).
       fog = serverView.active ? { active: true, visible: serverView.visible, explored: serverView.explored, cells: serverView.cells, lights: serverView.lights, marks: serverView.marks, walls: serverView.walls } : { active: false };
       const shown = new Set(serverView.shown), perceived = new Set(serverView.perceived || []);
-      tokens = tokens.filter((_, i) => shown.has(i)).map((t) => (perceived.has(Number(t.id.slice(1))) ? { ...t, label: "?", perceived: true } : t));
+      // Percebido não revela nome, imagem, forma nem porte (como na mesa).
+      tokens = tokens.filter((_, i) => shown.has(i)).map((t) => (perceived.has(Number(t.id.slice(1))) ? { ...t, label: "?", perceived: true, image: null, appearance: null, size: null } : t));
     } else if (simulate) {
       requestServerView();
       const sim = simulateView({ visionMode: draft.visionMode, layer, width: width(), height: height(), tokens, characters, settings: meta.settings || {}, scale: meta.scaleMeters || 1.5, viewer: viewer && viewer !== "party" ? viewer : null });
@@ -761,7 +790,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       return c ? placeToken({ characterId: c.id, label: c.name, side: "ally", hidden: false }, cell, "Colocar personagem") : false;
     }
     const n = (npcs || []).find((x) => x.id === id);
-    return n ? placeToken({ masterCharacterId: n.id, label: n.name.slice(0, 40), side: n.side || "enemy", hidden: false }, cell, "Colocar personagem do mestre") : false;
+    // Forma escolhida no painel; sem imagem do personagem, entra redondo.
+    const appearance = placeLook === LOOK_IMAGE && tokenImage({ masterCharacterId: n.id }) ? LOOK_IMAGE : null;
+    return n ? placeToken({ masterCharacterId: n.id, label: n.name.slice(0, 40), side: n.side || "enemy", hidden: false, appearance }, cell, "Colocar personagem do mestre") : false;
   }
   function placeAtCursor(ref) {
     const cell = hover || lastCell;
@@ -916,6 +947,13 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
         { name: "hidden", label: "Oculto: só você vê até revelar", type: "checkbox", value: !!t.hidden },
       ]),
       ...(mode === "complete" && !pc ? [{ name: "light", label: "Luz que carrega", unit: "casas", type: "number", min: 0, max: 30, step: 1, value: t.light ?? "", help: "Vazio usa o padrão da mesa." }] : []),
+      ...(pc ? [] : [
+        { name: "look", label: "Aparência", type: "heading" },
+        tokenImage(t)
+          ? { name: "appearance", label: "Forma no mapa", type: "select", value: lookOf(t), options: LOOK_OPTIONS }
+          : { name: "appearance", label: "Forma no mapa", type: "static", value: "Marcador redondo (sem imagem)" },
+        { name: "size", label: "Tamanho", unit: "% da casa", type: "number", min: MIN_SIZE, max: MAX_SIZE, step: SIZE_STEP, value: clampSize(t.size ?? DEFAULT_SIZE), required: true, help: "100% ocupa uma casa." },
+      ]),
       { name: "pos", label: "Posição", type: "heading" },
       { name: "x", label: "Coluna", type: "number", min: 1, max: width(), step: 1, value: t.x + 1, required: true },
       { name: "y", label: "Linha", type: "number", min: 1, max: height(), step: 1, value: t.y + 1, required: true },
@@ -944,7 +982,11 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
         change("Propriedades do marcador", () => {
           draft.prepared[i] = {
             ...cur, label, x, y, fx: fine(v.fx, cur.fx), fy: fine(v.fy, cur.fy), layer: target,
-            ...(pc ? {} : { side: v.side, hidden: !!v.hidden }),
+            ...(pc ? {} : {
+              side: v.side, hidden: !!v.hidden,
+              appearance: v.appearance === LOOK_IMAGE && tokenImage(cur) ? LOOK_IMAGE : v.appearance === undefined ? cur.appearance ?? null : null,
+              size: clampSize(v.size) === DEFAULT_SIZE && cur.size == null ? null : clampSize(v.size),
+            }),
             ...(mode === "complete" && !pc ? { light: v.light == null ? null : Math.max(0, Math.min(30, Math.round(v.light))) } : {}),
           };
         });
@@ -1238,7 +1280,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (!files.length) return;
     if (mapOnly) return say("Imagens entram no editor do mapa (Preparação › Mapas) ou na composição de uma cena.");
     if (draft.kind === "text") return say("Cenas textuais não têm imagem. Mude o tipo em Cena › Cenário.");
-    if (!draft.mapKey) { startChoice = { files }; renderSide(); return showProps(); }
+    if (!draft.mapKey) { startChoice = { files }; error = ""; renderSide(); return renderStage(); }
     if (!composable()) { startChoice = { files, replace: true }; renderSide(); return showProps(); }
     const at = dropPoint(p);
     if (shell.context !== "compose") shell.setContext("compose");
@@ -1310,7 +1352,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const modeV = BACKGROUND_MODES.some(([v]) => v === data.mode) ? data.mode : "free";
     if (c.replace && (draft.prepared.length || compElements()) && !confirm("Trocar o fundo remove as posições preparadas e a composição desta cena. Continuar?")) return;
     startChoice = null;
-    uploading = true; renderSide(); renderStatus();
+    uploading = true; error = ""; renderSide(); renderStatus(); renderStage();
     try {
       if (c.playable) { uploading = false; return await makePlayable(modeV); }
       if (c.blank) {
@@ -1456,6 +1498,10 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       { separator: true },
       { label: own.length && own.every((k) => draft.prepared[k].hidden) ? "Mostrar aos jogadores" : "Ocultar dos jogadores", hint: "Oculto: só você vê até revelar", disabled: !own.length, disabledReason: PC_ONCE, run: toggleHidden },
       { label: "Mover para camada", items: tokenLayers().map((x) => ({ label: x.name, checked: x.id === l?.id, disabled: x.locked, disabledReason: "Camada bloqueada.", run: () => moveSelectionToLayer(x.id) })) },
+      ...(ids.length === 1 && !tok.characterId ? [{
+        label: "Forma no mapa",
+        items: LOOK_OPTIONS.map(([v, label]) => ({ label, checked: lookOf(tok) === v, disabled: v === LOOK_IMAGE && !tokenImage(tok), disabledReason: "Este personagem não tem imagem. Escolha uma na ficha dele, na Preparação.", run: () => setTokenLook(i, v) })),
+      }] : []),
       { label: "Selecionar camada", hint: l?.name || "", run: () => selectLayer(l?.id || "elements") },
     ], { label: tok.label || "Marcador" });
   }
@@ -1660,7 +1706,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const unplaced = area ? "Sem posição: entra pela área de entrada" : "Sem posição: entra pelo ponto padrão do mapa";
     const missing = characters.filter((c) => !pos.has(c.id)).length;
     list.innerHTML = `<h4 class="se-char-head">Personagens dos jogadores</h4>${pcs.length ? `<ul class="se-pick-list">${pcs.map((c) => item(`pc:${c.id}`, c.name, pos.has(c.id) ? where(pos.get(c.id)) : unplaced, pos.has(c.id) ? pos.get(c.id) : -1)).join("")}</ul>` : `<p class="muted small">${query ? "Nenhum resultado." : "Nenhum personagem vinculado à campanha ainda."}</p>`}
-      <h4 class="se-char-head">Personagens do mestre</h4>${npcs == null ? '<p class="loading-line" role="status">Carregando…</p>' : masters.length ? `<ul class="se-pick-list">${masters.map((n) => item(`npc:${n.id}`, n.name, n.summary || "")).join("")}</ul><p class="form-help">Marque “Oculto” no marcador para preparar NPCs e emboscadas que só você vê.</p>` : `<p class="muted small">${query ? "Nenhum resultado." : "Crie personagens do mestre na Preparação (pasta Personagens)."}</p>`}
+      <h4 class="se-char-head">Personagens do mestre</h4>${npcs == null ? '<p class="loading-line" role="status">Carregando…</p>' : masters.length ? `${placeLookField("list")}<ul class="se-pick-list">${masters.map((n) => item(`npc:${n.id}`, n.name, n.summary || "")).join("")}</ul><p class="form-help">Marque “Oculto” no marcador para preparar NPCs e emboscadas que só você vê.</p>` : `<p class="muted small">${query ? "Nenhum resultado." : "Crie personagens do mestre na Preparação (pasta Personagens)."}</p>`}
       ${entrySection(area, missing)}`;
   }
   /** Área de entrada da cena: escolha entre os pontos do mapa, área própria e distribuição automática do grupo. */
@@ -1723,12 +1769,17 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     comp.hidden = !showComp;
     boardHost.hidden = showText || showStart || showComp;
     if (showText) text.innerHTML = `<article class="se-text-card"><span class="eyebrow">Apresentação textual</span><h3>${esc(draft.name || "Cena sem nome")}</h3><p>${esc(draft.sharedText || "Escreva o texto compartilhável em Cena › Texto compartilhável.")}</p></article>`;
-    if (showStart && !start.querySelector(".se-start-card")) start.innerHTML = `<div class="se-start-card" role="region" aria-labelledby="se-start-h"><h3 id="se-start-h">Como deseja começar?</h3><p>Arraste uma imagem para qualquer ponto desta área ou escolha uma opção.</p><div class="se-start-grid">
-      <button type="button" class="se-start-option primary" data-action="se-start" data-id="upload">${icon("image")}<strong>Enviar imagem do computador</strong><small>PNG ou JPEG até 10 MB; várias de uma vez</small></button>
-      <button type="button" class="se-start-option" data-action="se-start" data-id="map">${icon("scenery")}<strong>Escolher um mapa existente</strong><small>Mapas e imagens da campanha</small></button>
-      <button type="button" class="se-start-option" data-action="se-start" data-id="model">${icon("layers")}<strong>Usar um modelo</strong><small>Cenários prontos do Eternnus</small></button>
-      <button type="button" class="se-start-option" data-action="se-start" data-id="blank">${icon("rect")}<strong>Começar com uma área em branco</strong><small>Fundo liso para compor com imagens</small></button>
-    </div><p class="form-help">Também dá para colar uma imagem (Ctrl+V) ou arrastar do painel Acervo. Nada é mostrado aos jogadores até você apresentar a cena.</p></div>`;
+    // Cena sem fundo: a escolha da primeira imagem, o envio e os erros aparecem no próprio cartão central (onde o mestre está olhando).
+    if (showStart) {
+      const state = uploading ? "busy" : startChoice && !startChoice.pick ? "choice" : error ? `error:${error}` : "options";
+      if (start.dataset.state !== state) {
+        start.dataset.state = state;
+        start.innerHTML = state === "busy" ? '<div class="se-start-card" role="status" aria-live="polite"><h3>Preparando o fundo da cena…</h3><p class="loading-line">Enviando a imagem. O editor abre a cena assim que terminar.</p></div>'
+          : state === "choice" ? `<div class="se-start-card se-start-choice" role="region" aria-label="Primeira imagem da cena">${startPanel()}</div>`
+          : startOptionsHtml();
+        if (state === "choice") setTimeout(() => start.querySelector('[data-start-form] button[type="submit"]')?.focus(), 0);
+      }
+    } else start.dataset.state = "";
     if (showComp) { mountComposer(); composer.invalidate(); }
     renderSimBanner();
     const hint = simulate || showComp ? "" : PAINT.has(tool) || tool === "entry" ? `${helpOf(tool) || labelOf(tool)} Teclado: setas e Enter.` : helpOf(tool);
@@ -1736,6 +1787,14 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     hintEl.textContent = showText || showStart ? "" : hint;
     hintEl.hidden = showText || showStart || !hint;
     if (!showComp) redraw();
+  }
+  function startOptionsHtml() {
+    return `<div class="se-start-card" role="region" aria-labelledby="se-start-h"><h3 id="se-start-h">Como deseja começar?</h3>${error ? `<p class="form-error" role="alert">${esc(error)}</p>` : ""}<p>Arraste uma imagem para qualquer ponto desta área ou escolha uma opção.</p><div class="se-start-grid">
+      <button type="button" class="se-start-option primary" data-action="se-start" data-id="upload">${icon("image")}<strong>Enviar imagem do computador</strong><small>PNG ou JPEG até 10 MB; várias de uma vez</small></button>
+      <button type="button" class="se-start-option" data-action="se-start" data-id="map">${icon("scenery")}<strong>Escolher um mapa existente</strong><small>Mapas e imagens da campanha</small></button>
+      <button type="button" class="se-start-option" data-action="se-start" data-id="model">${icon("layers")}<strong>Usar um modelo</strong><small>Cenários prontos do Eternnus</small></button>
+      <button type="button" class="se-start-option" data-action="se-start" data-id="blank">${icon("rect")}<strong>Começar com uma área em branco</strong><small>Fundo liso para compor com imagens</small></button>
+    </div><p class="form-help">Também dá para colar uma imagem (Ctrl+V) ou arrastar do painel Acervo. Nada é mostrado aos jogadores até você apresentar a cena.</p></div>`;
   }
   /** Simulação: escolher de quem é a visão (personagens posicionados). Sem personagem, só luz comum e revelações. */
   function renderSimBanner() {
@@ -1754,7 +1813,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function sidePanel() {
     if (error) return `<div class="se-panel"><p class="form-error" role="alert">${esc(error)}</p>${button("Entendi", "se-dismiss", "", "subtle")}</div>`;
     if (conflict) return `<div class="se-panel se-conflict" role="alert"><h3>Outra tela salvou antes</h3><p>${esc(conflict)}</p><p class="form-help">Suas alterações continuam aqui. Recarregar guarda este rascunho no navegador (Arquivo › Rascunho local…); "Salvar como nova cena" grava a cena numa cópia, sem tocar na outra.</p><div class="form-actions">${button("Continuar editando", "se-dismiss", "", "subtle")}${!mapOnly && saved.id ? button("Salvar como nova cena", "se-save-copy", "", "subtle") : ""}${button("Recarregar a versão salva", "se-reload", "", "danger")}</div></div>`;
-    if (startChoice && !startChoice.pick) return startPanel();
+    if (startChoice && !startChoice.pick && draft.mapKey) return startPanel();
     if (applying === "reposition") return repositionPanel();
     if (applying) return applyPanel();
     if (shell.context === "compose" && !mapOnly && draft.kind !== "text") return composePanel();
@@ -1781,9 +1840,17 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const m = mapOf(draft.mapKey);
     return `<div class="se-panel"><h3>${esc(labelOf(tool))}${helpButton("mesa.nevoa.ferramentas", "Ferramentas de névoa")}</h3><p class="form-help">${esc(helpOf(tool) || "Escolha uma ferramenta à esquerda.")}</p><dl class="se-summary"><div><dt>Tipo</dt><dd>${esc(sceneKindLabel(draft.kind))}</dd></div>${draft.kind !== "text" ? `<div><dt>Cenário</dt><dd>${m ? `${esc(m.name)} <small>${esc(mapTypeLabel(m))}</small>` : "Nenhum escolhido"}</dd></div>` : ""}${mapKind() ? `<div><dt>Marcadores preparados</dt><dd>${draft.prepared.length}</dd></div><div><dt>Visibilidade</dt><dd>${esc((VISIBILITY_OPTIONS.find((v) => v[0] === (draft.visionMode || "")) || VISIBILITY_OPTIONS[0])[1])}</dd></div>` : ""}${meta && meta.mode === "map" && meta.sharedWith?.length ? `<div><dt>Preparação do mapa</dt><dd>Compartilhada com: ${meta.sharedWith.map((s) => esc(s.name)).join(", ")}</dd></div>` : meta?.mode === "scene" ? `<div><dt>Preparação do mapa</dt><dd>Própria desta cena</dd></div>` : ""}</dl><p class="form-help">Clique com o botão direito (ou Shift+F10) no mapa para ver as ações da casa ou do marcador.</p></div>`;
   }
+  /** Campo "Forma no mapa" do marcador: redondo ou a imagem; sem imagem, explica onde escolher uma. */
+  function lookField(t) {
+    if (t.characterId) return "";
+    if (!tokenImage(t)) return `<p class="form-help">Forma no mapa: marcador redondo.${t.masterCharacterId && npcs != null ? " Para usar a imagem, escolha uma na ficha do personagem, na Preparação." : ""}</p>`;
+    return `<div class="field"><label for="se-t-look">Forma no mapa${helpButton("mesa.marcadores.forma", "Forma e tamanho do marcador")}</label><select id="se-t-look" data-token="appearance">${opt(LOOK_OPTIONS, lookOf(t))}</select></div>`;
+  }
+  /** Opções de forma para os próximos personagens do mestre colocados no mapa. */
+  const placeLookField = (id) => `<fieldset class="se-place-look"><legend>Colocar personagens do mestre como${helpButton("mesa.marcadores.forma", "Forma e tamanho do marcador")}</legend>${LOOK_OPTIONS.map(([v, l]) => `<label class="check"><input type="radio" name="se-place-look-${id}" data-se-place-look value="${v}" ${placeLook === v ? "checked" : ""}> ${esc(l)}</label>`).join("")}<p class="form-help">Sem imagem na ficha, entra como marcador redondo. Dá para trocar depois no marcador.</p></fieldset>`;
   function tokenPanel(t) {
     const isCharacter = !!t.characterId;
-    const layerSelect = `<div class="field"><label for="se-t-layer">Camada</label><select id="se-t-layer" data-token="layer">${opt(tokenLayers().map((l) => [l.id, l.name]), tokenLayerOf(t.layer, draft.layers))}</select></div>`;
+    const layerSelect = `${lookField(t)}<div class="field"><label for="se-t-layer">Camada</label><select id="se-t-layer" data-token="layer">${opt(tokenLayers().map((l) => [l.id, l.name]), tokenLayerOf(t.layer, draft.layers))}</select></div>`;
     return `<form class="se-panel" data-token-form><h3>${esc(t.label || "Marcador")}</h3><p class="form-help">Coluna ${t.x + 1}, linha ${t.y + 1}. Para mover, clique numa casa livre, arraste ou use as setas com o mapa em foco.</p>${isCharacter ? '<p class="small">Personagem dos jogadores: entra nesta casa quando a cena for apresentada, se a pessoa estiver na mesa.</p>' : `<div class="field"><label for="se-t-label">Nome</label><input id="se-t-label" data-token="label" maxlength="40" required value="${esc(t.label)}"></div><div class="field"><label for="se-t-side">Lado</label><select id="se-t-side" data-token="side">${opt(SIDES, t.side || "enemy")}</select></div><label class="check"><input type="checkbox" data-token="hidden" ${t.hidden ? "checked" : ""}> Oculto: só você vê até revelar</label>${mode === "complete" ? `<div class="field"><label for="se-t-light">Luz que carrega (casas)</label><input id="se-t-light" data-token="light" type="number" min="0" max="30" value="${t.light ?? ""}" placeholder="Padrão da mesa"></div>` : ""}`}${layerSelect}<div class="form-actions se-danger-zone">${button("Mais propriedades…", "se-token-props", "", "subtle")}${button("Remover da cena", "se-token-remove", "", "text-button")}</div></form>`;
   }
   function multiPanel() {
@@ -1798,7 +1865,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const npcList = (npcs || []).filter((n) => !n.copy);
     return `<div class="se-panel"><h3>Adicionar na casa ${pick.x + 1}, ${pick.y + 1}</h3><form data-add-marker class="se-subform"><h4>Marcador</h4><div class="field"><label for="se-a-label">Nome</label><input id="se-a-label" name="label" maxlength="40" required placeholder="Guarda da ponte"></div><div class="field"><label for="se-a-side">Lado</label><select id="se-a-side" name="side">${opt(SIDES, "enemy")}</select></div><label class="check"><input type="checkbox" name="hidden"> Oculto: só você vê até revelar</label><button type="submit" class="primary">Adicionar marcador</button></form>
       <section class="se-subform"><h4>Personagem dos jogadores</h4>${free.length ? `<ul class="se-pick-list">${free.map((c) => `<li><span>${esc(c.name)}</span>${button("Colocar aqui", "se-add-character", c.id, "subtle small")}</li>`).join("")}</ul>` : `<p class="muted small">${characters.length ? "Todos os personagens da campanha já estão na cena." : "Nenhum personagem vinculado à campanha ainda."}</p>`}</section>
-      <section class="se-subform"><h4>Personagem do mestre</h4>${npcs == null ? '<p class="loading-line" role="status">Carregando…</p>' : npcList.length ? `<ul class="se-pick-list">${npcList.map((n) => `<li><span>${esc(n.name)}<small>${esc(n.summary || "")}</small></span>${button("Colocar aqui", "se-add-npc", n.id, "subtle small")}</li>`).join("")}</ul><p class="form-help">Na mesa, “Cópia para o encontro” ajusta recursos sem alterar o original.</p>` : '<p class="muted small">Crie personagens do mestre na Preparação (pasta Personagens).</p>'}</section></div>`;
+      <section class="se-subform"><h4>Personagem do mestre</h4>${npcs == null ? '<p class="loading-line" role="status">Carregando…</p>' : npcList.length ? `${placeLookField("add")}<ul class="se-pick-list">${npcList.map((n) => `<li><span>${esc(n.name)}<small>${esc(n.summary || "")}</small></span>${button("Colocar aqui", "se-add-npc", n.id, "subtle small")}</li>`).join("")}</ul><p class="form-help">Na mesa, “Cópia para o encontro” ajusta recursos sem alterar o original.</p>` : '<p class="muted small">Crie personagens do mestre na Preparação (pasta Personagens).</p>'}</section></div>`;
   }
   function lightPanel() {
     const light = layer.lights.find((l) => l.x === pick.x && l.y === pick.y);
@@ -1959,7 +2026,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (dismissHelp()) return;
     if (isTypingTarget(e.target)) { commitTyping(); e.target.blur(); return; }
     if (simulate) return toggleSimulate(false);
-    if (startChoice) { startChoice = null; return renderSide(); }
+    if (startChoice) { startChoice = null; renderSide(); return renderStage(); }
     if (composing() && composer) {
       if (composer.surface.cancelInteraction()) return say("Ação cancelada.");
       if (composer.selection.size) return composer.select([], false);
@@ -2142,7 +2209,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       case "se-apply": applying = true; renderSide(); return showProps();
       case "se-restart-ask": applying = "restart"; return renderSide();
       case "se-restart": return restart();
-      case "se-dismiss": conflict = null; error = ""; applying = false; return renderSide();
+      case "se-dismiss": conflict = null; error = ""; applying = false; renderSide(); return renderStage();
       case "se-reload": if (confirm("Recarregar abre a versão salva. Suas alterações ficam guardadas neste navegador (Arquivo › Rascunho local…). Continuar?")) { await drafts?.preserve(); await reload().catch((x) => say(x.message)); } return;
       case "se-save-copy": return saveSceneCopy();
       case "se-go-complete": setInterfaceMode("complete"); return;
@@ -2155,7 +2222,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       case "se-add-npc": return pick && placeRef(`npc:${id}`, pick);
       case "se-light-remove": change("Apagar foco de luz", () => { layer = { ...layer, lights: layer.lights.filter((l) => l.x !== pick.x || l.y !== pick.y) }; }); pick = null; panel = "overview"; return refresh();
       case "se-start": return startAction(id);
-      case "se-start-cancel": startChoice = null; return renderSide();
+      case "se-start-cancel": startChoice = null; renderSide(); return renderStage();
       case "se-replace-bg": startChoice = { files: null, replace: true, pick: true }; return pickImages();
       case "se-comp": return composeAction(id);
       case "se-open-map": return openOriginalMap();
@@ -2175,14 +2242,20 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     npcLoading = api(`${base}/npcs`, "GET", undefined, { background: true }).then((r) => { npcs = r.items || []; }).catch(() => { npcs = []; }).finally(() => {
       npcLoading = null;
       if (closed) return;
-      if (panel === "add") renderSide();
+      if (panel === "add" || panel === "token") renderSide();
       renderCharacters();
+      redraw();
     });
     return npcLoading;
   }
   function onInput(e) {
     const t = e.target;
     if (t.matches("[data-se-char-search]")) return renderCharacterList();
+    if (t.matches("[data-se-place-look]")) {
+      placeLook = t.value === LOOK_IMAGE ? LOOK_IMAGE : LOOK_ROUND;
+      root.querySelectorAll("[data-se-place-look]").forEach((r) => { r.checked = r.value === placeLook; });
+      return;
+    }
     if (t.matches("[data-asset-q]")) return renderAssets();
     if (t.matches("[data-comp-name]")) {
       const el = composer?.selected()[0];
@@ -2221,6 +2294,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       if (key === "hidden") next.hidden = t.checked;
       else if (key === "light") next.light = t.value === "" ? null : Math.max(0, Math.min(30, Math.round(Number(t.value))));
       else if (key === "layer") next.layer = tokenLayerOf(t.value, draft.layers);
+      else if (key === "appearance") next.appearance = t.value === LOOK_IMAGE && tokenImage(tok) ? LOOK_IMAGE : null;
       else next[key] = t.value;
       draft.prepared[i] = next;
       if (t.type === "checkbox" || t.tagName === "SELECT") commitTyping();
@@ -2416,7 +2490,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function startAction(id) {
     if (id === "upload") return pickImages();
     if (id === "map" || id === "model") { openPanel("scenery"); return say(id === "model" ? "Os cenários prontos ficam no grupo “Cenários prontos”." : "Escolha um mapa da campanha."); }
-    if (id === "blank") { startChoice = { blank: true }; renderSide(); showProps(); }
+    if (id === "blank") { startChoice = { blank: true }; error = ""; renderSide(); renderStage(); }
   }
 
   function cleanup() {

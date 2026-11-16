@@ -39,6 +39,10 @@
 .se-subform { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid #a07b3a33; }
 .se-subform h4 { margin: 0; font-size: 13px; color: var(--gold, #c6a463); }
 .se-pick-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.se-place-look { display: grid; gap: 2px; margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--line, #494337); border-radius: 6px; }
+.se-place-look legend { padding: 0 4px; font-size: .8rem; color: var(--muted, #9da492); }
+.se-place-look .check { min-height: 32px; margin: 0; }
+.se-place-look .form-help { margin: 2px 0 0; }
 .se-pick-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .se-pick-list li > span { min-width: 0; overflow-wrap: anywhere; }
 .se-pick-list small { display: block; color: var(--muted, #9da492); }
@@ -133,3 +137,7 @@
 @media (pointer: coarse) {
   .se-start-option, .se-comp-actions button, .se-char-actions button { min-height: 44px; }
 }
+.se-start-choice { max-width: 560px; text-align: left; }
+.se-start-choice .se-panel { padding: 0; }
+.se-start-choice h3 { text-align: center; }
+.se-start-choice .form-actions { justify-content: flex-end; }
