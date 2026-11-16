@@ -157,7 +157,8 @@ const entries = {
     "body": [
       "Redondo mostra o retrato recortado em círculo. Imagem livre desenha a imagem inteira, sem moldura: um PNG com fundo transparente aparece só com a figura.",
       "O tamanho vai de 50% a 800% da casa. Selecione o marcador e arraste a alça dourada no canto, ou informe o valor em “Forma e tamanho”.",
-      "Só o Mestre muda forma, tamanho e imagem. A imagem escolhida aqui vale para o marcador, inclusive de personagens de Jogadores, sem mudar a ficha."
+      "Só o Mestre muda forma, tamanho e imagem. A imagem escolhida aqui vale para o marcador, inclusive de personagens de Jogadores, sem mudar a ficha.",
+      "Na preparação da cena, escolha em “Colocar personagens do mestre como” se a criatura entra redonda ou com a imagem da ficha. Depois, troque quando quiser no painel do marcador, em Propriedades ou no menu do botão direito (Forma no mapa). Sem imagem na ficha, o marcador fica redondo."
     ],
     "audience": "master"
   },

@@ -420,7 +420,7 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
       if (raw.sharedWithPlayers) b.push(["", "visível ao grupo"]);
       if (raw.templateName) b.push(["", `ficha: ${raw.templateName}`]);
     }
-    return b.map(([cls, text]) => `<span class="chip px-badge${cls ? " " + cls : ""}">${esc(text)}</span>`).join("");
+    return b.map(([cls, text]) => `<span class="chip px-badge${cls ? " " + cls : ""}" data-tip="${esc(text)}">${esc(text)}</span>`).join("");
   }
   function meta(e) {
     if (e.type === "folder") {

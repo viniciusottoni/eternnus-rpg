@@ -984,3 +984,13 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 **Alternativas rejeitadas:** mesclar a composição no próprio mapa (alteraria todas as cenas); criar um mapa derivado por cena (perderia paredes, luzes e pontos de entrada do mapa e as mudanças futuras do original); desenhar as transformações no servidor (segundo sistema de renderização); entregar as imagens soltas ao jogador (vazaria áreas não exploradas e imagens só do mestre).
 
 **Consequências:** migração aditiva `SceneComposition` (colunas anuláveis em `Scenes`, `CampaignMap`, `Sessions` e um índice); cenas, mapas e sessões antigos não mudam. Mapas de tiles e cenários prontos não recebem composição (o editor explica e oferece usar uma imagem própria como fundo). O mestre na mesa vê a mesma sobreposição dos jogadores (elementos "Só o mestre vê" ficam visíveis só no editor). Mesclas ficam em cache por mapa, revisão e sobreposição; o custo sob carga não foi medido. A composição ainda não entra nas versões persistentes da cena (ADR-083).
+
+## ADR-091 — Forma do marcador escolhida na preparação da cena (16/11/2026)
+
+**Contexto:** a mesa já permitia marcador redondo ou imagem livre (ADR-079), e a preparação da cena já guardava `appearance`/`size` em cada marcador preparado, mas o editor não oferecia a escolha nem desenhava a imagem do personagem do mestre.
+
+**Decisão:** o editor de cenas desenha cada personagem do mestre com a imagem da ficha (prévia `imagePreview` da lista de NPCs) e permite escolher a forma: ao colocar ("Colocar personagens do mestre como", nos painéis Personagens e Adicionar) e a qualquer momento pelo painel do marcador, por Propriedades (forma e tamanho) ou pelo menu do botão direito ("Forma no mapa"). Sem imagem, o marcador fica redondo e o editor explica onde escolher uma. A simulação do jogador mantém a regra da mesa: marcador apenas percebido não revela imagem, forma nem porte.
+
+**Alternativas rejeitadas:** novo endpoint para a forma na preparação (o contrato de salvar a cena já aceita os campos, validados por `TokenLooks`); forma fixa por personagem na ficha (impediria variar por cena).
+
+**Consequências:** sem migração nem mudança de contrato. A escolha "ao colocar" vale só enquanto o editor está aberto. O servidor continua validando `appearance` e `size`; ao apresentar a cena, a forma preparada passa ao marcador da sessão.

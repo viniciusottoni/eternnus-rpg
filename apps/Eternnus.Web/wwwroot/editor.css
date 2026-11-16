@@ -105,7 +105,6 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
   color: var(--gold, #c6a463); font: 600 9px/1 system-ui, sans-serif; cursor: pointer;
 }
 .ed-ruler-corner:hover, .ed-scale-button:hover { color: var(--bright, #e6cf98); background: var(--ed-hover); }
-.ed-ruler-corner[aria-disabled="true"], .ed-scale-button[aria-disabled="true"] { cursor: help; }
 /* Escala da régua na barra de estado: texto curto e clicável (abre o ajuste da escala do editor). */
 .ed-scale-button { min-height: 28px; padding: 2px 8px; border: 1px solid var(--ed-line); border-radius: 6px; background: transparent; color: #d8d0b4; font: inherit; font-size: .76rem; white-space: nowrap; cursor: pointer; }
 .ed-scale-button[hidden] { display: none; }

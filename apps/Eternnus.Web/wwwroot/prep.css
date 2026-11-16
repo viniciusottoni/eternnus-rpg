@@ -154,10 +154,10 @@ button.px-crumb:hover { color: var(--bright); background: #ffffff0a; transform: 
 .px-folder .px-thumb .ed-icon { width: 56%; height: 56%; stroke-width: 1.1; filter: drop-shadow(0 6px 10px #0008); }
 .px-initial { font-family: var(--serif); font-size: 42px; color: var(--bright); }
 .px-text-scene .ed-icon { width: 40px; height: 40px; }
-.px-info { display: grid; gap: 3px; padding: 8px 9px 9px; min-width: 0; }
+.px-info { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; padding: 8px 9px 9px; min-width: 0; }
 .px-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--text); }
 .px-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--quiet); font-size: 11px; }
-.px-badges { display: flex; flex-wrap: wrap; gap: 3px; }
+.px-badges { display: flex; flex-wrap: wrap; gap: 3px; min-width: 0; }
 .px-badge { font-size: 10px; padding: 1px 6px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .px-badge.live { border-color: #7cc35b88; color: #b9e6a0; }
 .px-col { display: none; }
