@@ -76,7 +76,7 @@ Todas as rotas exigem `Verified`, são do mestre (403 jogador, 404 sem vínculo)
 
 | Método/caminho | Contrato |
 | --- | --- |
-| GET `/api/campaigns/{id}/prep/explorer` | `{folders:[{id,name,parentId,category}], scenes:[…], maps:[…], characters:[…], activeSessionId, archived, limits}`. Listas limitadas pelos limites de domínio, projetadas. Mapas: campos de `CampaignMapView` + `summary, sourceKey, origin ('tiles'|'image'), createdAt, updatedAt, scenes (cenas que usam), inUse`. Cenas: `id,name,description,kind,mapKey,mapName,layerMode,visionMode,prepared,hasSaved,current,order,revision,folderId,createdAt,updatedAt`. Personagens: `id,name,summary,kind,side,copy,sharedWithPlayers,imagePreview,templateName,folderId,revision,createdAt,updatedAt`. Retratos, imagens-fonte e cenários oficiais não aparecem. |
+| GET `/api/campaigns/{id}/prep/explorer` | `{folders:[{id,name,parentId,category}], scenes:[…], maps:[…], characters:[…], activeSessionId, archived, limits}`. Listas limitadas pelos limites de domínio, projetadas. Mapas: campos de `CampaignMapView` + `summary, sourceKey, origin ('tiles'|'image'), createdAt, updatedAt, scenes (cenas que usam), inUse`. Cenas: `id,name,description,kind,mapKey,mapName,layerMode,visionMode,prepared,hasSaved,hasText,current,order,revision,folderId,createdAt,updatedAt` (`hasText` desde a ADR-084). Personagens: `id,name,summary,kind,side,copy,sharedWithPlayers,imagePreview,templateName,folderId,revision,createdAt,updatedAt`. Retratos, imagens-fonte e cenários oficiais não aparecem. |
 | POST `/prep/folders` | `{name, parentId, category}` → pasta. 400 nome/categoria/pai de outra categoria/profundidade; 409 limite. |
 | PUT `/prep/folders/{id}` | `{name}` → pasta renomeada. |
 | DELETE `/prep/folders/{id}` | 204; 409 se tiver subpasta ou item. |
@@ -117,11 +117,104 @@ Réguas, dicas e tamanho (16/11/2026):
 - **Dicas das ferramentas**: ao passar o mouse (400 ms) ou focar pelo teclado, a dica compartilhada de `help.js` abre ao lado da barra com o nome e o atalho em destaque e, em letras menores, o que fazer com a ferramenta (`tool.tip`; na cena, o texto de `scene-policy.HELP`). Ferramenta indisponível mostra o motivo. Não abre por toque.
 - **Área visível**: fica centralizada no palco com a área externa escura em volta. O tamanho na barra de estado é um botão que abre o diálogo de tamanho (mapa de tiles: Tamanho do mapa; imagem: Tamanho do documento).
 
+### 6.1 Contextos de trabalho, barra de propriedades e layout flexível (ADR-086, 16/11/2026)
+
+**Contextos** são modos de trabalho do mesmo documento, exibidos no topo (Alt+1 a Alt+6; setas navegam): Elementos, Terreno, Paredes e portas, Iluminação, Exploração e Cena (`EDITOR_CONTEXTS` em `editor-policy.js`). Cada editor declara os seus; o núcleo filtra ferramentas e painéis. Trocar de contexto não salva, não desfaz e não muda seleção, câmera, zoom, histórico, rascunho nem alterações não salvas. Combina com Básica/Completa: um contexto sem ferramenta própria visível na interface atual some da barra (com um só contexto, a barra fica oculta).
+
+| Editor | Contextos (rótulo) | O que mostram |
+| --- | --- | --- |
+| Tiles (`kind: "tiles"`) | Terreno, Elementos | Mesmas ferramentas de pintura; Terreno torna a Base a camada ativa e Elementos a camada Elementos. |
+| Imagem (`kind: "image"`) | Elementos, Documento (`scene`) | Elementos: criar e transformar (painéis Camadas, Estrutura, Propriedades). Documento: Recortar documento e Grade. |
+| Cena (`kind: "scene"`; preparação do mapa `map-prep`) | Elementos, Paredes e portas, Iluminação, Exploração, Cena | Pelos grupos de `TOOL_INVENTORY` (`scene-policy.js`): `elements`+Adicionar; `walls`; `light`; `explore`+Visibilidade/Revelar/Cobrir; `grid`+`scene`+Cenário/Texto/Notas. Ferramentas novas entram pelo grupo. |
+
+Regras (`toolInContext`, `panelInContext`, `availableContexts`, `toolAfterContext`): ferramenta pertence ao contexto pelo próprio `context` (id, lista ou `"*"`), senão pela lista `tools`/`groups` do contexto; `commonTools` (Selecionar, Mão, Zoom) aparecem em todos; **ferramenta ou painel sem contexto declarado aparece sempre** (nada fica inalcançável). Ao trocar, a ferramenta atual continua se estiver visível; senão vale a `defaultTool` do contexto. O atalho de letra de uma ferramenta de outro contexto leva a esse contexto (os atalhos existentes continuam valendo). O último contexto escolhido fica salvo por tipo de editor.
+
+**Barra de propriedades** (`contextBar: true`, hoje no editor de imagem): faixa fixa acima (padrão) ou abaixo da área de edição, ou oculta (Exibir › Barra de propriedades). A altura fica reservada mesmo sem seleção, para o canvas não mudar de tamanho a cada clique. No editor de imagem mostra X, Y, largura, altura, giro, opacidade, camada e bloqueio do selecionado (conjunto: X, Y, opacidade, camada, bloqueio) e ações rápidas (todas as propriedades, alinhar ×6, distribuir ×2, agrupar/desagrupar, duplicar, excluir). Cada mudança é uma entrada do histórico. A janela de propriedades e o painel Propriedades continuam.
+
+API para outros editores: `shell.contextBar.show({ key, title, icon, fields, actions, onChange(name, value), onAction(id) })`, `update(values)` (durante arrastes; não mexe no campo em edição) e `hide()`. Campos: `{ name, label, type: number|text|select|checkbox|color, value, min, max, step, unit, options:[[valor, rótulo]], disabled, wide }`. Mesma `key` com o foco na barra só atualiza valores. Números fora de `min/max` são limitados; vazio ou inválido volta ao valor anterior.
+
+**Layout flexível** (só apresentação, por conta neste navegador — `eternnus.editor.layout.{usuário}`, com leitura da chave antiga; nunca entra no documento): largura dos painéis (divisor, 220–520 px), painéis recolhidos, ordem dos painéis por tipo de editor (botão ⋮ do painel: recolher/expandir, mover para cima/baixo), réguas, posição da barra de propriedades e último contexto. **Maximizar área de edição** (botão no topo ou Ctrl+\\) esconde painéis, réguas e a barra de propriedades até ser desligado (não fica salvo). Exibir ganha, em todos os editores, Contexto de trabalho, Maximizar, Barra de propriedades e **Restaurar layout padrão**. No celular, os painéis seguem em gaveta sobre o palco, contextos e ações têm 44 px e a área segura é respeitada.
+
+**Editor de imagem — ferramentas profissionais**: seleção por clique, Shift/Ctrl (soma) e retângulo; com dois ou mais selecionados e desbloqueados, as alças do retângulo de limites redimensionam (proporção mantida; Shift solta; Alt a partir do centro) e giram o conjunto (Shift em passos de 15°), com dimensões e porcentagem durante o arraste (`scaleGroup`, `rotateGroup`). Elementos girados fora de múltiplos de 90° escalam de forma uniforme para não deformar. **Grupos**: `group` opcional no elemento (a-z, 0-9 e hífen, até 24; validado também no servidor; composições antigas não mudam); Ctrl+G agrupa elementos da mesma camada, Ctrl+Shift+G desagrupa; clicar num membro no canvas seleciona o grupo e a Estrutura escolhe um só; cópias (colar/duplicar) ganham grupo novo. **Guias magnéticas**: além da área visível e da grade, bordas e centros dos outros elementos visíveis (Exibir › Encaixar em objetos; Ctrl ao arrastar ignora). Alinhar, distribuir, bloquear, edição numérica e setas (1 px; Shift 10 px) já existiam e continuam.
+
+Desempenho medido (Node 24, `composition-policy.js`, 200 elementos girados): `hitTest` 0,03 ms por consulta; linhas de encaixe calculadas uma vez por arraste em 0,6 ms; `snapMove` 0,05 ms por movimento. Com o limite de 200 elementos por mapa, um índice espacial não traria ganho perceptível e não foi adotado.
+
 ## 7. Fluxos
 
 - **Novo mapa** → "Criar do zero" (enviar imagem, importar URL, arquivo VTT, mapa vazio com tiles, área em branco) ou "A partir de modelo" (catálogo oficial com miniaturas, busca, filtro por tipo e prévia ampliada). Um modelo de tiles vira mapa de tiles editável (camadas preservadas, nada é rasterizado); a cartografia oficial vira mapa de imagem. O original nunca é alterado. Após criar, o editor abre.
 - **Nova cena** → "Do zero" (abre o editor de cena sem mapa; textual ou visual) ou "A partir de mapa" (seletor em três grupos nesta ordem: mapas próprios criados do zero/importados, mapas criados de modelos, modelos oficiais). A cena referencia o mapa (sem cópia de bytes).
 - **Personagens**: abrir ficha, editar, duplicar, cópia de encontro, história, organizar em pastas. No editor de cena, o painel Personagens permite arrastar para o canvas.
+
+### 7.1 Gerenciador: favoritos, recentes, coleções e filtros (ADR-084, 16/11/2026)
+
+Auditoria antes da mudança: já existiam busca sem acentos (pasta ou "em todas as pastas"), ordenação, grade/lista, seleção múltipla (Ctrl/Shift/teclado), copiar/recortar/colar/duplicar/mover em lote (tudo ou nada no servidor), excluir em lote com relatório de falhas, arrastar para pastas da árvore, do conteúdo e do caminho (com "Mover para…" no toque), breadcrumbs, histórico Voltar/Avançar, painel de detalhes com miniatura e o selo "N cenas" nos mapas. O que faltava foi acrescentado sem mudar as três raízes nem os endpoints `/prep/*`:
+
+- **Favoritos**: estrela na barra (`aria-pressed`), no painel de detalhes e no menu do item; vale para itens e pastas. Selo "★ favorito" no item.
+- **Recentes**: o que o mestre abriu neste navegador (até 30) mais o que foi modificado nos últimos 14 dias, do mais recente para o mais antigo.
+- **Coleções inteligentes** (seção "Coleções" abaixo das pastas, com contagem): Favoritos, Recentes, Cenas prontas para apresentar, Cenas incompletas, Personagens sem ficha completa, Mapas não usados. **Coleções salvas**: "Salvar como coleção…" guarda a busca e os filtros atuais (até 20, nome até 40), sempre aplicados à campanha toda. Coleções são vistas virtuais: nunca movem, copiam nem renomeiam; colar e soltar não valem nelas ("Abra uma pasta para colar."). "Mostrar na pasta" leva ao local real do item.
+- **Filtros** (botão "Filtros (N)"): tipo (cena com mapa/imagem/textual, mapa de tiles/imagem, personagem, criatura), origem do mapa (tiles, enviado/importado, a partir de modelo), modificado (24 h, 7, 30 dias, há mais de 30), uso, preparo (prontos/incompletos), só favoritos e **Onde** (nesta pasta, nesta pasta e subpastas, toda a campanha). Com filtro ativo as pastas saem da lista. Filtros que não se aplicam a um tipo excluem esse tipo: origem só mapas; uso só mapas (cenas que usam ou mesa) e cenas (em apresentação ou já visitadas); preparo só cenas e personagens.
+- **Critérios de preparo** (`sceneIssues`, `characterIssues` em `prep-explorer-policy.js`): cena incompleta = (a) cena com mapa ou imagem sem cenário, ou com cenário que não existe mais; (b) cena com mapa sem nenhum marcador; (c) sem texto compartilhável para a mesa. Cena textual não precisa de mapa. "Pronta para apresentar" = sem pendências e fora de apresentação. Personagem incompleto = sem ficha-modelo vinculada ou sem resumo. Mapa não usado = nenhuma cena usa e não está na mesa. As pendências aparecem em texto (selo "⚠ incompleta: …" e lista "Pendências" no detalhe), nunca só por cor, e nada é corrigido automaticamente.
+- **Vínculos**: o detalhe do mapa lista as cenas que o usam (até 12, cada uma leva à cena) ou "Mapa não usado".
+- **Listas longas**: o conteúdo desenha 240 itens por vez com "Mostrar mais"; o teclado amplia sozinho ao avançar.
+- **Armazenamento**: favoritos, recentes e coleções salvas ficam em `localStorage` sob `eternnus.prep.user.{usuário}.{campanha}`, só com chaves `tipo:id`, datas e critérios (nenhum texto da campanha). São podados quando o item deixa de existir. Valem só neste navegador; leitura/escrita indisponível não quebra o gerenciador.
+- **Servidor**: `GET /prep/explorer` passou a projetar `hasText` em cada cena (só o booleano; texto compartilhável e notas privadas continuam fora da lista). Sem migração.
+
+### 7.2 Editor de tiles: pincel, preenchimento, substituição e mistura (ADR-085, 16/11/2026)
+
+Regras puras em `js/tile-map-policy.js` (`brushFootprint`, `strokeCells`, `floodCells`, `matchCells`, `setCells`, `replaceTiles`, `variantCode`, `canMix`, `codeCounts`), testadas em `tests/tile-tools-policy.test.mjs`.
+
+| Ferramenta | Comportamento |
+| --- | --- |
+| **Tamanho do pincel** (Paleta › Pincel e borracha; `[` e `]`; Editar › Pincel maior/menor/redondo) | 1, 2, 3 ou 5 casas por lado, quadrado ou redondo (redondo vale a partir de 3: 3 = cruz, 5 = disco de 21 casas). Vale para pincel e borracha; tamanhos pares crescem para a direita/baixo. O contorno aparece sob o cursor antes de pintar. Preferência local (`eternnus.tiles.brush`). |
+| **Preenchimento** (G) | Área contígua (4 vizinhos) de casas iguais **na camada que recebe o tile**, como antes. Clicando dentro de uma seleção, fica limitado a ela. A partir de 250 casas (`LARGE_OPERATION`) as casas atingidas ficam destacadas no mapa e o editor pede confirmação com a contagem. |
+| **Substituir tile…** (Editar; botão direito numa casa ou na seleção) | Troca todas as casas de um tile por outro na camada ativa inteira ou só na seleção. "Por" aceita "Vazia (apagar)" fora da Base; a Base nunca fica vazia. As casas que mudam ficam destacadas no mapa enquanto a janela está aberta, com a contagem ao lado. |
+| **Mistura de tiles** (Paleta › Mistura de tiles) | Até 8 tiles da mesma camada automática (só terrenos, ou só natureza/construções/objetos; entradas do grupo nunca). Com "Pintar com a mistura", pincel, retângulo, preenchimento e "Preencher seleção" sorteiam um tile por casa com hash determinístico (casa + semente); "Nova variação" muda a semente. O catálogo não tem variantes do mesmo tile: a variação é entre tiles diferentes escolhidos pelo mestre. |
+| **Região** | Seleção de área (M) + Preencher seleção, Excluir seleção, Substituir na seleção e preenchimento limitado à seleção. |
+
+Toda operação é uma única entrada do histórico. A semântica das camadas não muda: o tile vai para a camada indicada pela camada automática (ou a ativa), `_` continua sendo vazio, a fusão/regras/entradas seguem `mergeLayers`. A repintura continua parcial (ADR-082): o tabuleiro compara as grades e redesenha só as casas afetadas; operações grandes (mais de ⅓ das casas) caem no caminho de redesenho completo em fatias que já existia.
+
+### 7.3 Assistente de alinhamento da grade (ADR-085, 16/11/2026)
+
+Faz parte do ajuste compartilhado `js/grid-adjust.js`, então aparece em todos os lugares que já ajustavam a grade (envio/importação de mapa, Ajustar grade do acervo e editor de cenas), sem mudar os chamadores. Regras puras em `js/grid-align-policy.js` (`tests/grid-align-policy.test.mjs`).
+
+1. **Marcar** a referência na prévia (aproximar com + para precisão; arrastar continua movendo a vista; um clique sem arrastar marca o ponto):
+   - **Marcar uma casa**: dois cantos opostos de uma casa → lado = média de largura e altura; deslocamento = canto superior esquerdo módulo o lado. Avisa se a casa marcada não for quadrada (> 10% ou 2 px).
+   - **Marcar N casas**: dois cruzamentos de linhas na mesma linha ou coluna + número de casas entre eles (1–100) → lado = distância ÷ N arredondado; mostra o desvio acumulado quando a casa real tem fração de pixel.
+   - **Detectar automaticamente**: autocorrelação dos perfis de borda (diferença de brilho entre colunas numa faixa horizontal de 384 px e entre linhas numa faixa vertical, na resolução real da imagem). Escolhe o menor período com pico ≥ 85% do maior (evita múltiplos), informa a certeza e recusa (sem inventar) quando não reconhece grade. Imagens que o navegador não deixa ler mostram a orientação para marcar à mão.
+2. **Conferir**: o resultado é aplicado à prévia (linhas douradas e "N × M casas" validados por `gridFor`, a mesma conta de `CampaignMapView.Grid`), sem gravar nada.
+3. **Confirmar** com "Usar este alinhamento", ou **Cancelar** (Esc) para voltar aos valores anteriores. Os controles de tamanho/alinhamento continuam para o ajuste fino.
+
+Grava pelos campos existentes (`gridPixels`, `gridOffsetX`, `gridOffsetY`, `scaleMeters`); sem migração e sem contrato novo. Se o formulário do chamador for enviado com o assistente aberto, valem os valores visíveis na prévia.
+
+**Hexagonal e isométrica — não implementadas.** O servidor e o cliente assumem casas quadradas em toda a cadeia: `CampaignMapView.Grid`, `FogGrid` (linha de visão por passo inteiro entre centros, `Reach` circular em casas), `FogRules.PathLength` (8 vizinhos, diagonal custo 1, regra de canto), `ScenePrep.ValidateTokens`, movimentação livre (`FinePositions`), alcance de ataque, máscara de imagem por casa, bitsets de exploração (`Bits`, índice `y × largura + x`), paredes por casa (`Cells`) e o desenho de `table-map.js`/`fog-policy.js`. Uma grade não quadrada exige: (1) um tipo de grade versionado no mapa (`GridKind` + orientação, migração aditiva com padrão `square`); (2) um sistema de coordenadas próprio (axial/cúbico para hex; losango para isométrica) com conversão pixel ↔ casa no servidor e no cliente; (3) vizinhança de 6 casas e distância hex nas regras de caminho, alcance, luz e visão, com linha de visão por amostragem de centros; (4) máscara de névoa por polígono da casa; (5) ajuste de `TableFog.Fit`, importação UVTT e edição de tiles (os tilesets oficiais são quadrados). Apresentar só o desenho hexagonal sem essas regras faria a mesa calcular distância e visão diferentes do que o jogador vê — por isso o assistente oferece só a grade quadrada.
+
+### 7.4 Rascunho local, conflitos e versões (ADR-083, 16/11/2026)
+
+**Rascunho local (neste navegador).** Os três editores (tiles, imagem, cena — inclusive a preparação só do mapa) guardam o documento em edição no IndexedDB (`js/editor-drafts.js`; regras puras em `js/draft-policy.js`):
+
+| Regra | Valor |
+| --- | --- |
+| Chave | usuário + campanha + tipo (`tilemap`, `imagemap`, `scene`, `maplayer`) + documento (`new` antes do primeiro salvamento) |
+| Conteúdo | o mesmo instantâneo do desfazer + revisão de origem + data; sem credenciais, e-mails ou bytes de imagem (imagens-fonte por `asset:{id}`) |
+| Quando grava | ~2 s depois da última mudança; ao esconder ou fechar a página; ao fechar o editor sem ser por "Fechar sem salvar" |
+| Quando apaga | documento salvo (sem alterações pendentes), "Fechar sem salvar" confirmado, sair da conta, 30 dias, além de 30 rascunhos por usuário |
+| Limite | 8 MiB por rascunho (acima disso a barra de estado avisa e nada é gravado) |
+
+- Ao abrir um documento com rascunho diferente do salvo: aviso "Rascunho local não salvo" com **Restaurar rascunho**, **Descartar** e **Decidir depois** (Arquivo › Rascunho local… reabre; enquanto isso o rascunho automático fica pausado para não sobrescrever o anterior).
+- Restaurar entra no histórico de desfazer e mantém a **revisão de origem**: se o documento foi salvo depois (outra aba, outro dispositivo), salvar mostra o conflito em vez de sobrescrever.
+- Barra de estado: "Salvo às hh:mm" ou "Rascunho local hh:mm".
+- Outra aba com o mesmo documento: mensagem ao abrir e quando a outra aba salva (`BroadcastChannel`).
+- Falha do IndexedDB (modo privado, cota) nunca bloqueia o editor; só não há rascunho.
+
+**Conflitos (409 de revisão).** Nunca há sobrescrita silenciosa. Tiles: Recarregar / Salvar como cópia / Continuar editando. Imagem: Continuar editando / Recarregar. Cena: Continuar editando / **Salvar como nova cena** (grava a cena numa cópia na mesma pasta e passa a editá-la; a preparação do mapa continua pendente) / Recarregar. Em todos, **Recarregar** guarda antes o rascunho, que continua em Arquivo › Rascunho local….
+
+**Versões persistentes (servidor).** Arquivo › Versões… (mapa de tiles, mapa de imagem e cena já salvos):
+
+- Cada salvamento registra uma **versão automática** (deduplicada por conteúdo; ficam as 20 mais recentes). O mestre **guarda a versão salva atual com nome** (até 20 por documento, 1–80 caracteres) ou nomeia uma automática.
+- **Carregar** coloca a versão no editor como alteração desfazível; nada muda até **Salvar**, que segue as regras de sempre (revisão, mapa na mesa, preparação/cenas do mapa de tiles).
+- Mapa de imagem: a versão guarda a composição e a grade, nunca a imagem achatada. Imagens-fonte usadas por versões retidas não são apagadas ao salvar; saem quando nenhuma versão retida nem o documento as usam. Mapas antigos sem composição precisam ser salvos no editor antes da primeira versão nomeada.
+- Cena: a versão guarda nome, textos, notas privadas, cenário, visibilidade, alcance, ordem, arranjo e camadas. Não guarda a preparação do mapa (paredes, luzes, névoa), posições "Retomar" nem exploração.
+- Excluir o mapa ou a cena exclui as versões. Não confundir com o painel Histórico (desfazer da sessão de edição).
 
 ## 8. Segurança e sessão
 

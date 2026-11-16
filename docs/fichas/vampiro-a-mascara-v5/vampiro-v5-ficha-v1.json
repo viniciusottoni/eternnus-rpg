@@ -1,0 +1,2420 @@
+{
+ "pages": [
+  {
+   "width": 612,
+   "height": 792
+  },
+  {
+   "width": 612,
+   "height": 792
+  }
+ ],
+ "fields": [
+  {
+   "name": "nome",
+   "label": "Nome",
+   "type": "text",
+   "x": 0.14575,
+   "y": 0.12038,
+   "w": 0.21454,
+   "h": 0.01641,
+   "role": "name",
+   "maxLength": 60
+  },
+  {
+   "name": "conceito",
+   "label": "Conceito",
+   "type": "text",
+   "x": 0.43137,
+   "y": 0.12038,
+   "w": 0.1969,
+   "h": 0.01641,
+   "maxLength": 80
+  },
+  {
+   "name": "predador",
+   "label": "Predador",
+   "type": "text",
+   "x": 0.7,
+   "y": 0.12038,
+   "w": 0.19624,
+   "h": 0.01641,
+   "maxLength": 40
+  },
+  {
+   "name": "cronica",
+   "label": "Crônica",
+   "type": "text",
+   "x": 0.1567,
+   "y": 0.14904,
+   "w": 0.20359,
+   "h": 0.01641,
+   "maxLength": 80
+  },
+  {
+   "name": "ambicao",
+   "label": "Ambição",
+   "type": "text",
+   "x": 0.43121,
+   "y": 0.14904,
+   "w": 0.19706,
+   "h": 0.01641,
+   "maxLength": 120
+  },
+  {
+   "name": "cla",
+   "label": "Clã",
+   "type": "text",
+   "x": 0.6665,
+   "y": 0.14904,
+   "w": 0.22974,
+   "h": 0.01641,
+   "maxLength": 40
+  },
+  {
+   "name": "senhor",
+   "label": "Senhor",
+   "type": "text",
+   "x": 0.15163,
+   "y": 0.17758,
+   "w": 0.20866,
+   "h": 0.01641,
+   "maxLength": 60
+  },
+  {
+   "name": "desejo",
+   "label": "Desejo",
+   "type": "text",
+   "x": 0.41683,
+   "y": 0.17758,
+   "w": 0.21144,
+   "h": 0.01641,
+   "maxLength": 120
+  },
+  {
+   "name": "geracao",
+   "label": "Geração",
+   "type": "text",
+   "x": 0.69444,
+   "y": 0.17758,
+   "w": 0.2018,
+   "h": 0.01641,
+   "maxLength": 20
+  },
+  {
+   "name": "forca",
+   "label": "Força",
+   "type": "select",
+   "x": 0.25607,
+   "y": 0.24688,
+   "w": 0.10784,
+   "h": 0.02296,
+   "default": "●",
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "destreza",
+   "label": "Destreza",
+   "type": "select",
+   "x": 0.25607,
+   "y": 0.27183,
+   "w": 0.10784,
+   "h": 0.02296,
+   "default": "●",
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "vigor",
+   "label": "Vigor",
+   "type": "select",
+   "x": 0.25607,
+   "y": 0.29708,
+   "w": 0.10784,
+   "h": 0.02296,
+   "default": "●",
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "carisma",
+   "label": "Carisma",
+   "type": "select",
+   "x": 0.52404,
+   "y": 0.24688,
+   "w": 0.10784,
+   "h": 0.02296,
+   "default": "●",
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "manipulacao",
+   "label": "Manipulação",
+   "type": "select",
+   "x": 0.52404,
+   "y": 0.27183,
+   "w": 0.10784,
+   "h": 0.02296,
+   "default": "●",
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "autocontrole",
+   "label": "Autocontrole",
+   "type": "select",
+   "x": 0.52365,
+   "y": 0.29645,
+   "w": 0.10784,
+   "h": 0.02296,
+   "default": "●",
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "inteligencia",
+   "label": "Inteligência",
+   "type": "select",
+   "x": 0.79244,
+   "y": 0.24688,
+   "w": 0.10784,
+   "h": 0.02296,
+   "default": "●",
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "raciocinio",
+   "label": "Raciocínio",
+   "type": "select",
+   "x": 0.79244,
+   "y": 0.27183,
+   "w": 0.10784,
+   "h": 0.02296,
+   "default": "●",
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "determinacao",
+   "label": "Determinação",
+   "type": "select",
+   "x": 0.79244,
+   "y": 0.29708,
+   "w": 0.10784,
+   "h": 0.02296,
+   "default": "●",
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "vitalidade_1",
+   "label": "Vitalidade — caixa 1",
+   "type": "select",
+   "x": 0.30088,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vitalidade_2",
+   "label": "Vitalidade — caixa 2",
+   "type": "select",
+   "x": 0.31845,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vitalidade_3",
+   "label": "Vitalidade — caixa 3",
+   "type": "select",
+   "x": 0.33642,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vitalidade_4",
+   "label": "Vitalidade — caixa 4",
+   "type": "select",
+   "x": 0.35399,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vitalidade_5",
+   "label": "Vitalidade — caixa 5",
+   "type": "select",
+   "x": 0.37196,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vitalidade_6",
+   "label": "Vitalidade — caixa 6",
+   "type": "select",
+   "x": 0.39688,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vitalidade_7",
+   "label": "Vitalidade — caixa 7",
+   "type": "select",
+   "x": 0.41485,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vitalidade_8",
+   "label": "Vitalidade — caixa 8",
+   "type": "select",
+   "x": 0.43242,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vitalidade_9",
+   "label": "Vitalidade — caixa 9",
+   "type": "select",
+   "x": 0.45039,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vitalidade_10",
+   "label": "Vitalidade — caixa 10",
+   "type": "select",
+   "x": 0.46796,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vontade_1",
+   "label": "Força de Vontade — caixa 1",
+   "type": "select",
+   "x": 0.5182,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vontade_2",
+   "label": "Força de Vontade — caixa 2",
+   "type": "select",
+   "x": 0.53618,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vontade_3",
+   "label": "Força de Vontade — caixa 3",
+   "type": "select",
+   "x": 0.55374,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vontade_4",
+   "label": "Força de Vontade — caixa 4",
+   "type": "select",
+   "x": 0.57172,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vontade_5",
+   "label": "Força de Vontade — caixa 5",
+   "type": "select",
+   "x": 0.58928,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vontade_6",
+   "label": "Força de Vontade — caixa 6",
+   "type": "select",
+   "x": 0.61461,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vontade_7",
+   "label": "Força de Vontade — caixa 7",
+   "type": "select",
+   "x": 0.63217,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vontade_8",
+   "label": "Força de Vontade — caixa 8",
+   "type": "select",
+   "x": 0.65015,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vontade_9",
+   "label": "Força de Vontade — caixa 9",
+   "type": "select",
+   "x": 0.66771,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "vontade_10",
+   "label": "Força de Vontade — caixa 10",
+   "type": "select",
+   "x": 0.68569,
+   "y": 0.34303,
+   "w": 0.01716,
+   "h": 0.01091,
+   "fontSize": 8,
+   "options": [
+    "/",
+    "X"
+   ]
+  },
+  {
+   "name": "armas_brancas",
+   "label": "Armas Brancas",
+   "type": "select",
+   "x": 0.27404,
+   "y": 0.39492,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "armas_brancas_espec",
+   "label": "Armas Brancas — especialização",
+   "type": "text",
+   "x": 0.18742,
+   "y": 0.40173,
+   "w": 0.08157,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "armas_fogo",
+   "label": "Armas de Fogo",
+   "type": "select",
+   "x": 0.27404,
+   "y": 0.42049,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "armas_fogo_espec",
+   "label": "Armas de Fogo — especialização",
+   "type": "text",
+   "x": 0.18775,
+   "y": 0.42786,
+   "w": 0.08124,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "atletismo",
+   "label": "Atletismo",
+   "type": "select",
+   "x": 0.27404,
+   "y": 0.44637,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "atletismo_espec",
+   "label": "Atletismo — especialização",
+   "type": "text",
+   "x": 0.15801,
+   "y": 0.454,
+   "w": 0.11098,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "briga",
+   "label": "Briga",
+   "type": "select",
+   "x": 0.27404,
+   "y": 0.47258,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "briga_espec",
+   "label": "Briga — especialização",
+   "type": "text",
+   "x": 0.13105,
+   "y": 0.48014,
+   "w": 0.13794,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "conducao",
+   "label": "Condução",
+   "type": "select",
+   "x": 0.27404,
+   "y": 0.49877,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "conducao_espec",
+   "label": "Condução — especialização",
+   "type": "text",
+   "x": 0.15931,
+   "y": 0.50627,
+   "w": 0.10967,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "furtividade",
+   "label": "Furtividade",
+   "type": "select",
+   "x": 0.27404,
+   "y": 0.52498,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "furtividade_espec",
+   "label": "Furtividade — especialização",
+   "type": "text",
+   "x": 0.16732,
+   "y": 0.53241,
+   "w": 0.10167,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "ladroagem",
+   "label": "Ladroagem",
+   "type": "select",
+   "x": 0.27404,
+   "y": 0.55117,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "ladroagem_espec",
+   "label": "Ladroagem — especialização",
+   "type": "text",
+   "x": 0.16471,
+   "y": 0.55855,
+   "w": 0.10428,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "oficios",
+   "label": "Ofícios",
+   "type": "select",
+   "x": 0.27404,
+   "y": 0.57705,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "oficios_espec",
+   "label": "Ofícios — especialização",
+   "type": "text",
+   "x": 0.14216,
+   "y": 0.58468,
+   "w": 0.12683,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "sobrevivencia",
+   "label": "Sobrevivência",
+   "type": "select",
+   "x": 0.27404,
+   "y": 0.60327,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "sobrevivencia_espec",
+   "label": "Sobrevivência — especialização",
+   "type": "text",
+   "x": 0.18088,
+   "y": 0.61082,
+   "w": 0.0881,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "empatia_animais",
+   "label": "Empatia com Animais",
+   "type": "select",
+   "x": 0.54692,
+   "y": 0.39429,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "empatia_animais_espec",
+   "label": "Empatia com Animais — especialização",
+   "type": "text",
+   "x": 0.49902,
+   "y": 0.40173,
+   "w": 0.04284,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "etiqueta",
+   "label": "Etiqueta",
+   "type": "select",
+   "x": 0.54692,
+   "y": 0.42049,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "etiqueta_espec",
+   "label": "Etiqueta — especialização",
+   "type": "text",
+   "x": 0.42026,
+   "y": 0.42786,
+   "w": 0.1216,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "intimidacao",
+   "label": "Intimidação",
+   "type": "select",
+   "x": 0.54692,
+   "y": 0.44637,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "intimidacao_espec",
+   "label": "Intimidação — especialização",
+   "type": "text",
+   "x": 0.44118,
+   "y": 0.454,
+   "w": 0.10069,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "lideranca",
+   "label": "Liderança",
+   "type": "select",
+   "x": 0.54692,
+   "y": 0.47258,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "lideranca_espec",
+   "label": "Liderança — especialização",
+   "type": "text",
+   "x": 0.42843,
+   "y": 0.48014,
+   "w": 0.11343,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "manha",
+   "label": "Manha",
+   "type": "select",
+   "x": 0.54692,
+   "y": 0.49877,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "manha_espec",
+   "label": "Manha — especialização",
+   "type": "text",
+   "x": 0.41111,
+   "y": 0.50627,
+   "w": 0.13075,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "performance",
+   "label": "Performance",
+   "type": "select",
+   "x": 0.54692,
+   "y": 0.52498,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "performance_espec",
+   "label": "Performance — especialização",
+   "type": "text",
+   "x": 0.44542,
+   "y": 0.53241,
+   "w": 0.09644,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "persuasao",
+   "label": "Persuasão",
+   "type": "select",
+   "x": 0.54692,
+   "y": 0.55117,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "persuasao_espec",
+   "label": "Persuasão — especialização",
+   "type": "text",
+   "x": 0.42761,
+   "y": 0.55855,
+   "w": 0.11425,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "sagacidade",
+   "label": "Sagacidade",
+   "type": "select",
+   "x": 0.54692,
+   "y": 0.57705,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "sagacidade_espec",
+   "label": "Sagacidade — especialização",
+   "type": "text",
+   "x": 0.43497,
+   "y": 0.58468,
+   "w": 0.1069,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "subterfugio",
+   "label": "Subterfúgio",
+   "type": "select",
+   "x": 0.54692,
+   "y": 0.60327,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "subterfugio_espec",
+   "label": "Subterfúgio — especialização",
+   "type": "text",
+   "x": 0.43954,
+   "y": 0.61082,
+   "w": 0.10232,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "ciencia",
+   "label": "Ciência",
+   "type": "select",
+   "x": 0.8194,
+   "y": 0.39429,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "ciencia_espec",
+   "label": "Ciência — especialização",
+   "type": "text",
+   "x": 0.68954,
+   "y": 0.40173,
+   "w": 0.1248,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "erudicao",
+   "label": "Erudição",
+   "type": "select",
+   "x": 0.8194,
+   "y": 0.42049,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "erudicao_espec",
+   "label": "Erudição — especialização",
+   "type": "text",
+   "x": 0.69755,
+   "y": 0.42786,
+   "w": 0.1168,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "financas",
+   "label": "Finanças",
+   "type": "select",
+   "x": 0.8194,
+   "y": 0.44637,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "financas_espec",
+   "label": "Finanças — especialização",
+   "type": "text",
+   "x": 0.69624,
+   "y": 0.454,
+   "w": 0.1181,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "investigacao",
+   "label": "Investigação",
+   "type": "select",
+   "x": 0.8194,
+   "y": 0.47258,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "investigacao_espec",
+   "label": "Investigação — especialização",
+   "type": "text",
+   "x": 0.71699,
+   "y": 0.48014,
+   "w": 0.09735,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "medicina",
+   "label": "Medicina",
+   "type": "select",
+   "x": 0.8194,
+   "y": 0.49877,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "medicina_espec",
+   "label": "Medicina — especialização",
+   "type": "text",
+   "x": 0.69967,
+   "y": 0.50627,
+   "w": 0.11467,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "ocultismo",
+   "label": "Ocultismo",
+   "type": "select",
+   "x": 0.8194,
+   "y": 0.52498,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "ocultismo_espec",
+   "label": "Ocultismo — especialização",
+   "type": "text",
+   "x": 0.70686,
+   "y": 0.53241,
+   "w": 0.10748,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "percepcao",
+   "label": "Percepção",
+   "type": "select",
+   "x": 0.8194,
+   "y": 0.55117,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "percepcao_espec",
+   "label": "Percepção — especialização",
+   "type": "text",
+   "x": 0.70474,
+   "y": 0.55855,
+   "w": 0.10961,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "politica",
+   "label": "Política",
+   "type": "select",
+   "x": 0.8194,
+   "y": 0.57705,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "politica_espec",
+   "label": "Política — especialização",
+   "type": "text",
+   "x": 0.69003,
+   "y": 0.58468,
+   "w": 0.12431,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "tecnologia",
+   "label": "Tecnologia",
+   "type": "select",
+   "x": 0.8194,
+   "y": 0.60327,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "tecnologia_espec",
+   "label": "Tecnologia — especialização",
+   "type": "text",
+   "x": 0.70997,
+   "y": 0.61082,
+   "w": 0.10438,
+   "h": 0.01187,
+   "maxLength": 40,
+   "fontSize": 7
+  },
+  {
+   "name": "disciplina_1",
+   "label": "Disciplina 1",
+   "type": "text",
+   "x": 0.10212,
+   "y": 0.65747,
+   "w": 0.17013,
+   "h": 0.01641,
+   "maxLength": 40
+  },
+  {
+   "name": "disciplina_1_nivel",
+   "label": "Disciplina 1 — nível",
+   "type": "select",
+   "x": 0.27731,
+   "y": 0.65251,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "disciplina_1_poder_1",
+   "label": "Disciplina 1 — poder 1",
+   "type": "text",
+   "x": 0.10212,
+   "y": 0.67962,
+   "w": 0.25858,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_1_poder_2",
+   "label": "Disciplina 1 — poder 2",
+   "type": "text",
+   "x": 0.10212,
+   "y": 0.70108,
+   "w": 0.25858,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_1_poder_3",
+   "label": "Disciplina 1 — poder 3",
+   "type": "text",
+   "x": 0.10212,
+   "y": 0.72255,
+   "w": 0.25858,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_1_poder_4",
+   "label": "Disciplina 1 — poder 4",
+   "type": "text",
+   "x": 0.10212,
+   "y": 0.74401,
+   "w": 0.25858,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_1_poder_5",
+   "label": "Disciplina 1 — poder 5",
+   "type": "text",
+   "x": 0.10212,
+   "y": 0.76547,
+   "w": 0.25858,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_2",
+   "label": "Disciplina 2",
+   "type": "text",
+   "x": 0.39011,
+   "y": 0.65747,
+   "w": 0.15175,
+   "h": 0.01641,
+   "maxLength": 40
+  },
+  {
+   "name": "disciplina_2_nivel",
+   "label": "Disciplina 2 — nível",
+   "type": "select",
+   "x": 0.54692,
+   "y": 0.65251,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "disciplina_2_poder_1",
+   "label": "Disciplina 2 — poder 1",
+   "type": "text",
+   "x": 0.37051,
+   "y": 0.67962,
+   "w": 0.25776,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_2_poder_2",
+   "label": "Disciplina 2 — poder 2",
+   "type": "text",
+   "x": 0.37051,
+   "y": 0.70108,
+   "w": 0.25776,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_2_poder_3",
+   "label": "Disciplina 2 — poder 3",
+   "type": "text",
+   "x": 0.37051,
+   "y": 0.72255,
+   "w": 0.25776,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_2_poder_4",
+   "label": "Disciplina 2 — poder 4",
+   "type": "text",
+   "x": 0.37051,
+   "y": 0.74401,
+   "w": 0.25776,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_2_poder_5",
+   "label": "Disciplina 2 — poder 5",
+   "type": "text",
+   "x": 0.37051,
+   "y": 0.76547,
+   "w": 0.25776,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_3",
+   "label": "Disciplina 3",
+   "type": "text",
+   "x": 0.65768,
+   "y": 0.65747,
+   "w": 0.15176,
+   "h": 0.01641,
+   "maxLength": 40
+  },
+  {
+   "name": "disciplina_3_nivel",
+   "label": "Disciplina 3 — nível",
+   "type": "select",
+   "x": 0.8145,
+   "y": 0.65251,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "disciplina_3_poder_1",
+   "label": "Disciplina 3 — poder 1",
+   "type": "text",
+   "x": 0.63807,
+   "y": 0.67962,
+   "w": 0.2594,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_3_poder_2",
+   "label": "Disciplina 3 — poder 2",
+   "type": "text",
+   "x": 0.63807,
+   "y": 0.70108,
+   "w": 0.2594,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_3_poder_3",
+   "label": "Disciplina 3 — poder 3",
+   "type": "text",
+   "x": 0.63807,
+   "y": 0.72255,
+   "w": 0.2594,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_3_poder_4",
+   "label": "Disciplina 3 — poder 4",
+   "type": "text",
+   "x": 0.63807,
+   "y": 0.74401,
+   "w": 0.2594,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_3_poder_5",
+   "label": "Disciplina 3 — poder 5",
+   "type": "text",
+   "x": 0.63807,
+   "y": 0.76547,
+   "w": 0.2594,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_4",
+   "label": "Disciplina 4",
+   "type": "text",
+   "x": 0.10212,
+   "y": 0.78626,
+   "w": 0.17013,
+   "h": 0.01641,
+   "maxLength": 40
+  },
+  {
+   "name": "disciplina_4_nivel",
+   "label": "Disciplina 4 — nível",
+   "type": "select",
+   "x": 0.27731,
+   "y": 0.7813,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "disciplina_4_poder_1",
+   "label": "Disciplina 4 — poder 1",
+   "type": "text",
+   "x": 0.10212,
+   "y": 0.8084,
+   "w": 0.25858,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_4_poder_2",
+   "label": "Disciplina 4 — poder 2",
+   "type": "text",
+   "x": 0.10212,
+   "y": 0.82987,
+   "w": 0.25858,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_4_poder_3",
+   "label": "Disciplina 4 — poder 3",
+   "type": "text",
+   "x": 0.10212,
+   "y": 0.85133,
+   "w": 0.25858,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_4_poder_4",
+   "label": "Disciplina 4 — poder 4",
+   "type": "text",
+   "x": 0.10212,
+   "y": 0.8728,
+   "w": 0.25858,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_4_poder_5",
+   "label": "Disciplina 4 — poder 5",
+   "type": "text",
+   "x": 0.10212,
+   "y": 0.89426,
+   "w": 0.25858,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_5",
+   "label": "Disciplina 5",
+   "type": "text",
+   "x": 0.39011,
+   "y": 0.78626,
+   "w": 0.15175,
+   "h": 0.01641,
+   "maxLength": 40
+  },
+  {
+   "name": "disciplina_5_nivel",
+   "label": "Disciplina 5 — nível",
+   "type": "select",
+   "x": 0.54692,
+   "y": 0.7813,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "disciplina_5_poder_1",
+   "label": "Disciplina 5 — poder 1",
+   "type": "text",
+   "x": 0.37051,
+   "y": 0.8084,
+   "w": 0.25776,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_5_poder_2",
+   "label": "Disciplina 5 — poder 2",
+   "type": "text",
+   "x": 0.37051,
+   "y": 0.82987,
+   "w": 0.25776,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_5_poder_3",
+   "label": "Disciplina 5 — poder 3",
+   "type": "text",
+   "x": 0.37051,
+   "y": 0.85133,
+   "w": 0.25776,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_5_poder_4",
+   "label": "Disciplina 5 — poder 4",
+   "type": "text",
+   "x": 0.37051,
+   "y": 0.8728,
+   "w": 0.25776,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_5_poder_5",
+   "label": "Disciplina 5 — poder 5",
+   "type": "text",
+   "x": 0.37051,
+   "y": 0.89426,
+   "w": 0.25776,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_6",
+   "label": "Disciplina 6",
+   "type": "text",
+   "x": 0.65768,
+   "y": 0.78626,
+   "w": 0.15176,
+   "h": 0.01641,
+   "maxLength": 40
+  },
+  {
+   "name": "disciplina_6_nivel",
+   "label": "Disciplina 6 — nível",
+   "type": "select",
+   "x": 0.8145,
+   "y": 0.7813,
+   "w": 0.10784,
+   "h": 0.02296,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "disciplina_6_poder_1",
+   "label": "Disciplina 6 — poder 1",
+   "type": "text",
+   "x": 0.63807,
+   "y": 0.8084,
+   "w": 0.2594,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_6_poder_2",
+   "label": "Disciplina 6 — poder 2",
+   "type": "text",
+   "x": 0.63807,
+   "y": 0.82987,
+   "w": 0.2594,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_6_poder_3",
+   "label": "Disciplina 6 — poder 3",
+   "type": "text",
+   "x": 0.63807,
+   "y": 0.85133,
+   "w": 0.2594,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_6_poder_4",
+   "label": "Disciplina 6 — poder 4",
+   "type": "text",
+   "x": 0.63807,
+   "y": 0.8728,
+   "w": 0.2594,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "disciplina_6_poder_5",
+   "label": "Disciplina 6 — poder 5",
+   "type": "text",
+   "x": 0.63807,
+   "y": 0.89426,
+   "w": 0.2594,
+   "h": 0.0149,
+   "maxLength": 60,
+   "fontSize": 9
+  },
+  {
+   "name": "ressonancia",
+   "label": "Ressonância",
+   "type": "text",
+   "x": 0.19118,
+   "y": 0.9253,
+   "w": 0.17484,
+   "h": 0.01641,
+   "maxLength": 40
+  },
+  {
+   "name": "fome",
+   "label": "Fome",
+   "type": "select",
+   "x": 0.4758,
+   "y": 0.91912,
+   "w": 0.15523,
+   "h": 0.0273,
+   "default": "■",
+   "fontSize": 18,
+   "options": [
+    "■",
+    "■■",
+    "■■■",
+    "■■■■",
+    "■■■■■"
+   ]
+  },
+  {
+   "name": "humanidade",
+   "label": "Humanidade",
+   "type": "select",
+   "x": 0.71763,
+   "y": 0.91912,
+   "w": 0.28105,
+   "h": 0.0273,
+   "default": "■■■■■ ■■",
+   "fontSize": 18,
+   "options": [
+    "■",
+    "■■",
+    "■■■",
+    "■■■■",
+    "■■■■■",
+    "■■■■■ ■",
+    "■■■■■ ■■",
+    "■■■■■ ■■■",
+    "■■■■■ ■■■■",
+    "■■■■■ ■■■■■"
+   ]
+  },
+  {
+   "name": "principios",
+   "label": "Princípios da Crônica",
+   "type": "textarea",
+   "x": 0.10212,
+   "y": 0.12374,
+   "w": 0.26062,
+   "h": 0.16414,
+   "page": 1,
+   "maxLength": 3000,
+   "fontSize": 9
+  },
+  {
+   "name": "pilares",
+   "label": "Pilares & Convicções",
+   "type": "textarea",
+   "x": 0.37255,
+   "y": 0.12374,
+   "w": 0.26021,
+   "h": 0.16414,
+   "page": 1,
+   "maxLength": 3000,
+   "fontSize": 9
+  },
+  {
+   "name": "perdicao",
+   "label": "Perdição do Clã",
+   "type": "textarea",
+   "x": 0.64257,
+   "y": 0.12374,
+   "w": 0.2549,
+   "h": 0.16414,
+   "page": 1,
+   "maxLength": 3000,
+   "fontSize": 9
+  },
+  {
+   "name": "vantagem_1",
+   "label": "Vantagem/defeito 1",
+   "type": "text",
+   "x": 0.10131,
+   "y": 0.32823,
+   "w": 0.29575,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 60
+  },
+  {
+   "name": "vantagem_1_nivel",
+   "label": "Vantagem/defeito 1 — nível",
+   "type": "select",
+   "x": 0.40274,
+   "y": 0.32327,
+   "w": 0.10784,
+   "h": 0.02296,
+   "page": 1,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "vantagem_2",
+   "label": "Vantagem/defeito 2",
+   "type": "text",
+   "x": 0.10131,
+   "y": 0.35696,
+   "w": 0.29575,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 60
+  },
+  {
+   "name": "vantagem_2_nivel",
+   "label": "Vantagem/defeito 2 — nível",
+   "type": "select",
+   "x": 0.40274,
+   "y": 0.35199,
+   "w": 0.10784,
+   "h": 0.02296,
+   "page": 1,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "vantagem_3",
+   "label": "Vantagem/defeito 3",
+   "type": "text",
+   "x": 0.10131,
+   "y": 0.38568,
+   "w": 0.29575,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 60
+  },
+  {
+   "name": "vantagem_3_nivel",
+   "label": "Vantagem/defeito 3 — nível",
+   "type": "select",
+   "x": 0.40274,
+   "y": 0.38072,
+   "w": 0.10784,
+   "h": 0.02296,
+   "page": 1,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "vantagem_4",
+   "label": "Vantagem/defeito 4",
+   "type": "text",
+   "x": 0.10131,
+   "y": 0.41431,
+   "w": 0.29575,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 60
+  },
+  {
+   "name": "vantagem_4_nivel",
+   "label": "Vantagem/defeito 4 — nível",
+   "type": "select",
+   "x": 0.40274,
+   "y": 0.40934,
+   "w": 0.10784,
+   "h": 0.02296,
+   "page": 1,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "vantagem_5",
+   "label": "Vantagem/defeito 5",
+   "type": "text",
+   "x": 0.10131,
+   "y": 0.44293,
+   "w": 0.29575,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 60
+  },
+  {
+   "name": "vantagem_5_nivel",
+   "label": "Vantagem/defeito 5 — nível",
+   "type": "select",
+   "x": 0.40274,
+   "y": 0.43796,
+   "w": 0.10784,
+   "h": 0.02296,
+   "page": 1,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "vantagem_6",
+   "label": "Vantagem/defeito 6",
+   "type": "text",
+   "x": 0.10131,
+   "y": 0.47155,
+   "w": 0.29575,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 60
+  },
+  {
+   "name": "vantagem_6_nivel",
+   "label": "Vantagem/defeito 6 — nível",
+   "type": "select",
+   "x": 0.40274,
+   "y": 0.46659,
+   "w": 0.10784,
+   "h": 0.02296,
+   "page": 1,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "vantagem_7",
+   "label": "Vantagem/defeito 7",
+   "type": "text",
+   "x": 0.10131,
+   "y": 0.50018,
+   "w": 0.29575,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 60
+  },
+  {
+   "name": "vantagem_7_nivel",
+   "label": "Vantagem/defeito 7 — nível",
+   "type": "select",
+   "x": 0.40274,
+   "y": 0.49521,
+   "w": 0.10784,
+   "h": 0.02296,
+   "page": 1,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "vantagem_8",
+   "label": "Vantagem/defeito 8",
+   "type": "text",
+   "x": 0.10131,
+   "y": 0.5288,
+   "w": 0.29575,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 60
+  },
+  {
+   "name": "vantagem_8_nivel",
+   "label": "Vantagem/defeito 8 — nível",
+   "type": "select",
+   "x": 0.40274,
+   "y": 0.52383,
+   "w": 0.10784,
+   "h": 0.02296,
+   "page": 1,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "vantagem_9",
+   "label": "Vantagem/defeito 9",
+   "type": "text",
+   "x": 0.10131,
+   "y": 0.55742,
+   "w": 0.29575,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 60
+  },
+  {
+   "name": "vantagem_9_nivel",
+   "label": "Vantagem/defeito 9 — nível",
+   "type": "select",
+   "x": 0.40274,
+   "y": 0.55246,
+   "w": 0.10784,
+   "h": 0.02296,
+   "page": 1,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "vantagem_10",
+   "label": "Vantagem/defeito 10",
+   "type": "text",
+   "x": 0.10131,
+   "y": 0.58605,
+   "w": 0.29575,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 60
+  },
+  {
+   "name": "vantagem_10_nivel",
+   "label": "Vantagem/defeito 10 — nível",
+   "type": "select",
+   "x": 0.40274,
+   "y": 0.58108,
+   "w": 0.10784,
+   "h": 0.02296,
+   "page": 1,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "vantagem_11",
+   "label": "Vantagem/defeito 11",
+   "type": "text",
+   "x": 0.10131,
+   "y": 0.61467,
+   "w": 0.29575,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 60
+  },
+  {
+   "name": "vantagem_11_nivel",
+   "label": "Vantagem/defeito 11 — nível",
+   "type": "select",
+   "x": 0.40274,
+   "y": 0.60971,
+   "w": 0.10784,
+   "h": 0.02296,
+   "page": 1,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●"
+   ]
+  },
+  {
+   "name": "potencia_sangue",
+   "label": "Potência de Sangue",
+   "type": "select",
+   "x": 0.69931,
+   "y": 0.29708,
+   "w": 0.19444,
+   "h": 0.02296,
+   "page": 1,
+   "fontSize": 16.35,
+   "options": [
+    "●",
+    "●●",
+    "●●●",
+    "●●●●",
+    "●●●●●",
+    "●●●●● ●",
+    "●●●●● ●●",
+    "●●●●● ●●●",
+    "●●●●● ●●●●",
+    "●●●●● ●●●●●"
+   ]
+  },
+  {
+   "name": "surto_sangue",
+   "label": "Surto de Sangue",
+   "type": "text",
+   "x": 0.51552,
+   "y": 0.34891,
+   "w": 0.18464,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 40
+  },
+  {
+   "name": "quantidade_recuperada",
+   "label": "Quantidade Recuperada",
+   "type": "text",
+   "x": 0.71242,
+   "y": 0.34891,
+   "w": 0.18464,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 40
+  },
+  {
+   "name": "bonus_poder",
+   "label": "Bônus de Poder",
+   "type": "text",
+   "x": 0.51552,
+   "y": 0.39904,
+   "w": 0.18464,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 40
+  },
+  {
+   "name": "rerrolagem_sangue",
+   "label": "Rerrolagem de Sangue",
+   "type": "text",
+   "x": 0.71242,
+   "y": 0.39904,
+   "w": 0.18464,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 40
+  },
+  {
+   "name": "penalidade_alimentacao",
+   "label": "Penalidade de Alimentação",
+   "type": "text",
+   "x": 0.51552,
+   "y": 0.44929,
+   "w": 0.18464,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 40
+  },
+  {
+   "name": "gravidade_perdicao",
+   "label": "Gravidade da Perdição",
+   "type": "text",
+   "x": 0.71242,
+   "y": 0.44929,
+   "w": 0.18464,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 40
+  },
+  {
+   "name": "xp_total",
+   "label": "Experiência total",
+   "type": "number",
+   "x": 0.65359,
+   "y": 0.48922,
+   "w": 0.2451,
+   "h": 0.01793,
+   "page": 1,
+   "default": "0",
+   "min": 0,
+   "max": 9999,
+   "fontSize": 11
+  },
+  {
+   "name": "xp_gasta",
+   "label": "Experiência gasta",
+   "type": "number",
+   "x": 0.65523,
+   "y": 0.51953,
+   "w": 0.24346,
+   "h": 0.01793,
+   "page": 1,
+   "default": "0",
+   "min": 0,
+   "max": 9999,
+   "fontSize": 11
+  },
+  {
+   "name": "idade_verdadeira",
+   "label": "Idade verdadeira",
+   "type": "text",
+   "x": 0.62369,
+   "y": 0.55485,
+   "w": 0.27337,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 40
+  },
+  {
+   "name": "idade_aparente",
+   "label": "Idade aparente",
+   "type": "text",
+   "x": 0.61405,
+   "y": 0.57997,
+   "w": 0.28301,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 40
+  },
+  {
+   "name": "data_nascimento",
+   "label": "Data de nascimento",
+   "type": "text",
+   "x": 0.64118,
+   "y": 0.60497,
+   "w": 0.25588,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 40
+  },
+  {
+   "name": "data_morte",
+   "label": "Data de morte",
+   "type": "text",
+   "x": 0.60817,
+   "y": 0.62997,
+   "w": 0.28889,
+   "h": 0.01641,
+   "page": 1,
+   "maxLength": 40
+  },
+  {
+   "name": "aparencia",
+   "label": "Aparência",
+   "type": "textarea",
+   "x": 0.51471,
+   "y": 0.67045,
+   "w": 0.38399,
+   "h": 0.02778,
+   "page": 1,
+   "maxLength": 1000,
+   "fontSize": 9
+  },
+  {
+   "name": "tracos_distintivos",
+   "label": "Traços distintivos",
+   "type": "textarea",
+   "x": 0.51471,
+   "y": 0.72096,
+   "w": 0.38399,
+   "h": 0.02778,
+   "page": 1,
+   "maxLength": 1000,
+   "fontSize": 9
+  },
+  {
+   "name": "historia",
+   "label": "História",
+   "type": "textarea",
+   "x": 0.51471,
+   "y": 0.77146,
+   "w": 0.38399,
+   "h": 0.15657,
+   "page": 1,
+   "maxLength": 6000,
+   "fontSize": 9
+  },
+  {
+   "name": "notas",
+   "label": "Notas",
+   "type": "textarea",
+   "x": 0.10294,
+   "y": 0.66667,
+   "w": 0.38399,
+   "h": 0.26136,
+   "page": 1,
+   "maxLength": 6000,
+   "fontSize": 9
+  }
+ ],
+ "actions": [
+  {
+   "key": "teste_despertar",
+   "name": "Teste de Despertar",
+   "kind": "habilidade",
+   "formula": "1d10",
+   "description": "Role 1d10: 6 ou mais é sucesso; em falha, a Fome aumenta em 1."
+  }
+ ],
+ "notes": "Mapeamento da ficha de Vampiro: A Máscara V5 (2 páginas). Bolinhas e quadradinhos são listas cujas opções (● / ■) cobrem os círculos e quadrados impressos; Vitalidade e Força de Vontade têm um campo por caixa (/ superficial, X agravado)."
+}

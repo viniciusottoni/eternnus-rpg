@@ -82,6 +82,13 @@ public sealed class PrepWorkspaceTests : IAsyncLifetime
         Assert.True(map.TryGetProperty("rows", out _));
         var s = Assert.Single(e.GetProperty("scenes").EnumerateArray());
         Assert.Equal((scene, sceneFolder, "Bosque"), (s.GetProperty("id").GetGuid(), s.GetProperty("folderId").GetGuid(), s.GetProperty("mapName").GetString()));
+        // Lista só sinaliza se há texto compartilhável; nunca traz o texto nem as notas privadas.
+        Assert.False(s.GetProperty("hasText").GetBoolean());
+        Assert.False(s.TryGetProperty("sharedText", out _)); Assert.False(s.TryGetProperty("privateNotes", out _));
+        await scenes.SaveSceneAsync(campaign.Id, null, new("Abertura", null, SceneKinds.Text, null, null, "Era uma vez", "segredo", null), Master, default);
+        var text = J(await prep.ExplorerAsync(campaign.Id, Master, default)).GetProperty("scenes").EnumerateArray().Single(x => x.GetProperty("name").GetString() == "Abertura");
+        Assert.True(text.GetProperty("hasText").GetBoolean());
+        Assert.DoesNotContain("segredo", text.ToString()); Assert.DoesNotContain("Era uma vez", text.ToString());
         var c = Assert.Single(e.GetProperty("characters").EnumerateArray());
         Assert.Equal((npc, npcFolder), (c.GetProperty("id").GetGuid(), c.GetProperty("folderId").GetGuid()));
         Assert.Equal(100, e.GetProperty("limits").GetProperty("foldersPerCategory").GetInt32());
@@ -310,7 +317,11 @@ public sealed class PrepWorkspaceTests : IAsyncLifetime
         var snapshot = await db.Set<CampaignMap>().AsNoTracking().SingleAsync(m => m.OwnerMapId == map.Id);
         Assert.Equal("asset:" + snapshot.Id, saved.GetProperty("composition").GetProperty("elements")[0].GetProperty("src").GetString());
         var revision = saved.GetProperty("map").GetProperty("revision").GetInt32();
-        await assets.SaveCompositionAsync(campaign.Id, map.Id, Master, Save(Doc(128, 128), revision), flat, default);
+        saved = J(await assets.SaveCompositionAsync(campaign.Id, map.Id, Master, Save(Doc(128, 128), revision), flat, default));
+        // A versão automática anterior ainda usa a fonte (ADR-083): ela só sai quando nenhuma versão retida a referencia.
+        Assert.True(await db.Set<CampaignMap>().AnyAsync(m => m.Id == snapshot.Id));
+        await db.Set<DocumentVersion>().Where(v => v.DocumentId == map.Id).ExecuteDeleteAsync();
+        await assets.SaveCompositionAsync(campaign.Id, map.Id, Master, Save(Doc(128, 128), saved.GetProperty("map").GetProperty("revision").GetInt32()) with { Summary = "Outro" }, flat, default);
         Assert.False(await db.Set<CampaignMap>().AnyAsync(m => m.Id == snapshot.Id));
         // Mapa de tiles usa o próprio editor.
         var tiles = await assets.SaveTileMapAsync(campaign.Id, null, Master, Tiles(null), default);

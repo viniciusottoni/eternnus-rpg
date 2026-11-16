@@ -134,7 +134,8 @@ public sealed record CompositionElement(
     double X = 0, double Y = 0, double Width = 0, double Height = 0, double Rotation = 0, double Opacity = 100,
     bool Visible = true, bool Locked = false, bool FlipX = false, bool FlipY = false,
     string? Text = null, double? FontSize = null, string? FontFamily = null, string? Color = null,
-    string? Fill = null, string? Stroke = null, double? StrokeWidth = null, string? Align = null, bool? Bold = null, bool? Italic = null);
+    string? Fill = null, string? Stroke = null, double? StrokeWidth = null, string? Align = null, bool? Bold = null, bool? Italic = null,
+    string? Group = null);
 public sealed record CompositionDocument(int V, CompositionArtboard? Artboard, List<EditorLayer?>? Layers, List<CompositionElement?>? Elements);
 
 /// <summary>
@@ -151,6 +152,7 @@ public static partial class MapComposition
     static readonly JsonSerializerOptions Strict = new(EditorLayers.Json) { UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow };
     [GeneratedRegex("^#[0-9a-fA-F]{6}$")] private static partial Regex Hex();
     [GeneratedRegex("^[A-Za-z0-9_-]{1,40}$")] private static partial Regex ElementId();
+    [GeneratedRegex("^[a-z0-9-]{1,24}$")] private static partial Regex GroupId();
 
     static RuleException Invalid(string detail) => new(400, "Composição inválida: " + detail);
 
@@ -197,6 +199,8 @@ public static partial class MapComposition
             if (e.FontFamily != null && !Fonts.Contains(e.FontFamily)) throw Invalid("fonte desconhecida.");
             if (e.StrokeWidth is { } sw && !In(sw, 0, 100)) throw Invalid("o contorno vai de 0 a 100.");
             if (e.Align != null && !Aligns.Contains(e.Align)) throw Invalid("alinhamento desconhecido.");
+            // Grupo (ADR-086): só organização no editor; não muda o achatamento nem o que a mesa recebe.
+            if (e.Group != null && !GroupId().IsMatch(e.Group)) throw Invalid("grupo inválido.");
             string? src = null;
             if (e.Type == "image")
             {

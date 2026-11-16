@@ -151,6 +151,8 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         if (x.Prepared != null) scene.Prepared = x.Kind == SceneKinds.Map ? await ValidArrangementAsync(campaignId, scene, x.Prepared, layerIds, ct) : [];
         // Camada removida: os marcadores dela voltam para Elementos (organização do editor; a mesa não muda).
         else foreach (var t in scene.Prepared.Where(t => t.Layer != null && ScenePrep.TokenLayer(t.Layer, layerIds) != t.Layer)) t.Layer = EditorLayers.Elements;
+        // Versão automática da preparação salva (ADR-083), na mesma transação.
+        await DocumentVersionModel.RecordAsync(db, campaignId, DocumentVersionKinds.Scene, scene.Id, scene.Revision, DocumentVersionModel.ScenePayload(scene), null, Now, ct);
         try { await db.SaveChangesAsync(ct); } catch (DbUpdateConcurrencyException) { throw new RuleException(409, "A cena mudou em outra tela. Recarregue antes de salvar."); }
         await tx.CommitAsync(ct);
         return new { scene.Id, scene.Revision };
@@ -167,7 +169,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         var prep = TableFogService.PreparedOf(row, state, map, settings);
         var characters = await CampaignCharactersAsync(campaignId, ct);
         var npcs = (await db.MasterCharacters.AsNoTracking().Where(m => m.CampaignId == campaignId).Select(m => m.Id).ToListAsync(ct)).ToHashSet();
-        var tokens = ScenePrep.ValidateTokens(input, new FogGrid(map.Width, map.Height, prep.Cells), characters.Select(c => c.Id).ToHashSet(), characters.ToDictionary(c => c.Id, c => c.Name), npcs, map.Free, layers);
+        var tokens = ScenePrep.ValidateTokens(input, FogGrid.Of(map, prep), characters.Select(c => c.Id).ToHashSet(), characters.ToDictionary(c => c.Id, c => c.Name), npcs, map.Free, layers);
         foreach (var image in tokens.Select(t => t.ImageUrl).Where(i => i != null).Distinct()) await ValidImageAsync(campaignId, image, db, ct);
         return tokens;
     }
@@ -211,6 +213,8 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         // Remove somente a preparação própria desta cena; a camada compartilhada do mapa continua.
         var suffix = "@" + id.ToString("N");
         await db.Set<CampaignMapLayer>().Where(l => l.CampaignId == campaignId && l.MapKey.EndsWith(suffix)).ExecuteDeleteAsync(ct);
+        // Versões persistentes da cena (ADR-083).
+        await DocumentVersionService.DeleteForAsync(db, campaignId, id, ct);
     }
     // ---------- Personagens do mestre ----------
     public async Task<object> NpcsAsync(Guid campaignId, string user, CancellationToken ct)

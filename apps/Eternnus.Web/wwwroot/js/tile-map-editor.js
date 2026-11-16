@@ -9,16 +9,18 @@ import { drawTile } from "./tile-art.js";
 import { createEditorShell, openContextMenu, openPropertiesDialog, renderHistoryPanel, renderLayersPanel } from "./editor-core.js";
 import { addLayer, createHistory, ensureLayers, isRequiredLayer, moveLayer, patchLayer, removeLayer } from "./editor-policy.js";
 import * as P from "./tile-map-policy.js";
+import { attachDrafts } from "./editor-drafts.js";
 
 const AUTO_PREF = "eternnus.tiles.autoLayer";
+const BRUSH_PREF = "eternnus.tiles.brush";
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const fold = (text) => String(text || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 const meters = (value) => Number(value).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 const TOOL_HINTS = {
   inspect: "Inspecionar: clique numa casa (ou use as setas) para ver as camadas dela em Propriedades.",
-  brush: "Pincel: arraste para pintar com o tile escolhido. Teclado: setas e Enter.",
-  erase: "Borracha: arraste para apagar. Na Base, apagar pinta o piso escolhido em Propriedades.",
-  fill: "Preenchimento: clique para preencher a área ligada da mesma camada.",
+  brush: "Pincel: arraste para pintar com o tile escolhido. [ e ] mudam o tamanho. Teclado: setas e Enter.",
+  erase: "Borracha: arraste para apagar. [ e ] mudam o tamanho. Na Base, apagar pinta o piso escolhido em Propriedades.",
+  fill: "Preenchimento: clique para preencher a área ligada da mesma camada (dentro da seleção, se clicar nela). Áreas grandes pedem confirmação.",
   rect: "Retângulo: arraste de um canto ao outro. Teclado: Enter marca o primeiro canto e Enter de novo conclui.",
   marquee: "Seleção: arraste para selecionar uma área; depois copie, recorte, cole, exclua ou preencha.",
   pick: "Conta-gotas: clique numa casa para capturar o tile visível.",
@@ -50,6 +52,9 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
   let auto = (() => { try { return localStorage.getItem(AUTO_PREF) !== "off"; } catch { return true; } })();
   let grid = true, selection = null, clip = null, inspected = null, hover = null, kbCursor = null, kbAnchor = null;
   let pressStart = null, preview = null, pressing = false, cancelStroke = false, lastAlt = false, busy = false, closed = false, fogKey = "";
+  // Pincel (tamanho/formato, preferência local), mistura de tiles compatíveis e prévia fantasma de operações extensas.
+  let brush = (() => { try { const b = JSON.parse(localStorage.getItem(BRUSH_PREF) || "{}"); return { size: P.BRUSH_SIZES.includes(b.size) ? b.size : 1, shape: b.shape === "round" ? "round" : "square" }; } catch { return { size: 1, shape: "square" }; } })();
+  let mix = { on: false, codes: [], seed: 1 }, ghost = null, hoverFoot = null, hoverSig = "";
   let savedSerial = serial();
 
   function loadDocument(data, from) {
@@ -103,6 +108,15 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
     tools,
     onSize: () => sizeDialog(),
     groups: [{ id: "select", label: "Seleção" }, { id: "paint", label: "Pintura" }, { id: "view", label: "Vista" }],
+    // Contextos (ADR-086): Terreno pinta a Base; Elementos pinta objetos sobre ela. Mesmas ferramentas; só a camada ativa muda.
+    kind: "tiles",
+    contexts: [
+      { id: "terrain", tip: "Pintar o piso na camada Base: grama, pedra, água, areia.", groups: ["paint", "select"], panels: ["layers", "palette", "props"] },
+      { id: "elements", tip: "Pintar objetos na camada Elementos, por cima do terreno: árvores, móveis, paredes.", groups: ["paint", "select"], panels: ["layers", "palette", "props"] },
+    ],
+    commonTools: ["hand", "zoom", "grid"],
+    defaultContext: "elements",
+    onContext: (id) => { const target = id === "terrain" ? "base" : "elements"; if (active !== target && layerById(target)) layerAction("select", target); },
     panels: [
       { id: "layers", title: "Camadas", help: ["campanhas.editor.camadas", "Camadas"] },
       { id: "palette", title: "Paleta" },
@@ -124,6 +138,8 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
       delete: () => deleteSelection(),
       backspace: () => deleteSelection(),
       escape: () => cancelAction(),
+      "[": () => stepBrush(-1),
+      "]": () => stepBrush(1),
     },
     isDirty: () => dirty(),
     onTool: (id) => applyTool(id),
@@ -131,7 +147,26 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
     onClose: () => { closed = true; board.destroy(); window.removeEventListener("pointerup", endPress, true); },
   });
   const root = shell.root;
+  // Rascunho local e versões (ADR-083): o rascunho guarda o documento; restaurar mantém a revisão de origem.
+  const drafts = attachDrafts(shell, {
+    campaignId: campaign.id, kind: "tilemap", versionKind: "tilemap",
+    docId: () => mapId, label: () => doc.name, revision: () => revision, capture: () => clone(doc), isDirty: () => dirty(),
+    restore: (snap, rev) => {
+      history.record("Restaurar rascunho");
+      doc = clone(snap); if (Number.isInteger(rev)) revision = rev;
+      if (!layerById(active)) active = "elements";
+      clampToGrid(); render();
+    },
+    loadVersion: (payload) => {
+      history.record("Carregar versão");
+      doc = loadDocument(payload, null);
+      if (!layerById(active)) active = "elements";
+      clampToGrid(); render();
+    },
+  });
 
+  // Contexto salvo "Terreno" começa na Base (o resto do editor lê `active`).
+  if (shell.context === "terrain" && layerById("base")) active = "base";
   // ---------- Palco ----------
   shell.stage.innerHTML = `<div class="board tme-board" aria-describedby="tme-board-help"></div><p class="sr-only" id="tme-board-help">Setas escolhem uma casa; Enter aplica a ferramenta atual; Shift+F10 abre as ações da casa.</p>`;
   const board = createBoard(shell.stage.querySelector(".tme-board"), {
@@ -178,13 +213,33 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
       <div class="field"><label for="tme-group">Grupo</label><select id="tme-group" data-tme-group><option value="">Todos os grupos</option>${groups.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join("")}</select></div>
     </div>
     <div class="tme-selected" data-tme-selected aria-live="polite"></div>
+    <fieldset class="tme-brush" data-tme-brush>
+      <legend>Pincel e borracha${helpButton("campanhas.mapas.pincel", "Tamanho do pincel")}</legend>
+      <div class="tme-seg" role="group" aria-label="Tamanho do pincel em casas. Atalhos: [ diminui, ] aumenta.">${P.BRUSH_SIZES.map((n) => `<button type="button" class="subtle small" data-tme-size="${n}" aria-pressed="false" aria-label="${n} × ${n} casas">${n}</button>`).join("")}</div>
+      <div class="tme-seg" role="group" aria-label="Formato do pincel">${P.BRUSH_SHAPES.map(([id, label]) => `<button type="button" class="subtle small" data-tme-shape="${id}" aria-pressed="false">${esc(label)}</button>`).join("")}</div>
+    </fieldset>
+    <fieldset class="tme-mix" data-tme-mix>
+      <legend>Mistura de tiles${helpButton("campanhas.mapas.mistura", "Mistura de tiles")}</legend>
+      <label class="check"><input type="checkbox" data-tme-mix-on> Pintar com a mistura</label>
+      <ul class="tme-mix-list" data-tme-mix-list aria-label="Tiles da mistura"></ul>
+      <div class="tme-mix-actions"><button type="button" class="subtle small" data-tme-action="mix-add">Adicionar o tile escolhido</button><button type="button" class="subtle small" data-tme-action="mix-seed">Nova variação</button></div>
+      <p class="form-help">Pincel, retângulo, preenchimento e seleção sorteiam entre os tiles da mistura (resultado repetível). Só tiles da mesma camada automática.</p>
+    </fieldset>
     <div class="tme-tiles" role="group" aria-label="Tiles do catálogo. Setas percorrem; Enter escolhe.">${groups.map((g) => `<section class="tme-group" data-tme-group-box="${esc(g)}"><h3 class="tme-group-title">${esc(g)}</h3><div class="tme-grid">${tiles.map((t, i) => t.group !== g ? "" : `<button type="button" class="tme-tile" data-tile="${i}" aria-pressed="false" tabindex="-1" aria-label="${esc(t.name)}: ${esc(P.tileRule(t))}"><canvas width="48" height="48" aria-hidden="true"></canvas><span>${esc(t.name)}</span></button>`).join("")}</div></section>`).join("")}</div>
     <p class="muted small" data-tme-empty hidden>Nenhum tile encontrado.</p>`;
   for (const button of palette.querySelectorAll("[data-tile]")) {
     const t = tiles[Number(button.dataset.tile)];
     drawThumb(button.querySelector("canvas"), t, 48);
   }
-  palette.addEventListener("click", (e) => { const b = e.target.closest("[data-tile]"); if (b) selectTile(tiles[Number(b.dataset.tile)].code, true); });
+  palette.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-tile]");
+    if (b) { selectTile(tiles[Number(b.dataset.tile)].code, true); return; }
+    const size = e.target.closest("[data-tme-size]"), shape = e.target.closest("[data-tme-shape]"), drop = e.target.closest("[data-tme-mix-remove]");
+    if (size) setBrush({ size: Number(size.dataset.tmeSize) });
+    if (shape) setBrush({ shape: shape.dataset.tmeShape });
+    if (drop) mixRemove(drop.dataset.tmeMixRemove);
+  });
+  palette.addEventListener("change", (e) => { if (e.target.matches("[data-tme-mix-on]")) setMix(e.target.checked); });
   palette.addEventListener("input", (e) => { if (e.target.matches("[data-tme-search], [data-tme-group]")) filterPalette(); });
   palette.addEventListener("change", (e) => { if (e.target.matches("[data-tme-group]")) filterPalette(); });
   palette.addEventListener("keydown", (e) => {
@@ -228,6 +283,8 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
     if (action === "doc-props") documentProperties();
     if (action === "doc-size") sizeDialog();
     if (action === "palette") { shell.setPanels(true); shell.togglePanel("palette", true); palette.querySelector('[data-tile][tabindex="0"]')?.focus(); }
+    if (action === "mix-add") mixAdd(selected);
+    if (action === "mix-seed") { mix.seed = (mix.seed % 9973) + 1; shell.message(`Nova variação da mistura (semente ${mix.seed}). As próximas pinturas sorteiam de outro jeito.`); }
   });
 
   // ---------- Desenho ----------
@@ -235,9 +292,20 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
     return P.mergeLayers(doc.layers, { hideBase: baseLayer().visible === false });
   }
   function highlight() {
+    if (ghost) return ghost;
     if (preview) return preview;
     if (kbAnchor) return kbCursor ? P.rectCells(P.rectBetween(kbAnchor, kbCursor), width(), height()) : [kbAnchor];
-    return selection ? P.rectCells(selection, width(), height()) : [];
+    const marked = selection ? P.rectCells(selection, width(), height()) : [];
+    return hoverFoot ? marked.concat(hoverFoot) : marked;
+  }
+  /** Contorno do pincel sob o cursor (só com pincel/borracha maiores que uma casa e fora de um arraste). */
+  function updateFootprint(cell) {
+    const show = cell && !pressing && brush.size > 1 && ["brush", "erase"].includes(shell.tool);
+    const sig = show ? `${cell.x},${cell.y},${brush.size},${brush.shape}` : "";
+    if (sig === hoverSig) return;
+    hoverSig = sig;
+    hoverFoot = show ? P.brushFootprint(cell, brush.size, brush.shape, width(), height()) : null;
+    refreshView();
   }
   function refreshView() { if (!closed) board.setView({ grid, paint: highlight() }); }
   function render() {
@@ -292,6 +360,7 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
     });
   }
   function updateHover(cell) {
+    updateFootprint(cell);
     if (!cell) { shell.setStatus({ coords: "" }); return; }
     const code = displayRows()[cell.y]?.[cell.x];
     shell.setStatus({ coords: `Coluna ${cell.x + 1}, linha ${cell.y + 1}${code && code !== P.HIDDEN ? ` · ${tileName(code)}` : ""}` });
@@ -343,9 +412,67 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
     board.camera.setPan(id === "hand");
     kbAnchor = null; preview = null; pressStart = null;
     root.dataset.tmeTool = id;
+    hoverFoot = null; hoverSig = "";
     shell.message(TOOL_HINTS[id] || "");
     refreshView();
   }
+  function setBrush(patch) {
+    brush = { ...brush, ...patch };
+    if (!P.BRUSH_SIZES.includes(brush.size)) brush.size = 1;
+    try { localStorage.setItem(BRUSH_PREF, JSON.stringify(brush)); } catch { /* preferência só visual */ }
+    renderBrush();
+    hoverSig = ""; updateFootprint(hover);
+    shell.message(`Pincel e borracha: ${brush.size} × ${brush.size} casas${brush.size > 2 ? `, ${brush.shape === "round" ? "redondo" : "quadrado"}` : ""}.`);
+  }
+  function stepBrush(delta) {
+    const i = P.BRUSH_SIZES.indexOf(brush.size);
+    setBrush({ size: P.BRUSH_SIZES[Math.min(P.BRUSH_SIZES.length - 1, Math.max(0, i + delta))] });
+  }
+  function renderBrush() {
+    for (const b of palette.querySelectorAll("[data-tme-size]")) b.setAttribute("aria-pressed", String(Number(b.dataset.tmeSize) === brush.size));
+    for (const b of palette.querySelectorAll("[data-tme-shape]")) b.setAttribute("aria-pressed", String(b.dataset.tmeShape === brush.shape));
+  }
+  /** Tiles da pintura: a mistura ligada (2+ tiles) ou só o tile escolhido. */
+  const paintCodes = () => (mix.on && mix.codes.length > 1 ? mix.codes : [selected]);
+  function renderMix() {
+    const list = palette.querySelector("[data-tme-mix-list]");
+    list.innerHTML = mix.codes.length
+      ? mix.codes.map((c) => `<li><span>${esc(tileName(c))}</span><button type="button" class="ed-icon-button small" data-tme-mix-remove="${esc(c)}" aria-label="Tirar ${esc(tileName(c))} da mistura">×</button></li>`).join("")
+      : '<li class="muted small">Nenhum tile. Escolha um tile e use "Adicionar o tile escolhido".</li>';
+    const toggle = palette.querySelector("[data-tme-mix-on]");
+    toggle.checked = mix.on;
+    toggle.disabled = mix.codes.length < 2;
+  }
+  function mixAdd(code) {
+    const tile = byCode.get(code);
+    if (!tile) return;
+    if (mix.codes.includes(code)) { shell.message(`${tile.name} já está na mistura.`); return; }
+    if (mix.codes.length >= 8) { shell.message("Use até 8 tiles na mistura."); return; }
+    if (!P.canMix([...mix.codes.map((c) => byCode.get(c)), tile])) { shell.message(code === "S" ? "Entradas do grupo não entram na mistura." : "Misture só terrenos entre si, ou só elementos (natureza, construções, objetos) entre si."); return; }
+    mix.codes = [...mix.codes, code];
+    if (mix.codes.length > 1) mix.on = true;
+    renderMix();
+    shell.message(`${tile.name} entrou na mistura (${mix.codes.length} tiles).`);
+  }
+  function mixRemove(code) {
+    mix.codes = mix.codes.filter((c) => c !== code);
+    if (mix.codes.length < 2) mix.on = false;
+    renderMix();
+  }
+  function setMix(on) {
+    mix.on = !!on && mix.codes.length > 1;
+    renderMix();
+    shell.message(mix.on ? `Pintando com a mistura de ${mix.codes.length} tiles.` : "Mistura desligada: pinta só o tile escolhido.");
+  }
+  /** Mostra a prévia fantasma e pede confirmação com a contagem; a prévia some ao responder. */
+  async function confirmLarge(cells, heading, text) {
+    ghost = cells; refreshView();
+    try {
+      return (await chooseDialog({ heading, text, choices: [["ok", "Aplicar", "primary"], ["cancel", "Cancelar", "subtle"]] })) === "ok";
+    } finally { ghost = null; refreshView(); }
+  }
+  /** Seleção que contém a casa (o preenchimento fica dentro dela); fora da seleção, o mapa todo. */
+  const boundsFor = (cell) => (selection && cell.x >= selection.x && cell.y >= selection.y && cell.x < selection.x + selection.w && cell.y < selection.y + selection.h ? selection : null);
   function toggleGrid() { grid = !grid; refreshView(); shell.refreshTools(); shell.message(grid ? "Grade visível." : "Grade oculta."); }
   function setAuto(on) {
     auto = !!on;
@@ -364,8 +491,8 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
       case "inspect": inspect(keyboard ? first : last); break;
       case "pick": pick(first); break;
       case "zoom": (lastAlt && !keyboard ? board.camera.zoomOut : board.camera.zoomIn)(); lastAlt = false; shell.updateZoom(); break;
-      case "brush": paintRouted(cells, "brush", "Pincel"); break;
-      case "erase": eraseCells(cells); break;
+      case "brush": paintRouted(P.strokeCells(cells, brush.size, brush.shape, width(), height()), "brush", brush.size > 1 ? `Pincel ${brush.size}×${brush.size}` : "Pincel"); break;
+      case "erase": eraseCells(P.strokeCells(cells, brush.size, brush.shape, width(), height())); break;
       case "fill": paintRouted([first], "fill", "Preenchimento"); break;
       case "rect": case "marquee": {
         let a = first, b = last;
@@ -383,13 +510,24 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
     refreshView();
   }
   /** Pinta com o tile escolhido na camada indicada pela camada automática (ou na ativa). */
-  function paintRouted(cells, shape, label) {
+  async function paintRouted(cells, shape, label) {
     const tile = byCode.get(selected);
-    if (!tile) return;
-    const target = layerById(P.layerForTile(tile, { auto, active, layers: doc.layers }));
+    if (!tile || !cells?.length) return;
+    const codes = paintCodes();
+    const target = layerById(P.layerForTile(byCode.get(codes[0]) || tile, { auto, active, layers: doc.layers }));
     if (target.locked) { shell.message(lockedMessage(target)); return; }
-    const rows = P.paintLayer(target.rows, cells, tile.code, shape, { base: target.id === "base", ground });
-    if (commitRows(target.id, rows, `${label}: ${tile.name} em ${target.name}`)) {
+    // Casas atingidas: preenchimento contíguo na própria camada (limitado à seleção que contém o clique) e retângulo inclusivo.
+    let area = cells;
+    if (shape === "fill") area = P.floodCells(target.rows, cells[0], boundsFor(cells[0]));
+    else if (shape === "rectangle") area = P.rectCells(P.rectBetween(cells[0], cells.at(-1)), width(), height());
+    const name = codes.length > 1 ? `mistura de ${codes.length} tiles` : tile.name;
+    if (shape === "fill" && area.length >= P.LARGE_OPERATION) {
+      const ok = await confirmLarge(area, "Preencher uma área grande", `O preenchimento vai pintar ${area.length} casas com ${name} na camada ${target.name}. A área aparece destacada no mapa. Desfazer recupera.`);
+      if (!ok || closed) { shell.message("Preenchimento cancelado."); return; }
+    }
+    const value = codes.length > 1 ? (x, y) => P.variantCode(x, y, codes, mix.seed) : codes[0];
+    const rows = P.setCells(target.rows, area, value);
+    if (commitRows(target.id, rows, `${label}: ${name} em ${target.name}`)) {
       const notes = [];
       if (target.id !== active) notes.push(`Pintado em ${target.name} (camada automática).`);
       if (target.visible === false && target.id !== "base") notes.push(`A camada ${target.name} está oculta: o resultado não aparece nem entra nas regras.`);
@@ -493,6 +631,68 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
   function fillSelection() {
     if (!needSelection()) return;
     paintRouted(corners(selection), "rectangle", "Preencher seleção");
+  }
+  /**
+   * Substituir tile: troca todas as casas de um tile por outro numa camada (inteira ou só na seleção).
+   * Camada padrão: a indicada (tile clicado), senão a ativa; a ativa vazia cai na Base (troca de terreno).
+   * As casas atingidas ficam destacadas no mapa enquanto a janela está aberta; a contagem acompanha a escolha.
+   */
+  function replaceDialog(fromCode = null, layerId = null) {
+    const emptyLayer = (l) => !l.rows.some((r) => /[^_]/.test(r));
+    const start = layerById(layerId) || (emptyLayer(activeLayer()) ? baseLayer() : activeLayer());
+    const fromOptions = (l) => P.codeCounts(l.rows).map(([c, n]) => [c, `${c === P.EMPTY ? "Vazia" : tileName(c)} (${n} casa${n === 1 ? "" : "s"})`]);
+    const toOptions = (l) => [...(l.id === "base" ? [] : [[P.EMPTY, "Vazia (apagar)"]]), ...tiles.map((t) => [t.code, `${t.name} — ${t.group}`])];
+    const firstFrom = (l) => (P.codeCounts(l.rows).some(([c]) => c === fromCode) ? fromCode : P.codeCounts(l.rows).find(([c]) => c !== P.EMPTY)?.[0] || P.EMPTY);
+    const from = firstFrom(start);
+    const to = selected !== from ? selected : (tiles.find((t) => t.code !== from && (start.id === "base" ? t.group === "Terrenos" : true))?.code || selected);
+    const scopes = [["layer", "A camada inteira"], ...(selection ? [["selection", `Só a seleção (${selection.w} × ${selection.h})`]] : [])];
+    const read = () => ({ layer: form.elements.namedItem("layer").value, from: form.elements.namedItem("from").value, scope: form.elements.namedItem("scope").value });
+    const box = openPropertiesDialog({
+      title: "Substituir tile",
+      fields: [
+        { name: "layer", label: "Camada", type: "select", value: start.id, options: [...doc.layers].reverse().map((l) => [l.id, `${l.name}${l.locked ? " (bloqueada)" : ""}`]) },
+        { name: "from", label: "Trocar", type: "select", value: from, options: fromOptions(start) },
+        { name: "to", label: "Por", type: "select", value: to, options: toOptions(start) },
+        { name: "scope", label: "Onde", type: "select", value: selection ? "selection" : "layer", options: scopes },
+        { type: "static", label: "Casas que mudam", value: "" },
+      ],
+      onApply: (v) => {
+        const current = layerById(v.layer);
+        if (!current) throw new Error("Escolha uma camada.");
+        if (current.locked) throw new Error(lockedMessage(current));
+        const base = current.id === "base";
+        if (v.from === v.to) throw new Error("Escolha um tile diferente para a troca.");
+        if (base && v.to === P.EMPTY) throw new Error("A Base não pode ter casas vazias.");
+        const result = P.replaceTiles(current.rows, v.from, v.to, v.scope === "selection" ? selection : null, { base });
+        if (!result.count) throw new Error("Nenhuma casa com esse tile na área escolhida.");
+        const label = (c) => (c === P.EMPTY ? "vazia" : tileName(c));
+        commitRows(current.id, result.rows, `Substituir ${label(v.from)} por ${label(v.to)} em ${current.name} (${result.count} casas)`);
+        shell.message(`${result.count} casa(s) trocadas de ${label(v.from)} para ${label(v.to)} em ${current.name}.`);
+        queueMicrotask(() => { if (box.element.isConnected) { refill(layerById(v.layer), v.from); sync(); } });
+      },
+      onClose: () => { ghost = null; refreshView(); },
+    });
+    const form = box.element.querySelector("form"), out = box.element.querySelector(".ed-props-static strong");
+    const fill = (select, options, value) => {
+      select.replaceChildren(...options.map(([v, text]) => new Option(text, v)));
+      select.value = options.some(([v]) => v === value) ? value : options[0]?.[0] ?? "";
+    };
+    const refill = (l, keep) => {
+      fill(form.elements.namedItem("from"), fromOptions(l), keep);
+      const toSelect = form.elements.namedItem("to");
+      fill(toSelect, toOptions(l), toSelect.value);
+    };
+    const sync = () => {
+      const v = read(), l = layerById(v.layer);
+      ghost = l ? P.matchCells(l.rows, v.from, v.scope === "selection" ? selection : null) : [];
+      out.textContent = `${ghost.length} casa${ghost.length === 1 ? "" : "s"} (destacadas no mapa)`;
+      refreshView();
+    };
+    form.addEventListener("change", (e) => {
+      if (e.target.name === "layer") { const l = layerById(e.target.value); if (l) refill(l, firstFrom(l)); }
+      sync();
+    });
+    sync();
   }
   function paste(at = null) {
     if (!clip) { shell.message("Nada para colar. Copie uma seleção primeiro."); return; }
@@ -620,6 +820,7 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
   }
   function shortcutsDialog() {
     const rows = [["Ferramentas", "B pincel · E borracha · G preenchimento · U retângulo · M seleção · I conta-gotas · V inspecionar · H mão · Z zoom"],
+      ["Pincel", "[ menor · ] maior (1, 2, 3 ou 5 casas)"],
       ["Desfazer / refazer", "Ctrl+Z · Ctrl+Shift+Z ou Ctrl+Y"], ["Seleção", "Ctrl+A tudo · Ctrl+D desmarcar · Ctrl+C/X/V · Delete"],
       ["Vista", "Roda = zoom · Espaço ou botão do meio = mover · Ctrl+0 ajustar · Ctrl+1 100%"], ["Salvar", "Ctrl+S"], ["Cancelar", "Esc"],
       ["Teclado no mapa", "Setas escolhem a casa · Enter aplica · Shift+F10 ações da casa"]];
@@ -637,6 +838,7 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
         { label: "Capturar tile", hint: tileName(code), run: () => pick(cell) },
         { label: "Apagar nesta camada", hint: layer.name, disabled: layer.locked, disabledReason: lockedMessage(layer), run: () => eraseActive([cell], `Apagar casa em ${layer.name}`) },
         { label: "Preencher área ligada", hint: tileName(selected), run: () => paintRouted([cell], "fill", "Preenchimento") },
+        { label: "Substituir este tile…", hint: `${tileName(code)} em ${top.name}`, disabled: top.locked, disabledReason: lockedMessage(top), run: () => replaceDialog(code, top.id) },
         { label: "Colar aqui", shortcut: "mod+v", disabled: !clip, disabledReason: "Copie uma seleção primeiro.", run: () => paste(cell) },
         { separator: true },
         { label: `Selecionar camada ${top.name}`, disabled: top.id === active, disabledReason: "Esta já é a camada ativa.", run: () => layerAction("select", top.id) },
@@ -648,6 +850,7 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
       { label: "Recortar seleção", shortcut: "mod+x", run: () => cutSelection() },
       { label: "Excluir seleção", shortcut: "delete", danger: true, run: () => deleteSelection() },
       { label: "Preencher seleção", hint: tileName(selected), run: () => fillSelection() },
+      { label: "Substituir tile na seleção…", run: () => { const top = cell ? P.topLayerAt(doc.layers, cell.x, cell.y) : null; replaceDialog(top ? top.rows[cell.y][cell.x] : null, top?.id); } },
       { label: "Desmarcar", shortcut: "mod+d", run: () => deselect() });
     else items.push({ separator: true }, { label: "Selecionar tudo", shortcut: "mod+a", run: () => selectAll() });
     items.push({ separator: true }, { label: "Propriedades do mapa…", run: () => documentProperties() });
@@ -663,6 +866,7 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
         { separator: true },
         { label: "Preparar névoa e luz…", hint: "Paredes, portas, luzes e névoa deste mapa", run: () => prepareFog() },
         { separator: true },
+        ...drafts.menuItems(),
         { label: "Fechar", run: () => shell.requestClose() },
       ] },
       { id: "edit", label: "Editar", items: () => [
@@ -674,6 +878,11 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
         { label: "Colar", shortcut: "mod+v", disabled: !clip, disabledReason: "Copie uma seleção primeiro.", run: () => paste() },
         { label: "Excluir seleção", shortcut: "delete", disabled: noSel, disabledReason: noSelReason, run: () => deleteSelection() },
         { label: "Preencher seleção", hint: tileName(selected), disabled: noSel, disabledReason: noSelReason, run: () => fillSelection() },
+        { label: "Substituir tile…", hint: selection ? "Na camada ou só na seleção" : "Troca um tile por outro numa camada", run: () => replaceDialog() },
+        { separator: true },
+        { label: "Pincel maior", shortcut: "]", disabled: brush.size >= P.BRUSH_SIZES.at(-1), run: () => stepBrush(1) },
+        { label: "Pincel menor", shortcut: "[", disabled: brush.size <= 1, run: () => stepBrush(-1) },
+        { label: "Pincel redondo", checked: brush.shape === "round", hint: "Vale a partir de 3 casas", run: () => setBrush({ shape: brush.shape === "round" ? "square" : "round" }) },
         { separator: true },
         { label: "Selecionar tudo", shortcut: "mod+a", run: () => selectAll() },
         { label: "Desmarcar", shortcut: "mod+d", disabled: noSel, run: () => deselect() },
@@ -760,11 +969,12 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
   async function staleConflict(text) {
     const choice = await chooseDialog({
       heading: "O mapa mudou em outra janela",
-      text: `${text} Recarregar descarta este rascunho; salvar cópia guarda o rascunho como um mapa novo.`,
+      text: `${text} Recarregar abre a versão salva e guarda este rascunho localmente (Arquivo › Rascunho local…); salvar cópia guarda o rascunho como um mapa novo.`,
       choices: [["reload", "Recarregar a versão salva", "primary"], ["copy", "Salvar como cópia", ""], ["keep", "Continuar editando", "subtle"]],
     });
     if (choice === "copy") return save({ copy: true });
     if (choice !== "reload") { shell.message("Rascunho mantido. Para salvar sobre o mapa, recarregue a versão salva."); return false; }
+    await drafts.preserve();
     try {
       const fresh = await api(`${assets}/tile-maps/${mapId}`);
       if (closed) return false;
@@ -792,6 +1002,8 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
   // ---------- Inicialização ----------
   selectTile(selected);
   filterPalette();
+  renderBrush();
+  renderMix();
   render();
   applyTool(shell.tool);
   board.interact();

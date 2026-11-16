@@ -3,7 +3,7 @@
 // Névoa: o servidor envia as máscaras (visível/explorado); aqui só se desenha. O mestre vê um véu translúcido e as marcas.
 import { drawTile, dominantGround, affectedCells } from "./tile-art.js";
 import { initials } from "./session-policy.js";
-import { decodeBits, MARK_KINDS } from "./fog-policy.js";
+import { decodeBits, MARK_KINDS, WALL_UNIT, lightReach, wallKind } from "./fog-policy.js";
 import { helpButton } from "./help.js";
 import { mountMapGestures } from "./map-gestures.js";
 import { safeImageUrl } from "./play-policy.js";
@@ -148,15 +148,31 @@ function roundRect(g, x, y, w, h, r) {
   g.closePath();
 }
 
-/** Brilho suave das fontes de luz que não vêm da legenda do tileset (focos do mestre e luz dos marcadores). */
-function drawGlow(g, x, y, radius, s, t, animate) {
+const rgb = (hex) => { const m = /^#([0-9a-f]{6})$/i.exec(hex || ""); const n = m ? parseInt(m[1], 16) : 0xffbe64; return [n >> 16, (n >> 8) & 255, n & 255]; };
+/**
+ * Brilho suave das fontes de luz que não vêm da legenda do tileset (focos do mestre e luz dos marcadores).
+ * `light` opcional: cor, intensidade, penumbra (queda gradual entre a luz plena e o alcance) e animação sutil.
+ * Animação só com `animate` (prefers-reduced-motion desliga; a aba oculta pausa o laço).
+ */
+function drawGlow(g, x, y, radius, s, t, animate, light = null) {
   if (!radius) return;
-  const flicker = animate ? 0.97 + 0.03 * Math.sin(t / 530 + x * 2.3 + y) : 1;
-  const cx = (x + 0.5) * s, cy = (y + 0.5) * s, r = Math.max(s, radius * s * flicker);
+  const kind = light?.animation;
+  let wave = 1;
+  if (animate) {
+    if (kind === "pulse") wave = 0.9 + 0.1 * Math.sin(t / 700 + x);
+    else if (kind === "flicker") wave = 0.92 + 0.05 * Math.sin(t / 90 + x * 3.1) + 0.03 * Math.sin(t / 37 + y);
+    else wave = 0.97 + 0.03 * Math.sin(t / 530 + x * 2.3 + y);
+  }
+  const cx = (x + 0.5) * s, cy = (y + 0.5) * s, r = Math.max(s, radius * s * wave);
+  const [cr, cg, cb] = rgb(light?.color);
+  const k = Math.min(1, Math.max(0.1, (light?.intensity ?? 100) / 100));
+  // Luz plena até `light.radius`; penumbra até o alcance (`dim`).
+  const bright = light?.dim > light?.radius ? Math.max(0.15, Math.min(0.9, light.radius / light.dim)) : 0.6;
+  const edge = `${cr},${Math.round(cg * 0.8)},${Math.round(cb * 0.6)}`;
   const glow = g.createRadialGradient(cx, cy, 0, cx, cy, r);
-  glow.addColorStop(0, "rgba(255,190,100,.22)");
-  glow.addColorStop(0.6, "rgba(255,150,60,.08)");
-  glow.addColorStop(1, "rgba(255,150,60,0)");
+  glow.addColorStop(0, `rgba(${cr},${cg},${cb},${(0.22 * k).toFixed(3)})`);
+  glow.addColorStop(bright, `rgba(${edge},${(0.1 * k).toFixed(3)})`);
+  glow.addColorStop(1, `rgba(${edge},0)`);
   g.save();
   g.globalCompositeOperation = "lighter";
   g.fillStyle = glow;
@@ -229,7 +245,7 @@ function drawFog(g, state, view, s, t, animate) {
     g.restore();
   }
   for (const l of fog.lights || []) {
-    drawGlow(g, l.x, l.y, l.radius, s, t, animate);
+    drawGlow(g, l.x, l.y, lightReach(l), s, t, animate, l);
     if (master && view.fogTools) {
       g.fillStyle = "#ffd27a";
       g.font = `600 ${Math.max(10, s * 0.5)}px Georgia, serif`;
@@ -254,6 +270,7 @@ function drawFog(g, state, view, s, t, animate) {
           if (c === "o") { g.beginPath(); g.moveTo(x * s + s * 0.2, y * s + s * 0.15); g.lineTo(x * s + s * 0.55, y * s + s * 0.3); g.lineTo(x * s + s * 0.55, y * s + s * 0.95); g.stroke(); }
         } else g.strokeRect(x * s + 1.5, y * s + 1.5, s - 3, s - 3);
       }
+  drawWalls(g, fog.walls, s, master, master && view.fogTools);
   for (const m of fog.marks || []) {
     const icon = MARK_KINDS.find((k) => k[0] === m.kind)?.[2] || "✦";
     const cx = (m.x + 0.5) * s, cy = (m.y + 0.5) * s;
@@ -275,6 +292,149 @@ function drawFog(g, state, view, s, t, animate) {
     g.fillText(icon, cx, cy + s * 0.02);
     g.restore();
   }
+}
+
+/** Símbolo de porta no meio do segmento: retângulo cheio (fechada) ou vazado com a folha girada (aberta). Não depende de cor. */
+function drawDoorGlyph(g, w, s, open) {
+  const k = s / WALL_UNIT, mx = ((w.x1 + w.x2) / 2) * k, my = ((w.y1 + w.y2) / 2) * k;
+  const angle = Math.atan2(w.y2 - w.y1, w.x2 - w.x1), half = Math.max(4, s * 0.22);
+  g.save();
+  g.translate(mx, my);
+  g.rotate(angle);
+  g.fillStyle = open ? "#0b0a08cc" : "#a06e3ce6";
+  g.strokeStyle = "#f1d79c";
+  g.lineWidth = Math.max(1, s * 0.05);
+  g.fillRect(-half, -half * 0.35, half * 2, half * 0.7);
+  g.strokeRect(-half, -half * 0.35, half * 2, half * 0.7);
+  if (open) { g.beginPath(); g.moveTo(-half, 0); g.lineTo(-half + half * 0.9, -half * 1.2); g.stroke(); }
+  g.restore();
+}
+
+const WALL_COLORS = { wall: "#e8d3a2", door: "#c08a52", window: "#8ec5e8", sight: "#b48ee8", move: "#e6a03c" };
+
+/**
+ * Paredes vetoriais. Mestre preparando: todas, com traço por tipo (sólido, tracejado, pontilhado) e porta com símbolo;
+ * ocultas ficam translúcidas. Mestre conduzindo sem ferramentas e jogadores: só portas que não são secretas.
+ */
+function drawWalls(g, walls, s, master, tools) {
+  if (!walls?.length) return;
+  const k = s / WALL_UNIT;
+  g.save();
+  g.lineCap = "round";
+  for (const w of walls) {
+    const isDoor = w.kind ? w.kind === "door" : w.door != null;
+    const open = w.kind ? !!w.open : w.door === "open";
+    if (!tools) {
+      if (isDoor && !(master && w.hidden)) drawDoorGlyph(g, w, s, open);
+      continue;
+    }
+    const kind = wallKind(w.kind);
+    g.globalAlpha = w.hidden ? 0.5 : 1;
+    g.setLineDash(kind.dash.map((d) => d * Math.max(1, s * 0.08)));
+    g.strokeStyle = "#0b0a08cc";
+    g.lineWidth = Math.max(3, s * 0.16);
+    g.beginPath(); g.moveTo(w.x1 * k, w.y1 * k); g.lineTo(w.x2 * k, w.y2 * k); g.stroke();
+    g.strokeStyle = WALL_COLORS[w.kind] || WALL_COLORS.wall;
+    g.lineWidth = Math.max(1.5, s * 0.08);
+    g.stroke();
+    g.setLineDash([]);
+    if (isDoor) drawDoorGlyph(g, w, s, open);
+  }
+  g.restore();
+}
+
+/** Sobreposição do editor de paredes: prévia do traço, selecionadas, vértices e o ponto magnético sob o cursor. */
+function drawVectorOverlay(g, vector, walls, s) {
+  if (!vector) return;
+  const k = s / WALL_UNIT;
+  const selected = new Set(vector.selected || []);
+  g.save();
+  g.lineCap = "round";
+  for (const w of walls || []) {
+    if (!selected.has(w.id)) continue;
+    g.strokeStyle = "#ffffff";
+    g.lineWidth = Math.max(2, s * 0.06);
+    g.setLineDash([Math.max(3, s * 0.12), Math.max(3, s * 0.1)]);
+    g.beginPath(); g.moveTo(w.x1 * k, w.y1 * k); g.lineTo(w.x2 * k, w.y2 * k); g.stroke();
+  }
+  g.setLineDash([]);
+  if (vector.vertices) {
+    const seen = new Set();
+    g.fillStyle = "#0b0a08";
+    g.strokeStyle = "#f1d79c";
+    g.lineWidth = 1.5;
+    const r = Math.max(3, Math.min(7, s * 0.09));
+    for (const w of walls || []) for (const [x, y] of [[w.x1, w.y1], [w.x2, w.y2]]) {
+      const key = x + ":" + y;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      g.beginPath(); g.rect(x * k - r, y * k - r, r * 2, r * 2); g.fill(); g.stroke();
+    }
+  }
+  if (vector.preview?.length) {
+    g.strokeStyle = "#f1d79c";
+    g.lineWidth = Math.max(2, s * 0.07);
+    g.setLineDash([Math.max(4, s * 0.15), Math.max(3, s * 0.1)]);
+    g.beginPath();
+    for (const p of vector.preview) { g.moveTo(p.x1 * k, p.y1 * k); g.lineTo(p.x2 * k, p.y2 * k); }
+    g.stroke();
+    g.setLineDash([]);
+  }
+  if (vector.box) {
+    const b = vector.box;
+    g.strokeStyle = "#f1d79c";
+    g.lineWidth = 1;
+    g.setLineDash([4, 3]);
+    g.strokeRect(Math.min(b.x1, b.x2) * k, Math.min(b.y1, b.y2) * k, Math.abs(b.x2 - b.x1) * k, Math.abs(b.y2 - b.y1) * k);
+    g.setLineDash([]);
+  }
+  if (vector.point) {
+    const r = Math.max(4, Math.min(9, s * 0.12));
+    g.strokeStyle = vector.point.snapped ? "#7cc35b" : "#f1d79c";
+    g.lineWidth = 2;
+    g.beginPath(); g.arc(vector.point.x * k, vector.point.y * k, r, 0, Math.PI * 2); g.stroke();
+    if (vector.point.snapped) { g.beginPath(); g.moveTo(vector.point.x * k - r, vector.point.y * k); g.lineTo(vector.point.x * k + r, vector.point.y * k); g.stroke(); }
+  }
+  g.restore();
+}
+
+/**
+ * Diagnóstico (só no editor do mestre): casas que bloqueiam movimento hachuradas, áreas sem luz em azul e problemas de
+ * geometria com triângulo "!" (forma + lista no painel, não só cor).
+ */
+function drawDiagnostic(g, diag, w, h, s) {
+  if (!diag) return;
+  g.save();
+  if (diag.dark) {
+    const dark = decodeBits(diag.dark, w * h);
+    g.fillStyle = "rgba(60,90,200,.22)";
+    for (let i = 0; i < w * h; i++) if (dark[i]) g.fillRect((i % w) * s, Math.floor(i / w) * s, s, s);
+  }
+  if (diag.blocked) {
+    const blocked = decodeBits(diag.blocked, w * h);
+    g.strokeStyle = "rgba(230,160,60,.75)";
+    g.lineWidth = 1;
+    g.beginPath();
+    for (let i = 0; i < w * h; i++) {
+      if (!blocked[i]) continue;
+      const x = (i % w) * s, y = Math.floor(i / w) * s;
+      g.moveTo(x, y + s); g.lineTo(x + s, y);
+      g.moveTo(x, y + s / 2); g.lineTo(x + s / 2, y);
+      g.moveTo(x + s / 2, y + s); g.lineTo(x + s, y + s / 2);
+    }
+    g.stroke();
+  }
+  const k = s / WALL_UNIT;
+  for (const issue of diag.issues || []) {
+    const cx = issue.x * k, cy = issue.y * k, r = Math.max(7, s * 0.22);
+    g.fillStyle = "#d4533f";
+    g.beginPath(); g.moveTo(cx, cy - r); g.lineTo(cx + r, cy + r * 0.8); g.lineTo(cx - r, cy + r * 0.8); g.closePath(); g.fill();
+    g.fillStyle = "#fff";
+    g.font = `700 ${Math.max(9, r)}px Georgia, serif`;
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText("!", cx, cy + r * 0.2);
+  }
+  g.restore();
 }
 
 // Retratos dos marcadores (NPC/criatura com imagem): uma carga por endereço, desenhada recortada no círculo do marcador.
@@ -773,6 +933,8 @@ export function createBoard(host, handlers = {}) {
     }
     drawFog(g, state, view, cell, t, animate);
     for (const token of state.tokens || []) if (token.light > 0 && !token.hidden) { const v = visualOf(token); drawGlow(g, v.x, v.y, token.light, cell, t, animate); }
+    drawDiagnostic(g, view.diagnostic, r[0].length, r.length, cell);
+    drawVectorOverlay(g, view.vector, state.fog?.walls, cell);
     if (view.paint?.length) {
       g.fillStyle = "rgba(241,215,156,.28)";
       for (const c of view.paint) g.fillRect(c.x * cell + 1, c.y * cell + 1, cell - 2, cell - 2);
@@ -1015,7 +1177,7 @@ export function createBoard(host, handlers = {}) {
   };
   canvas.addEventListener("pointerdown", (e) => {
     suppressClick = false;
-    if (panning || panHold || panTool || e.button !== 0 || view.mode === "paint" || !tileset()) return;
+    if (panning || panHold || panTool || e.button !== 0 || view.mode === "paint" || view.mode === "vector" || !tileset()) return;
     const p = boardPoint(e);
     if (handleHit && handlers.onResize && Math.hypot(p.px - handleHit.x, p.py - handleHit.y) <= handleHit.r) {
       e.preventDefault();
@@ -1053,7 +1215,7 @@ export function createBoard(host, handlers = {}) {
     if (!drag || e.pointerId !== drag.pointer) return;
     const { token, start, cell: target, moved } = drag;
     drag = null;
-    canvas.style.touchAction = view.mode === "paint" ? "none" : "";
+    canvas.style.touchAction = view.mode === "paint" || view.mode === "vector" ? "none" : "";
     if (!moved) return;
     suppressClick = true;
     draw();
@@ -1075,7 +1237,7 @@ export function createBoard(host, handlers = {}) {
   function finishResize(cancel) {
     const { token, size } = resize;
     resize = null;
-    canvas.style.touchAction = view.mode === "paint" ? "none" : "";
+    canvas.style.touchAction = view.mode === "paint" || view.mode === "vector" ? "none" : "";
     suppressClick = true;
     if (cancel || size === (sized(token).size ?? 100)) { draw(); return; }
     const entry = { size };
@@ -1133,6 +1295,32 @@ export function createBoard(host, handlers = {}) {
     handlers.onPaint?.(cells, cellAt(e.clientX, e.clientY));
   };
   canvas.addEventListener("pointerup", finishStroke);
+  // Paredes vetoriais (ADR-087): ponto exato do ponteiro em centésimos de casa, independente do zoom.
+  const worldAt = (e) => { const { px, py } = boardPoint(e); return cell > 0 ? { x: Math.round((px / cell) * WALL_UNIT), y: Math.round((py / cell) * WALL_UNIT) } : null; };
+  let vectorPointer = null;
+  const vectorEvent = (type, e) => {
+    const p = worldAt(e);
+    if (p) handlers.onVector?.({ type, ...p, shiftKey: e.shiftKey, altKey: e.altKey, ctrlKey: e.ctrlKey || e.metaKey, button: e.button, pixels: cell / dpr });
+  };
+  canvas.addEventListener("pointerdown", (e) => {
+    if (view.mode !== "vector" || panning || panHold || panTool || e.button !== 0 || !tileset()) return;
+    e.preventDefault();
+    canvas.focus({ preventScroll: true });
+    canvas.setPointerCapture?.(e.pointerId);
+    vectorPointer = e.pointerId;
+    vectorEvent("down", e);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (view.mode !== "vector" || cameraDrag) return;
+    vectorEvent(vectorPointer === e.pointerId ? "drag" : "move", e);
+  });
+  canvas.addEventListener("pointerup", (e) => {
+    if (vectorPointer !== e.pointerId) return;
+    vectorPointer = null;
+    if (view.mode === "vector") vectorEvent("up", e);
+  });
+  canvas.addEventListener("pointercancel", (e) => { if (vectorPointer === e.pointerId) { vectorPointer = null; handlers.onVector?.({ type: "cancel" }); } });
+  canvas.addEventListener("dblclick", (e) => { if (view.mode === "vector") { e.preventDefault(); vectorEvent("dbl", e); } });
   canvas.addEventListener("pointercancel", () => { stroke = null; view = { ...view, paint: [] }; draw(); });
   const bubbleAt = (e) => {
     if (!handlers.onBubble || !bubbleHits.length) return null;
@@ -1147,7 +1335,7 @@ export function createBoard(host, handlers = {}) {
   canvas.addEventListener("click", (e) => {
     if (suppressClick) { suppressClick = false; return; }
     if (panHold || panTool) return;
-    if (view.mode === "paint") return;
+    if (view.mode === "paint" || view.mode === "vector") return;
     // Névoa, paredes, luzes e marcas continuam por casa; posicionar usa o ponto fino no modo livre.
     if (view.mode === "fog") { if (!panning) activate(cellAt(e.clientX, e.clientY)); return; }
     if (view.mode === "place") { if (!panning) activate(pointAt(e.clientX, e.clientY)); return; }
@@ -1272,7 +1460,7 @@ export function createBoard(host, handlers = {}) {
       if (uploaded()) loadBackground(src);
       else if (src && image.getAttribute("src") !== src) image.src = src;
       image.alt = "Mapa: " + state.map.name;
-      canvas.style.touchAction = view.mode === "paint" ? "none" : "";
+      canvas.style.touchAction = view.mode === "paint" || view.mode === "vector" ? "none" : "";
       updateCamera();
       if (!isTile) cancelAnimationFrame(frame);
       layout();
@@ -1287,7 +1475,7 @@ export function createBoard(host, handlers = {}) {
     setView(nextView) {
       if (camera) panning = false;
       view = { ...view, ...nextView };
-      canvas.style.touchAction = view.mode === "paint" ? "none" : "";
+      canvas.style.touchAction = view.mode === "paint" || view.mode === "vector" ? "none" : "";
       updateCamera();
       draw();
     },

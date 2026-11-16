@@ -78,6 +78,8 @@ export function normalizeElement(raw, layerIds = null) {
     rotation: num(raw?.rotation), opacity: clamp(num(raw?.opacity, 100), 0, 100),
     visible: raw?.visible !== false, locked: !!raw?.locked, flipX: !!raw?.flipX, flipY: !!raw?.flipY,
   };
+  // Grupo (ADR-086): opcional; documentos antigos não têm o campo e continuam iguais.
+  if (typeof raw?.group === "string" && ID.test(raw.group)) el.group = raw.group;
   if (type === "image") el.src = String(raw?.src ?? "");
   if (type === "text") {
     el.text = String(raw?.text ?? "").slice(0, LIMITS.text);
@@ -120,6 +122,7 @@ export function serializeComposition(doc) {
     elements: doc.elements.map((e) => {
       const base = { id: e.id, layer: e.layer, type: e.type, name: e.name || null, x: round2(e.x), y: round2(e.y), width: round2(e.width), height: round2(e.height),
         rotation: round2(e.rotation), opacity: round2(e.opacity), visible: !!e.visible, locked: !!e.locked, flipX: !!e.flipX, flipY: !!e.flipY };
+      if (e.group && ID.test(e.group)) base.group = e.group;
       if (e.type === "image") base.src = e.src;
       if (e.type === "text") Object.assign(base, { text: e.text, fontSize: round2(e.fontSize), fontFamily: e.fontFamily, color: e.color, align: e.align, bold: !!e.bold, italic: !!e.italic });
       if (e.type === "rect" || e.type === "ellipse") Object.assign(base, { fill: e.fill || null, stroke: e.stroke || null, strokeWidth: round2(e.strokeWidth || 0) });
@@ -178,6 +181,7 @@ export function validateComposition(doc) {
     if (!inRange(e.rotation, -LIMITS.rotation, LIMITS.rotation)) return "A rotação vai de −360 a 360 graus.";
     if (!inRange(e.opacity, 0, 100)) return "A opacidade vai de 0 a 100.";
     if (String(e.name ?? "").length > LIMITS.elementName) return "O nome do elemento aceita até 80 caracteres.";
+    if (e.group != null && !ID.test(String(e.group))) return "Grupo inválido (a-z, 0-9 e hífen, até 24).";
     if (e.type === "image") {
       if (!isSource(e.src)) return `A imagem ${label} não tem origem válida.`;
       if (e.src !== "self") sources.add(e.src.toLowerCase());
@@ -390,12 +394,32 @@ export function rotateFromPointer(start, startPointer, pointer, snap = false) {
 
 function gridLine(v, size, offset) { return offset + Math.round((v - offset) / size) * size; }
 
-/** Alvos de encaixe por eixo: bordas e centro do artboard e, com grade, a linha mais próxima. */
-function snapTargets(axis, value, { artboard, grid }) {
+/**
+ * Alvos de encaixe por eixo: bordas e centro do artboard, com grade a linha mais próxima e, com `lines` (ver `snapLines`),
+ * bordas e centros de outros elementos (guias magnéticas).
+ */
+function snapTargets(axis, value, { artboard, grid, lines }) {
   const len = axis === "x" ? artboard.width : artboard.height;
   const out = [0, len / 2, len];
   if (grid?.size >= 1) out.push(gridLine(value, grid.size, axis === "x" ? grid.offsetX || 0 : grid.offsetY || 0));
+  const extra = lines?.[axis];
+  if (extra?.length) for (const v of extra) out.push(v);
   return out;
+}
+
+/**
+ * Linhas de encaixe dos elementos (bordas e centros dos limites), excluindo `excludeIds` (os que estão sendo movidos).
+ * Calculadas uma vez no começo do arraste. Ocultos, de camada oculta e fora da lista ficam de fora; bloqueados contam.
+ */
+export function snapLines(doc, excludeIds = new Set()) {
+  const xs = new Set(), ys = new Set();
+  for (const el of doc.elements) {
+    if (excludeIds.has(el.id) || !isSelectable(doc, el, { includeLocked: true })) continue;
+    const b = elementBounds(el);
+    for (const v of [b.x, b.x + b.width / 2, b.x + b.width]) xs.add(round2(v));
+    for (const v of [b.y, b.y + b.height / 2, b.y + b.height]) ys.add(round2(v));
+  }
+  return { x: [...xs], y: [...ys] };
 }
 
 /** Encaixa um valor ao alvo mais próximo dentro do limite. → { value, guide|null }. */
@@ -593,4 +617,78 @@ export function clampGeometry(el) {
   el.rotation = normalizeRotation(el.rotation);
   el.opacity = clamp(num(el.opacity, 100), 0, 100);
   return el;
+}
+
+// ---------- Grupos e transformação em conjunto (ADR-086) ----------
+
+/** Identificador novo de grupo (`grupo-1`…), único entre os elementos. */
+export function newGroupId(elements) {
+  const used = new Set((elements || []).map((e) => e.group).filter(Boolean));
+  for (let i = 1; i < 10000; i++) if (!used.has(`grupo-${i}`)) return `grupo-${i}`;
+  return `grupo-${Date.now().toString(36)}`.slice(0, 24);
+}
+
+/** Cópias (colar/duplicar) ganham grupos novos: nunca entram no grupo dos originais. Altera e devolve `copies`. */
+export function regroupCopies(copies, existing) {
+  const all = [...existing];
+  const map = new Map();
+  for (const el of copies) {
+    if (!el.group) continue;
+    if (!map.has(el.group)) { const id = newGroupId(all); map.set(el.group, id); all.push({ group: id }); }
+    el.group = map.get(el.group);
+  }
+  return copies;
+}
+
+/** Seleção expandida aos grupos: clicar num membro seleciona o grupo inteiro (só membros selecionáveis). */
+export function expandGroups(doc, ids) {
+  const sel = new Set(ids);
+  const groups = new Set(doc.elements.filter((e) => sel.has(e.id) && e.group).map((e) => e.group));
+  if (!groups.size) return [...sel];
+  for (const e of doc.elements) if (e.group && groups.has(e.group) && isSelectable(doc, e)) sel.add(e.id);
+  return [...sel];
+}
+
+/** Agrupar exige dois ou mais elementos na mesma camada. → { group, ids } ou { error }. */
+export function planGroup(doc, ids) {
+  const els = doc.elements.filter((e) => ids.includes(e.id));
+  if (els.length < 2) return { error: "Selecione dois ou mais elementos para agrupar." };
+  if (new Set(els.map((e) => e.layer)).size > 1) return { error: "Agrupe elementos da mesma camada. Mova-os para uma camada antes." };
+  return { group: newGroupId(doc.elements), ids: els.map((e) => e.id) };
+}
+
+/**
+ * Redimensionar um conjunto pelos limites: cada elemento acompanha a escala do retângulo `from` → `to`
+ * (posição do centro e tamanho). Girado em múltiplo de 90° troca os eixos; outros ângulos usam escala uniforme
+ * (média geométrica) para não deformar. → Map id → { x, y, width, height }.
+ */
+export function scaleGroup(items, from, to) {
+  const out = new Map();
+  if (!(from?.width > 0 && from?.height > 0)) return out;
+  const sx = to.width / from.width, sy = to.height / from.height, k = Math.sqrt(Math.abs(sx * sy));
+  for (const el of items) {
+    const c = center(el);
+    const nx = to.x + (c.x - from.x) * sx, ny = to.y + (c.y - from.y) * sy;
+    const r = ((Math.round(el.rotation || 0) % 180) + 180) % 180;
+    const aligned = Math.abs((el.rotation || 0) - Math.round(el.rotation || 0)) < 1e-9 && r % 90 === 0;
+    const [fx, fy] = aligned ? (r === 90 ? [sy, sx] : [sx, sy]) : [k, k];
+    const width = Math.max(LIMITS.sizeMin, round2(el.width * fx)), height = Math.max(LIMITS.sizeMin, round2(el.height * fy));
+    out.set(el.id, { x: round2(nx - width / 2), y: round2(ny - height / 2), width, height });
+  }
+  return out;
+}
+
+/** Girar um conjunto `deg` graus em torno de `pivot`: os centros giram e cada rotação soma o ângulo. → Map id → { x, y, rotation }. */
+export function rotateGroup(items, pivot, deg) {
+  const out = new Map();
+  for (const el of items) {
+    const c = center(el), p = rotate(c.x - pivot.x, c.y - pivot.y, deg);
+    out.set(el.id, { x: round2(pivot.x + p.x - el.width / 2), y: round2(pivot.y + p.y - el.height / 2), rotation: normalizeRotation((el.rotation || 0) + deg) });
+  }
+  return out;
+}
+
+/** Alças do retângulo de limites de um conjunto (sem rotação), no mesmo formato de `handlePoints`. */
+export function boundsHandlePoints(bounds, rotateDistance = 24) {
+  return handlePoints({ ...bounds, rotation: 0 }, rotateDistance);
 }

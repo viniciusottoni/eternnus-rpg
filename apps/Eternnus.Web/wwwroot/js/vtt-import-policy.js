@@ -161,3 +161,36 @@ export function uvttLayer(parsed, width, height, baseCells = []) {
     counts: { walls: walls.size, doors: doors.size, lights: lights.length, skippedLights: Math.max(0, seen.size - lights.length) },
   };
 }
+
+/**
+ * Paredes vetoriais do UVTT (ADR-087): cada trecho das linhas de visão vira um segmento preciso (centésimos de casa) e cada
+ * portal vira porta (aberta ou fechada como no arquivo). Diferente de `uvttLayer`, nada é rasterizado em casas: a geometria
+ * diagonal e as salas irregulares chegam como foram desenhadas. Trechos fora do mapa são presos à borda; os que somem saem.
+ */
+export function uvttWalls(parsed, width, height, maxWalls = 2000) {
+  const W = width * 100, H = height * 100;
+  const at = (p) => ({ x: Math.max(0, Math.min(W, Math.round(p.x * 100))), y: Math.max(0, Math.min(H, Math.round(p.y * 100))) });
+  const walls = [];
+  let skipped = 0, n = 0;
+  const push = (a, b, kind, open) => {
+    const p = at(a), q = at(b);
+    if (p.x === q.x && p.y === q.y) return;
+    if (walls.length >= maxWalls) { skipped++; return; }
+    walls.push({ id: `u${(n++).toString(36)}`, x1: p.x, y1: p.y, x2: q.x, y2: q.y, kind, open, hidden: false });
+  };
+  for (const line of parsed.walls) for (let i = 1; i < line.length; i++) push(line[i - 1], line[i], "wall", false);
+  for (const p of parsed.portals) push(p.a, p.b, "door", !p.closed);
+  return { walls, counts: { walls: walls.filter((w) => w.kind === "wall").length, doors: walls.filter((w) => w.kind === "door").length, skippedWalls: skipped } };
+}
+
+/** Luzes do UVTT como focos (uma por casa, até o limite), sem tocar nas casas. */
+export function uvttLights(parsed, width, height) {
+  const seen = new Set(), lights = [];
+  for (const l of parsed.lights) {
+    const x = Math.floor(l.x), y = Math.floor(l.y);
+    if (x < 0 || y < 0 || x >= width || y >= height || seen.has(y * width + x)) continue;
+    seen.add(y * width + x);
+    if (lights.length < MAX_LIGHTS) lights.push({ x, y, radius: Math.max(1, Math.min(30, Math.round(l.range) || 1)) });
+  }
+  return { lights, skipped: Math.max(0, seen.size - lights.length) };
+}

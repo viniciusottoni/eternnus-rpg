@@ -2598,6 +2598,21 @@ dialog.fog-editor-modal {
 .grid-slider-row button { min-width: 44px; min-height: 44px; }
 .grid-number { width: 84px; }
 .grid-choice { display: grid; gap: 8px; }
+/* Assistente de alinhamento da grade (grid-adjust.js) */
+.grid-wizard { display: grid; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(20, 18, 12, .6); }
+.grid-wizard-head { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--gold, #c6a463); }
+.grid-wizard-start, .grid-wizard-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.grid-wizard-start button, .grid-wizard-actions button { min-height: 44px; }
+.grid-wizard-run[hidden], .grid-wizard-start[hidden], .grid-wizard-count[hidden] { display: none; }
+.grid-wizard-steps { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; counter-reset: wiz; font-size: 12px; color: var(--muted); }
+.grid-wizard-steps li { counter-increment: wiz; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; }
+.grid-wizard-steps li::before { content: counter(wiz) ". "; }
+.grid-wizard-steps li.done { color: var(--text); }
+.grid-wizard-steps li.done::after { content: " ✓"; }
+.grid-wizard-steps li[aria-current="step"] { color: var(--text); border-color: var(--gold, #c6a463); font-weight: 600; }
+.grid-wizard-text { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text); }
+.grid-wizard-count input { width: 96px; min-height: 44px; }
+.grid-preview[data-wizard="cell"] canvas, .grid-preview[data-wizard="span"] canvas { cursor: crosshair; }
 .map-upload [data-grid-host][hidden] { display: none; }
 
 /* Mesa do mestre: ferramentas com rótulos visíveis (a Básica fica sempre no topo do trilho). */

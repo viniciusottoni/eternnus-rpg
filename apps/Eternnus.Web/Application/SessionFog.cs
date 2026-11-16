@@ -6,7 +6,10 @@ namespace Eternnus.Web;
 public record FogCellInput(int X, int Y);
 public record FogPaintInput(string Tool, List<FogCellInput>? Cells);
 public record FogDoorInput(int X, int Y);
-public record FogLightInput(string? Id, int X, int Y, int Radius);
+public record FogLightInput(string? Id, int X, int Y, int Radius, int? Dim = null, string? Color = null, int? Intensity = null, string? Animation = null);
+/// <summary>Todas as paredes vetoriais da camada (substitui a lista). Estado aberto das portas vem junto.</summary>
+public record FogWallsInput(List<FogWall>? Walls);
+public record FogWallDoorInput(string Id);
 public record FogMarkInput(string? Id, int X, int Y, string Kind, string Label, int? Dc, string? Sense, int? MaxDistance);
 public record FogRevealInput(bool All, List<string>? UserIds);
 public record FogEnabledInput(bool? Enabled);
@@ -73,6 +76,12 @@ public partial class SessionService
 
     public Task ToggleDoorAsync(Guid sessionId, FogDoorInput x, string user, CancellationToken ct) =>
         FogWriteAsync(sessionId, user, "Mestre abriu ou fechou uma porta", s => FogEdits.ToggleDoor(s.State, s.Map.Width, s.Map.Height, x.X, x.Y), ct);
+
+    public Task SaveWallsAsync(Guid sessionId, FogWallsInput x, string user, CancellationToken ct) =>
+        FogWriteAsync(sessionId, user, "Mestre ajustou paredes e portas", s => s.State.Walls = TableFog.ValidWalls(x.Walls, s.Map.Width, s.Map.Height), ct);
+
+    public Task ToggleWallDoorAsync(Guid sessionId, FogWallDoorInput x, string user, CancellationToken ct) =>
+        FogWriteAsync(sessionId, user, "Mestre abriu ou fechou uma porta", s => FogEdits.ToggleWallDoor(s.State, x.Id), ct);
 
     public Task SaveLightAsync(Guid sessionId, FogLightInput x, string user, CancellationToken ct) =>
         FogWriteAsync(sessionId, user, "Mestre ajustou um foco de luz", s => FogEdits.UpsertLight(s.State, s.Map.Width, s.Map.Height, x), ct);
@@ -284,7 +293,8 @@ public partial class SessionService
         {
             active = true, remember = scene.Settings.RememberExplored,
             cells = TableFogService.MaskRows(scene.State.Cells, known, width), visible = Bits.Encode(view.Visible), explored = Bits.Encode(known),
-            lights = scene.State.Lights.Where(l => known[scene.Grid.Index(l.X, l.Y)]).Select(l => new { l.X, l.Y, l.Radius }),
+            lights = scene.State.Lights.Where(l => known[scene.Grid.Index(l.X, l.Y)]).Select(l => new { l.X, l.Y, l.Radius, l.Dim, l.Color, l.Intensity, l.Animation }),
+            walls = TableFogService.PlayerWalls(scene.State.Walls, known, scene.Map.Width, scene.Map.Height),
             marks = scene.State.Marks.Where(m => view.Marks.Contains(m.Id)).Select(m => new { m.Id, m.X, m.Y, m.Kind, m.Label }),
             imageVersion = version,
         };
@@ -356,10 +366,21 @@ public static class FogEdits
         state.Cells[y] = new string(row);
     }
 
+    public static void ToggleWallDoor(MapFogState state, string id)
+    {
+        var door = state.Walls.FirstOrDefault(w => w.Id == id) ?? throw new RuleException(404, "Porta não encontrada.");
+        if (door.Kind != FogWallKinds.Door) throw new RuleException(409, "Esse segmento não é uma porta.");
+        door.Open = !door.Open;
+    }
+
     public static void UpsertLight(MapFogState state, int width, int height, FogLightInput x)
     {
         Inside(width, height, x.X, x.Y);
         if (x.Radius is < 1 or > TableFog.MaxRadius) throw new RuleException(400, $"O raio vai de 1 a {TableFog.MaxRadius} casas.");
+        if (x.Dim is { } dim && (dim < x.Radius || dim > TableFog.MaxRadius)) throw new RuleException(400, $"A penumbra vai do raio da luz até {TableFog.MaxRadius} casas.");
+        if (x.Color != null && !System.Text.RegularExpressions.Regex.IsMatch(x.Color, "^#[0-9a-fA-F]{6}$")) throw new RuleException(400, "Cor da luz inválida. Use #rrggbb.");
+        if (x.Intensity is < 10 or > 100) throw new RuleException(400, "A intensidade vai de 10 a 100.");
+        if (!FogLightAnimations.IsValid(x.Animation)) throw new RuleException(400, "Animação de luz inválida.");
         var light = x.Id == null ? null : state.Lights.FirstOrDefault(l => l.Id == x.Id);
         if (x.Id != null && light == null) throw new RuleException(404, "Foco de luz não encontrado.");
         if (light == null)
@@ -367,7 +388,8 @@ public static class FogEdits
             if (state.Lights.Count >= TableFog.MaxLights) throw new RuleException(409, $"Limite de {TableFog.MaxLights} focos de luz por mapa.");
             state.Lights.Add(light = new FogLight());
         }
-        light.X = x.X; light.Y = x.Y; light.Radius = x.Radius;
+        light.X = x.X; light.Y = x.Y; light.Radius = x.Radius; light.Dim = x.Dim == x.Radius ? null : x.Dim;
+        light.Color = x.Color?.ToLowerInvariant(); light.Intensity = x.Intensity == 100 ? null : x.Intensity; light.Animation = x.Animation;
     }
 
     public static void RemoveLight(MapFogState state, string id)

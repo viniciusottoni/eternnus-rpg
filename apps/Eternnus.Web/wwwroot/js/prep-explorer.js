@@ -9,6 +9,7 @@ import { mapThumbnail } from "./table-map.js";
 import { safeImageUrl } from "./play-policy.js";
 import { openContextMenu, closeAllMenus, icon } from "./editor-core.js";
 import { isTypingTarget, shortcutLabel } from "./editor-policy.js";
+import { state } from "./state.js";
 import * as P from "./prep-explorer-policy.js";
 
 const ARCHIVED = "Restaure a campanha arquivada para editar a preparação.";
@@ -48,7 +49,15 @@ const LOCAL = {
   sortAsc: '<path d="M7 4v16M3.5 7.5 7 4l3.5 3.5M14 6h3M14 12h5M14 18h7"/>',
   sortDesc: '<path d="M7 4v16M3.5 16.5 7 20l3.5-3.5M14 6h7M14 12h5M14 18h3"/>',
   chevron: '<path d="M9 6l6 6-6 6"/>',
+  star: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>',
+  filter: '<path d="M3.5 5h17l-6.5 8v5.5l-4 1.8V13z"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  collection: '<path d="M4 7h16M6 4h12M3.5 10.5h17v8a1.5 1.5 0 01-1.5 1.5H5a1.5 1.5 0 01-1.5-1.5z"/>',
 };
+/** Ícone de cada coleção embutida; as salvas pelo mestre usam "collection". */
+const COLLECTION_ICON = { favorites: "star", recent: "clock", "ready-scenes": "scene", "incomplete-scenes": "scene", "incomplete-characters": "character", "unused-maps": "atlas" };
+/** Itens desenhados por vez (listas longas não travam a página; "Mostrar mais" e o teclado ampliam). */
+const RENDER_STEP = 240;
 const ico = (name) => (LOCAL[name] ? `<svg class="ed-icon px-ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${LOCAL[name]}</svg>` : icon(name));
 const ROOT_ICON = { scenes: "scene", maps: "atlas", characters: "character" };
 const TYPE_ICON = { scene: "scene", map: "atlas", character: "character", folder: "folder" };
@@ -58,7 +67,7 @@ const expandedByCampaign = new Map();
 const clipboardByCampaign = new Map();
 
 function loadPrefs() {
-  const fallback = { view: "grid", sort: "name", dir: "asc", details: true };
+  const fallback = { view: "grid", sort: "name", dir: "asc", details: true, filtersOpen: false };
   try {
     const p = { ...fallback, ...JSON.parse(localStorage.getItem(PREF_KEY) || "{}") };
     return {
@@ -66,10 +75,14 @@ function loadPrefs() {
       sort: P.SORT_KEYS.some(([k]) => k === p.sort) ? p.sort : "name",
       dir: p.dir === "desc" ? "desc" : "asc",
       details: p.details !== false,
+      filtersOpen: p.filtersOpen === true,
     };
   } catch { return fallback; }
 }
 function savePrefs(p) { try { localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch { /* armazenamento indisponível: preferências só nesta visita */ } }
+/** Favoritos, recentes e coleções do mestre (por usuário e campanha, só neste navegador; ADR-084). */
+function loadUserPrefs(key) { try { return P.normalizeUserPrefs(JSON.parse(localStorage.getItem(key) || "{}")); } catch { return P.normalizeUserPrefs({}); } }
+function saveUserPrefs(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* armazenamento indisponível: vale só nesta visita */ } }
 
 /** Data local curta (servidor envia UTC; sem fuso explícito, trata como UTC). */
 function localDate(value) {
@@ -96,7 +109,14 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
     nav: P.createNav({ category: P.isCategory(category) ? category : "scenes", folderId: null }),
     selected: [], anchor: null, focusKey: null, query: "", everywhere: false, visible: [],
     archived: !!d.archived, treeOpen: false, disposed: false, loading: false,
+    // Coleção ativa (vista virtual), filtros, abrangência e quantos itens desenhar (ADR-084).
+    collection: null, filters: { ...P.FILTER_DEFAULTS }, scope: "here", limit: RENDER_STEP,
   };
+  const userKey = P.userPrefsKey(state.user?.id, d.id);
+  let mine = loadUserPrefs(userKey);
+  const saveMine = (next) => { mine = next; saveUserPrefs(userKey, mine); };
+  const favorites = () => new Set(mine.favorites);
+  const isFavorite = (key) => mine.favorites.includes(key);
   const thumbs = new Map();
   let observer = null, drag = null, lastDropReason = "", renaming = false, lastOpen = 0;
 
@@ -126,6 +146,10 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
       st.byKey = new Map([...st.entries.folders, ...st.entries.items].map((e) => [e.key, e]));
       st.nav = P.pruneNav(st.nav, st.entries.folders);
       st.selected = st.selected.filter((k) => st.byKey.has(k));
+      // Favoritos e recentes de itens excluídos (aqui ou em outro aparelho) saem da preferência local.
+      const pruned = P.pruneUserPrefs(mine, new Set(st.byKey.keys()));
+      if (pruned !== mine) saveMine(pruned);
+      if (st.collection && !P.isSmartCollection(st.collection) && !mine.collections.some((c) => c.id === st.collection)) st.collection = null;
       return true;
     } catch (error) {
       if (st.disposed || !target.isConnected) return false;
@@ -158,6 +182,15 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
   const mapByKey = (key) => (st.data?.maps || []).find((m) => m.key === key) || (st.official || []).find((m) => m.key === key) || null;
   const officialName = (key) => (st.official || []).find((m) => m.key === key)?.name || key;
   const say = (text) => { const el = q?.(".px-status"); if (el) el.textContent = text || ""; };
+  /** Cenário de uma cena existe: o servidor só devolve `mapName` para chaves que encontra; mapas da lista contam também. */
+  const knownSceneMaps = () => new Set((st.data?.scenes || []).filter((s) => s.mapName).map((s) => s.mapKey));
+  function filterCtx() {
+    const known = knownSceneMaps();
+    return { favorites: favorites(), recents: mine.recents, now: Date.now(), saved: mine.collections, mapExists: (key) => !!key && (known.has(key) || !!mapByKey(key)) };
+  }
+  const collectionInfo = (id) => P.SMART_COLLECTIONS.find((c) => c.id === id) || mine.collections.find((c) => c.id === id) || null;
+  /** Mostrando itens fora da pasta atual (coleção, subpastas, campanha toda ou busca em todas as pastas). */
+  const outsideFolder = () => !!st.collection || st.scope !== "here" || (st.everywhere && !!P.normalizeText(st.query));
 
   async function npcs() {
     if (!st.npcs) st.npcs = (await api(`${base}/npcs`)).items || [];
@@ -172,6 +205,7 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
   <div class="px-toolbar" role="toolbar" aria-label="Ações da Preparação" data-px-toolbar></div>
   <div class="px-address"><button type="button" class="px-tb px-tree-toggle" data-px="tree" aria-expanded="false" aria-controls="px-tree" aria-label="Pastas">${ico("folder")}<span class="px-tb-label">Pastas</span></button><nav class="px-crumbs" aria-label="Caminho da pasta" data-px-crumbs></nav>
     <form class="px-search" role="search" data-px-search><label class="sr-only" for="px-q">Buscar na preparação</label><input id="px-q" type="search" maxlength="100" placeholder="Buscar…" autocomplete="off" data-no-count><label class="check px-everywhere"><input type="checkbox" data-px-everywhere> em todas as pastas</label></form></div>
+  <div class="px-filters" id="px-filters" role="group" aria-label="Filtros da Preparação" data-px-filters${prefs.filtersOpen ? "" : " hidden"}></div>
   <div class="px-body">
     <nav class="px-tree" id="px-tree" aria-label="Pastas da Preparação" data-px-tree></nav>
     <section class="px-content" aria-label="Conteúdo da pasta" data-px-content><div class="px-content-body" tabindex="-1" data-px-body></div></section>
@@ -185,9 +219,101 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
     if (!root?.isConnected) return;
     root.dataset.view = prefs.view;
     root.dataset.details = prefs.details ? "open" : "closed";
-    q("[data-px-lead]").textContent = ROOT_LEAD[loc().category];
+    const info = st.collection && collectionInfo(st.collection);
+    q("[data-px-lead]").textContent = info ? collectionLead(info) : ROOT_LEAD[loc().category];
     for (const f of P.folderPathOf(folders(), loc().folderId)) expanded.add(f.id);
-    paintTree(); paintCrumbs(); paintContent(); paintToolbar(); paintDetails();
+    paintTree(); paintCrumbs(); paintFilters(); paintContent(); paintToolbar(); paintDetails();
+  }
+  function collectionLead(info) {
+    if (!P.isSmartCollection(info.id)) return `Coleção salva: ${[info.query ? `busca “${info.query}”` : "", P.filterSummary(info.filters)].filter(Boolean).join(" · ")}. Mostra itens da campanha toda sem mudar as pastas.`;
+    return "Vista automática da campanha inteira. Nada é movido ou copiado: os itens continuam nas suas pastas.";
+  }
+
+  // ---------- Filtros (ADR-084) ----------
+  function paintFilters() {
+    const host = q("[data-px-filters]");
+    if (!host) return;
+    host.hidden = !prefs.filtersOpen;
+    if (!prefs.filtersOpen) { host.innerHTML = ""; return; }
+    const f = st.filters, count = P.activeFilterCount(f);
+    const select = (key, field) => `<div class="px-filter"><label for="px-f-${key}">${esc(field.label)}</label><select id="px-f-${key}" data-px-filter="${key}">${field.options.map(([v, l]) => `<option value="${esc(v)}"${f[key] === v ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></div>`;
+    const scopeDisabled = !!st.collection;
+    const focused = host.contains(document.activeElement) ? document.activeElement.id || (document.activeElement.matches("[data-px-filter-clear]") ? "px-f-type" : "") : "";
+    queueMicrotask(() => { if (focused) host.querySelector(`#${CSS.escape(focused)}`)?.focus({ preventScroll: true }); });
+    host.innerHTML = `${Object.entries(P.FILTER_FIELDS).map(([k, field]) => select(k, field)).join("")}
+<div class="px-filter"><label for="px-f-scope">Onde</label><select id="px-f-scope" data-px-scope${scopeDisabled ? ' disabled aria-describedby="px-f-scope-hint"' : ""}>${P.SCOPES.map(([v, l]) => `<option value="${v}"${st.scope === v ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>${scopeDisabled ? '<small id="px-f-scope-hint" class="muted">Coleções já mostram a campanha toda.</small>' : ""}</div>
+<label class="check px-filter px-filter-check"><input type="checkbox" data-px-filter="favorites"${f.favorites ? " checked" : ""}> Só favoritos</label>
+<div class="px-filter-actions">${helpButton("campanhas.preparo.filtros", "Filtros e itens incompletos")}<button type="button" class="subtle small" data-px-filter-clear${count || st.scope !== "here" ? "" : ' aria-disabled="true" data-tip="Nenhum filtro ativo."'}>Limpar filtros</button><button type="button" class="subtle small" data-px-collection-save${count || P.normalizeText(st.query) ? "" : ' aria-disabled="true" data-tip="Defina uma busca ou um filtro antes de salvar."'}>Salvar como coleção…</button></div>`;
+  }
+  function setFilter(key, value) {
+    st.filters = P.normalizeFilters({ ...st.filters, [key]: value });
+    st.selected = []; st.limit = RENDER_STEP;
+    paintFilters(); paintContent(); paintToolbar(); paintDetails();
+  }
+  function setScope(scope) {
+    st.scope = P.SCOPES.some(([k]) => k === scope) ? scope : "here";
+    st.selected = []; st.limit = RENDER_STEP;
+    paintFilters(); paintContent(); paintToolbar(); paintDetails();
+  }
+  function clearFilters() {
+    st.filters = { ...P.FILTER_DEFAULTS }; st.scope = "here"; st.limit = RENDER_STEP;
+    paintFilters(); paintContent(); paintToolbar(); paintDetails();
+    q("[data-px-filters] select")?.focus();
+  }
+  function toggleFiltersPanel(force) {
+    const open = typeof force === "boolean" ? force : !prefs.filtersOpen;
+    setPref({ filtersOpen: open });
+    paintFilters();
+    if (open) q("[data-px-filters] select")?.focus();
+  }
+  function saveCollectionDialog() {
+    if (!P.activeFilterCount(st.filters) && !P.normalizeText(st.query)) return toast("Defina uma busca ou um filtro antes de salvar a coleção.");
+    const summary = [P.normalizeText(st.query) ? `Busca: “${st.query}”` : "", P.filterSummary(st.filters)].filter(Boolean).join(" · ");
+    modal("Salvar como coleção", `<form id="px-coll-form"><p class="muted small">Uma coleção é uma vista: mostra os itens da campanha toda que atendem aos critérios, sem mover nem copiar nada. Fica guardada só neste navegador.</p><p class="small"><strong>Critérios:</strong> ${esc(summary)}</p><div class="field"><label for="px-coll-name">Nome da coleção</label><input id="px-coll-name" name="name" required maxlength="${P.COLLECTION_NAME_MAX}" autocomplete="off"></div>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">Salvar coleção</button></div></form>`);
+    $("#px-coll-name").focus();
+    $("#px-coll-form").onsubmit = (ev) => {
+      ev.preventDefault();
+      submitForm(ev.currentTarget, async (data) => {
+        const r = P.saveCollection(mine, { name: data.name, query: st.query, filters: st.filters });
+        if (r.error) throw new Error(r.error);
+        saveMine(r.prefs);
+        $("#modal").close();
+        openCollection(r.collection.id);
+        toast(`Coleção “${r.collection.name}” salva.`);
+      });
+    };
+  }
+  function removeSavedCollection(id) {
+    const c = mine.collections.find((x) => x.id === id);
+    if (!c) return;
+    saveMine(P.removeCollection(mine, id));
+    if (st.collection === id) st.collection = null;
+    paintAll();
+    say(`Coleção “${c.name}” excluída. Nenhum item foi alterado.`);
+  }
+  function openCollection(id) {
+    if (!collectionInfo(id)) return;
+    st.collection = id; st.selected = []; st.anchor = null; st.focusKey = null; st.limit = RENDER_STEP;
+    closeTree();
+    paintAll();
+  }
+  // ---------- Favoritos e recentes ----------
+  function toggleFavorite(sel) {
+    const keys = sel.map((e) => e.key);
+    if (!keys.length) return;
+    const adding = keys.some((k) => !isFavorite(k));
+    saveMine(P.toggleFavorites(mine, keys));
+    say(`${P.selectionSummary(sel)} ${adding ? "nos favoritos" : "fora dos favoritos"}.`);
+    paintTree(); paintContent(); paintToolbar(); paintDetails();
+  }
+  function remember(e) { if (e && e.type !== "folder") saveMine(P.touchRecent(mine, e.key)); }
+  /** Abre a pasta do item e o seleciona (a partir de coleções, buscas e outras abrangências). */
+  function revealEntry(e) {
+    if (!e) return;
+    st.scope = "here"; st.filters = { ...P.FILTER_DEFAULTS };
+    navigate({ category: e.category, folderId: e.type === "folder" ? e.parentId : e.folderId });
+    setSelection([e.key], { anchor: e.key, focus: e.key });
+    focusOption(e.key);
   }
 
   // ---------- Barra de ações ----------
@@ -204,12 +330,15 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
     const sel = selection(), cat = loc().category, write = blocked() ? ARCHIVED : "";
     const none = sel.length ? "" : "Selecione um item.";
     const clip = clipboardByCampaign.get(d.id);
-    const pasteReason = write || (clip?.entries.length ? "" : "Copie ou recorte itens antes de colar.");
+    const pasteReason = write || (clip?.entries.length ? "" : "Copie ou recorte itens antes de colar.") || (st.collection ? "Abra uma pasta para colar." : "");
+    const favOn = sel.length > 0 && sel.every((e) => isFavorite(e.key));
+    const nFilters = P.activeFilterCount(st.filters) + (st.scope !== "here" ? 1 : 0);
     const renameReason = write || (sel.length === 1 ? "" : "Selecione um único item para renomear.");
     const deleteReason = write || none || (sel.some((e) => e.type === "scene" && e.raw.current) ? "Apresente outra cena antes de excluir a cena atual." : "");
     q("[data-px-toolbar]").innerHTML = `<div class="px-tb-group" role="group" aria-label="Navegação">${tb("back", "Voltar", "back", { shortcut: "alt+arrowleft", reason: st.nav.back.length ? "" : "Não há pasta anterior.", text: false })}${tb("forward", "Avançar", "forward", { shortcut: "alt+arrowright", reason: st.nav.forward.length ? "" : "Não há pasta seguinte.", text: false })}${tb("up", "Subir", "up", { shortcut: "alt+arrowup", reason: loc().folderId ? "" : "Você está na raiz.", text: false })}${tb("refresh", "Atualizar", "refresh", { text: false })}</div>
 <div class="px-tb-group" role="group" aria-label="Criar">${tb("new", P.NEW_LABELS[cat], "plus", { primary: true, reason: write })}${tb("folder", "Nova pasta", "folderPlus", { reason: write })}${cat === "maps" ? tb("import", "Importar", "import", { reason: write, haspopup: true }) : ""}</div>
-<div class="px-tb-group" role="group" aria-label="Editar">${tb("copy", "Copiar", "copy", { shortcut: "mod+c", reason: write || none, text: false })}${tb("cut", "Recortar", "cut", { shortcut: "mod+x", reason: write || none, text: false })}${tb("paste", "Colar", "paste", { shortcut: "mod+v", reason: pasteReason, text: false })}${tb("rename", "Renomear", "rename", { shortcut: "f2", reason: renameReason, text: false })}${tb("delete", "Excluir", "trash", { shortcut: "delete", reason: deleteReason, text: false })}${tb("actions", "Mais ações", "more", { reason: none, haspopup: true, text: false })}</div>
+<div class="px-tb-group" role="group" aria-label="Editar">${tb("copy", "Copiar", "copy", { shortcut: "mod+c", reason: write || none, text: false })}${tb("cut", "Recortar", "cut", { shortcut: "mod+x", reason: write || none, text: false })}${tb("paste", "Colar", "paste", { shortcut: "mod+v", reason: pasteReason, text: false })}${tb("rename", "Renomear", "rename", { shortcut: "f2", reason: renameReason, text: false })}${tb("delete", "Excluir", "trash", { shortcut: "delete", reason: deleteReason, text: false })}${tb("favorite", favOn ? "Remover dos favoritos" : "Adicionar aos favoritos", "star", { reason: none, pressed: favOn, text: false })}${tb("actions", "Mais ações", "more", { reason: none, haspopup: true, text: false })}</div>
+<div class="px-tb-group" role="group" aria-label="Filtrar">${tb("filters", nFilters ? `Filtros (${nFilters})` : "Filtros", "filter", { pressed: prefs.filtersOpen })}</div>
 <div class="px-tb-group px-tb-view" role="group" aria-label="Exibição">${tb("view-grid", "Ícones", "tiles", { pressed: prefs.view === "grid", text: false })}${tb("view-list", "Lista", "list", { pressed: prefs.view === "list", text: false })}<label class="sr-only" for="px-sort">Ordenar por</label><select id="px-sort" class="px-sort" data-px-sort>${P.SORT_KEYS.map(([k, l]) => `<option value="${k}" ${prefs.sort === k ? "selected" : ""}>${l}</option>`).join("")}</select>${tb("dir", prefs.dir === "asc" ? "Ordem crescente" : "Ordem decrescente", prefs.dir === "asc" ? "sortAsc" : "sortDesc", { text: false })}${tb("details", "Painel de detalhes", "panels", { pressed: prefs.details, text: false })}</div>`;
   }
 
@@ -230,15 +359,35 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
     };
     const host = q("[data-px-tree]");
     const hadFocus = host.contains(document.activeElement);
-    host.innerHTML = `<ul class="px-tree-list" role="tree" aria-label="Pastas da Preparação">${P.CATEGORIES.map((c) => node(c, null, 1)).join("")}</ul>`;
+    const focusedColl = document.activeElement?.closest?.("[data-collection]")?.dataset.collection;
+    host.innerHTML = `<ul class="px-tree-list" role="tree" aria-label="Pastas da Preparação">${P.CATEGORIES.map((c) => node(c, null, 1)).join("")}</ul>${collectionsHtml()}`;
     const items = [...host.querySelectorAll("[role=treeitem]")];
     const active = items.find((li) => li.dataset.loc === locKey(cur)) || items[0];
     active.tabIndex = 0;
-    if (hadFocus) active.focus({ preventScroll: true });
+    if (focusedColl) host.querySelector(`[data-collection="${CSS.escape(focusedColl)}"]`)?.focus({ preventScroll: true });
+    else if (hadFocus) active.focus({ preventScroll: true });
+    // A pasta atual só aparece marcada quando nenhuma coleção está aberta.
+    if (st.collection) host.querySelectorAll(".px-tnode.current").forEach((li) => li.classList.remove("current"));
+  }
+  /** Coleções inteligentes e salvas (vistas virtuais), abaixo das pastas, com contagem. */
+  function collectionsHtml() {
+    const ctx = filterCtx();
+    const row = (c, saved) => {
+      const n = P.collectionEntries(c.id, st.entries, ctx).length;
+      const on = st.collection === c.id;
+      return `<li class="px-coll-row"><button type="button" class="px-coll${on ? " current" : ""}" data-collection="${esc(c.id)}" aria-pressed="${on}">${ico(saved ? "collection" : COLLECTION_ICON[c.id])}<span class="px-coll-name">${esc(c.name)}</span><small class="px-count" aria-label="${esc(P.countLabel("item", n))}">${n}</small></button>${saved ? `<button type="button" class="px-tb icon-only px-coll-remove" data-px-coll-remove="${esc(c.id)}" aria-label="Excluir a coleção ${esc(c.name)}" data-tip="Excluir coleção (os itens continuam)">${icon("close")}</button>` : ""}</li>`;
+    };
+    return `<section class="px-collections" aria-labelledby="px-coll-title"><h3 class="px-coll-title" id="px-coll-title">${ico("collection")}<span>Coleções</span>${helpButton("campanhas.preparo.colecoes", "Coleções, favoritos e recentes")}</h3><ul class="px-coll-list">${P.SMART_COLLECTIONS.map((c) => row(c, false)).join("")}${mine.collections.map((c) => row(c, true)).join("")}</ul></section>`;
   }
 
   // ---------- Caminho ----------
   function paintCrumbs() {
+    const info = st.collection && collectionInfo(st.collection);
+    if (info) {
+      const back = P.breadcrumbs(folders(), loc().category, loc().folderId).at(-1);
+      q("[data-px-crumbs]").innerHTML = `<ol><li><button type="button" class="px-crumb" data-nav="${esc(locKey(loc()))}" aria-label="Voltar para a pasta ${esc(back.name)}">${ico(loc().folderId ? "folder" : ROOT_ICON[loc().category])}<span>${esc(back.name)}</span></button></li><li><span class="px-crumb">${ico("collection")}<span>Coleções</span></span></li><li><span class="px-crumb" aria-current="location">${ico(COLLECTION_ICON[info.id] || "collection")}<span>${esc(info.name)}</span></span></li></ol>`;
+      return;
+    }
     const crumbs = P.breadcrumbs(folders(), loc().category, loc().folderId);
     q("[data-px-crumbs]").innerHTML = `<ol>${crumbs.map((c, i) => {
       const where = esc(locKey({ category: c.category, folderId: c.id }));
@@ -250,8 +399,12 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
   }
 
   // ---------- Conteúdo ----------
-  function badges(e) {
+  function badges(e, ctx = filterCtx()) {
     const b = [], raw = e.raw;
+    if (isFavorite(e.key)) b.push(["fav", "★ favorito"]);
+    const issues = P.entryIssues(e, ctx);
+    if (issues.length) b.push(["warn", `⚠ ${e.type === "scene" ? "incompleta" : "incompleto"}: ${issues.map((i) => i.label.toLowerCase()).join(", ")}`]);
+    if (P.isUnusedMap(e)) b.push(["warn", "não usado"]);
     if (e.type === "scene") {
       if (raw.current) b.push(["live", "Em apresentação"]);
       else if (raw.hasSaved) b.push(["", "Já visitada"]);
@@ -278,37 +431,60 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
     if (e.type === "scene") return [P.typeLabel(e), e.raw.mapName].filter(Boolean).join(" · ");
     return [P.typeLabel(e), e.raw.summary].filter(Boolean).join(" · ");
   }
-  function itemHtml(e, everywhere) {
+  function itemHtml(e, everywhere, ctx) {
     const selected = st.selected.includes(e.key);
     const where = e.type === "folder" ? esc(locKey({ category: e.category, folderId: e.id })) : "";
     const place = everywhere ? `<span class="px-col px-col-place">${esc(P.locationLabel(folders(), e.category, e.folderId))}</span>` : "";
     return `<li role="option" class="px-item px-${e.type}${selected ? " selected" : ""}${isCut(e) ? " px-cut" : ""}" aria-selected="${selected}" tabindex="-1" draggable="${blocked() ? "false" : "true"}" data-key="${esc(e.key)}"${where ? ` data-drop="${where}"` : ""}>
 <div class="px-thumb" data-thumb="${esc(e.key)}" aria-hidden="true">${e.type === "folder" ? ico("folder") : ""}</div>
-<div class="px-info"><span class="px-name">${esc(e.name)}</span><small class="px-meta">${esc(meta(e))}</small><span class="px-badges">${badges(e)}</span></div>
+<div class="px-info"><span class="px-name">${esc(e.name)}</span><small class="px-meta">${esc(meta(e))}</small>${everywhere && prefs.view === "grid" ? `<small class="px-meta px-where">${esc(P.locationLabel(folders(), e.category, e.folderId))}</small>` : ""}<span class="px-badges">${badges(e, ctx)}</span></div>
 <span class="px-col px-col-type">${esc(P.typeLabel(e))}</span>${place}<span class="px-col px-col-date">${esc(localDate(e.createdAt))}</span><span class="px-col px-col-date">${esc(localDate(e.updatedAt))}</span></li>`;
   }
   const isCut = (e) => { const c = clipboardByCampaign.get(d.id); return c?.mode === "cut" && c.entries.some((x) => x.key === e.key); };
 
   function paintContent() {
     const cur = loc();
-    const everywhere = st.everywhere && !!P.normalizeText(st.query);
-    st.visible = P.visibleEntries(st.entries, { category: cur.category, folderId: cur.folderId, query: st.query, everywhere, sort: prefs.sort, dir: prefs.dir });
+    const ctx = filterCtx();
+    const everywhere = outsideFolder();
+    const filtering = P.activeFilterCount(st.filters) > 0;
+    const info = st.collection && collectionInfo(st.collection);
+    st.visible = P.browseEntries(st.entries, { category: cur.category, folderId: cur.folderId, query: st.query, everywhere: st.everywhere, scope: st.scope, filters: st.filters, collection: st.collection, sort: prefs.sort, dir: prefs.dir }, ctx);
+    const shown = st.visible.slice(0, st.limit);
     const body = q("[data-px-body]");
     const hadFocus = body.contains(document.activeElement) && document.activeElement !== body;
     observer?.disconnect();
     const head = prefs.view === "list" ? `<div class="px-list-head" role="presentation">${[["name", "Nome"], ["type", "Tipo"], ...(everywhere ? [["", "Local"]] : []), ["created", "Criação"], ["modified", "Modificação"]].map(([k, l]) => k ? `<button type="button" class="px-colhead${prefs.sort === k ? " active" : ""}" data-px-sortcol="${k}" aria-label="Ordenar por ${l.toLowerCase()}${prefs.sort === k ? (prefs.dir === "asc" ? ", crescente" : ", decrescente") : ""}">${l}${prefs.sort === k ? (prefs.dir === "asc" ? " ▲" : " ▼") : ""}</button>` : `<span class="px-colhead">${l}</span>`).join("")}</div>` : "";
     if (!st.visible.length) {
       const searching = !!P.normalizeText(st.query);
-      body.innerHTML = `<div class="px-state px-empty" data-drop="${esc(locKey(cur))}">${ico(searching ? "zoom" : "folderOpen")}<h3>${searching ? "Nada encontrado." : cur.folderId ? "Esta pasta está vazia." : `Nenhum item em ${esc(P.ROOTS[cur.category])}.`}${searching ? "" : rootHelp(cur.category)}</h3><p>${searching ? `Nenhum item corresponde a “${esc(st.query)}”${everywhere ? "" : " nesta pasta. Marque “em todas as pastas” para ampliar a busca"}.` : esc(EMPTY_TEXT[cur.category])}</p>${searching || blocked() ? "" : `<div class="px-empty-actions"><button type="button" class="primary" data-px-empty="new">${esc(P.NEW_LABELS[cur.category])}</button><button type="button" class="subtle" data-px-empty="folder">Nova pasta</button></div>`}</div>`;
+      if (info || filtering) {
+        // Coleção ou filtros sem resultado: explica o critério e oferece limpar (nada a criar aqui).
+        const why = info && !searching && !filtering ? (info.empty || "Nenhum item atende aos critérios desta coleção.") : `Nenhum item atende ${searching ? `à busca “${st.query}”` : ""}${searching && filtering ? " e " : ""}${filtering ? `aos filtros (${P.filterSummary(st.filters)})` : ""}.`;
+        body.innerHTML = `<div class="px-state px-empty">${ico(info ? COLLECTION_ICON[info.id] || "collection" : "filter")}<h3>${info ? `${esc(info.name)}: nenhum item.` : "Nada encontrado com esses filtros."}</h3><p>${esc(why)}</p>${filtering ? '<div class="px-empty-actions"><button type="button" class="subtle" data-px-filter-clear>Limpar filtros</button></div>' : ""}</div>`;
+      } else {
+        body.innerHTML = `<div class="px-state px-empty" data-drop="${esc(locKey(cur))}">${ico(searching ? "zoom" : "folderOpen")}<h3>${searching ? "Nada encontrado." : cur.folderId ? "Esta pasta está vazia." : `Nenhum item em ${esc(P.ROOTS[cur.category])}.`}${searching ? "" : rootHelp(cur.category)}</h3><p>${searching ? `Nenhum item corresponde a “${esc(st.query)}”${everywhere ? "" : " nesta pasta. Marque “em todas as pastas” para ampliar a busca"}.` : esc(EMPTY_TEXT[cur.category])}</p>${searching || blocked() ? "" : `<div class="px-empty-actions"><button type="button" class="primary" data-px-empty="new">${esc(P.NEW_LABELS[cur.category])}</button><button type="button" class="subtle" data-px-empty="folder">Nova pasta</button></div>`}</div>`;
+      }
     } else {
-      body.innerHTML = `${head}<ul class="px-items" role="listbox" aria-multiselectable="true" aria-label="${esc(everywhere ? "Resultados da busca" : P.locationLabel(folders(), cur.category, cur.folderId))}" data-drop="${esc(locKey(cur))}">${st.visible.map((e) => itemHtml(e, everywhere)).join("")}</ul>`;
-      const focus = st.visible.find((e) => e.key === st.focusKey) || st.visible.find((e) => st.selected.includes(e.key)) || st.visible[0];
+      const label = info ? `Coleção ${info.name}` : everywhere ? "Resultados da busca" : P.locationLabel(folders(), cur.category, cur.folderId);
+      // Coleções são vistas virtuais: soltar itens nelas não faz sentido (sem `data-drop`).
+      const more = st.visible.length - shown.length;
+      body.innerHTML = `${head}<ul class="px-items" role="listbox" aria-multiselectable="true" aria-label="${esc(label)}"${info ? "" : ` data-drop="${esc(locKey(cur))}"`}>${shown.map((e) => itemHtml(e, everywhere, ctx)).join("")}</ul>${more > 0 ? `<div class="px-more"><button type="button" class="subtle" data-px-more>Mostrar mais ${Math.min(more, RENDER_STEP)} (de ${more} restantes)</button></div>` : ""}`;
+      const focus = shown.find((e) => e.key === st.focusKey) || shown.find((e) => st.selected.includes(e.key)) || shown[0];
       st.focusKey = focus.key;
       option(focus.key).tabIndex = 0;
       if (hadFocus) option(focus.key).focus({ preventScroll: true });
       observeThumbs(body);
     }
-    say(`${P.countLabel("item", st.visible.length)}${st.selected.length ? ` · ${st.selected.length} selecionado${st.selected.length === 1 ? "" : "s"}` : ""}`);
+    say(statusText());
+  }
+  function statusText() {
+    const filters = P.activeFilterCount(st.filters) ? ` · filtros: ${P.filterSummary(st.filters)}` : "";
+    return `${P.countLabel("item", st.visible.length)}${st.selected.length ? ` · ${st.selected.length} selecionado${st.selected.length === 1 ? "" : "s"}` : ""}${filters}`;
+  }
+  /** Garante que o item `index` da lista visível esteja desenhado (listas longas desenham em blocos). */
+  function ensureRendered(index) {
+    if (index < st.limit) return;
+    st.limit = Math.ceil((index + 1) / RENDER_STEP) * RENDER_STEP;
+    paintContent();
   }
   const option = (key) => q(`[data-px-body] [data-key="${CSS.escape(key)}"]`);
 
@@ -352,7 +528,7 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
       el.setAttribute("aria-selected", String(on));
       el.tabIndex = el.dataset.key === st.focusKey ? 0 : -1;
     }
-    say(`${P.countLabel("item", st.visible.length)}${st.selected.length ? ` · ${st.selected.length} selecionado${st.selected.length === 1 ? "" : "s"}` : ""}`);
+    say(statusText());
     paintToolbar(); paintDetails();
   }
   function focusOption(key) {
@@ -381,6 +557,12 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
     if (!prefs.details) { host.innerHTML = ""; return; }
     const sel = selection(), cur = loc();
     const close = `<button type="button" class="px-tb icon-only px-details-close" data-px="details" aria-label="Recolher detalhes" data-tip="Recolher detalhes">${icon("close")}</button>`;
+    const info = st.collection && collectionInfo(st.collection);
+    if (!sel.length && info) {
+      const saved = !P.isSmartCollection(info.id);
+      host.innerHTML = `<div class="px-details-head">${close}<h3>${ico(saved ? "collection" : COLLECTION_ICON[info.id])}<span>${esc(info.name)}</span>${helpButton("campanhas.preparo.colecoes", "Coleções, favoritos e recentes")}</h3></div><dl class="px-props">${row("Itens", String(st.visible.length))}${row("Critérios", saved ? [info.query ? `busca “${info.query}”` : "", P.filterSummary(info.filters)].filter(Boolean).join(" · ") : info.empty)}${row("Guardada em", saved || info.id === "favorites" || info.id === "recent" ? "Este navegador" : "")}</dl><p class="muted small">Coleções não movem nem copiam itens. Use “Mostrar na pasta” para ir até o item.</p>${saved ? `<div class="px-detail-actions"><button type="button" class="subtle small" data-px-coll-remove="${esc(info.id)}">Excluir coleção</button></div>` : ""}`;
+      return;
+    }
     if (!sel.length) {
       const here = P.visibleEntries(st.entries, { category: cur.category, folderId: cur.folderId });
       const name = P.breadcrumbs(folders(), cur.category, cur.folderId).at(-1).name;
@@ -416,9 +598,26 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
     }
     if (e.type === "folder") props.push(row("Conteúdo", meta(e)));
     props.push(row("Criado em", localDate(e.createdAt)), row("Modificado em", localDate(e.updatedAt)));
-    host.innerHTML = `<div class="px-details-head">${close}<h3>${ico(TYPE_ICON[e.type])}<span>${esc(e.name)}</span></h3></div>${e.type === "folder" ? "" : `<div class="px-preview" data-thumb="${esc(e.key)}" aria-hidden="true"></div>`}${e.description ? `<p class="px-desc">${esc(e.description)}</p>` : ""}<dl class="px-props">${props.join("")}</dl><div class="px-detail-actions">${panelButtons(sel)}</div>`;
+    const fav = isFavorite(e.key);
+    const star = `<button type="button" class="px-tb icon-only px-fav${fav ? " on" : ""}" data-px="favorite" aria-pressed="${fav}" aria-label="${fav ? "Remover dos favoritos" : "Adicionar aos favoritos"}" data-tip="${fav ? "Remover dos favoritos" : "Adicionar aos favoritos"}">${ico("star")}</button>`;
+    host.innerHTML = `<div class="px-details-head">${close}${star}<h3>${ico(TYPE_ICON[e.type])}<span>${esc(e.name)}</span></h3></div>${e.type === "folder" ? "" : `<div class="px-preview" data-thumb="${esc(e.key)}" aria-hidden="true"></div>`}${e.description ? `<p class="px-desc">${esc(e.description)}</p>` : ""}<dl class="px-props">${props.join("")}</dl>${readinessHtml(e)}${usesHtml(e)}<div class="px-detail-actions">${panelButtons(sel)}</div>`;
     const preview = host.querySelector(".px-preview");
     if (preview) { const clone = { ...e, key: `detail:${e.key}` }; drawThumb(preview, clone); }
+  }
+  /** Estado de preparo (cenas e personagens): pendências em texto, não só por cor. */
+  function readinessHtml(e) {
+    if (e.type !== "scene" && e.type !== "character") return "";
+    const issues = P.entryIssues(e, filterCtx());
+    if (!issues.length) return `<p class="px-ready small">✓ ${e.type === "scene" ? "Pronta para apresentar." : "Ficha e resumo completos."}</p>`;
+    return `<div class="px-issues"><h4>Pendências ${helpButton("campanhas.preparo.filtros", "Filtros e itens incompletos")}</h4><ul>${issues.map((i) => `<li>⚠ ${esc(i.label)}</li>`).join("")}</ul></div>`;
+  }
+  /** Cenas que usam o mapa (vínculo por chave, sem cópia de bytes); "não usado" quando nenhuma usa. */
+  function usesHtml(e) {
+    if (e.type !== "map") return "";
+    const scenes = P.scenesUsingMap(st.entries.items, e.raw.key);
+    if (!scenes.length) return `<p class="px-uses-none small">${e.raw.inUse ? "Nenhuma cena usa este mapa (ele está na mesa agora)." : "Mapa não usado: nenhuma cena o usa."}</p>`;
+    const list = scenes.slice(0, 12).map((s) => `<li><button type="button" class="px-goto" data-px-goto="${esc(s.key)}">${ico("scene")}<span>${esc(s.name)}</span></button></li>`).join("");
+    return `<div class="px-uses"><h4>Usado em ${esc(P.countLabel("scene", scenes.length))}</h4><ul>${list}${scenes.length > 12 ? `<li class="muted small">e mais ${scenes.length - 12}…</li>` : ""}</ul></div>`;
   }
   function limitText(category) {
     const l = st.data?.limits || {};
@@ -465,6 +664,10 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
       if (full?.page) add({ id: "lore-open", label: "Abrir história", run: () => { location.hash = `#campaign/${d.id}/world/${full.page.id}`; }, panel: true });
       add(writeItem({ id: "encounter", label: "Cópia para encontro", run: () => encounterCopy(one), panel: true }));
     }
+    if (one && (outsideFolder() || !P.sameLocation(loc(), { category: one.category, folderId: one.type === "folder" ? one.parentId : one.folderId })))
+      add({ id: "reveal", label: "Mostrar na pasta", run: () => revealEntry(one), panel: true });
+    const allFav = sel.every((e) => isFavorite(e.key));
+    add({ id: "favorite", label: allFav ? "Remover dos favoritos" : "Adicionar aos favoritos", run: () => toggleFavorite(sel) });
     sep();
     add(writeItem({ id: "duplicate", label: "Duplicar", shortcut: "mod+d", run: () => duplicate(sel), panel: true }));
     add(writeItem({ id: "copy", label: "Copiar", shortcut: "mod+c", run: () => toClipboard("copy", sel) }));
@@ -490,7 +693,7 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
       writeItem({ label: "Nova pasta", run: () => newFolder() }),
       ...(cur.category === "maps" ? [writeItem({ label: "Importar", items: importItems() })] : []),
       { separator: true },
-      writeItem({ label: "Colar", shortcut: "mod+v", disabled: !clip?.entries.length, disabledReason: "Copie ou recorte itens antes de colar.", run: () => paste() }),
+      writeItem({ label: "Colar", shortcut: "mod+v", disabled: !clip?.entries.length || !!st.collection, disabledReason: st.collection ? "Abra uma pasta para colar." : "Copie ou recorte itens antes de colar.", run: () => paste() }),
       { label: "Selecionar tudo", shortcut: "mod+a", run: () => setSelection(st.visible.map((e) => e.key), { anchor: st.visible[0]?.key }) },
       { label: "Atualizar", run: () => refresh(st.selected) },
       { separator: true },
@@ -502,6 +705,7 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
         { label: "Ordem decrescente", checked: prefs.dir === "desc", run: () => setPref({ dir: prefs.dir === "asc" ? "desc" : "asc" }) },
         { separator: true },
         { label: "Painel de detalhes", checked: prefs.details, run: () => setPref({ details: !prefs.details }) },
+        { label: "Barra de filtros", checked: prefs.filtersOpen, run: () => toggleFiltersPanel() },
       ] },
     ];
   }
@@ -530,6 +734,7 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
     if (!next) return;
     st.nav = push ? P.pushLocation(st.nav, next) : { ...st.nav, current: next };
     st.selected = []; st.anchor = null; st.focusKey = null; st.query = ""; st.everywhere = false;
+    st.collection = null; st.limit = RENDER_STEP;
     const input = q("#px-q"); if (input) input.value = "";
     const every = q("[data-px-everywhere]"); if (every) every.checked = false;
     closeTree();
@@ -551,6 +756,7 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
   async function openEntry(e) {
     if (!e) return;
     if (e.type === "folder") return navigate({ category: e.category, folderId: e.id });
+    remember(e);
     if (e.type === "character") {
       await (await import("./npc-sheet.js")).openNpcSheet({ campaignId: d.id, npcId: e.id, onSaved: () => !st.disposed && refresh([e.key]) });
       return;
@@ -658,8 +864,13 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
     say(`${P.selectionSummary(sel)} ${mode === "cut" ? "recortado(s)" : "copiado(s)"}. Use Colar na pasta de destino.`);
     paintContent(); paintSelection();
   }
-  async function paste(target = loc()) {
+  async function paste(target = null) {
     if (blocked()) return toast(ARCHIVED);
+    if (!target) {
+      // Coleções são vistas virtuais: colar exige uma pasta de verdade.
+      if (st.collection) return toast("Abra uma pasta para colar.");
+      target = loc();
+    }
     const clip = clipboardByCampaign.get(d.id);
     const entries = (clip?.entries || []).map((x) => st.byKey.get(x.key)).filter(Boolean);
     if (!entries.length) { clipboardByCampaign.delete(d.id); paintToolbar(); return toast("A área de transferência está vazia."); }
@@ -804,10 +1015,15 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
     root.addEventListener("dragend", onDragEnd);
     const input = q("#px-q");
     let timer = 0;
-    input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => { st.query = input.value; st.selected = []; paintContent(); paintToolbar(); paintDetails(); }, 120); });
+    input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => { st.query = input.value; st.selected = []; st.limit = RENDER_STEP; paintContent(); paintToolbar(); paintDetails(); if (prefs.filtersOpen) paintFilters(); }, 120); });
     q("[data-px-search]").addEventListener("submit", (e) => { e.preventDefault(); clearTimeout(timer); st.query = input.value; paintContent(); });
-    q("[data-px-everywhere]").addEventListener("change", (e) => { st.everywhere = e.target.checked; paintContent(); });
+    q("[data-px-everywhere]").addEventListener("change", (e) => { st.everywhere = e.target.checked; st.limit = RENDER_STEP; paintContent(); });
     q("[data-px-toolbar]").addEventListener("change", (e) => { if (e.target.matches("[data-px-sort]")) setPref({ sort: e.target.value }); });
+    q("[data-px-filters]").addEventListener("change", (e) => {
+      const t = e.target;
+      if (t.matches("[data-px-scope]")) return setScope(t.value);
+      if (t.matches("[data-px-filter]")) return setFilter(t.dataset.pxFilter, t.type === "checkbox" ? t.checked : t.value);
+    });
   }
 
   async function onClick(e) {
@@ -826,6 +1042,25 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
     }
     const empty = e.target.closest("[data-px-empty]");
     if (empty) return empty.dataset.pxEmpty === "new" ? createNew() : newFolder();
+    // Filtros, coleções, vínculos e listas longas (ADR-084).
+    const disabled = (el) => el.getAttribute("aria-disabled") === "true" && (toast(el.dataset.tip || "Indisponível."), true);
+    const clear = e.target.closest("[data-px-filter-clear]");
+    if (clear) { if (!disabled(clear)) clearFilters(); return; }
+    const saveColl = e.target.closest("[data-px-collection-save]");
+    if (saveColl) { if (!disabled(saveColl)) saveCollectionDialog(); return; }
+    const removeColl = e.target.closest("[data-px-coll-remove]");
+    if (removeColl) return removeSavedCollection(removeColl.dataset.pxCollRemove);
+    const coll = e.target.closest("[data-collection]");
+    if (coll) return st.collection === coll.dataset.collection ? navigate(loc(), { push: false }) : openCollection(coll.dataset.collection);
+    const goto = e.target.closest("[data-px-goto]");
+    if (goto) return revealEntry(st.byKey.get(goto.dataset.pxGoto));
+    if (e.target.closest("[data-px-more]")) {
+      const first = st.limit;
+      st.limit += RENDER_STEP; paintContent();
+      const key = st.visible[first]?.key;
+      if (key) focusOption(key);
+      return;
+    }
     const crumb = e.target.closest("[data-nav]");
     if (crumb) return navigate(parseLoc(crumb.dataset.nav));
     const twisty = e.target.closest("[data-twisty]");
@@ -900,6 +1135,8 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
       if (id === "view-list") return setPref({ view: "list" });
       if (id === "dir") return setPref({ dir: prefs.dir === "asc" ? "desc" : "asc" });
       if (id === "details") return setPref({ details: !prefs.details });
+      if (id === "favorite") return toggleFavorite(selection());
+      if (id === "filters") return toggleFiltersPanel();
       if (id === "tree") {
         st.treeOpen = !st.treeOpen;
         root.dataset.tree = st.treeOpen ? "open" : "closed";
@@ -958,6 +1195,7 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
       e.preventDefault();
       const n = step === -Infinity ? 0 : step === Infinity ? keys.length - 1 : Math.max(0, Math.min(keys.length - 1, i + step));
       const key = keys[n];
+      ensureRendered(n);
       if (e.shiftKey) setSelection(P.rangeSelection(keys, st.anchor || st.focusKey, key), { focus: key });
       else if (e.ctrlKey || e.metaKey) st.focusKey = key;
       else setSelection([key], { anchor: key, focus: key });

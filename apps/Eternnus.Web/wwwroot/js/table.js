@@ -45,6 +45,7 @@ import { FOG_TOOLS, FOG_PICKS, MARK_KINDS, fogReach, decodeBits, settingsFromFor
 import { settingsFields } from "./table-settings.js";
 import { playerCommands, requiresTurn, modeLabel, resourceState, waitingText, canUndo, unreadCount, MOBILE_VIEWS, QUICK_DICE, quickSpec, rollSpotlight, tokenBubbles } from "./play-policy.js";
 import { isImageType, isUvttName } from "./vtt-import-policy.js";
+import { doorNear } from "./wall-policy.js";
 import { interfaceMode, interfaceToggle, mountInterfaceToggle, onInterfaceChange, setInterfaceMode } from "./interface-mode.js";
 import { HELP, hiddenCustomizations, pendingParts } from "./scene-policy.js";
 import { isFreeMap, tokenCenter, freeReachCells, withinReach, placement } from "./free-move-policy.js";
@@ -578,7 +579,14 @@ function mountTable(campaignId, sessionId, isMaster) {
 
   async function onFogPick(cell) {
     const fog = live.fog || {};
-    if (fogTool === "toggleDoor") return quick(`${base}/fog/door`, "POST", cell);
+    if (fogTool === "toggleDoor") {
+      // Porta por casa tem prioridade; senão, a porta vetorial mais próxima da casa clicada (ADR-087).
+      const c = fog.cells?.[cell.y]?.[cell.x];
+      if (c === "d" || c === "o") return quick(`${base}/fog/door`, "POST", cell);
+      const door = doorNear(fog.walls, cell);
+      if (door) return quick(`${base}/fog/wall-door`, "POST", { id: door.id });
+      return toast("Não há porta nessa casa.");
+    }
     if (fogTool === "light") return lightModal(cell, (fog.lights || []).find((l) => l.x === cell.x && l.y === cell.y));
     if (fogTool === "mark") return markModal(cell, (fog.marks || []).find((m) => m.x === cell.x && m.y === cell.y));
   }
@@ -1016,7 +1024,8 @@ function mountTable(campaignId, sessionId, isMaster) {
     $("#light-form").onsubmit = (e) => {
       e.preventDefault();
       submitForm(e.currentTarget, async (data) => {
-        await api(`${base}/fog/lights`, "POST", { id: light?.id || null, x: cell.x, y: cell.y, radius: Number(data.radius) });
+        // Cor, penumbra, intensidade e animação (ajustadas no editor) continuam como estavam.
+        await api(`${base}/fog/lights`, "POST", { id: light?.id || null, x: cell.x, y: cell.y, radius: Number(data.radius), dim: light?.dim != null && light.dim >= Number(data.radius) ? light.dim : null, color: light?.color ?? null, intensity: light?.intensity ?? null, animation: light?.animation ?? null });
         $("#modal").close();
       });
     };

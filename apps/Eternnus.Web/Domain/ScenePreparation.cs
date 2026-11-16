@@ -46,8 +46,9 @@ public static class ScenePrep
     public static MapFogState PrepOf(MapFogState s) => new()
     {
         Fog = s.Fog, Manual = s.Manual, Cells = [.. s.Cells], Revealed = s.Revealed,
-        Lights = s.Lights.Select(l => new FogLight { Id = l.Id, X = l.X, Y = l.Y, Radius = l.Radius }).ToList(),
+        Lights = s.Lights.Select(l => l.Clone()).ToList(),
         Marks = s.Marks.Select(CloneMark).ToList(),
+        Walls = (s.Walls ?? []).Select(w => w.Clone()).ToList(),
     };
 
     /// <summary>Camada do marcador: uma camada existente da cena, exceto a Base; senão, Elementos.</summary>
@@ -88,7 +89,8 @@ public static class ScenePrep
         }).ToList();
         var size = cells.Length == 0 ? 0 : cells.Length * cells[0].Length;
         live.Cells = cells;
-        live.Lights = prep.Lights.Select(l => new FogLight { Id = l.Id, X = l.X, Y = l.Y, Radius = l.Radius }).ToList();
+        live.Walls = ApplyWalls(live.Walls ?? [], prep.Walls ?? []);
+        live.Lights = prep.Lights.Select(l => l.Clone()).ToList();
         live.Marks = marks;
         live.Fog = prep.Fog; live.Manual = prep.Manual;
         live.Revealed = Bits.Encode(Bits.Or(Bits.Decode(live.Revealed, size), Bits.Decode(prep.Revealed, size)));
@@ -98,9 +100,17 @@ public static class ScenePrep
     public static void Restart(MapFogState live, MapFogState prep)
     {
         var p = PrepOf(prep);
-        live.Cells = p.Cells; live.Lights = p.Lights; live.Marks = p.Marks; live.Fog = p.Fog; live.Manual = p.Manual;
+        live.Cells = p.Cells; live.Lights = p.Lights; live.Marks = p.Marks; live.Fog = p.Fog; live.Manual = p.Manual; live.Walls = p.Walls;
         live.Revealed = p.Revealed; live.Explored = [];
     }
+
+    /// <summary>Paredes da preparação; uma porta que continua porta (mesmo id) mantém o estado aberto/fechado da partida.</summary>
+    public static List<FogWall> ApplyWalls(IReadOnlyList<FogWall> live, IReadOnlyList<FogWall> prep) => prep.Select(w =>
+    {
+        var copy = w.Clone();
+        if (w.Kind == FogWallKinds.Door && live.FirstOrDefault(o => o.Id == w.Id && o.Kind == FogWallKinds.Door) is { } old) copy.Open = old.Open;
+        return copy;
+    }).ToList();
 
     /// <summary>Mesma preparação? Portas abertas ou fechadas contam como iguais (é estado da partida).</summary>
     public static bool SameStructure(MapFogState a, MapFogState b)
@@ -108,10 +118,13 @@ public static class ScenePrep
         static string Doors(string row) => new(row.Select(c => c == TableFog.DoorOpen ? TableFog.DoorClosed : c).ToArray());
         if (a.Fog != b.Fog || a.Manual != b.Manual || a.Cells.Length != b.Cells.Length) return false;
         if (a.Cells.Where((r, i) => Doors(r) != Doors(b.Cells[i])).Any()) return false;
-        static string Light(FogLight l) => $"{l.X},{l.Y},{l.Radius}";
+        static string Light(FogLight l) => $"{l.X},{l.Y},{l.Radius},{l.Dim},{l.Color},{l.Intensity},{l.Animation}";
         static string Mark(FogMark m) => $"{m.Id}|{m.X},{m.Y}|{m.Kind}|{m.Label}|{m.Dc}|{m.Sense}|{m.MaxDistance}";
+        // Porta aberta ou fechada é estado da partida: não conta como diferença de preparação.
+        static string Wall(FogWall w) => $"{w.Id}|{w.X1},{w.Y1},{w.X2},{w.Y2}|{w.Kind}|{w.Hidden}";
         return a.Lights.Select(Light).Order().SequenceEqual(b.Lights.Select(Light).Order())
-            && a.Marks.Select(Mark).Order().SequenceEqual(b.Marks.Select(Mark).Order());
+            && a.Marks.Select(Mark).Order().SequenceEqual(b.Marks.Select(Mark).Order())
+            && (a.Walls ?? []).Select(Wall).Order().SequenceEqual((b.Walls ?? []).Select(Wall).Order());
     }
 
     /// <summary>Visão simplificada aplicada à camada (nula = segue a configuração da mesa, sem alterar).</summary>

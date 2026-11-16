@@ -861,3 +861,95 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 - Fluxos de criação nunca aguardam o editor dentro de uma espera em primeiro plano: o gerenciador abre o editor depois que o envio termina.
 
 **Consequências:** zoom de 1–7 ms por passo e pintura sem tarefas longas na medição local (Chrome headless, renderização por software). Acima de ~100 px por casa a camada é ampliada (limite de 4096 px). A mesa ao vivo usa o mesmo tabuleiro e recebe o ganho; o E2E `tests/table-viewport.mjs` (PostgreSQL + Playwright) não foi executado neste ambiente.
+
+## ADR-083 — Rascunho local, conflitos e versões persistentes dos documentos de preparação (16/11/2026)
+
+**Contexto:** horas de preparação podiam se perder com uma aba fechada, falha do navegador ou sessão expirada: o editor só guardava o documento em memória. O conflito de revisão (409) já era recusado pelo servidor, mas "Recarregar a versão salva" descartava o rascunho. Não havia histórico além do desfazer da sessão de edição.
+
+**Decisão:**
+
+- **Rascunho local no IndexedDB** (`js/editor-drafts.js` + regras puras em `js/draft-policy.js`), por usuário + campanha + tipo (`tilemap`, `imagemap`, `scene`, `maplayer`) + documento (`new` antes do primeiro salvamento). Guarda o mesmo instantâneo do histórico de desfazer, a revisão de origem e datas — nunca credenciais, e-mails ou bytes de imagem (mapas de imagem referenciam imagens-fonte `asset:{id}` já enviadas). Grava ~2 s depois da última mudança e ao esconder/fechar a página; limites de 30 rascunhos por usuário, 8 MiB cada e 30 dias. Falha de armazenamento nunca interrompe o editor. O rascunho some ao salvar (documento limpo), ao "Fechar sem salvar" confirmado e ao sair da conta; qualquer outro fechamento o guarda.
+- **Recuperação explícita:** ao abrir um documento com rascunho diferente do salvo, aviso não modal com Restaurar / Descartar / Decidir depois (Arquivo › Rascunho local… reabre). Restaurar mantém a **revisão de origem** do rascunho: se o documento mudou depois, salvar cai no 409 existente em vez de sobrescrever.
+- **Conflito:** "Recarregar a versão salva" passa a guardar o rascunho antes (continua recuperável); a cena ganha "Salvar como nova cena" (o mapa de tiles já tinha "Salvar como cópia"). Aviso entre abas por `BroadcastChannel` (documento aberto ou salvo em outra aba).
+- **Versões persistentes no servidor** (`DocumentVersion`, migração aditiva `DocumentVersions`): cada salvamento de mapa de tiles, mapa de imagem e cena registra, na mesma transação, uma versão automática deduplicada por SHA-256; o mestre nomeia versões (até 20 por documento) e as automáticas ficam nas 20 mais recentes. Restaurar acontece **no editor**: a versão volta como alteração desfazível e só é gravada pelo caminho normal de salvar (mesmas validações, revisão, mapa na mesa e preparação). Imagens-fonte referenciadas por versões retidas não são apagadas ao salvar; saem quando nenhuma versão retida nem o documento as usa. Excluir mapa/cena exclui as versões.
+
+**Alternativas rejeitadas:** `localStorage` (limite de ~5 MB e síncrono); restaurar versão no servidor (duplicaria validações de cada tipo e contornaria as proteções de mapa na mesa); versionar a preparação do mapa (paredes/luz/névoa) agora — ela tem estado ao vivo, exploração e preparação pendente (ADR-048), e o fluxo seguro de aplicação já existe.
+
+**Consequências:** a remoção de imagens-fonte sem uso ao salvar (ADR-081) passa a respeitar versões retidas (mais armazenamento usado, ainda contado no limite de 250 MB). Versões de cena guardam a preparação da cena, não a do mapa nem posições "Retomar". Rascunhos são do navegador: não seguem a conta para outro dispositivo. Não validado em navegador real neste ambiente; PostgreSQL real não executado (testes em SQLite).
+
+## ADR-084 — Gerenciador da Preparação com favoritos, recentes, coleções inteligentes e filtros (16/11/2026)
+
+**Contexto:** o gerenciador da ADR-081 já tinha busca, ordenação, grade/lista, seleção múltipla, operações em lote, arrastar e breadcrumbs, mas campanhas grandes exigiam navegar pasta a pasta para achar o que faltava preparar: não havia favoritos, recentes, filtros por tipo/origem/data/uso, abrangência por subpastas nem indicação de cenas incompletas, personagens sem ficha ou mapas sem uso.
+
+**Decisão:**
+- **Coleções são vistas virtuais** calculadas no cliente sobre a lista já projetada de `GET /prep/explorer`: Favoritos, Recentes, Cenas prontas para apresentar, Cenas incompletas, Personagens sem ficha completa, Mapas não usados e coleções salvas (busca + filtros, campanha toda). Nunca movem, copiam nem renomeiam; colar e soltar ficam indisponíveis nelas.
+- **Critérios de preparo explícitos e puros** (`prep-explorer-policy.js`, testados): cena incompleta = sem cenário (ou cenário inexistente) em cena com mapa/imagem, sem marcador em cena com mapa, ou sem texto compartilhável; personagem incompleto = sem ficha-modelo ou sem resumo; mapa não usado = nenhuma cena e fora da mesa. Exibidos em texto, nunca corrigidos automaticamente.
+- **Filtros + abrangência** (nesta pasta, com subpastas, campanha toda); com filtro ativo só itens aparecem. Filtros que não se aplicam a um tipo o excluem (origem → mapas; uso → mapas e cenas; preparo → cenas e personagens).
+- **Preferências por usuário e campanha no navegador** (`localStorage`, chave `eternnus.prep.user.{usuário}.{campanha}`): só chaves `tipo:id`, datas e critérios; podadas quando o item some. Leitura/escrita indisponível não quebra o gerenciador.
+- **Servidor**: só um campo projetado novo, `hasText` (booleano) por cena, sem migração; texto compartilhável e notas privadas continuam fora da lista.
+- Listas desenham 240 itens por vez ("Mostrar mais"; o teclado amplia).
+
+**Alternativas rejeitadas:** guardar favoritos/coleções no servidor (exigiria migração e endpoints novos nesta rodada; fica como evolução se o uso entre aparelhos for pedido); coleções como pastas reais ou atalhos persistidos (duplicariam a estrutura e confundiriam mover/excluir); devolver o texto das cenas na lista para calcular o critério (exporia conteúdo além do necessário).
+
+**Consequências:** favoritos, recentes e coleções salvas não acompanham o mestre entre navegadores. "Uso" de personagens não existe (a lista não diz em que cenas um personagem está). O E2E do gerenciador em navegador não foi executado neste ambiente (sem Playwright/PostgreSQL locais).
+
+## ADR-085 — Ferramentas de pintura do editor de tiles e assistente de alinhamento da grade (16/11/2026)
+
+**Contexto:** o editor de tiles pintava uma casa por vez (pincel) e preenchia áreas sem mostrar quantas casas mudariam; não havia como trocar um terreno por outro nem variar o desenho sem pintar casa por casa. O ajuste de grade de imagens exigia tentativa e erro com os controles de tamanho e alinhamento.
+
+**Decisão:**
+- **Pincel 1/2/3/5, quadrado ou redondo**, para pincel e borracha; **preenchimento contíguo limitado à seleção** quando o clique cai nela; **Substituir tile** na camada ativa ou na seleção; **mistura** de tiles da mesma camada automática com sorteio determinístico por casa e semente. Regras puras em `tile-map-policy.js`; cada operação é uma entrada do histórico.
+- **Prévia fantasma + confirmação com contagem** para preenchimentos a partir de 250 casas e para toda substituição (janela com as casas destacadas no mapa). O retângulo não pede confirmação porque a prévia do arraste já mostra a área.
+- Nenhuma mudança no formato: camadas, `_`, fusão, entradas e validação do servidor continuam iguais; a repintura parcial da ADR-082 é usada sem alteração (o tabuleiro compara as grades).
+- **Assistente de alinhamento dentro de `grid-adjust.js`**, o ajuste compartilhado: todos os fluxos que ajustam grade ganham o assistente sem editar os chamadores. Três modos — marcar uma casa, marcar N casas entre cruzamentos, detectar automaticamente (autocorrelação dos perfis de borda em faixas da imagem em resolução real) — com o resultado aplicado à prévia antes de confirmar e Cancelar voltando aos valores anteriores. Grava pelos campos existentes; validação final continua em `gridFor`/`CampaignMapView.Grid`.
+- **Só grade quadrada.** Hexagonal e isométrica não são oferecidas nem como desenho: exigiriam tipo de grade versionado, coordenadas próprias e novas regras de distância, vizinhança, caminho, luz, visão e máscara no servidor (migração descrita em PREPARACAO_EDITOR.md §7.3).
+
+**Alternativas rejeitadas:** variantes de tile no catálogo (mudaria o alfabeto validado por `MapTiles` e os tilesets oficiais); detecção de grade no servidor (mais um decodificador e CPU por requisição, sem ganho de segurança — o resultado é só uma sugestão validada como qualquer ajuste manual); detecção sobre a imagem reduzida (perde até 1/escala px por casa, acumulando desvio).
+
+**Consequências:** sem migração nem contrato HTTP novo. A mistura não é salva no documento (é ferramenta, não dado). A detecção automática pode falhar em mapas sem linhas de grade desenhadas ou com texturas muito regulares; o mestre vê a certeza e confere na prévia. Validação em navegador (pintura com pincel grande, substituição com prévia, assistente nos três fluxos) não foi executada neste ambiente.
+
+## ADR-086 — Contextos de trabalho, barra de propriedades, layout flexível e grupos no editor de imagem (16/11/2026)
+
+**Contexto:** os editores mostravam todas as ferramentas de uma vez (a cena chega a 24 botões na Completa), propriedades simples exigiam abrir janela ou painel lateral, o layout só guardava largura e painéis recolhidos (sem ordem, sem maximizar, sem restaurar) e a preferência era compartilhada entre contas do mesmo navegador. No editor de imagem faltavam transformar um conjunto pelas alças, grupos e guias magnéticas em outros elementos.
+
+**Decisão:**
+- **Contextos no núcleo** (`createEditorShell`: `kind`, `contexts`, `commonTools`, `defaultContext`, `onContext`; regras puras em `editor-policy.js`). Catálogo fixo de seis contextos; cada editor declara os seus por grupos/listas de ferramentas e painéis. É só apresentação: seleção, câmera, histórico, rascunhos e alterações ficam intactos. Ferramenta sem contexto aparece sempre; atalho de letra leva ao contexto da ferramenta; Alt+1…Alt+6 trocam; contextos sem ferramenta visível na interface atual somem. Tiles: Terreno/Elementos trocam a camada ativa (Base/Elementos). Cena: mapeada pelos grupos de `TOOL_INVENTORY`, então ferramentas novas de paredes/luz entram sozinhas.
+- **Barra contextual de propriedades** como componente do núcleo (`shell.contextBar.show/update/hide`), numa faixa de altura fixa acima ou abaixo da área de edição — não sobre o canvas (não cobre o mapa) e sem mudar o tamanho do palco a cada seleção (sem redesenho do canvas, preservando a ADR-082). Editor de imagem ligado; demais editores podem adotar pela mesma API.
+- **Layout flexível** em preferência visual normalizada (`normalizeLayoutPref`) por usuário (`eternnus.editor.layout.{id}`, lendo a chave antiga): largura, painéis recolhidos e ordem por tipo de editor, réguas, posição da barra e último contexto; maximizar (Ctrl+\\) temporário; Restaurar layout padrão. Itens de layout entram automaticamente no menu Exibir de todo editor.
+- **Editor de imagem:** alças no retângulo de limites de um conjunto (redimensionar com proporção; girar em torno do centro), grupos com o campo opcional `group` (validado em `composition-policy.js` e `MapComposition`; ausente nas composições antigas e omitido quando vazio), cópias com grupo novo, e guias magnéticas em bordas/centros dos outros elementos calculadas uma vez por arraste.
+
+**Alternativas rejeitadas:** contextos como documentos ou abas separadas (duplicaria estado e histórico); barra flutuante sobre o canvas (cobre o mapa e exige reposicionamento a cada movimento); barra que aparece só com seleção (redimensiona o canvas a cada clique); preferência no servidor (exigiria migração e contrato para algo puramente visual); índice espacial para hit-testing (com no máximo 200 elementos a busca linear mediu 0,03 ms por consulta); grupos aninhados ou com transformação própria (mudaria o formato e o achatamento).
+
+**Consequências:** sem migração. O contrato `PUT …/composition` aceita `group` opcional nos elementos (compatível: ausente = sem grupo). A preferência de layout continua só neste navegador. Grupos podem atravessar camadas se um membro for movido depois; agrupar exige mesma camada. A barra contextual na cena (marcadores, paredes, luzes) fica para a integração das ferramentas vetoriais. Validação: unitários `tests/editor-contexts.test.mjs`, .NET `MapCompositionGroupTests` e roteiro em Chrome headless sobre o editor de imagem real com API simulada (ver TESTES.md); E2E com PostgreSQL não executado.
+
+## ADR-087 — Paredes e portas vetoriais somadas ao bloqueio por casas (16/11/2026)
+
+**Contexto:** paredes, portas e bloqueios eram só casas da grade (`MapFogState.Cells`). Paredes diagonais, salas irregulares, portas no meio de uma casa e a importação UVTT viravam casas inteiras (paredes "grossas") e a geometria original se perdia.
+
+**Decisão:**
+- `MapFogState.Walls`: segmentos `{ id, x1, y1, x2, y2, kind, open, hidden }` em **centésimos de casa** (`TableFog.WallUnit = 100`; a casa (x, y) ocupa [100x, 100x+100], centro em 100x+50). Coordenadas do documento, nunca da tela; inteiros dão o mesmo resultado no servidor (`FogGrid`) e no cliente (`fog-policy.js`), conferido por um fixture compartilhado (`tests/fixtures/vector-walls.json`).
+- Tipos (`FogWallKinds`): `wall` (movimento + visão), `door` (fechada = parede; aberta = livre), `window` (só movimento), `sight` (só visão/luz) e `move` (só movimento). `hidden` = não aparece para jogadores (porta secreta, barreira invisível), mas vale nas regras.
+- Regra de cruzamento (luz, visão e passo de movimento entre centros de casas): cruzamento próprio bloqueia; reta que passa exatamente por uma ponta de parede bloqueia só se houver parede dos dois lados ali (junção de parede contínua ou canto fechado); tangenciar ponta solta, correr ao longo da parede ou terminar sobre ela não bloqueia (a face fica visível). `FogGrid.LineClear` = regra antiga das casas **e** paredes vetoriais; `PathLength` recusa passos que cruzam parede de movimento. `Reach` filtra as paredes perto do alcance.
+- Compatibilidade: as casas continuam valendo junto (nada é convertido sozinho). Camadas antigas sem `walls` leem lista vazia. "Converter casas em paredes" no editor cria o contorno sem apagar as casas. A conversão nunca é destrutiva.
+- Preparação × mesa (ADR-048): `PrepOf`, `ApplyStructure` (porta que continua porta, pelo id, mantém aberta/fechada da partida), `Restart` e `SameStructure` (ignora `open`) incluem as paredes. Ajustar a grade de um mapa enviado (`RegridWallsAsync`) converte as paredes de todas as camadas do mapa para continuarem sobre o mesmo ponto da imagem; grade menor prende pontas à borda (`FitWalls`).
+- Contratos: `PUT …/assets/layers` aceita `walls` (ausente = mantém as atuais, para editores antigos); mesa: `POST …/fog/walls` (lista inteira) e `POST …/fog/wall-door {id}`. Limite de 2.000 segmentos por mapa.
+- Jogadores recebem em `fog.walls` só segmentos que bloqueiam movimento agora e tocam casas conhecidas, sem id, tipo nem `hidden` (para o destaque de alcance seguir as mesmas regras do servidor); porta não secreta vem com `door: "open"|"closed"` para desenhar o símbolo. Janelas e paredes só de visão não são enviadas.
+- UVTT: linhas de visão e portais viram segmentos exatos (`uvttWalls`); as casas do mapa não são tocadas.
+
+**Alternativas rejeitadas:** rasterizar paredes em casas finas (perde diagonais e continua dependente da resolução); ponto flutuante (diferenças entre C# e JS na borda); substituir o modelo por casas de vez (quebraria mapas, sessões e testes existentes); enviar todas as paredes aos jogadores (revelaria portas secretas e a planta de áreas não exploradas).
+
+**Consequências:** sem migração (o JSON da camada ganha um campo). Movimento sem névoa ou sem "caminho livre" continua não verificando o trajeto, como antes com as casas. Grades hexagonais/isométricas continuam fora (ADR-085). Testes: `tests/wall-policy.test.mjs`, `tests/vtt-import-policy.test.mjs`, `VectorWallTests` (.NET); E2E com navegador e PostgreSQL não executados.
+
+## ADR-088 — Prévia real do jogador, diagnóstico de visão, luzes com penumbra e revisão antes de aplicar (16/11/2026)
+
+**Contexto:** o "Ver como jogador" do editor era uma simulação no cliente sem sentidos, percepção nem explorações; não havia como conferir bloqueios e áreas escuras antes de apresentar; luzes tinham só raio; "Aplicar à cena atual" não mostrava o que mudaria.
+
+**Decisão:**
+- `POST /api/campaigns/{id}/prep/preview-view` (mestre, `Verified`, antiforgery comum): recebe a preparação **não salva** do editor (mesmas validações de salvar), o arranjo e quem vê (personagem, jogador ou grupo) e roda `FogRules` (luz, visão da ficha, sentidos, detecção automática em memória, revelações e explorações gravadas na camada). Somente leitura: não grava camada, sessão, evento nem exploração; a resposta tem o formato do jogador (casas desconhecidas como `?`, paredes reduzidas). É POST porque leva o rascunho, não por mudar estado. O editor usa essa resposta; a simulação local fica só como reserva rotulada se o servidor falhar.
+- Diagnóstico de visão (só no editor do mestre, nada vai ao jogador): hachura nas casas que bloqueiam movimento, azul nas casas sem luz comum, paredes por traço (contínuo/tracejado/pontilhado, não só cor) e lista de problemas (`wall-policy.diagnose`: paredes sobrepostas, frestas entre pontas, porta solta, luz dentro ou sobre parede, marcador em casa bloqueada).
+- `FogLight` ganha `dim` (penumbra até N casas, ≥ raio; conta como alcance nas regras), `color` (#rrggbb), `intensity` (10–100) e `animation` (`flicker`/`pulse`). Cor, intensidade e animação são só apresentação; animação respeita `prefers-reduced-motion` e pausa com a aba oculta. A mesa preserva esses campos ao ajustar o raio.
+- Revisão de diferenças: `GET …/assets/layers` passa a trazer `live` (estrutura ao vivo sem explorações) para o mestre; o painel "Aplicar à cena atual" lista paredes, luzes, marcas e casas que mudam (`layerDiff`, portas abertas/fechadas não contam) e o que é preservado. A aplicação continua explícita e seletiva (ADR-048).
+
+**Alternativas rejeitadas:** manter a simulação do cliente como principal (resultado diferente da mesa); criar sessão temporária para a prévia (escrita, bloqueios e sinal sem necessidade); enviar o diagnóstico ao cliente do jogador.
+
+**Consequências:** a prévia custa uma chamada por alteração (com espera de 250 ms e descarte de respostas antigas); o custo sob carga não foi medido. Testes: `PrepPreviewTests` (.NET, SQLite), `wall-policy.test.mjs`; navegador real não executado.

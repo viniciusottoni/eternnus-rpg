@@ -7,9 +7,11 @@ import { helpButton, dismissHelp } from "./help.js";
 import { api } from "./api.js";
 import { esc, button } from "./ui.js";
 import { createBoard } from "./table-map.js";
-import { FOG_TOOLS, MARK_KINDS, paintLocal, toggleDoorLocal, sharedPreview } from "./fog-policy.js";
+import { FOG_TOOLS, MARK_KINDS, WALL_KINDS, WALL_UNIT, paintLocal, toggleDoorLocal, sharedPreview } from "./fog-policy.js";
+import { layerDiff, diffSummary, snapPoint, constrainAngle, hitWall, polylineWalls, addWalls, moveVertex, splitWall, removeVertex, joinCollinear, translateWalls, copyWalls, wallsInBox, patchWalls, cellsToWalls, diagnose, diagnosticLayers } from "./wall-policy.js";
 import { interfaceMode, setInterfaceMode } from "./interface-mode.js";
 import { createEditorShell, openContextMenu, openPropertiesDialog, renderLayersPanel, renderStructurePanel, renderHistoryPanel, icon } from "./editor-core.js";
+import { attachDrafts } from "./editor-drafts.js";
 import { addLayer, removeLayer, moveLayer, patchLayer, createHistory, isRequiredLayer, isTypingTarget, MAX_HISTORY } from "./editor-policy.js";
 import {
   HELP, SCENE_KINDS, VISIBILITY_OPTIONS, APPLY_PRESERVES, APPLY_TOKENS, TOOL_GROUPS, toolLabel, acceptsMap, hiddenCustomizations,
@@ -21,12 +23,17 @@ const SIDES = SCENE_SIDES;
 const opt = (list, current) => list.map(([v, l]) => `<option value="${esc(v)}" ${v === current ? "selected" : ""}>${esc(l)}</option>`).join("");
 const PAINT = new Set(FOG_TOOLS.map((t) => t.id));
 /** Ferramentas que editam a preparação do mapa (paredes, luz, névoa e exploração). */
-const LAYER_TOOLS = new Set(["reveal", "conceal", "wall", "blockMove", "blockLight", "door", "toggleDoor", "erase", "light", "mark", "fogState", "resetExploration"]);
+const LAYER_TOOLS = new Set(["reveal", "conceal", "wall", "blockMove", "blockLight", "door", "toggleDoor", "erase", "light", "mark", "fogState", "resetExploration", "vwall", "vedit", "diagnostic"]);
+/** Ferramentas de paredes vetoriais (ADR-087): o tabuleiro entrega o ponto exato do ponteiro. */
+const VECTOR_TOOLS = new Set(["vwall", "vedit"]);
 /** Painéis que existem também na Básica (os demais voltam ao resumo ao trocar para a Básica). */
 const BASIC_PANELS = new Set(["overview", "token", "add", "light", "mark", "hidden", "scenery", "visibility", "text", "notes"]);
 const LOCAL_TOOLS = {
   hand: ["Mão (mover a vista)", "Mão: arraste para percorrer o mapa. Espaço ou o botão do meio também movem a vista."],
   zoom: ["Zoom", "Zoom: clique para aproximar; com Alt ou Shift, afasta. A roda do mouse aproxima no cursor."],
+  vwall: ["Parede vetorial", "Parede vetorial: clique ponto a ponto, inclusive em diagonal. Enter ou duplo clique termina; Esc desiste. O ímã prende em vértices, paredes e cantos/meios das casas; Shift trava em 45°; Alt desliga o ímã."],
+  vedit: ["Editar paredes", "Editar paredes: clique numa parede para selecionar (Shift soma), arraste um vértice ou o segmento, arraste no vazio para selecionar por área. Alt+clique divide o segmento; Delete apaga."],
+  diagnostic: ["Diagnóstico de visão", "Diagnóstico de visão: mostra paredes por tipo, casas que bloqueiam movimento (hachura), áreas sem luz (azul) e problemas da geometria (!). Só você vê."],
 };
 const labelOf = (id) => LOCAL_TOOLS[id]?.[0] || toolLabel(id);
 const helpOf = (id) => LOCAL_TOOLS[id]?.[1] || HELP[id] || "";
@@ -77,9 +84,14 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   let sceneDirty = false, layerDirty = false, resetExploration = false;
   let tool = "select", selection = [], pick = null, panel = "overview", simulate = false, viewer = "", grid = true, conflict = null, applying = false, busy = false;
   let error = "", closed = false;
+  let drafts = null; // rascunho local e versões (ADR-083), ligado depois de carregar a preparação do mapa
   let mode = interfaceMode();
   let activeLayer = "elements", clipboard = [], hover = null, lastCell = null, enterPress = null;
   const mods = { add: false };
+  // Paredes vetoriais: traço em andamento, seleção, arraste, tipo do próximo traço e diagnóstico.
+  let wallPts = [], wallSel = [], vdrag = null, vpoint = null, wallKind = "wall", wallHidden = false, diag = false;
+  // Prévia do jogador calculada pelo servidor (mesmas regras da mesa); nula = recalcular.
+  let serverView = null, serverViewError = "", previewTimer = 0, previewSeq = 0;
   let disposePicker = () => {}, disposeGrid = null;
   const recents = recentMapKeys(sceneList?.items || [], "");
   const mapOf = (key) => maps.items.find((m) => m.key === key);
@@ -118,8 +130,11 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     T("door", "door", "d", "walls", false, { hidden: notMap }),
     T("toggleDoor", "door2", "o", "walls", false, { hidden: notMap }),
     T("erase", "eraser", "e", "walls", false, { hidden: notMap }),
+    T("vwall", "wall", "j", "walls", false, { hidden: notMap }),
+    T("vedit", "select", "q", "walls", false, { hidden: notMap }),
     T("light", "light", "l", "light", false, { hidden: notMap }),
     T("fogState", "fog", "f", "light", false, { hidden: notMap, ...panelTool("fogState") }),
+    T("diagnostic", "eye", "", "light", false, { hidden: notMap, action: () => toggleDiagnostic(), pressed: () => diag }),
     T("mark", "mark", "x", "explore", false, { hidden: notMap }),
     T("resetExploration", "wand", "", "explore", false, { hidden: notMap, ...panelTool("resetExploration") }),
     T("gridToggle", "grid", "g", "grid", false, { hidden: notMap, action: () => { grid = !grid; redraw(); }, pressed: () => grid }),
@@ -134,6 +149,16 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     title: titleText(), subtitle: subtitleText(),
     help: ["campanhas.editor.atalhos", "Atalhos do editor"],
     menus, tools, groups: GROUPS, initialTool: "select",
+    // Contextos de trabalho (ADR-086), pelos grupos de TOOL_INVENTORY. Só reorganizam a interface; nada muda na preparação.
+    kind: mapOnly ? "map-prep" : "scene",
+    contexts: [
+      { id: "elements", groups: ["elements"], tools: ["add"], panels: ["props", "layers", "structure", "characters"], defaultTool: "select" },
+      { id: "walls", groups: ["walls"], panels: ["props", "structure"], defaultTool: "wall" },
+      { id: "light", groups: ["light"], panels: ["props", "structure"], defaultTool: "light" },
+      { id: "explore", groups: ["explore"], tools: ["visibility", "reveal", "conceal"], panels: ["props", "structure"], defaultTool: "select" },
+      { id: "scene", groups: ["grid", "scene"], tools: ["scenery", "text", "notes"], panels: ["props"], defaultTool: "select" },
+    ],
+    commonTools: ["select", "hand", "zoom"],
     panels: [
       { id: "props", title: "Propriedades" },
       ...(mapOnly ? [] : [{ id: "layers", title: "Camadas" }]),
@@ -150,6 +175,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       delete: () => removeSelection(), backspace: () => removeSelection(),
       escape: (e) => onEscape(e),
     },
+    contextBar: true,
+    contextBarHint: "Selecione paredes com “Editar paredes” para ajustar tipo e visibilidade aqui.",
     isDirty: () => sceneDirty || layerDirty,
     onTool: (id) => onTool(id),
     onModeChange: (next) => onModeChange(next),
@@ -173,6 +200,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     onHover: (p) => onHover(p),
     onContext: (info) => onContext(info),
     onZoom: () => shell.updateZoom(),
+    onVector: (e) => onVector(e),
   });
   // 100% = tamanho real da imagem enviada (pixels por casa); mapas de tiles usam 64 px por casa.
   const natural = () => (Number(meta?.gridPixels) >= 8 ? Number(meta.gridPixels) : 64);
@@ -213,6 +241,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function recomputeDirty() {
     sceneDirty = !mapOnly && !sameSnapshot(draft, savedScene);
     layerDirty = !!layer && (!sameSnapshot(layer, savedLayer) || resetExploration);
+    if (simulate) { serverView = null; serverViewError = ""; }
     renderStatus();
   }
   /** Contexto trocado (cenário, tipo, alcance, grade): instantâneos antigos não valem para o novo mapa. */
@@ -227,7 +256,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (draft.kind !== "map" || !m || m.kind !== "tileset") return;
     const data = await api(`${base}/assets/layers?key=${encodeURIComponent(draft.mapKey)}${saved.id ? `&scene=${encodeURIComponent(saved.id)}` : ""}`);
     meta = data;
-    layer = { fog: data.fog, manual: data.manual, cells: data.cells, lights: data.lights.map((l) => ({ ...l })), revealed: data.revealed, marks: data.marks.map((x) => ({ ...x })) };
+    layer = { fog: data.fog, manual: data.manual, cells: data.cells, lights: data.lights.map((l) => ({ ...l })), revealed: data.revealed, marks: data.marks.map((x) => ({ ...x })), walls: (data.walls || []).map((w) => ({ ...w })) };
+    wallSel = []; wallPts = [];
     savedLayer = clone(layer);
   }
   const width = () => meta?.width || 0, height = () => meta?.height || 0;
@@ -253,11 +283,17 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       return { id: "p" + i, characterId: t.characterId || null, label: t.label, side: t.side || "ally", x: t.x, y: t.y, fx: t.fx ?? null, fy: t.fy ?? null, hidden: !!t.hidden, light: t.light ?? null, appearance: t.appearance ?? null, size: t.size ?? null, alpha: alpha < 1 ? alpha : null };
     });
     let fog;
-    if (simulate) {
-      const sim = simulateView({ visionMode: draft.visionMode, layer, width: width(), height: height(), tokens, characters, settings: meta.settings || {}, scale: meta.scaleMeters || 1.5, viewer: viewer || null });
+    if (simulate && serverView) {
+      // Resultado do servidor: idêntico ao que o jogador receberia (paredes, luz, visão, sentidos, percepção e exploração).
+      fog = serverView.active ? { active: true, visible: serverView.visible, explored: serverView.explored, cells: serverView.cells, lights: serverView.lights, marks: serverView.marks, walls: serverView.walls } : { active: false };
+      const shown = new Set(serverView.shown), perceived = new Set(serverView.perceived || []);
+      tokens = tokens.filter((_, i) => shown.has(i)).map((t) => (perceived.has(Number(t.id.slice(1))) ? { ...t, label: "?", perceived: true } : t));
+    } else if (simulate) {
+      requestServerView();
+      const sim = simulateView({ visionMode: draft.visionMode, layer, width: width(), height: height(), tokens, characters, settings: meta.settings || {}, scale: meta.scaleMeters || 1.5, viewer: viewer && viewer !== "party" ? viewer : null });
       fog = sim.fog.active ? sim.fog : { active: false };
       tokens = sim.tokens;
-    } else fog = { active: fogOn(), cells: layer.cells, lights: layer.lights, marks: layer.marks, shared: shared() };
+    } else fog = { active: fogOn(), cells: layer.cells, lights: layer.lights, marks: layer.marks, walls: layer.walls, shared: shared() };
     return {
       map: { kind: "tileset", key: meta.layerKey, name: meta.name, rows: meta.rows, imageUrl: meta.imageUrl, gridPixels: meta.gridPixels, gridOffsetX: meta.gridOffsetX, gridOffsetY: meta.gridOffsetY, scaleMeters: meta.scaleMeters, freeMovement: freeOn() },
       tokens, participants: tokens.filter((t) => t.characterId).map((t) => ({ characterId: t.characterId, online: true })), session: {}, me: { isMaster: !simulate, characterId: null }, fog,
@@ -265,8 +301,11 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   }
   function boardView() {
     const paint = !simulate && PAINT.has(tool) && !!meta && !layerLocked();
+    const vector = !simulate && VECTOR_TOOLS.has(tool) && !!meta && !layerLocked();
     return {
-      mode: paint ? "paint" : "none", fogTools: !simulate && (mode === "complete" || paint), grid, reach: [], attack: [],
+      mode: paint ? "paint" : vector ? "vector" : "none", fogTools: !simulate && (mode === "complete" || paint || vector || diag), grid, reach: [], attack: [],
+      vector: vector || wallSel.length ? { preview: wallPreview(), selected: wallSel, vertices: tool === "vedit", point: vector ? vpoint : null, box: vdrag?.box || null } : null,
+      diagnostic: !simulate && diag && layer ? diagnosticView() : null,
       selected: !simulate && selection.length === 1 ? "p" + selection[0] : null, selectedIds: simulate ? [] : selection.map((i) => "p" + i),
       draggable: !simulate && tool === "select" ? "*" : null, viewAs: simulate,
     };
@@ -353,7 +392,259 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function onHover(p) {
     hover = p;
     if (p) lastCell = { x: p.x, y: p.y, fx: p.fx, fy: p.fy };
+    // Paredes vetoriais mostram o ponto exato (em casas) pelo onVector; aqui só a casa.
+    if (VECTOR_TOOLS.has(tool) && p) return;
     shell.setStatus({ coords: p ? `Coluna ${p.x + 1}, linha ${p.y + 1}` : "" });
+  }
+
+  // ---------- Paredes vetoriais (ADR-087) ----------
+  // Coordenadas do documento (centésimos de casa): o zoom só muda a tolerância do ímã, convertida de pixels de tela.
+  const walls = () => layer?.walls || [];
+  const tolerance = (e) => Math.max(6, Math.round((12 / Math.max(1, e.pixels || 40)) * WALL_UNIT));
+  function snapped(e, anchor = null, ignore = null) {
+    let p = { x: e.x, y: e.y };
+    if (anchor && e.shiftKey) p = constrainAngle(anchor, p);
+    if (e.altKey) return { x: Math.max(0, Math.min(width() * WALL_UNIT, p.x)), y: Math.max(0, Math.min(height() * WALL_UNIT, p.y)), snapped: false };
+    return snapPoint(p, walls(), { tolerance: tolerance(e), width: width(), height: height(), ignore, grid: !(anchor && e.shiftKey) });
+  }
+  function wallPreview() {
+    if (tool !== "vwall" || !wallPts.length) return [];
+    const pts = vpoint ? [...wallPts, vpoint] : wallPts;
+    return pts.slice(1).map((p, i) => ({ x1: pts[i].x, y1: pts[i].y, x2: p.x, y2: p.y }));
+  }
+  function setWalls(label, next) {
+    change(label, () => { layer = { ...layer, walls: next }; });
+    wallSel = wallSel.filter((id) => next.some((w) => w.id === id));
+    refresh();
+  }
+  function finishWall() {
+    if (wallPts.length < 2) { wallPts = []; return redraw(); }
+    const added = polylineWalls(wallPts, wallKind, { hidden: wallHidden });
+    const { walls: next, error: problem } = addWalls(walls(), added);
+    wallPts = [];
+    if (problem) { say(problem); return redraw(); }
+    setWalls(added.length > 1 ? `Desenhar ${added.length} paredes` : "Desenhar parede", next);
+    say(`${added.length} segmento(s) de ${WALL_KINDS.find((k) => k.id === wallKind)?.label.toLowerCase() || "parede"}. Continue clicando para outra parede.`);
+  }
+  function onVector(e) {
+    if (simulate || !layer || layerLocked()) return;
+    if (e.type === "cancel") { vdrag = null; wallPts = []; return redraw(); }
+    if (tool === "vwall") {
+      const anchor = wallPts[wallPts.length - 1] || null;
+      const p = snapped(e, anchor);
+      vpoint = p;
+      if (e.type === "down") {
+        if (anchor && p.x === anchor.x && p.y === anchor.y) return finishWall();
+        if (wallPts.length >= 2 && p.x === wallPts[0].x && p.y === wallPts[0].y) { wallPts.push(p); return finishWall(); }
+        wallPts.push({ x: p.x, y: p.y });
+      } else if (e.type === "dbl") return finishWall();
+      shell.setStatus({ coords: `x ${(p.x / WALL_UNIT).toFixed(2)} · y ${(p.y / WALL_UNIT).toFixed(2)} casas${p.snapped ? " · ímã" : ""}` });
+      return redraw();
+    }
+    // Editar paredes.
+    if (e.type === "move") { vpoint = hitWall(walls(), e, tolerance(e)) ? { x: e.x, y: e.y, snapped: true } : null; return redraw(); }
+    if (e.type === "down") {
+      const hit = hitWall(walls(), e, tolerance(e));
+      if (hit && e.altKey && hit.part === "segment") {
+        setWalls("Dividir parede", splitWall(walls(), hit.id, hit));
+        return say("Segmento dividido: arraste o vértice novo.");
+      }
+      if (!hit) { vdrag = { box: { x1: e.x, y1: e.y, x2: e.x, y2: e.y }, add: e.shiftKey || e.ctrlKey }; return redraw(); }
+      if (e.shiftKey || e.ctrlKey) wallSel = wallSel.includes(hit.id) ? wallSel.filter((id) => id !== hit.id) : [...wallSel, hit.id];
+      else if (!wallSel.includes(hit.id)) wallSel = [hit.id];
+      panel = wallSel.length ? "walls" : "overview";
+      const before = clone(layer);
+      vdrag = hit.part === "segment" ? { kind: "move", from: { x: e.x, y: e.y }, before, moved: false } : { kind: "vertex", from: { x: hit.x, y: hit.y }, before, moved: false };
+      renderSide();
+      return redraw();
+    }
+    if (e.type === "drag" && vdrag) {
+      if (vdrag.box) { vdrag.box.x2 = e.x; vdrag.box.y2 = e.y; return redraw(); }
+      if (!vdrag.moved) { commitTyping(); history.begin(vdrag.kind === "vertex" ? "Mover vértice" : "Mover paredes"); vdrag.moved = true; }
+      const base = vdrag.before.walls || [];
+      if (vdrag.kind === "vertex") {
+        const ignore = new Set(base.filter((w) => (w.x1 === vdrag.from.x && w.y1 === vdrag.from.y) || (w.x2 === vdrag.from.x && w.y2 === vdrag.from.y)).map((w) => w.id));
+        const p = snapped(e, null, ignore);
+        layer = { ...layer, walls: moveVertex(base, vdrag.from, p) };
+        vpoint = p;
+      } else {
+        const step = e.altKey ? 1 : WALL_UNIT / 10;
+        const dx = Math.round((e.x - vdrag.from.x) / step) * step, dy = Math.round((e.y - vdrag.from.y) / step) * step;
+        const moved = translateWalls(base, wallSel, dx, dy, width(), height());
+        if (!moved.error) layer = { ...layer, walls: moved.walls };
+      }
+      return redraw();
+    }
+    if (e.type === "up" && vdrag) {
+      if (vdrag.box) {
+        const ids = wallsInBox(walls(), vdrag.box);
+        wallSel = vdrag.add ? [...new Set([...wallSel, ...ids])] : ids;
+        panel = wallSel.length ? "walls" : "overview";
+        vdrag = null;
+        say(wallSel.length ? `${wallSel.length} parede(s) selecionada(s).` : "Nenhuma parede inteira dentro da área.");
+        return refreshSelection();
+      }
+      if (vdrag.moved) { history.commit(); recomputeDirty(); }
+      vdrag = null;
+      return refresh();
+    }
+  }
+  function removeWalls() {
+    const n = wallSel.length;
+    setWalls(n > 1 ? `Excluir ${n} paredes` : "Excluir parede", walls().filter((w) => !wallSel.includes(w.id)));
+    wallSel = []; panel = "overview";
+    refresh();
+  }
+  function wallAction(action) {
+    const sel = wallSel;
+    if (action === "kind-draw") return;
+    if (!sel.length && !["convert", "join-all"].includes(action)) return say("Selecione paredes com a ferramenta Editar paredes.");
+    if (action === "delete") return removeWalls();
+    if (action === "duplicate") {
+      const copies = copyWalls(walls(), sel, WALL_UNIT / 2, WALL_UNIT / 2).map((w) => ({ ...w, x1: Math.min(w.x1, width() * WALL_UNIT), x2: Math.min(w.x2, width() * WALL_UNIT), y1: Math.min(w.y1, height() * WALL_UNIT), y2: Math.min(w.y2, height() * WALL_UNIT) }));
+      const { walls: next, error: problem } = addWalls(walls(), copies);
+      if (problem) return say(problem);
+      setWalls("Duplicar paredes", next);
+      wallSel = copies.map((w) => w.id);
+      return refreshSelection();
+    }
+    if (action === "split") {
+      const w = walls().find((x) => x.id === sel[0]);
+      return setWalls("Dividir parede", splitWall(walls(), w.id, { x: (w.x1 + w.x2) / 2, y: (w.y1 + w.y2) / 2 }));
+    }
+    if (action === "join" || action === "join-all") {
+      const before = walls().length, next = joinCollinear(walls(), action === "join" ? sel : null);
+      if (next.length === before) return say("Nada para unir: os segmentos precisam ser do mesmo tipo, na mesma reta e ligados pela ponta.");
+      setWalls("Unir paredes", next);
+      return say(`${before - next.length} junção(ões) feita(s).`);
+    }
+    if (action === "vertex") {
+      const w = walls().find((x) => x.id === sel[0]);
+      const r = removeVertex(walls(), { x: w.x2, y: w.y2 });
+      if (r.error) return say(r.error);
+      return setWalls("Remover vértice", r.walls);
+    }
+    if (action === "convert") {
+      const converted = cellsToWalls(layer.cells, width(), height());
+      if (!converted.length) return say("Não há casas de parede, de bloqueio de luz ou de movimento para converter.");
+      const { walls: next, error: problem } = addWalls(walls(), converted);
+      if (problem) return say(problem);
+      setWalls("Converter casas em paredes vetoriais", next);
+      return say(`${converted.length} segmento(s) criados a partir das casas. As casas continuam marcadas; use “Liberar casa” se quiser só a parede vetorial.`);
+    }
+  }
+  function wallPanel() {
+    const sel = walls().filter((w) => wallSel.includes(w.id));
+    const kinds = WALL_KINDS.map((k) => [k.id, k.label]);
+    const drawing = `<fieldset><legend>Próximo traço</legend><div class="field"><label for="se-w-kind">Tipo</label><select id="se-w-kind" data-wall-draw="kind">${opt(kinds, wallKind)}</select><p class="form-help">${esc(WALL_KINDS.find((k) => k.id === wallKind)?.help || "")}</p></div><label class="check"><input type="checkbox" data-wall-draw="hidden" ${wallHidden ? "checked" : ""}> Não mostrar aos jogadores (porta secreta, barreira invisível)</label></fieldset>`;
+    const help = `<p class="form-help">${esc(helpOf(tool === "vedit" ? "vedit" : "vwall"))}</p>`;
+    const common = `<div class="form-actions">${button("Converter casas em paredes", "se-wall", "convert", "subtle")}${button("Unir todas as colineares", "se-wall", "join-all", "subtle")}</div><p class="form-help">${walls().length} segmento(s) neste mapa. As casas pintadas continuam valendo junto com as paredes vetoriais.</p>`;
+    if (!sel.length) return `<div class="se-panel"><h3>${esc(labelOf(tool === "vedit" ? "vedit" : "vwall"))}${helpButton("mesa.nevoa.paredes", "Paredes vetoriais")}</h3>${help}${drawing}${common}</div>`;
+    const kind = sel.every((w) => w.kind === sel[0].kind) ? sel[0].kind : "";
+    const doors = sel.filter((w) => w.kind === "door");
+    const one = sel.length === 1 ? sel[0] : null;
+    const c = (v) => (v / WALL_UNIT).toFixed(2);
+    const coords = one ? `<fieldset><legend>Pontas (em casas)</legend><div class="se-wall-coords">${[["x1", "Início x"], ["y1", "Início y"], ["x2", "Fim x"], ["y2", "Fim y"]].map(([k, l]) => `<label><span>${l}</span><input type="number" step="0.01" min="0" max="${k[0] === "x" ? width() : height()}" data-wall-coord="${k}" value="${c(one[k])}"></label>`).join("")}</div><p class="form-help">Comprimento: ${(Math.hypot(one.x2 - one.x1, one.y2 - one.y1) / WALL_UNIT).toFixed(2)} casas (${((Math.hypot(one.x2 - one.x1, one.y2 - one.y1) / WALL_UNIT) * (Number(meta?.scaleMeters) || 1.5)).toFixed(1)} m).</p></fieldset>` : "";
+    return `<div class="se-panel"><h3>${sel.length === 1 ? esc(WALL_KINDS.find((k) => k.id === one.kind)?.label || "Parede") : `${sel.length} paredes selecionadas`}${helpButton("mesa.nevoa.paredes", "Paredes vetoriais")}</h3>
+      <div class="field"><label for="se-w-sel-kind">Tipo</label><select id="se-w-sel-kind" data-wall-patch="kind">${kind ? "" : '<option value="">Tipos diferentes</option>'}${opt(kinds, kind)}</select></div>
+      <label class="check"><input type="checkbox" data-wall-patch="hidden" ${sel.every((w) => w.hidden) ? "checked" : ""}> Não mostrar aos jogadores</label>
+      ${doors.length ? `<label class="check"><input type="checkbox" data-wall-patch="open" ${doors.every((w) => w.open) ? "checked" : ""}> Porta começa aberta</label>` : ""}
+      ${coords}
+      <div class="form-actions">${one ? button("Dividir no meio", "se-wall", "split", "subtle") : ""}${one ? button("Remover vértice final", "se-wall", "vertex", "subtle") : ""}${sel.length > 1 ? button("Unir", "se-wall", "join", "subtle") : ""}${button("Duplicar", "se-wall", "duplicate", "subtle")}${button("Excluir", "se-wall", "delete", "text-button")}</div>${common}</div>`;
+  }
+  /** Barra contextual (ADR-086) para paredes selecionadas: tipo, visibilidade, porta aberta e ações rápidas, sem modal. */
+  function syncWallBar() {
+    const bar = shell.contextBar;
+    if (!bar) return;
+    const sel = walls().filter((w) => wallSel.includes(w.id));
+    if (!sel.length || simulate) return bar.hide();
+    const kind = sel.every((w) => w.kind === sel[0].kind) ? sel[0].kind : "";
+    const doors = sel.some((w) => w.kind === "door");
+    bar.show({
+      key: "walls:" + wallSel.join(","), title: sel.length === 1 ? "Parede" : `${sel.length} paredes`, icon: "wall",
+      fields: [
+        { name: "kind", label: "Tipo", type: "select", value: kind, options: [...(kind ? [] : [["", "Tipos diferentes"]]), ...WALL_KINDS.map((k) => [k.id, k.label])] },
+        { name: "hidden", label: "Oculta dos jogadores", type: "checkbox", value: sel.every((w) => w.hidden) },
+        ...(doors ? [{ name: "open", label: "Porta aberta", type: "checkbox", value: sel.filter((w) => w.kind === "door").every((w) => w.open) }] : []),
+      ],
+      actions: [...(sel.length === 1 ? [{ id: "split", label: "Dividir", icon: "plus" }] : [{ id: "join", label: "Unir" }]), { id: "duplicate", label: "Duplicar", icon: "copy" }, { id: "delete", label: "Excluir", icon: "trash", danger: true }],
+      onChange: (name, value) => {
+        if (name === "kind" && !value) return;
+        setWalls(name === "kind" ? "Mudar tipo da parede" : name === "open" ? "Porta aberta/fechada" : "Visibilidade da parede", patchWalls(walls(), wallSel, { [name]: value }));
+      },
+      onAction: (id) => wallAction(id),
+    });
+  }
+  function onWallInput(t) {
+    if (t.dataset.wallDraw === "kind") { wallKind = t.value; return renderSide(); }
+    if (t.dataset.wallDraw === "hidden") { wallHidden = t.checked; return; }
+    if (t.dataset.wallPatch) {
+      const key = t.dataset.wallPatch;
+      if (key === "kind" && !t.value) return;
+      const patch = key === "kind" ? { kind: t.value } : { [key]: t.checked };
+      return setWalls(key === "kind" ? "Mudar tipo da parede" : key === "open" ? "Porta aberta/fechada" : "Visibilidade da parede", patchWalls(walls(), wallSel, patch));
+    }
+    if (t.dataset.wallCoord) {
+      const one = walls().find((w) => w.id === wallSel[0]);
+      const k = t.dataset.wallCoord, max = (k[0] === "x" ? width() : height()) * WALL_UNIT;
+      const v = Math.round(Number(t.value) * WALL_UNIT);
+      if (!Number.isFinite(v) || v < 0 || v > max) return say("A ponta precisa ficar dentro do mapa.");
+      const next = { ...one, [k]: v };
+      if (next.x1 === next.x2 && next.y1 === next.y2) return say("As duas pontas não podem coincidir.");
+      return setWalls("Ajustar ponta da parede", walls().map((w) => (w.id === one.id ? next : w)));
+    }
+  }
+  // ---------- Diagnóstico de visão (só no editor) ----------
+  function toggleDiagnostic() {
+    if (!meta || !mapKind()) return say(NEED_MAP);
+    diag = !diag;
+    if (diag) panel = "diagnostic"; else if (panel === "diagnostic") panel = "overview";
+    refresh();
+    say(diag ? "Diagnóstico ligado: só você vê." : "Diagnóstico desligado.");
+  }
+  let diagCache = null;
+  function diagnosticView() {
+    const key = layer;
+    if (diagCache?.key === key && diagCache.tokens === draft.prepared) return diagCache.value;
+    const value = { ...diagnosticLayers(layer, width(), height()), issues: diagnose({ cells: layer.cells, walls: walls(), lights: layer.lights, tokens: draft.prepared }, width(), height()) };
+    diagCache = { key, tokens: draft.prepared, value };
+    return value;
+  }
+  function diagnosticPanel() {
+    const d = diagnosticView();
+    const counts = WALL_KINDS.map((k) => [k.label, walls().filter((w) => w.kind === k.id).length]).filter(([, n]) => n);
+    const doors = walls().filter((w) => w.kind === "door");
+    return `<div class="se-panel"><h3>Diagnóstico de visão${helpButton("mesa.nevoa.diagnostico", "Diagnóstico de visão")}</h3><p class="form-help">${esc(helpOf("diagnostic"))}</p>
+      <ul class="se-diag-legend"><li><i class="lg-diag-dark" aria-hidden="true"></i>Sem luz para o grupo: ${d.total - d.lit} de ${d.total} casas</li><li><i class="lg-diag-block" aria-hidden="true"></i>Hachura: casa que bloqueia movimento</li><li>Traço contínuo: parede · tracejado: janela/só visão · pontilhado: só movimento</li><li>Portas: ${doors.filter((w) => !w.open).length} fechada(s), ${doors.filter((w) => w.open).length} aberta(s)</li><li>Focos de luz: ${layer.lights.length}</li>${counts.map(([l, n]) => `<li>${esc(l)}: ${n}</li>`).join("")}</ul>
+      <h4>Problemas encontrados (${d.issues.length})</h4>${d.issues.length ? `<ol class="se-diag-issues">${d.issues.map((i) => `<li><strong>!</strong> ${esc(i.message)} <small>(coluna ${Math.floor(i.x / WALL_UNIT) + 1}, linha ${Math.floor(i.y / WALL_UNIT) + 1})</small></li>`).join("")}</ol>` : '<p class="small">Nenhum problema de geometria encontrado.</p>'}
+      <p class="form-help">A visão exata de cada jogador fica em “Ver como jogador”, calculada pelo servidor com as regras da mesa.</p></div>`;
+  }
+  // ---------- Prévia real do jogador (servidor) ----------
+  function requestServerView() {
+    if (!simulate || !meta || !mapKind()) return;
+    clearTimeout(previewTimer);
+    const seq = ++previewSeq;
+    previewTimer = setTimeout(async () => {
+      const body = {
+        mapKey: draft.mapKey, sceneId: saved.id || null, visionMode: mapKind() ? draft.visionMode || null : null,
+        tokens: sceneBody().prepared,
+        layer: { fog: layer.fog, cells: layer.cells, revealed: layer.revealed, revision: meta.revision,
+          lights: layer.lights.map((l) => ({ x: l.x, y: l.y, radius: l.radius, dim: l.dim ?? null, color: l.color ?? null, intensity: l.intensity ?? null, animation: l.animation ?? null })),
+          marks: layer.marks.map((m) => ({ id: m.id || null, x: m.x, y: m.y, kind: m.kind, label: m.label, dc: m.dc ?? null, sense: m.sense || null, maxDistance: m.maxDistance ?? null })),
+          walls: walls().map((w) => ({ id: w.id, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, kind: w.kind, open: !!w.open, hidden: !!w.hidden })) },
+        viewerCharacterId: viewer && viewer !== "party" ? viewer : null, party: viewer === "party",
+      };
+      try {
+        const result = await api(`${base}/prep/preview-view`, "POST", body, { background: true });
+        if (seq !== previewSeq || !simulate) return;
+        serverView = result; serverViewError = "";
+      } catch (err) {
+        if (seq !== previewSeq || !simulate) return;
+        serverViewError = err.message || "erro desconhecido.";
+      }
+      renderSimBanner();
+      redraw();
+    }, 250);
   }
 
   // ---------- Seleção, área de transferência e camadas ----------
@@ -391,6 +682,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   }
   function removeSelection() {
     if (simulate) return;
+    if (wallSel.length) return removeWalls();
     const ids = editableSelection();
     if (!ids.length) return say("Selecione um marcador para excluir.");
     removeIndices(ids, ids.length > 1 ? `Excluir ${ids.length} marcadores` : "Excluir marcador");
@@ -650,6 +942,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
             { label: "Aplicar à cena atual…", disabled: dirty, disabledReason: "Salve a preparação antes de aplicar.", run: () => { applying = true; renderSide(); showProps(); } },
             { label: "Reiniciar cena…", danger: true, disabled: dirty, disabledReason: "Salve a preparação antes de reiniciar a cena.", run: () => { applying = "restart"; renderSide(); showProps(); } }] : []),
           { separator: true },
+          ...(drafts?.menuItems() || []),
           { label: "Fechar", run: () => shell.requestClose() },
         ];
       } },
@@ -826,13 +1119,16 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (!simulate) { banner.innerHTML = ""; return; }
     const placed = draft.prepared.filter((t) => t.characterId);
     if (viewer && !placed.some((t) => t.characterId === viewer)) viewer = "";
-    const options = [`<option value="">Grupo — só luz comum e áreas reveladas</option>`, ...placed.map((t) => `<option value="${esc(t.characterId)}"${t.characterId === viewer ? " selected" : ""}>${esc(t.label || "Personagem")}</option>`)].join("");
-    banner.innerHTML = `<p>${esc(HELP.preview)}${helpButton("campanhas.cenas.simulacao", "Simulação de visão")}</p>${placed.length && mapKind() ? `<label class="se-sim-viewer"><span>Visão de</span><select id="se-viewer" name="se-viewer">${options}</select></label>` : ""}`;
+    const options = [`<option value="">Só luz comum e áreas reveladas</option>`, placed.length ? `<option value="party"${viewer === "party" ? " selected" : ""}>Grupo (todos os jogadores juntos)</option>` : "", ...placed.map((t) => `<option value="${esc(t.characterId)}"${t.characterId === viewer ? " selected" : ""}>${esc(t.label || "Personagem")}</option>`)].join("");
+    const status = serverViewError ? `<span class="se-sim-status" role="alert">Prévia do servidor indisponível: ${esc(serverViewError)} Mostrando a simulação local (sem sentidos, percepção e exploração).</span>`
+      : serverView ? `<span class="se-sim-status">Prévia real: mesmas regras da mesa (paredes, luz, visão, sentidos, percepção e áreas já exploradas).</span>`
+      : `<span class="se-sim-status" role="status">Calculando a prévia real…</span>`;
+    banner.innerHTML = `<p>${esc(HELP.preview)}${helpButton("campanhas.cenas.simulacao", "Simulação de visão")}</p>${placed.length && mapKind() ? `<label class="se-sim-viewer"><span>Visão de</span><select id="se-viewer" name="se-viewer">${options}</select></label>` : ""}<p class="small">${status}</p>`;
   }
 
   function sidePanel() {
     if (error) return `<div class="se-panel"><p class="form-error" role="alert">${esc(error)}</p>${button("Entendi", "se-dismiss", "", "subtle")}</div>`;
-    if (conflict) return `<div class="se-panel se-conflict" role="alert"><h3>Outra tela salvou antes</h3><p>${esc(conflict)}</p><p class="form-help">Suas alterações continuam aqui. Você pode copiar o que precisar antes de recarregar.</p><div class="form-actions">${button("Continuar editando", "se-dismiss", "", "subtle")}${button("Recarregar a versão salva", "se-reload", "", "danger")}</div></div>`;
+    if (conflict) return `<div class="se-panel se-conflict" role="alert"><h3>Outra tela salvou antes</h3><p>${esc(conflict)}</p><p class="form-help">Suas alterações continuam aqui. Recarregar guarda este rascunho no navegador (Arquivo › Rascunho local…); "Salvar como nova cena" grava a cena numa cópia, sem tocar na outra.</p><div class="form-actions">${button("Continuar editando", "se-dismiss", "", "subtle")}${!mapOnly && saved.id ? button("Salvar como nova cena", "se-save-copy", "", "subtle") : ""}${button("Recarregar a versão salva", "se-reload", "", "danger")}</div></div>`;
     if (applying) return applyPanel();
     if (panel === "token" && selection.length > 1) return multiPanel();
     if (panel === "token" && selection.length === 1 && draft.prepared[selection[0]]) return tokenPanel(draft.prepared[selection[0]]);
@@ -845,6 +1141,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (panel === "notes") return `<div class="se-panel"><h3>Notas privadas</h3><p class="form-help">${esc(HELP.notes)}</p><label class="sr-only" for="se-notes">Notas privadas</label><textarea id="se-notes" data-draft="privateNotes" maxlength="4000" rows="8">${esc(draft.privateNotes)}</textarea></div>`;
     if (panel === "sceneSettings") return settingsPanel();
     if (panel === "fogState") return fogPanel();
+    if (panel === "walls" || ((tool === "vwall" || tool === "vedit") && panel === "overview" && meta)) return wallPanel();
+    if (panel === "diagnostic" || (diag && panel === "overview" && meta)) return diagnosticPanel();
     if (panel === "resetExploration") return `<div class="se-panel"><h3>Recomeçar exploração</h3><p class="form-help">Ao salvar, apaga o que os jogadores já exploraram neste mapa e quem percebeu cada marca. Paredes, portas e luzes ficam.${meta?.inUse ? " Este mapa está na mesa agora: use “Reiniciar cena” ou “Recomeçar exploração” na mesa." : ""}</p><label class="check"><input type="checkbox" data-reset ${resetExploration ? "checked" : ""} ${meta?.inUse ? "disabled" : ""}> Recomeçar exploração ao salvar</label></div>`;
     if (panel === "gridAdjust") return gridPanel();
     if (panel === "hidden") return hiddenPanel();
@@ -875,7 +1173,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   }
   function lightPanel() {
     const light = layer.lights.find((l) => l.x === pick.x && l.y === pick.y);
-    return `<form class="se-panel" data-light-form><h3>Foco de luz · coluna ${pick.x + 1}, linha ${pick.y + 1}</h3><p class="form-help">${esc(HELP.light)}</p><div class="field"><label for="se-radius">Raio (casas)</label><input id="se-radius" name="radius" type="number" min="1" max="30" required value="${light?.radius ?? 4}"></div><div class="form-actions">${light ? button("Apagar foco", "se-light-remove", "", "text-button") : ""}<button type="submit" class="primary">${light ? "Atualizar" : "Adicionar"}</button></div></form>`;
+    const advanced = mode === "complete" ? `<div class="field"><label for="se-dim">Penumbra até (casas)</label><input id="se-dim" name="dim" type="number" min="1" max="30" value="${light?.dim ?? ""}" placeholder="Sem penumbra"><p class="form-help">A luz cai aos poucos entre o raio e a penumbra. A penumbra também ilumina para as regras.</p></div><div class="field"><label for="se-color">Cor</label><input id="se-color" name="color" type="color" value="${esc(light?.color || "#ffbe64")}"></div><div class="field"><label for="se-intensity">Intensidade (10 a 100)</label><input id="se-intensity" name="intensity" type="number" min="10" max="100" value="${light?.intensity ?? 100}"></div><div class="field"><label for="se-anim">Animação</label><select id="se-anim" name="animation">${opt([["", "Fixa"], ["flicker", "Tremeluzir (tocha)"], ["pulse", "Pulsar (magia)"]], light?.animation || "")}</select><p class="form-help">Só visual. Quem pede menos movimento vê a luz fixa.</p></div>` : "";
+    return `<form class="se-panel" data-light-form><h3>Foco de luz · coluna ${pick.x + 1}, linha ${pick.y + 1}</h3><p class="form-help">${esc(HELP.light)}</p><div class="field"><label for="se-radius">Raio de luz plena (casas)</label><input id="se-radius" name="radius" type="number" min="1" max="30" required value="${light?.radius ?? 4}"></div>${advanced}<div class="form-actions">${light ? button("Apagar foco", "se-light-remove", "", "text-button") : ""}<button type="submit" class="primary">${light ? "Atualizar" : "Adicionar"}</button></div></form>`;
   }
   function markPanel() {
     const mark = layer.marks.find((m) => m.x === pick.x && m.y === pick.y);
@@ -907,7 +1206,10 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (applying === "restart") return `<div class="se-panel"><h3>Reiniciar cena com o novo cenário?</h3><p>Os jogadores passam a ver o cenário preparado:</p><ul><li>marcadores voltam ao arranjo preparado;</li><li>paredes, portas, luzes, marcas e névoa voltam à preparação salva;</li><li>a exploração recomeça.</li></ul><p class="form-help">Fichas, conversa, rolagens e histórico continuam.</p><div class="form-actions">${button("Cancelar", "se-apply", "", "subtle")}${button("Reiniciar cena", "se-restart", "", "danger")}</div></div>`;
     const parts = [live.textPending && ["text", "Nome e texto para os jogadores"], !live.mapPending && ["vision", "Visibilidade da cena"], meta?.pending && !live.mapPending && ["layer", "Paredes, portas, luzes e marcas do mapa"]].filter(Boolean);
     const tokens = mapKind() && !live.mapPending;
-    return `<form class="se-panel" data-apply-form><h3>Aplicar à cena atual${helpButton("campanhas.cenas.aplicar", "Aplicar à cena atual")}</h3><p>Escolha o que da preparação salva passa a valer na mesa agora. Os jogadores veem o resultado.</p><fieldset><legend>Aplicar</legend>${parts.map(([k, l]) => `<label class="check"><input type="checkbox" name="${k}" ${k !== "vision" ? "checked" : ""}> ${esc(l)}</label>`).join("")}${tokens ? `<label class="check"><input type="checkbox" name="tokens"> ${esc(APPLY_TOKENS.label)}</label><p class="form-help">${esc(APPLY_TOKENS.help)}</p>` : ""}</fieldset><p class="form-help">${esc(APPLY_PRESERVES)}</p>${live.mapPending ? `<div class="notice-box"><p>O cenário mudou na preparação. Trocar de cenário recomeça a exploração, então usa “Reiniciar cena”.</p>${button("Reiniciar cena com o novo cenário…", "se-restart-ask", "", "subtle")}</div>` : ""}<div class="form-actions">${button("Cancelar", "se-dismiss", "", "subtle")}<button type="submit" class="primary" ${parts.length || tokens ? "" : "disabled"}>Aplicar à mesa</button></div></form>`;
+    // Revisar diferenças: o que muda na mesa se a preparação do mapa for aplicada (portas abertas/fechadas não contam).
+    const diff = meta?.pending && meta.live && savedLayer ? diffSummary(layerDiff(meta.live, savedLayer)) : [];
+    const review = meta?.pending ? `<div class="se-diff" role="note"><h4>Diferenças do mapa em relação à mesa</h4>${diff.length ? `<ul>${diff.map((d) => `<li>${esc(d)}</li>`).join("")}</ul>` : '<p class="small">Só ajustes que não mudam paredes, luzes nem marcas.</p>'}<p class="form-help">Posições, exploração, revelações, portas abertas ou fechadas, fichas e histórico continuam.</p></div>` : "";
+    return `<form class="se-panel" data-apply-form><h3>Aplicar à cena atual${helpButton("campanhas.cenas.aplicar", "Aplicar à cena atual")}</h3><p>Escolha o que da preparação salva passa a valer na mesa agora. Os jogadores veem o resultado.</p>${review}<fieldset><legend>Aplicar</legend>${parts.map(([k, l]) => `<label class="check"><input type="checkbox" name="${k}" ${k !== "vision" ? "checked" : ""}> ${esc(l)}</label>`).join("")}${tokens ? `<label class="check"><input type="checkbox" name="tokens"> ${esc(APPLY_TOKENS.label)}</label><p class="form-help">${esc(APPLY_TOKENS.help)}</p>` : ""}</fieldset><p class="form-help">${esc(APPLY_PRESERVES)}</p>${live.mapPending ? `<div class="notice-box"><p>O cenário mudou na preparação. Trocar de cenário recomeça a exploração, então usa “Reiniciar cena”.</p>${button("Reiniciar cena com o novo cenário…", "se-restart-ask", "", "subtle")}</div>` : ""}<div class="form-actions">${button("Cancelar", "se-dismiss", "", "subtle")}<button type="submit" class="primary" ${parts.length || tokens ? "" : "disabled"}>Aplicar à mesa</button></div></form>`;
   }
 
   function renderSide() {
@@ -916,6 +1218,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const hidden = mode === "basic" ? hiddenCustomizations({ layer: meta ? layer : null, scene: { layerMode: draft.layerMode, description: draft.description }, tokens: draft.prepared }) : [];
     const chip = hidden.length && panel !== "hidden" ? `<button type="button" class="se-hidden-chip" data-action="se-panel" data-id="hidden">Ajustes avançados ativos (${hidden.length}) · ver detalhes</button>` : "";
     shell.panel("props").innerHTML = chip + sidePanel();
+    syncWallBar();
     if (panel === "scenery" && q("#se-picker")) mountPicker();
     if (panel === "gridAdjust" && q("#se-grid")) mountGrid();
     if (applying || conflict || error) showProps();
@@ -962,6 +1265,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function onTool(id) {
     board.interact();
     tool = id; pick = null; simulate = false;
+    if (!VECTOR_TOOLS.has(id)) { wallPts = []; vdrag = null; vpoint = null; if (id !== "select") wallSel = []; }
     root.dataset.tool = id;
     board.camera.setPan(id === "hand");
     if (!["select", "hand", "zoom"].includes(id)) selection = [];
@@ -980,7 +1284,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   }
   function toggleSimulate(on = !simulate) {
     if (on && (!mapKind() || !meta)) return say("A simulação vale para mapas táticos.");
-    simulate = on; selection = [];
+    simulate = on; selection = []; serverView = null; serverViewError = "";
     if (simulate && !viewer) viewer = draft.prepared.find((t) => t.characterId)?.characterId || "";
     renderAll();
   }
@@ -988,6 +1292,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (dismissHelp()) return;
     if (isTypingTarget(e.target)) { commitTyping(); e.target.blur(); return; }
     if (simulate) return toggleSimulate(false);
+    if (wallPts.length) { wallPts = []; say("Traço de parede cancelado."); return redraw(); }
+    if (vdrag) { vdrag = null; return redraw(); }
+    if (wallSel.length) { wallSel = []; if (panel === "walls") panel = "overview"; return refreshSelection(); }
     if (history.pending) { history.cancel(); return; }
     if (applying) { applying = false; return renderSide(); }
     if (selection.length || pick) return deselect();
@@ -1005,7 +1312,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const sent = clone(layer);
     const result = await api(`${base}/assets/layers?key=${encodeURIComponent(draft.mapKey)}${saved.id ? `&scene=${encodeURIComponent(saved.id)}` : ""}`, "PUT", {
       fog: sent.fog, cells: sent.cells, revealed: sent.revealed,
-      lights: sent.lights.map((l) => ({ x: l.x, y: l.y, radius: l.radius })),
+      lights: sent.lights.map((l) => ({ x: l.x, y: l.y, radius: l.radius, dim: l.dim ?? null, color: l.color ?? null, intensity: l.intensity ?? null, animation: l.animation ?? null })),
+      walls: (sent.walls || []).map((w) => ({ id: w.id, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, kind: w.kind, open: !!w.open, hidden: !!w.hidden })),
       marks: sent.marks.map((m) => ({ id: m.id || null, x: m.x, y: m.y, kind: m.kind, label: m.label, dc: m.dc ?? null, sense: m.sense || null, maxDistance: m.maxDistance ?? null })),
       revision: meta.revision, resetExploration, prepVersion: meta.prepVersion,
     }, { background: true });
@@ -1067,6 +1375,25 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     } catch (e) { say(e.message); }
     finally { busy = false; recomputeDirty(); renderAll(); }
   }
+  /**
+   * Conflito: grava os dados da cena (nome, textos, cenário, arranjo, camadas) como uma cena nova na mesma pasta e
+   * passa a editar a cópia. A cena original não muda. A preparação do mapa continua pendente, se houver.
+   */
+  async function saveSceneCopy() {
+    if (busy || mapOnly || !saved.id) return;
+    commitTyping();
+    busy = true; renderStatus();
+    try {
+      const sent = clone(draft);
+      const name = `${draft.name.trim().slice(0, 70)} (cópia)`;
+      const created = await api(`${base}/scenes`, "POST", { ...sceneBody(), name, revision: 0, folderId: scene?.folderId ?? folderId ?? null }, { background: true });
+      draft.name = name; if (nameInput) nameInput.value = name;
+      saved = { id: created.id, revision: created.revision }; savedScene = { ...sent, name };
+      conflict = null; error = "";
+      say(layerDirty ? "Cena salva como cópia. A preparação do mapa ainda não foi salva." : "Cena salva como cópia. Você está editando a cópia; a original não mudou.");
+    } catch (e) { say(e.message); }
+    finally { busy = false; recomputeDirty(); renderAll(); }
+  }
   async function reload() {
     conflict = null; error = "";
     if (saved.id) {
@@ -1109,12 +1436,14 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       case "se-tool": return shell.useTool(id);
       case "se-panel": panel = id; return renderSide();
       case "se-preview": return toggleSimulate();
+      case "se-wall": return wallAction(id);
       case "se-save": return save();
       case "se-apply": applying = true; renderSide(); return showProps();
       case "se-restart-ask": applying = "restart"; return renderSide();
       case "se-restart": return restart();
       case "se-dismiss": conflict = null; error = ""; applying = false; return renderSide();
-      case "se-reload": if (confirm("Recarregar descarta as alterações desta tela que ainda não foram salvas. Continuar?")) await reload().catch((x) => say(x.message)); return;
+      case "se-reload": if (confirm("Recarregar abre a versão salva. Suas alterações ficam guardadas neste navegador (Arquivo › Rascunho local…). Continuar?")) { await drafts?.preserve(); await reload().catch((x) => say(x.message)); } return;
+      case "se-save-copy": return saveSceneCopy();
       case "se-go-complete": setInterfaceMode("complete"); return;
       case "se-token-remove": return removeSelection();
       case "se-token-props": return selection.length === 1 && openTokenProperties(selection[0]);
@@ -1173,6 +1502,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   }
   async function onChange(e) {
     const t = e.target;
+    if (t.dataset.wallDraw || t.dataset.wallPatch || t.dataset.wallCoord) return onWallInput(t);
     if (t.name === "se-kind") {
       if (draft.prepared.length && t.value !== "map" && !confirm("Sem grade, os marcadores preparados saem da cena. Continuar?")) { t.checked = false; return renderSide(); }
       commitTyping();
@@ -1184,7 +1514,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       resetHistory("Tipo de cena trocado. O histórico de desfazer recomeça a partir daqui.");
       recomputeDirty(); return renderAll();
     }
-    if (t.name === "se-viewer") { viewer = t.value; return redraw(); }
+    if (t.name === "se-viewer") { viewer = t.value; serverView = null; serverViewError = ""; renderSimBanner(); return redraw(); }
     if (t.name === "se-vision") { change("Visibilidade", () => { draft.visionMode = t.value; }); renderAll(false); return renderSide(); }
     if (t.name === "se-layer") {
       if (layerDirty && !confirm("As mudanças do mapa ainda não salvas serão descartadas ao trocar o alcance. Continuar?")) return renderSide();
@@ -1214,7 +1544,12 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       const old = layer.lights.find((l) => l.x === pick.x && l.y === pick.y);
       const lights = layer.lights.filter((l) => l !== old);
       if (!old && lights.length >= 100) return say("Limite de 100 focos de luz por mapa.");
-      lights.push({ ...(old || {}), x: pick.x, y: pick.y, radius });
+      const dim = data.dim === "" || data.dim == null ? null : Math.round(Number(data.dim));
+      if (dim != null && !(dim >= radius && dim <= 30)) return say("A penumbra vai do raio da luz até 30 casas.");
+      const intensity = data.intensity == null || data.intensity === "" ? old?.intensity ?? null : Math.round(Number(data.intensity));
+      if (intensity != null && !(intensity >= 10 && intensity <= 100)) return say("A intensidade vai de 10 a 100.");
+      const visual = data.radius != null && "color" in data ? { dim: dim === radius ? null : dim, color: data.color && data.color.toLowerCase() !== "#ffbe64" ? data.color.toLowerCase() : null, intensity: intensity === 100 ? null : intensity, animation: data.animation || null } : {};
+      lights.push({ ...(old || {}), x: pick.x, y: pick.y, radius, ...visual });
       change(old ? "Atualizar foco de luz" : "Foco de luz", () => { layer = { ...layer, lights }; });
       return refresh();
     }
@@ -1291,6 +1626,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (!c) return say("Solte o personagem dentro do mapa.");
     placeRef(ref, c);
   };
+  // Enter termina o traço de parede (o tabuleiro não consome Enter no modo vetorial).
+  const onWallKey = (e) => { if (e.key === "Enter" && tool === "vwall" && wallPts.length && !isTypingTarget(e.target)) { e.preventDefault(); finishWall(); } };
+  root.addEventListener("keydown", onWallKey);
   root.addEventListener("click", onClick);
   root.addEventListener("input", onInput);
   root.addEventListener("change", onChange);
@@ -1307,7 +1645,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
 
   function cleanup() {
     closed = true;
-    root.removeEventListener("click", onClick); root.removeEventListener("input", onInput); root.removeEventListener("change", onChange);
+    root.removeEventListener("click", onClick); root.removeEventListener("keydown", onWallKey); clearTimeout(previewTimer); root.removeEventListener("input", onInput); root.removeEventListener("change", onChange);
     root.removeEventListener("submit", onSubmit); root.removeEventListener("focusout", onFocusOut); root.removeEventListener("dragstart", onDragStart);
     shell.stage.removeEventListener("pointerdown", onStagePointer, true); shell.stage.removeEventListener("click", onStageClick, true);
     shell.stage.removeEventListener("keydown", onStageKey, true); shell.stage.removeEventListener("dragover", onDragOver);
@@ -1318,9 +1656,45 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     onClose?.({ id: saved.id });
   }
 
+  /**
+   * Rascunho local (cena e preparação do mapa da edição) e versões da cena (ADR-083). Restaurar mantém as revisões de
+   * origem: se a cena ou a preparação mudaram depois, salvar mostra o conflito em vez de sobrescrever.
+   */
+  function attachSceneDrafts() {
+    const revisionOf = () => ({ scene: saved.revision, layer: meta?.prepVersion ?? meta?.revision ?? null });
+    async function put(nextDraft, nextLayer, reset, label) {
+      commitTyping();
+      const mapChanged = nextDraft.mapKey !== draft.mapKey || nextDraft.kind !== draft.kind;
+      // Outro cenário: a preparação do mapa é recarregada e o desfazer recomeça (instantâneos de outro mapa não valem).
+      if (!mapChanged) history.record(label);
+      draft = clone(nextDraft);
+      if (nameInput) nameInput.value = draft.name;
+      if (mapChanged) { await loadLayer(); resetHistory(`${label}: outro cenário, o histórico de desfazer recomeça.`); }
+      const applied = !!(nextLayer && layer && nextLayer.cells?.length === layer.cells?.length);
+      if (applied) layer = clone(nextLayer);
+      resetExploration = !!reset && !!layer;
+      selection = []; pick = null;
+      if (!draft.layers.some((l) => l.id === activeLayer)) activeLayer = "elements";
+      recomputeDirty(); renderAll();
+      return applied;
+    }
+    return attachDrafts(shell, {
+      campaignId: campaign.id, kind: mapOnly ? "maplayer" : "scene", versionKind: mapOnly ? null : "scene",
+      docId: () => (mapOnly ? draft.mapKey : saved.id), label: () => (mapOnly ? meta?.name || "" : draft.name),
+      revision: revisionOf, capture, isDirty: () => sceneDirty || layerDirty,
+      restore: async (snap, rev) => {
+        const applied = await put(snap.draft, snap.layer, snap.reset, "Restaurar rascunho");
+        if (Number.isInteger(rev?.scene) && !mapOnly) saved.revision = rev.scene;
+        if (applied && meta && rev?.layer != null) { if (typeof rev.layer === "string") meta.prepVersion = rev.layer; else meta.revision = rev.layer; }
+      },
+      loadVersion: (payload) => put(toDraft({ ...payload, layers: payload.layers }), null, false, "Carregar versão").catch((e) => say(e.message)),
+    });
+  }
+
   (async () => {
     try { await loadLayer(); } catch (e) { error = e.message; }
     if (closed) return;
+    drafts = attachSceneDrafts();
     if (!saved.id && !mapOnly && !draft.mapKey && draft.kind !== "text") panel = "scenery";
     recomputeDirty();
     renderAll();

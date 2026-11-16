@@ -4,7 +4,10 @@
 import { $, esc, modal, toast } from "./ui.js";
 import { helpButton } from "./help.js";
 import { interfaceMode, interfaceToggle, mountInterfaceToggle, onInterfaceChange } from "./interface-mode.js";
-import { FIELD_SAFE, clampMenu, isTypingTarget, isRequiredLayer, rulerLabel, rulerSteps, shortcutLabel, shortcutOf, zoomLabel } from "./editor-policy.js";
+import { FIELD_SAFE, clampMenu, isTypingTarget, isRequiredLayer, rulerLabel, rulerSteps, shortcutLabel, shortcutOf, zoomLabel,
+  normalizeContexts, toolInContext, panelInContext, availableContexts, toolAfterContext, contextShortcutIndex,
+  layoutPrefKey, normalizeLayoutPref, panelOrder, movePanel, PANEL_WIDTH } from "./editor-policy.js";
+import { state } from "./state.js";
 
 let shellSequence = 0;
 /** Descrição curta das dicas (o componente de ajuda aceita até 240 caracteres). */
@@ -54,6 +57,17 @@ const P = {
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   door2: '<path d="M6 21V4h12v17M10 12h.01"/>',
   wand: '<path d="M4 20L16 8M14 4v3M18 8h3M17 3l-1.5 1.5M20 11l-1.5-1.5"/>',
+  maximize: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M8 9l-2-2M16 9l2-2M8 15l-2 2M16 15l2 2"/>',
+  dots: '<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>',
+  group: '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/><path d="M2 2h20v20H2z" stroke-dasharray="3 2"/>',
+  alignLeft: '<path d="M4 3v18M8 7h10v4H8zM8 14h6v4H8z"/>',
+  alignCenter: '<path d="M12 3v18M6 7h12v4H6zM9 14h6v4H9z"/>',
+  alignRight: '<path d="M20 3v18M6 7h10v4H6zM10 14h6v4h-6z"/>',
+  alignTop: '<path d="M3 4h18M7 8h4v10H7zM14 8h4v6h-4z"/>',
+  alignMiddle: '<path d="M3 12h18M7 6h4v12H7zM14 9h4v6h-4z"/>',
+  alignBottom: '<path d="M3 20h18M7 6h4v10H7zM14 10h4v6h-4z"/>',
+  distributeX: '<path d="M3 3v18M21 3v18M9 8h6v8H9z"/>',
+  distributeY: '<path d="M3 3h18M3 21h18M8 9h8v6H8z"/>',
 };
 export function icon(name, label = "") {
   const path = P[name] || P.object;
@@ -328,16 +342,27 @@ export function renderHistoryPanel(host, history) {
  * actions: html extra no topo, keys: { "mod+z": fn, … }, isDirty(), onTool(id), onClose(), onSize() (tamanho clicável na barra de estado) }.
  * A câmera (`setCamera`) pode expor `ruler()` → { x, y, cellPx, cellUnits, unit } | null: origem da área visível em coordenadas
  * da janela, pixels de tela por casa, metros (ou pixels) por casa e a unidade; sem ele, as réguas ficam ocultas.
+ *
+ * Contextos de trabalho (ADR-086), opcionais: `kind` (ex. "image", "tiles", "scene": chave das preferências visuais),
+ * `contexts: [{ id, label?, tools?:[ids], groups?:[ids], panels?:[ids], defaultTool? }]` (ids de `EDITOR_CONTEXTS`),
+ * `commonTools: [ids]` (em todos os contextos), `defaultContext`, `onContext(id)`. Ferramenta/painel pode declarar
+ * `context: id | [ids] | "*"`; sem contexto declarado aparece em todos. Trocar o contexto só reorganiza a interface.
+ * `contextBar: true` reserva a barra contextual de propriedades (API `shell.contextBar`).
  */
 export function createEditorShell(opts) {
   const uid = ++shellSequence;
   let mode = interfaceMode(), tool = opts.initialTool || opts.tools[0]?.id, camera = null, closed = false, resolveClosed;
   const whenClosed = new Promise((r) => (resolveClosed = r));
-  modal(opts.title, `<div class="ed-shell" data-interface="${mode}" data-panels="open">
+  const kind = /^[a-z][a-z0-9-]{0,23}$/.test(String(opts.kind || "")) ? opts.kind : "editor";
+  const contexts = normalizeContexts(opts.contexts);
+  const commonTools = (opts.commonTools || []).map(String);
+  modal(opts.title, `<div class="ed-shell" data-interface="${mode}" data-panels="open" data-kind="${esc(kind)}"${opts.contextBar ? ' data-contextbar="top"' : ""}>
     <header class="ed-top">
       <div class="ed-brand"><strong class="ed-title" data-ed-title></strong><small class="ed-sub" data-ed-sub></small></div>
       <nav class="ed-menubar" role="menubar" aria-label="Menus do editor" data-ed-menubar></nav>
+      ${contexts.length ? `<nav class="ed-contexts" role="toolbar" aria-label="Contexto de trabalho (Alt+1 a Alt+6)" data-ed-contexts></nav>${helpButton("campanhas.editor.contextos", "Contextos, barra de propriedades e layout")}` : ""}
       <div class="ed-top-actions">${opts.actions || ""}${interfaceToggle("ed-interface")}
+        <button type="button" class="ed-icon-button" data-ed="maximize" aria-pressed="false" aria-label="Maximizar a área de edição (Ctrl+\\)" data-tip="Maximizar a área de edição" data-tip-detail="Esconde painéis e réguas temporariamente. Ctrl+\\ alterna.">${icon("maximize")}</button>
         <button type="button" class="ed-icon-button" data-ed="panels" aria-pressed="true" aria-label="Mostrar ou ocultar painéis">${icon("panels")}</button>
         <button type="button" class="ed-icon-button" data-ed="fullscreen" aria-pressed="false" aria-label="Tela cheia">${icon("fullscreen")}</button>
         <button type="button" class="ed-icon-button" data-ed="close" aria-label="Fechar editor">${icon("close")}</button>
@@ -346,19 +371,21 @@ export function createEditorShell(opts) {
     <div class="ed-body">
       <nav class="ed-tools" role="toolbar" aria-orientation="vertical" aria-label="Ferramentas" data-ed-tools></nav>
       <div class="ed-canvas-area" data-rulers="on">
+        ${opts.contextBar ? '<div class="ed-contextbar" role="toolbar" aria-label="Propriedades do selecionado" data-ed-contextbar></div>' : ""}
         <span class="ed-ruler-corner" aria-hidden="true" data-ed-ruler-unit></span>
         <canvas class="ed-ruler ed-ruler-x" aria-hidden="true" data-ed-ruler="x"></canvas>
         <canvas class="ed-ruler ed-ruler-y" aria-hidden="true" data-ed-ruler="y"></canvas>
         <section class="ed-stage" aria-label="Área de edição" data-ed-stage></section>
       </div>
       <div class="ed-resizer" role="separator" aria-orientation="vertical" aria-label="Largura dos painéis" tabindex="0" aria-valuemin="220" aria-valuemax="520" data-ed-resizer></div>
-      <aside class="ed-panels" aria-label="Painéis" data-ed-panels>${opts.panels.map((p) => `<section class="ed-panel" data-panel="${esc(p.id)}" data-basic="${p.basic !== false}" data-open="${p.open !== false}"><h2 class="ed-panel-title"><button type="button" data-ed-panel-toggle="${esc(p.id)}" aria-expanded="${p.open !== false}">${esc(p.title)}</button>${p.help ? helpButton(p.help[0], p.help[1]) : ""}</h2><div class="ed-panel-body" data-panel-body="${esc(p.id)}"></div></section>`).join("")}</aside>
+      <aside class="ed-panels" aria-label="Painéis" data-ed-panels>${opts.panels.map((p) => `<section class="ed-panel" data-panel="${esc(p.id)}" data-basic="${p.basic !== false}" data-open="${p.open !== false}"><h2 class="ed-panel-title"><button type="button" data-ed-panel-toggle="${esc(p.id)}" aria-expanded="${p.open !== false}">${esc(p.title)}</button>${p.help ? helpButton(p.help[0], p.help[1]) : ""}<button type="button" class="ed-icon-button ed-panel-menu" data-ed-panel-menu="${esc(p.id)}" aria-haspopup="menu" aria-label="Opções do painel ${esc(p.title)}">${icon("dots")}</button></h2><div class="ed-panel-body" data-panel-body="${esc(p.id)}"></div></section>`).join("")}</aside>
     </div>
     <footer class="ed-status" data-ed-status>
       <div class="ed-zoom" role="group" aria-label="Zoom"><button type="button" class="ed-icon-button" data-ed-zoom="out" aria-label="Afastar (Ctrl −)">−</button><button type="button" class="ed-zoom-value" data-ed-zoom="fit" aria-label="Ajustar à tela (Ctrl 0)"><span data-ed-zoom-label>100%</span></button><button type="button" class="ed-icon-button" data-ed-zoom="in" aria-label="Aproximar (Ctrl +)">+</button><button type="button" class="subtle small" data-ed-zoom="actual">100%</button></div>
       <span class="ed-status-cell" data-ed-coords aria-label="Posição do cursor"></span>
       ${opts.onSize ? `<button type="button" class="ed-status-cell ed-size-button" data-ed-size data-ed="size" data-tip="Alterar o tamanho" data-tip-detail="Abre o tamanho do documento: largura e altura da área visível."></button>` : '<span class="ed-status-cell" data-ed-size></span>'}
       <span class="ed-status-cell ed-state" data-ed-state></span>
+      <span class="ed-status-cell ed-draft-state" data-ed-draft></span>
       <span class="ed-status-msg" role="status" aria-live="polite" data-ed-message></span>
       ${opts.help ? `<span class="ed-status-help">${helpButton(opts.help[0], opts.help[1])}</span>` : ""}
     </footer>
@@ -370,30 +397,127 @@ export function createEditorShell(opts) {
   const stage = q("[data-ed-stage]");
   setTitle(opts.title, opts.subtitle || "");
 
-  // Preferências de layout (só visuais): largura e painéis recolhidos.
-  const PREF = "eternnus.editor.layout";
-  const pref = (() => { try { return JSON.parse(localStorage.getItem(PREF) || "{}"); } catch { return {}; } })();
+  // Preferências de layout (só visuais, por conta neste navegador; ADR-086): largura, painéis recolhidos e ordem,
+  // réguas, barra de propriedades e último contexto por tipo de editor. Nunca entram no documento.
+  const PREF = layoutPrefKey(state.user?.id);
+  const readPref = (key) => { try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; } };
+  let pref = normalizeLayoutPref(readPref(PREF) ?? readPref("eternnus.editor.layout") ?? {});
   const savePref = () => { try { localStorage.setItem(PREF, JSON.stringify(pref)); } catch { /* armazenamento indisponível */ } };
   if (pref.width) root.style.setProperty("--ed-panel-width", `${pref.width}px`);
-  if (pref.closed?.length) for (const id of pref.closed) togglePanel(id, false);
+  const defaultClosed = opts.panels.filter((p) => p.open === false).map((p) => p.id);
+  applyPanelOrder();
+  if (pref.closed?.length) for (const id of pref.closed) togglePanel(id, false, false);
   if (matchMedia("(max-width: 900px)").matches) setPanels(false);
+  if (opts.contextBar && pref.bar) root.dataset.contextbar = pref.bar;
+
+  function applyPanelOrder() {
+    const host = q("[data-ed-panels]");
+    for (const id of panelOrder(opts.panels.map((p) => p.id), pref.order?.[kind])) {
+      const section = host.querySelector(`[data-panel="${CSS.escape(id)}"]`);
+      if (section) host.append(section);
+    }
+  }
+  function shiftPanel(id, delta) {
+    const order = movePanel(panelOrder(opts.panels.map((p) => p.id), pref.order?.[kind]), id, delta);
+    pref.order = { ...(pref.order || {}), [kind]: order }; savePref();
+    applyPanelOrder();
+    q(`[data-ed-panel-menu="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+  }
+  /** Restaura o layout padrão: largura, painéis abertos e ordem, réguas, barra de propriedades e maximização. */
+  function resetLayout() {
+    pref = {}; savePref();
+    root.style.removeProperty("--ed-panel-width");
+    for (const p of opts.panels) togglePanel(p.id, !defaultClosed.includes(p.id), false);
+    applyPanelOrder();
+    setMaximized(false);
+    setRulers(true);
+    if (opts.contextBar) root.dataset.contextbar = "top";
+    setPanels(!matchMedia("(max-width: 900px)").matches);
+    message("Layout padrão restaurado. O documento não mudou.");
+  }
 
   function setTitle(title, sub = "") { q("[data-ed-title]").textContent = title; q("[data-ed-sub]").textContent = sub; $("#modal-title").textContent = title; }
   function setPanels(open) { root.dataset.panels = open ? "open" : "closed"; q('[data-ed="panels"]').setAttribute("aria-pressed", String(open)); }
-  function togglePanel(id, open) {
+  function togglePanel(id, open, persist = true) {
     const section = q(`[data-panel="${CSS.escape(id)}"]`); if (!section) return;
     const next = open ?? section.dataset.open !== "true";
     section.dataset.open = String(next);
     section.querySelector("[data-ed-panel-toggle]").setAttribute("aria-expanded", String(next));
+    if (!persist) return;
     const closedSet = new Set(pref.closed || []);
     next ? closedSet.delete(id) : closedSet.add(id);
     pref.closed = [...closedSet]; savePref();
+  }
+  /** Maximizar a área de edição: esconde painéis, réguas e barras auxiliares. Temporário (não fica salvo). */
+  function setMaximized(on) {
+    root.dataset.maximized = on ? "on" : "off";
+    q('[data-ed="maximize"]').setAttribute("aria-pressed", String(!!on));
+    rulerSig = "";
+  }
+  const toggleMaximize = () => { const on = root.dataset.maximized !== "on"; setMaximized(on); message(on ? "Área de edição maximizada. Ctrl+\\ restaura." : "Painéis restaurados."); };
+
+  // ---------- Contextos de trabalho (ADR-086) ----------
+  // Só apresentação: filtram ferramentas e painéis. Seleção, câmera, histórico e alterações continuam como estão.
+  const toolVisible = (t) => !(t.hidden?.()) && (mode === "complete" || t.basic !== false);
+  let wantedContext = contexts.length ? (pref.contexts?.[kind] || opts.defaultContext || contexts[0].id) : null;
+  let context = wantedContext;
+  const shownContexts = () => availableContexts(contexts, opts.tools, toolVisible, commonTools);
+  function effectiveContext() {
+    if (!contexts.length) return null;
+    const list = shownContexts();
+    if (list.some((c) => c.id === wantedContext)) return wantedContext;
+    return list[0]?.id || contexts[0].id;
+  }
+  const inContext = (t, id = context) => toolInContext(t, id, contexts, commonTools);
+  function renderContexts() {
+    const host = q("[data-ed-contexts]");
+    if (!host) return;
+    context = effectiveContext();
+    const list = shownContexts();
+    host.hidden = list.length < 2;
+    host.innerHTML = list.map((c, i) => `<button type="button" class="ed-context${c.id === context ? " active" : ""}" data-ed-context="${esc(c.id)}" aria-pressed="${c.id === context}" data-tip="${esc(`${c.label} (Alt+${i + 1})`)}" data-tip-detail="${esc(c.tip)}" tabindex="${c.id === context ? 0 : -1}">${icon(c.icon)}<span>${esc(c.label)}</span></button>`).join("");
+    for (const section of root.querySelectorAll("[data-panel]")) {
+      const panel = opts.panels.find((p) => p.id === section.dataset.panel);
+      section.dataset.ctxHidden = String(!!panel && !panelInContext(panel, context, contexts));
+    }
+    root.dataset.context = context || "";
+  }
+  /** Troca o contexto. `user` = escolha explícita (fica salva para este tipo de editor). Mantém a ferramenta se ela continua visível. */
+  function setContext(id, { user = true, keepTool = false } = {}) {
+    const c = contexts.find((x) => x.id === id);
+    if (!c) return;
+    wantedContext = id;
+    if (user) { pref.contexts = { ...(pref.contexts || {}), [kind]: id }; savePref(); }
+    renderContexts();
+    if (!keepTool) {
+      const candidates = opts.tools.filter((t) => toolVisible(t) && inContext(t, context) && !t.disabled?.());
+      const next = toolAfterContext(tool, candidates, c.defaultTool);
+      if (next !== tool) { tool = next; opts.onTool?.(next, false); }
+    }
+    renderTools();
+    opts.onContext?.(context);
+    if (user) message(`Contexto: ${c.label}. Seleção, zoom e alterações continuam como estavam.`);
+  }
+  /** Se a ferramenta pedida está fora do contexto atual (atalho de letra, ação do editor), vai ao primeiro contexto que a mostra. */
+  function revealTool(t) {
+    if (!contexts.length || inContext(t)) return;
+    const target = shownContexts().find((c) => inContext(t, c.id));
+    if (target) setContext(target.id, { user: false, keepTool: true });
   }
 
   // ---------- Menus ----------
   function renderMenus() {
     const menus = opts.menus();
     q("[data-ed-menubar]").innerHTML = menus.map((m, i) => `<button type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" data-ed-menu="${i}" tabindex="${i === 0 ? 0 : -1}">${esc(m.label)}</button>`).join("");
+  }
+  /** Itens de layout acrescentados ao fim do menu Exibir de qualquer editor (ADR-086). */
+  function layoutMenuItems() {
+    const items = [{ separator: true }];
+    if (contexts.length) items.push({ label: "Contexto de trabalho", items: shownContexts().map((c, i) => ({ label: c.label, shortcut: `alt+${i + 1}`, checked: c.id === context, run: () => setContext(c.id) })) });
+    items.push({ label: "Maximizar área de edição", shortcut: "mod+\\", checked: root.dataset.maximized === "on", run: toggleMaximize });
+    if (opts.contextBar) items.push({ label: "Barra de propriedades", items: [["top", "Acima da área de edição"], ["bottom", "Abaixo da área de edição"], ["off", "Oculta"]].map(([v, label]) => ({ label, checked: root.dataset.contextbar === v, run: () => { root.dataset.contextbar = v; pref.bar = v; savePref(); rulerSig = ""; } })) });
+    items.push({ label: "Restaurar layout padrão", run: resetLayout, hint: "Painéis, larguras e barras; o documento não muda" });
+    return items;
   }
   function openMenu(index) {
     const menus = opts.menus(), bar = q("[data-ed-menubar]"), buttons = [...bar.querySelectorAll("[data-ed-menu]")];
@@ -402,7 +526,8 @@ export function createEditorShell(opts) {
     buttons.forEach((b) => b.setAttribute("aria-expanded", "false"));
     button.setAttribute("aria-expanded", "true");
     button.focus();
-    openContextMenu(button, menus[i].items(), {
+    const menuItems = menus[i].id === "view" ? [...menus[i].items(), ...layoutMenuItems()] : menus[i].items();
+    openContextMenu(button, menuItems, {
       label: menus[i].label, onClose: () => button.setAttribute("aria-expanded", "false"),
       onKey: (e) => { if (e.key === "ArrowRight" && !e.target.getAttribute("aria-haspopup")) { e.preventDefault(); openMenu(i + 1); return true; } if (e.key === "ArrowLeft") { e.preventDefault(); openMenu(i - 1); return true; } return false; },
     });
@@ -416,8 +541,9 @@ export function createEditorShell(opts) {
   });
 
   // ---------- Ferramentas ----------
-  const visibleTools = () => opts.tools.filter((t) => !(t.hidden?.()) && (mode === "complete" || t.basic !== false));
+  const visibleTools = () => opts.tools.filter((t) => toolVisible(t) && inContext(t));
   function renderTools() {
+    renderContexts();
     const tools = visibleTools();
     const groups = opts.groups || [{ id: "", label: "" }];
     const html = groups.map((g) => {
@@ -445,12 +571,21 @@ export function createEditorShell(opts) {
     if (mode !== "complete" && t.basic === false) return;
     const reason = t.disabled?.();
     if (reason) { message(reason); return; }
+    revealTool(t);
     if (t.action) { t.action(); renderTools(); return; }
     tool = id;
     renderTools();
     opts.onTool?.(id, fromKey);
   }
   q("[data-ed-tools]").addEventListener("click", (e) => { const b = e.target.closest("[data-ed-tool]"); if (b) useTool(b.dataset.edTool); });
+  q("[data-ed-contexts]")?.addEventListener("click", (e) => { const b = e.target.closest("[data-ed-context]"); if (b) setContext(b.dataset.edContext); });
+  q("[data-ed-contexts]")?.addEventListener("keydown", (e) => {
+    const all = [...q("[data-ed-contexts]").querySelectorAll("[data-ed-context]")], i = all.indexOf(document.activeElement);
+    if (i < 0 || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    const n = e.key === "Home" ? 0 : e.key === "End" ? all.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + all.length) % all.length;
+    all.forEach((x) => (x.tabIndex = -1)); all[n].tabIndex = 0; all[n].focus();
+  });
   q("[data-ed-tools]").addEventListener("keydown", (e) => {
     const all = [...q("[data-ed-tools]").querySelectorAll("[data-ed-tool]")], i = all.indexOf(document.activeElement);
     if (i < 0) return;
@@ -465,7 +600,20 @@ export function createEditorShell(opts) {
   root.addEventListener("click", (e) => {
     const toggle = e.target.closest("[data-ed-panel-toggle]");
     if (toggle) togglePanel(toggle.dataset.edPanelToggle);
+    const panelMenu = e.target.closest("[data-ed-panel-menu]");
+    if (panelMenu) {
+      const id = panelMenu.dataset.edPanelMenu, order = panelOrder(opts.panels.map((p) => p.id), pref.order?.[kind]);
+      const open = q(`[data-panel="${CSS.escape(id)}"]`)?.dataset.open === "true", i = order.indexOf(id);
+      openContextMenu(panelMenu, [
+        { label: open ? "Recolher" : "Expandir", run: () => togglePanel(id, !open) },
+        { label: "Mover para cima", run: () => shiftPanel(id, -1), disabled: i <= 0 },
+        { label: "Mover para baixo", run: () => shiftPanel(id, 1), disabled: i >= order.length - 1 },
+        { separator: true },
+        { label: "Restaurar layout padrão", run: resetLayout },
+      ], { label: "Opções do painel" });
+    }
     const action = e.target.closest("[data-ed]")?.dataset.ed;
+    if (action === "maximize") toggleMaximize();
     if (action === "panels") setPanels(root.dataset.panels !== "open");
     if (action === "fullscreen") toggleFullscreen();
     if (action === "close") requestClose();
@@ -475,11 +623,94 @@ export function createEditorShell(opts) {
   });
   const resizer = q("[data-ed-resizer]");
   let resizing = null;
-  const setWidth = (w) => { const width = Math.max(220, Math.min(520, Math.round(w))); root.style.setProperty("--ed-panel-width", `${width}px`); resizer.setAttribute("aria-valuenow", String(width)); pref.width = width; savePref(); };
+  const setWidth = (w) => { const width = Math.max(PANEL_WIDTH.min, Math.min(PANEL_WIDTH.max, Math.round(w))); root.style.setProperty("--ed-panel-width", `${width}px`); resizer.setAttribute("aria-valuenow", String(width)); pref.width = width; savePref(); };
   resizer.addEventListener("pointerdown", (e) => { resizing = { x: e.clientX, w: q("[data-ed-panels]").offsetWidth, id: e.pointerId }; resizer.setPointerCapture(e.pointerId); });
   resizer.addEventListener("pointermove", (e) => { if (resizing && e.pointerId === resizing.id) setWidth(resizing.w - (e.clientX - resizing.x)); });
   resizer.addEventListener("pointerup", () => { resizing = null; });
   resizer.addEventListener("keydown", (e) => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); setWidth(q("[data-ed-panels]").offsetWidth + (e.key === "ArrowLeft" ? 16 : -16)); } });
+
+  // ---------- Barra contextual de propriedades (ADR-086) ----------
+  // Faixa fixa acima (ou abaixo) da área de edição com os campos simples do selecionado, sem abrir janela.
+  // A altura é reservada mesmo sem seleção: mostrar/esconder não redimensiona o canvas (sem custo de redesenho).
+  // Campos: { name, label, type: number|text|select|checkbox|color, value, min, max, step, unit, options:[[v, rótulo]], disabled, wide }.
+  // Ações: { id, label, icon, disabled, danger }. `onChange(name, valor)` e `onAction(id)` ficam a cargo do editor (histórico).
+  const contextBar = (() => {
+    const host = q("[data-ed-contextbar]");
+    let current = null;
+    const hint = opts.contextBarHint || "Selecione um elemento para editar aqui as propriedades simples.";
+    const fieldId = (name) => `ed-${uid}-cb-${String(name).replace(/[^a-zA-Z0-9_-]/g, "")}`;
+    function fieldHtml(f) {
+      const id = fieldId(f.name), dis = f.disabled ? "disabled" : "";
+      const label = `<span>${esc(f.label)}${f.unit ? ` <small>${esc(f.unit)}</small>` : ""}</span>`;
+      if (f.type === "checkbox") return `<label class="ed-cb-field ed-cb-check" for="${id}"><input type="checkbox" id="${id}" name="${esc(f.name)}" ${f.value ? "checked" : ""} ${dis}>${label}</label>`;
+      if (f.type === "select") return `<label class="ed-cb-field" for="${id}">${label}<select id="${id}" name="${esc(f.name)}" ${dis}>${(f.options || []).map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(f.value) ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`;
+      const type = f.type === "number" ? "number" : f.type === "color" ? "color" : "text";
+      const range = type === "number" ? `${f.min != null ? `min="${Number(f.min)}"` : ""} ${f.max != null ? `max="${Number(f.max)}"` : ""} step="${f.step != null ? Number(f.step) : "any"}" inputmode="decimal"` : "";
+      return `<label class="ed-cb-field${f.wide ? " wide" : ""}" for="${id}">${label}<input type="${type}" id="${id}" name="${esc(f.name)}" ${range} ${f.maxlength ? `maxlength="${Number(f.maxlength)}"` : ""} ${dis}></label>`;
+    }
+    const fmtValue = (f, v) => (v == null ? "" : f.type === "number" ? String(Math.round(Number(v) * 100) / 100) : String(v));
+    function writeValues(values, force = false) {
+      if (!host || !current) return;
+      for (const f of current.fields) {
+        if (!(f.name in values)) continue;
+        const input = host.querySelector(`[name="${CSS.escape(f.name)}"]`);
+        if (!input || (!force && input === document.activeElement)) continue;
+        f.value = values[f.name];
+        if (f.type === "checkbox") input.checked = !!f.value;
+        else input.value = fmtValue(f, f.value);
+      }
+    }
+    function empty() {
+      if (!host) return;
+      current = null;
+      host.dataset.empty = "true";
+      host.innerHTML = `<p class="ed-cb-hint">${esc(hint)}</p>`;
+    }
+    function show(spec) {
+      if (!host) return;
+      const focused = host.contains(document.activeElement);
+      if (current && spec.key && current.key === spec.key && focused) { current.onChange = spec.onChange; current.onAction = spec.onAction; writeValues(Object.fromEntries((spec.fields || []).map((f) => [f.name, f.value]))); return; }
+      current = { key: spec.key || "", fields: (spec.fields || []).map((f) => ({ ...f })), onChange: spec.onChange, onAction: spec.onAction };
+      host.dataset.empty = "false";
+      const actions = (spec.actions || []).map((a) => `<button type="button" class="ed-icon-button${a.danger ? " danger" : ""}" data-cb-action="${esc(a.id)}" aria-label="${esc(a.label)}" data-tip="${esc(a.label)}" ${a.disabled ? 'aria-disabled="true"' : ""}>${icon(a.icon || "object")}</button>`).join("");
+      host.innerHTML = `<span class="ed-cb-title">${spec.icon ? icon(spec.icon) : ""}<span>${esc(spec.title || "")}</span></span><div class="ed-cb-fields">${current.fields.map(fieldHtml).join("")}</div>${actions ? `<div class="ed-cb-actions" role="group" aria-label="Ações rápidas">${actions}</div>` : ""}`;
+      writeValues(Object.fromEntries(current.fields.map((f) => [f.name, f.value])), true);
+    }
+    host?.addEventListener("change", (e) => {
+      const f = current?.fields.find((x) => x.name === e.target.name);
+      if (!f) return;
+      let value = e.target.value;
+      if (f.type === "checkbox") value = e.target.checked;
+      else if (f.type === "number") {
+        value = Number(e.target.value);
+        if (e.target.value === "" || !Number.isFinite(value)) { writeValues({ [f.name]: f.value }, true); return; }
+        if (f.min != null) value = Math.max(Number(f.min), value);
+        if (f.max != null) value = Math.min(Number(f.max), value);
+      }
+      f.value = value;
+      Promise.resolve().then(() => current?.onChange?.(f.name, value)).catch((err) => message(err?.message || String(err)));
+    });
+    host?.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-cb-action]");
+      if (!b) return;
+      if (b.getAttribute("aria-disabled") === "true") return;
+      current?.onAction?.(b.dataset.cbAction);
+    });
+    host?.addEventListener("keydown", (e) => {
+      // Enter confirma o campo e devolve o foco ao palco; Esc desiste da digitação.
+      if (e.key === "Enter" && e.target.matches("input:not([type=checkbox])")) { e.target.blur(); stage.querySelector("canvas, [tabindex]")?.focus({ preventScroll: true }); }
+    });
+    empty();
+    return {
+      /** Mostra os campos do selecionado. Mesma `key` com o foco na barra só atualiza valores (não rouba o foco). */
+      show,
+      /** Atualiza valores (durante arrastes) sem mexer no campo em edição. */
+      update: (values) => writeValues(values),
+      /** Sem seleção: mostra a dica (a faixa continua com a mesma altura). */
+      hide: empty,
+      get available() { return !!host; },
+    };
+  })();
 
   // ---------- Barra de estado ----------
   function updateZoom() { if (camera) q("[data-ed-zoom-label]").textContent = zoomLabel(camera.zoom()); }
@@ -581,6 +812,10 @@ export function createEditorShell(opts) {
     const typing = isTypingTarget(e.target);
     if (typing && !FIELD_SAFE.has(id)) return;
     if (id === "space" && !typing) { if (!spaceHeld) { spaceHeld = true; camera?.setPanHold?.(true); root.classList.add("ed-space"); } e.preventDefault(); return; }
+    // Contextos (Alt+1…) e maximizar (Ctrl+\): nunca dentro de campos de texto (ADR-086).
+    const ctxIndex = typing ? -1 : contextShortcutIndex(e);
+    if (ctxIndex >= 0 && contexts.length) { const c = shownContexts()[ctxIndex]; if (c) { e.preventDefault(); setContext(c.id); } return; }
+    if (!typing && id === "mod+\\" && !opts.keys?.[id]) { e.preventDefault(); toggleMaximize(); return; }
     const cam = { "mod+0": () => camera?.fit(), "mod+1": () => camera?.actual(), "mod+plus": () => camera?.zoomIn(), "mod+minus": () => camera?.zoomOut() }[id];
     if (cam) { e.preventDefault(); cam(); updateZoom(); return; }
     const fn = opts.keys?.[id];
@@ -604,7 +839,11 @@ export function createEditorShell(opts) {
   const guardClose = (e) => { e.preventDefault(); e.stopImmediatePropagation(); requestClose(); };
   closeButton?.addEventListener("click", guardClose, true);
   async function requestClose() {
-    if (opts.isDirty?.() && !confirm("Fechar sem salvar? As alterações não salvas deste documento serão perdidas.")) return false;
+    if (opts.isDirty?.()) {
+      if (!confirm("Fechar sem salvar? As alterações não salvas deste documento serão perdidas.")) return false;
+      // Escolha explícita do mestre: o rascunho local também é descartado (editor-drafts.js). Outros fechamentos o guardam.
+      root.dataset.discard = "1";
+    }
     dialog.close();
     return true;
   }
@@ -647,12 +886,19 @@ export function createEditorShell(opts) {
     get tool() { return tool; },
     get mode() { return mode; },
     get spaceHeld() { return spaceHeld; },
+    /** Contexto de trabalho efetivo (ou null sem contextos). */
+    get context() { return context; },
+    setContext: (id) => setContext(id),
+    contextBar,
+    toggleMaximize, resetLayout,
     panel: (id) => q(`[data-panel-body="${CSS.escape(id)}"]`),
-    setTool: (id) => { tool = id; renderTools(); },
+    setTool: (id) => { const t = opts.tools.find((x) => x.id === id); if (t) revealTool(t); tool = id; renderTools(); },
     useTool,
     refreshTools: renderTools,
     refreshMenus: renderMenus,
     togglePanel, setPanels, setTitle, setStatus, message,
+    /** Último salvamento / rascunho local (texto simples, ADR-083). */
+    setDraftStatus: (text) => { q("[data-ed-draft]").textContent = text || ""; },
     /** Item de menu "Réguas" (Exibir), igual nos três editores. */
     rulersMenuItem: () => ({ label: "Réguas", checked: area.dataset.rulers !== "off", run: () => setRulers(area.dataset.rulers === "off") }),
     setCamera(adapter) { camera = adapter; updateZoom(); },

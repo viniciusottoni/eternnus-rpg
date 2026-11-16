@@ -32,6 +32,8 @@ A Básica aparece sempre primeiro e na mesma posição; a Completa acrescenta gr
 | Remover marcador | ✓ (propriedades) | ✓ (com marcador selecionado) | ✓ | Elementos |
 | Luz, visão, sentidos e detecção do marcador | — | ✓ | — | Luz e visão |
 | Parede, bloqueia só movimento, bloqueia só luz, porta, abrir/fechar porta, liberar casa | ✓ | ✓ | — | Paredes e portas |
+| Parede vetorial (por pontos, diagonais, tipos), Editar paredes (vértices, dividir, unir, área, converter casas) | ✓ | abrir/fechar porta vetorial | — | Paredes e portas |
+| Diagnóstico de visão | ✓ | — | — | Luz e visão |
 | Foco de luz, névoa neste mapa | ✓ | ✓ | — | Luz e visão |
 | Visibilidade (tudo visível, revelação manual, por personagem) | ✓ | — (vem da cena) | ✓ | Exploração |
 | Revelar área / Cobrir área | ✓ (com revelação manual) | ✓ ("Revelar área", com névoa ativa) | ✓ | Exploração |
@@ -138,7 +140,8 @@ Trocar o alcance exige salvar antes de editar a camada. É recusado com a cena e
 ## Ver como jogador
 
 - **Mesa:** prévia real (`GET …/view?as=`), idêntica ao payload daquele jogador. Exige jogador na sessão.
-- **Editor:** simulação rotulada com as regras de `FogRules` (`simulateView` em `scene-policy.js`), escolhendo "Visão de" entre os personagens posicionados ou "Grupo — só luz comum e áreas reveladas".
+- **Editor (ADR-088):** prévia real calculada pelo servidor (`POST …/prep/preview-view`) sobre a preparação ainda não salva, com as mesmas regras da mesa: paredes por casa e vetoriais, luzes e penumbra, visão e sentidos da ficha, detecção por Percepção e áreas já exploradas gravadas na camada. "Visão de": só luz comum, o grupo inteiro ou um personagem posicionado. Não grava nada. Se o servidor não responder, o editor mostra a simulação local abaixo, com aviso.
+- **Simulação local (reserva):** regras de `FogRules` no cliente (`simulateView` em `scene-policy.js`), escolhendo "Visão de" entre os personagens posicionados ou "Grupo — só luz comum e áreas reveladas".
   - Tudo visível: sem névoa.
   - Revelação manual: só as casas reveladas (luz e visão não revelam).
   - Demais modos: focos do mapa, luz dos marcadores não ocultos (ficha, padrão da mesa ou ajuste do marcador), casas reveladas e a visão da ficha do personagem escolhido, convertida pela escala do mapa.
@@ -161,7 +164,7 @@ Trocar o alcance exige salvar antes de editar a camada. É recusado com a cena e
 
 ## Limitações
 
-- A simulação do editor não inclui sentidos especiais, Percepção nem explorações anteriores.
+- A simulação local (reserva) não inclui sentidos especiais, Percepção nem explorações anteriores; a prévia real do servidor inclui.
 - Trocar o cenário de uma cena em apresentação exige "Reiniciar cena" (recomeça a exploração daquele cenário).
 - No celular, a barra inferior fixa (vez, ações e navegação) ainda cobre a faixa de baixo do mapa até rolar.
 - Mapas com a grade ajustada depois de preparados: paredes e névoa seguem as casas (`TableFog.Fit`). Marcadores fora da nova grade saem da preparação.
@@ -181,3 +184,14 @@ Editor de cenas e preparação de mapas/cenários compartilham câmera com a mes
 - Personagens e criaturas podem ser arrastados do painel Personagens para o mapa, com a mesma validação de "Colocar aqui".
 - Camadas da cena (Base = mapa, Elementos e extras) organizam marcadores; olho, cadeado e opacidade valem só no editor. "Oculto" continua sendo o controle do que os jogadores veem.
 - Desfazer/refazer cobre arranjo, textos, camadas e a preparação do mapa da sessão de edição. Salvar, aplicar, apresentar e reiniciar continuam ações explícitas.
+
+
+## Paredes vetoriais, diagnóstico e revisão antes de aplicar (ADR-087/088)
+
+- **Parede vetorial** (J): cliques sequenciais; Enter, duplo clique ou clicar de novo no último ponto termina; clicar no primeiro ponto fecha a sala; Esc desiste. Ímã em vértices, paredes e cantos/meios das casas (tolerância fixa na tela); Shift trava 0/45/90°; Alt desliga o ímã. O tipo do próximo traço (parede, porta, janela, só visão, só movimento) e "Não mostrar aos jogadores" ficam no painel.
+- **Editar paredes** (Q): clique seleciona (Shift soma), arrastar vértice move todas as pontas ligadas a ele, arrastar o segmento move a seleção (passos de 1/10 de casa; Alt = 1/100), arrastar no vazio seleciona por área, Alt+clique divide. Painel e barra contextual: tipo, oculta, porta aberta, pontas em casas com duas casas decimais, comprimento em metros, dividir, remover vértice, unir colineares, duplicar e excluir. Delete apaga; tudo entra no desfazer/refazer.
+- **Converter casas em paredes**: cria o contorno das casas de parede/só luz/só movimento como segmentos; as casas continuam marcadas.
+- **Diagnóstico de visão**: hachura em casas que bloqueiam movimento, azul nas sem luz comum, traço por tipo e lista de problemas com coluna/linha. Só no editor.
+- **Aplicar à cena atual**: o painel lista as diferenças do mapa em relação à mesa ("2 paredes novas", "1 luz alterada"…) antes de aplicar; portas abertas/fechadas, posições e exploração continuam.
+- **Mesa**: "Abrir ou fechar porta" também alcança a porta vetorial mais próxima da casa clicada.
+- Limitações: sem curvas (use vários segmentos); sem teste em navegador real e em toque nesta entrega; a prévia real exige rede.

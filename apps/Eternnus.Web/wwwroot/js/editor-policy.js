@@ -241,3 +241,129 @@ export const rulerLabel = (value) => {
   const v = Math.round(value * 100) / 100;
   return (Object.is(v, -0) ? 0 : v).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
 };
+
+// ---------- Contextos de trabalho (ADR-086) ----------
+// Modos de trabalho do mesmo documento: só reorganizam ferramentas e painéis visíveis. Nunca mudam dados, seleção,
+// câmera, histórico ou regras. Cada editor declara os contextos que tem; os rótulos podem ser trocados pelo editor.
+
+/** Catálogo dos contextos (ordem de exibição, ícone do núcleo e descrição curta para a dica). */
+export const EDITOR_CONTEXTS = Object.freeze([
+  Object.freeze({ id: "elements", label: "Elementos", icon: "character", tip: "Selecionar, mover e transformar objetos, personagens e recursos visuais." }),
+  Object.freeze({ id: "terrain", label: "Terreno", icon: "brush", tip: "Pintar tiles, preencher áreas, texturas e superfícies do mapa." }),
+  Object.freeze({ id: "walls", label: "Paredes e portas", icon: "wall", tip: "Construir obstáculos, portas, janelas e passagens." }),
+  Object.freeze({ id: "light", label: "Iluminação", icon: "light", tip: "Focos de luz, alcance, intensidade e névoa do mapa." }),
+  Object.freeze({ id: "explore", label: "Exploração", icon: "fog", tip: "Revelar, cobrir, marcas ocultas e visão dos personagens." }),
+  Object.freeze({ id: "scene", label: "Cena", icon: "scenery", tip: "Cenário, textos, notas, grade e propriedades da apresentação." }),
+]);
+const CONTEXT_IDS = new Set(EDITOR_CONTEXTS.map((c) => c.id));
+export const isContextId = (id) => CONTEXT_IDS.has(String(id));
+
+/**
+ * Normaliza a declaração de contextos de um editor: `[{ id, label?, icon?, tip?, tools?:[ids], groups?:[ids], panels?:[ids], defaultTool? }]`.
+ * Ids fora do catálogo e repetidos são descartados; a ordem segue o catálogo.
+ */
+export function normalizeContexts(list) {
+  const input = Array.isArray(list) ? list.filter((c) => c && isContextId(c.id)) : [];
+  const out = [];
+  for (const base of EDITOR_CONTEXTS) {
+    const c = input.find((x) => x.id === base.id);
+    if (!c) continue;
+    out.push({
+      id: base.id, label: String(c.label || base.label).slice(0, 40), icon: c.icon || base.icon, tip: String(c.tip || base.tip).slice(0, 240),
+      tools: new Set((c.tools || []).map(String)), groups: new Set((c.groups || []).map(String)), panels: new Set((c.panels || []).map(String)),
+      defaultTool: c.defaultTool || null,
+    });
+  }
+  return out;
+}
+
+const listOf = (v) => (v == null ? [] : Array.isArray(v) ? v.map(String) : [String(v)]);
+/** Contextos aos quais um item (ferramenta ou painel) pertence; "*" = todos; vazio = nenhum declarado. */
+function memberships(item, contexts, kind) {
+  const own = listOf(item.context);
+  if (own.length) return own;
+  return contexts.filter((c) => (kind === "panel" ? c.panels.has(item.id) : c.tools.has(item.id) || (item.group != null && c.groups.has(String(item.group))))).map((c) => c.id);
+}
+/**
+ * A ferramenta aparece no contexto? Sem contextos declarados, ou sem pertencer a nenhum, aparece sempre (nada fica inalcançável).
+ * `common` lista as ferramentas presentes em todos os contextos (selecionar, mão, zoom).
+ */
+export function toolInContext(tool, contextId, contexts, common = []) {
+  if (!contexts?.length || !contextId) return true;
+  if (common.includes(tool.id)) return true;
+  const m = memberships(tool, contexts, "tool");
+  return !m.length || m.includes("*") || m.includes(contextId);
+}
+/** O painel aparece no contexto? Mesmas regras das ferramentas. */
+export function panelInContext(panel, contextId, contexts) {
+  if (!contexts?.length || !contextId) return true;
+  const m = memberships(panel, contexts, "panel");
+  return !m.length || m.includes("*") || m.includes(contextId);
+}
+/**
+ * Contextos com alguma ferramenta própria visível (não comum) na interface atual. `visible(tool)` decide hidden/Básica.
+ * Contexto só com painéis também conta (ex.: Cena com propriedades).
+ */
+export function availableContexts(contexts, tools, visible, common = []) {
+  return contexts.filter((c) => c.panels.size > 0 || tools.some((t) => visible(t) && !common.includes(t.id) && memberships(t, contexts, "tool").includes(c.id)));
+}
+/**
+ * Ferramenta após trocar de contexto: mantém a atual se ela continua visível; senão a padrão do contexto; senão a primeira
+ * ferramenta de uso (sem `action`) visível. `candidates` = ferramentas visíveis no novo contexto, na ordem da barra.
+ */
+export function toolAfterContext(current, candidates, defaultTool = null) {
+  const usable = candidates.filter((t) => !t.action);
+  if (usable.some((t) => t.id === current)) return current;
+  if (defaultTool && usable.some((t) => t.id === defaultTool)) return defaultTool;
+  return usable[0]?.id ?? current;
+}
+/** Alt+1…Alt+9 escolhe o contexto pela posição (tecla física, não depende do layout). → índice 0–8 ou −1. */
+export function contextShortcutIndex(e) {
+  if (!e?.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return -1;
+  const m = /^Digit([1-9])$/.exec(String(e.code || "")) || /^([1-9])$/.exec(String(e.key || ""));
+  return m ? Number(m[1]) - 1 : -1;
+}
+
+// ---------- Preferências visuais do editor (ADR-086) ----------
+// Só apresentação, por conta neste navegador: nunca entram no documento, no mapa ou na cena.
+
+export const PANEL_WIDTH = Object.freeze({ min: 220, max: 520 });
+export const CONTEXT_BAR_POSITIONS = Object.freeze(["top", "bottom", "off"]);
+/** Chave de armazenamento por usuário (sem usuário: chave compartilhada antiga). */
+export const layoutPrefKey = (userId) => (userId && /^[A-Za-z0-9_-]{1,64}$/.test(String(userId)) ? `eternnus.editor.layout.${userId}` : "eternnus.editor.layout");
+const KIND = /^[a-z][a-z0-9-]{0,23}$/;
+const PANEL_ID = /^[a-zA-Z0-9_-]{1,32}$/;
+/** Preferência lida do armazenamento, com tipos e limites aplicados. Valores inválidos voltam ao padrão. */
+export function normalizeLayoutPref(raw) {
+  const p = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const out = {};
+  const width = Math.round(Number(p.width));
+  if (Number.isFinite(width) && width > 0) out.width = Math.max(PANEL_WIDTH.min, Math.min(PANEL_WIDTH.max, width));
+  if (Array.isArray(p.closed)) out.closed = [...new Set(p.closed.map(String).filter((id) => PANEL_ID.test(id)))].slice(0, 24);
+  if (p.rulers === false) out.rulers = false;
+  if (CONTEXT_BAR_POSITIONS.includes(p.bar)) out.bar = p.bar;
+  const maps = (value, ok) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const entries = Object.entries(value).filter(([k, v]) => KIND.test(k) && ok(v)).slice(0, 12);
+    return entries.length ? Object.fromEntries(entries) : null;
+  };
+  const contexts = maps(p.contexts, (v) => isContextId(v));
+  if (contexts) out.contexts = contexts;
+  const order = maps(p.order, (v) => Array.isArray(v) && v.every((id) => PANEL_ID.test(String(id))));
+  if (order) out.order = Object.fromEntries(Object.entries(order).map(([k, v]) => [k, [...new Set(v.map(String))].slice(0, 24)]));
+  return out;
+}
+/** Ordem dos painéis: a salva primeiro (só ids conhecidos), depois os novos na ordem declarada. */
+export function panelOrder(declared, saved = []) {
+  const known = declared.map(String);
+  const first = (saved || []).map(String).filter((id) => known.includes(id));
+  return [...new Set([...first, ...known])];
+}
+/** Move um painel `delta` posições (−1 sobe, +1 desce) dentro da ordem. */
+export function movePanel(order, id, delta) {
+  const list = [...order];
+  const i = list.indexOf(id), j = i + delta;
+  if (i < 0 || j < 0 || j >= list.length) return list;
+  [list[i], list[j]] = [list[j], list[i]];
+  return list;
+}

@@ -113,12 +113,41 @@ O `GET …/live` passa a incluir `fog`:
 - **Painel admin → Sistemas:** "Mesa padrão" por sistema.
 - **Editor de fichas:** papéis Luz (m), Visão própria (m), Percepção e Sentidos.
 
+## Paredes vetoriais, penumbra e prévia real (ADR-087/088)
+
+**Paredes vetoriais** (`MapFogState.walls`) somam-se às casas de `cells`; nada antigo foi convertido sozinho.
+
+| Campo | Significado |
+| --- | --- |
+| `x1, y1, x2, y2` | Pontas em centésimos de casa (casa (x, y) = [100x, 100x+100]; centro 100x+50). Dentro do mapa, pontas diferentes. |
+| `kind` | `wall` (bloqueia movimento e visão), `door` (fechada bloqueia tudo; aberta, nada), `window` (só movimento), `sight` (só visão e luz), `move` (só movimento). |
+| `open` | Porta aberta. Na preparação é o estado inicial; na mesa é estado da partida (preservado ao aplicar). |
+| `hidden` | Não aparece para jogadores (porta secreta, barreira invisível). Continua valendo nas regras. |
+
+- Luz, visão e sentidos param numa parede que bloqueia visão; um passo de movimento (inclusive diagonal) não cruza parede que bloqueia movimento. Reta exatamente sobre a ponta de uma parede só bloqueia se houver parede dos dois lados ali (junção ou canto fechado). Mesmas contas inteiras em `FogGrid` (servidor) e `fog-policy.js` (cliente).
+- Jogador recebe em `fog.walls` só segmentos que bloqueiam movimento agora e tocam casas conhecidas, sem id, tipo nem `hidden`; portas não secretas vêm com `door: "open"|"closed"`.
+- Ajustar a grade de um mapa enviado converte as paredes de todas as camadas para o mesmo ponto da imagem. Limite: 2.000 segmentos por mapa.
+- UVTT: linhas de visão e portais entram como paredes e portas vetoriais exatas.
+
+**Luzes:** `radius` é a luz plena; `dim` (opcional, ≥ raio, até 30) é a penumbra e também ilumina para as regras. `color` (#rrggbb), `intensity` (10–100) e `animation` (`flicker`, `pulse`) são só visuais; animação respeita redução de movimento.
+
+**Prévia real e diagnóstico (editor do mestre):** "Ver como jogador" usa `POST /api/campaigns/{id}/prep/preview-view` com as regras acima (inclui sentidos, percepção e explorações gravadas), sem gravar nada. O diagnóstico mostra bloqueios, áreas sem luz e problemas de geometria e nunca é enviado a jogadores.
+
+| Método e caminho | Quem | Entrada / resultado |
+| --- | --- | --- |
+| `PUT /api/campaigns/{id}/assets/layers?key=` | Mestre | Aceita também `walls` (ausente = mantém) e luzes com `dim, color, intensity, animation`. O GET devolve `walls` e `live` (estrutura ao vivo, sem explorações). |
+| `POST /api/sessions/{id}/fog/walls` | Mestre | `{ walls }` substitui as paredes vetoriais da camada ao vivo. |
+| `POST /api/sessions/{id}/fog/wall-door` | Mestre | `{ id }` abre ou fecha a porta vetorial. `404` sem a porta, `409` se o segmento não é porta. |
+| `POST /api/sessions/{id}/fog/lights` | Mestre | Aceita também `dim, color, intensity, animation`. |
+| `POST /api/campaigns/{id}/prep/preview-view` | Mestre | `{ mapKey, sceneId?, layer?, tokens, visionMode?, viewerCharacterId? \| viewerUserId? \| party }` → `{ active, viewer, visible, explored, cells, lights, walls, marks, shown, perceived }` (índices do arranjo). Somente leitura. |
+
 ## Limites conhecidos
 
 - Bytes de imagem já entregues não podem ser recolhidos. Escurecer de novo uma casa que o jogador já explorou não apaga o que ele pode ter guardado; a mesa avisa o mestre.
 - Mapas oficiais têm desenho público. Nesses mapas, o servidor oculta terreno, paredes, criaturas e marcas, mas não um desenho que já é público.
 - A exploração é gravada nas escritas da mesa. Uma mudança de luz feita só pela ficha aparece na hora, mas só entra na exploração lembrada na próxima escrita da mesa.
-- O custo de calcular luz por jogador e gerar imagens mascaradas não foi medido sob carga.
+- O custo de calcular luz por jogador e gerar imagens mascaradas não foi medido sob carga (nem com muitas paredes vetoriais; o alcance de cada fonte só considera as paredes próximas).
+- Sem névoa, ou sem "movimento por caminho livre", o servidor não confere o trajeto: paredes (por casa ou vetoriais) só limitam o destino e a visão.
   - As imagens têm cache em memória de até 96 MiB e no máximo 2 gerações simultâneas.
   - A busca da imagem espera até 10 s pela fila de geração; se não conseguir a vez, responde `429`.
   - Uma falha na geração responde `503` e nunca devolve a imagem completa.

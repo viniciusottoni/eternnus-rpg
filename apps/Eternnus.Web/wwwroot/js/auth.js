@@ -36,6 +36,9 @@ async function completeSignIn() {
 }
 async function finishSignOut(all = false) {
   await api(all ? "/auth/logout-all" : "/auth/logout", "POST");
+  // Rascunhos locais dos editores (ADR-083) não ficam no navegador depois de sair da conta.
+  const leaving = state.user?.id;
+  if (leaving) import("./editor-drafts.js").then((m) => m.clearUserDrafts(leaving)).catch(() => {});
   state.user = null;
   state.campaign = state.liveTable = null;
   state.campaigns = []; state.characters = [];

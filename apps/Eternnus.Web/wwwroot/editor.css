@@ -206,3 +206,81 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 .ed-menu .help-disabled-reason, [data-px-toolbar] .help-disabled-reason {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+
+/* ---------- Contextos de trabalho, barra de propriedades e layout flexível (ADR-086) ---------- */
+.ed-contexts { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--ed-line); border-radius: 8px; background: #11130e; overflow-x: auto; scrollbar-width: none; flex: none; max-width: 100%; }
+.ed-contexts[hidden] { display: none; }
+.ed-context {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 3px 10px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: #cfc9b6; font: inherit; font-size: .82rem; white-space: nowrap; cursor: pointer;
+}
+.ed-context .ed-icon { width: 18px; height: 18px; }
+.ed-context:hover { background: var(--ed-hover); border-color: var(--ed-line); }
+.ed-context.active, .ed-context[aria-pressed="true"] { color: var(--bright, #e6cf98); border-color: #8a6f3a; background: #2a2416; box-shadow: inset 0 -2px 0 #c6a463; }
+/* Em telas médias, só o ícone (o nome continua acessível e aparece na dica). */
+@media (max-width: 1500px) and (min-width: 901px) {
+  .ed-context span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .ed-context { padding: 3px 8px; }
+}
+.ed-panel-title > .ed-panel-menu { flex: none; min-width: 30px; min-height: 30px; padding: 4px; color: var(--muted, #9da492); }
+.ed-panel-title > .ed-panel-menu::before { content: none; }
+.ed-panel-title > .ed-panel-menu .ed-icon { width: 16px; height: 16px; }
+.ed-panel[data-ctx-hidden="true"] { display: none; }
+
+/* Barra contextual: faixa fixa acima (ou abaixo) das réguas; altura reservada mesmo sem seleção. */
+.ed-contextbar {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 3px 10px; overflow-x: auto; overflow-y: hidden;
+  border-bottom: 1px solid var(--ed-line); background: #16180f; scrollbar-width: thin; font-size: .8rem;
+}
+.ed-contextbar[data-empty="true"] { color: var(--muted, #9da492); }
+.ed-cb-hint { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .8rem; }
+.ed-cb-title { display: inline-flex; align-items: center; gap: 6px; max-width: 22ch; color: var(--bright, #e6cf98); white-space: nowrap; flex: none; }
+.ed-cb-title > span { overflow: hidden; text-overflow: ellipsis; }
+.ed-cb-title .ed-icon { width: 16px; height: 16px; }
+.ed-cb-fields { display: flex; align-items: center; gap: 8px; flex: none; }
+.ed-cb-field { display: inline-flex; align-items: center; gap: 4px; margin: 0; color: var(--muted, #9da492); white-space: nowrap; }
+.ed-cb-field small { font-size: .7rem; }
+.ed-cb-field input:not([type=checkbox]), .ed-cb-field select { width: 74px; height: 32px; min-height: 30px; padding: 2px 6px; font-size: .82rem; }
+.ed-cb-field.wide input { width: 150px; }
+.ed-cb-field select { width: auto; max-width: 150px; }
+.ed-cb-field input[type=color] { width: 40px; padding: 1px 2px; }
+.ed-cb-check input { width: 18px; height: 18px; margin: 0; }
+.ed-cb-actions { display: flex; gap: 2px; padding-left: 8px; border-left: 1px solid var(--ed-line); flex: none; }
+.ed-cb-actions .ed-icon-button { min-width: 32px; min-height: 32px; padding: 4px; }
+.ed-shell[data-contextbar="top"] .ed-canvas-area { grid-template-rows: auto var(--ed-ruler) minmax(0, 1fr); }
+.ed-shell[data-contextbar="top"] .ed-canvas-area > .ed-contextbar { grid-row: 1; }
+.ed-shell[data-contextbar="top"] .ed-canvas-area > .ed-ruler-x, .ed-shell[data-contextbar="top"] .ed-canvas-area > .ed-ruler-corner { grid-row: 2; }
+.ed-shell[data-contextbar="top"] .ed-canvas-area > .ed-ruler-y, .ed-shell[data-contextbar="top"] .ed-canvas-area > .ed-stage { grid-row: 3; }
+.ed-shell[data-contextbar="bottom"] .ed-canvas-area { grid-template-rows: var(--ed-ruler) minmax(0, 1fr) auto; }
+.ed-shell[data-contextbar="bottom"] .ed-canvas-area > .ed-contextbar { grid-row: 3; border-bottom: 0; border-top: 1px solid var(--ed-line); }
+.ed-shell[data-contextbar="off"] .ed-contextbar { display: none; }
+
+/* Maximizar a área de edição (temporário): painéis, réguas e barra de propriedades saem de cena. */
+.ed-shell[data-maximized="on"] .ed-body { grid-template-columns: auto minmax(0, 1fr) 0 0; }
+.ed-shell[data-maximized="on"] .ed-panels, .ed-shell[data-maximized="on"] .ed-resizer, .ed-shell[data-maximized="on"] .ed-contextbar { display: none; }
+.ed-shell[data-maximized="on"] .ed-canvas-area { --ed-ruler: 0px; grid-template-rows: 0 minmax(0, 1fr); }
+.ed-shell[data-maximized="on"] .ed-canvas-area > .ed-stage, .ed-shell[data-maximized="on"] .ed-canvas-area > .ed-ruler-y { grid-row: 2; }
+.ed-shell[data-maximized="on"] .ed-ruler, .ed-shell[data-maximized="on"] .ed-ruler-corner { display: none; }
+
+@media (max-width: 900px), (max-width: 1200px) and (pointer: coarse) {
+  .ed-contexts { order: 4; width: 100%; border-radius: 6px; }
+  .ed-context, .ed-cb-actions .ed-icon-button, .ed-panel-title > .ed-panel-menu { min-height: 44px; min-width: 44px; }
+  .ed-cb-field input:not([type=checkbox]), .ed-cb-field select { height: 44px; min-height: 44px; }
+  .ed-contextbar { min-height: 48px; }
+  .ed-shell[data-maximized="on"] .ed-tools { display: none; }
+}
+
+/* Rascunho local e versões persistentes (ADR-083) */
+.ed-draft-state { color: var(--muted, #b9b19a); font-size: .78rem; }
+.ed-draft-banner { pointer-events: auto; }
+.ed-draft-banner p { margin: 0 0 6px; }
+.ed-draft-actions, .ed-versions-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.ed-draft-actions button, .ed-versions-actions button { min-height: 36px; }
+.ed-versions { width: min(440px, calc(100vw - 24px)); max-height: min(80vh, 640px); overflow: auto; }
+.ed-versions-new { display: flex; align-items: flex-end; gap: 8px; margin: 8px 0 12px; }
+.ed-versions-new .field { flex: 1; margin: 0; }
+.ed-versions-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ed-versions-items li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; border: 1px solid #3a3424; border-radius: 6px; }
+.ed-versions-items li > div:first-child { display: grid; }
+.ed-versions-items small { color: var(--muted, #b9b19a); }
+@media (pointer: coarse) { .ed-draft-actions button, .ed-versions-actions button { min-height: 44px; } }

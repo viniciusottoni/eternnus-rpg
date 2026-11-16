@@ -82,6 +82,8 @@ public sealed class PrepWorkspaceService(GameDb db)
             scenes = scenes.Select(s => new
             {
                 s.Id, s.Name, s.Description, s.Kind, s.MapKey, mapName = MapName(s.MapKey), s.LayerMode, s.VisionMode, prepared = s.Prepared.Count, s.HasSaved,
+                // Só a presença do texto compartilhável (critério de "cena incompleta"); o texto e as notas privadas não vão à lista.
+                hasText = !string.IsNullOrWhiteSpace(s.SharedText),
                 current = active?.SceneId == s.Id, s.Order, s.Revision, s.FolderId, s.CreatedAt, s.UpdatedAt,
             }),
             maps,
