@@ -58,7 +58,7 @@ public sealed partial class PreparationService
             var senses = TableFog.ParseSenses(ch?.Senses).Select(s => (s.Name, s.Meters is { } m ? (int?)TableFog.MetersToCells(m, scale) : null)).ToList();
             return new FogToken(ids[i], t.CharacterId, OwnerOf(t.CharacterId), t.Side, t.X, t.Y,
                 manual ? 0 : Math.Clamp(light, 0, TableFog.MaxRadius), manual ? 0 : Math.Clamp(vision, 0, TableFog.MaxRadius), ch?.Perception ?? 0, senses,
-                t.CharacterId == null && t.Hidden, [], null, null, null);
+                t.CharacterId == null && t.Hidden, [], null, null, null, map.Free ? 1 : t.SpanOf().W, map.Free ? 1 : t.SpanOf().H);
         }).ToList();
 
         // Quem vê.
@@ -99,7 +99,7 @@ public sealed partial class PreparationService
         if (viewers.Count == 0)
         {
             visible = (bool[])shared.Clone(); explored = (bool[])shared.Clone();
-            foreach (var t in tokens) if (t.IsCharacter || (!t.Hidden && ((t.Side == "ally" && settings.AlliesAlwaysVisible) || shared[grid.Index(t.X, t.Y)]))) shownSet.Add(t.Id);
+            foreach (var t in tokens) if (t.IsCharacter || (!t.Hidden && ((t.Side == "ally" && settings.AlliesAlwaysVisible) || t.AnyIn(grid, shared)))) shownSet.Add(t.Id);
         }
         foreach (var viewer in viewers)
         {

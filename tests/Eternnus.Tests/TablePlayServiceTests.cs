@@ -831,6 +831,69 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
         Assert.Equal((TokenLooks.Image, 400), (dragon.Appearance, dragon.Size));
     }
 
+    [Fact]
+    public void Token_span_rounds_cells_and_scene_arrangement_reserves_the_whole_area_on_tactical_maps()
+    {
+        Assert.Equal(new TokenSpan(2, 3), TokenSpan.Of(TokenLooks.Image, 200, 300));
+        Assert.Equal(new TokenSpan(2, 1), TokenSpan.Of(TokenLooks.Image, 150, 50));
+        Assert.Equal(TokenSpan.One, TokenSpan.Of(TokenLooks.Round, 300, 300));
+        Assert.Equal(TokenSpan.One, TokenSpan.Of(TokenLooks.Image, null, null));
+        Assert.Equal(400, Assert.Throws<RuleException>(() => TokenLooks.RequireSpan(200, null)).Status);
+        Assert.Equal(400, Assert.Throws<RuleException>(() => TokenLooks.RequireSpan(TokenLooks.MaxSize + 1, 100)).Status);
+        Assert.Equal((null, null), TokenLooks.CleanSpan(10, 100));
+
+        var grid = new FogGrid(4, 3, ["....", "..#.", "...."]);
+        var none = new HashSet<Guid>(); var names = new Dictionary<Guid, string>();
+        SceneTokenInput Ogre(int x, int y, int w = 200, int h = 200) => new(null, null, "Ogro", "enemy", x, y, Appearance: TokenLooks.Image, Width: w, Height: h);
+        var ok = ScenePrep.ValidateTokens([Ogre(0, 0), new(null, null, "Lobo", "enemy", 3, 0)], grid, none, names, none);
+        Assert.Equal((200, 200), (ok[0].Width!.Value, ok[0].Height!.Value));
+        // Área sobre casa que bloqueia movimento, fora do mapa ou sobre outro marcador: recusada no mapa tático.
+        Assert.Equal(400, Assert.Throws<RuleException>(() => ScenePrep.ValidateTokens([Ogre(1, 0)], grid, none, names, none)).Status);
+        Assert.Equal(400, Assert.Throws<RuleException>(() => ScenePrep.ValidateTokens([Ogre(3, 0)], grid, none, names, none)).Status);
+        Assert.Equal(400, Assert.Throws<RuleException>(() => ScenePrep.ValidateTokens([Ogre(0, 0), new(null, null, "Lobo", "enemy", 1, 1)], grid, none, names, none)).Status);
+        // Movimentação livre: casas podem ser divididas.
+        Assert.Equal(2, ScenePrep.ValidateTokens([Ogre(0, 0), new(null, null, "Lobo", "enemy", 1, 1)], grid, none, names, none, free: true).Count);
+    }
+
+    [Fact]
+    public async Task Master_resizes_a_free_image_into_several_cells_and_the_area_blocks_other_tokens()
+    {
+        var id = await StartAsync(PlayModes.Free);
+        var map = BattleMaps.Crypt;
+        var taken = (await db.SessionTokens.AsNoTracking().Where(t => t.SessionId == id).Select(t => new { t.X, t.Y }).ToListAsync()).Select(t => (t.X, t.Y)).ToHashSet();
+        bool Open(int x, int y) => map.CanStand(x, y) && !taken.Contains((x, y));
+        // Área 3 × 2 livre: o ogro cresce para 2 × 2 e depois tenta 3 × 2 com o Lira na terceira coluna.
+        var (ax, ay) = Enumerable.Range(0, map.Height).SelectMany(y => Enumerable.Range(0, map.Width).Select(x => (x, y)))
+            .First(c => Enumerable.Range(0, 3).All(dx => Open(c.x + dx, c.y) && Open(c.x + dx, c.y + 1)));
+        var created = JsonSerializer.SerializeToElement(await service.AddTokenAsync(id, new("Ogro", "enemy", ax, ay, Appearance: TokenLooks.Image), Master, default), Web);
+        var ogre = created.GetProperty("id").GetGuid();
+
+        await service.TokenAppearanceAsync(id, ogre, new(TokenLooks.Image, 100, null, 200, 200), Master, default);
+        db.ChangeTracker.Clear();
+        var stored = await db.SessionTokens.AsNoTracking().SingleAsync(t => t.Id == ogre);
+        Assert.Equal((200, 200), (stored.Width!.Value, stored.Height!.Value));
+        var seen = (await State(id, Player)).GetProperty("tokens").EnumerateArray().Single(t => t.GetProperty("id").GetGuid() == ogre);
+        Assert.Equal(200, seen.GetProperty("width").GetInt32());
+
+        // Outro marcador não entra em nenhuma casa da área.
+        var lira = await TokenOf(id, rogue.Id);
+        Assert.Equal(409, await Status(() => service.MoveTokenAsync(id, lira.Id, new(ax + 1, ay + 1), Master, default)));
+        await service.MoveTokenAsync(id, lira.Id, new(ax + 2, ay), Master, default);
+        Assert.Equal(409, await Status(() => service.TokenAppearanceAsync(id, ogre, new(TokenLooks.Image, 100, null, 300, 200), Master, default)));
+        Assert.Equal(400, await Status(() => service.TokenAppearanceAsync(id, ogre, new(TokenLooks.Image, 100, null, 200, null), Master, default)));
+        Assert.Equal(400, await Status(() => service.TokenAppearanceAsync(id, ogre, new(TokenLooks.Image, 100, null, 200, 200, map.Width - 1, ay), Master, default)));
+
+        // Puxar pelo lado esquerdo muda o canto e a largura juntos; jogadores não redimensionam.
+        if (Open(ax - 1, ay) && Open(ax - 1, ay + 1))
+        {
+            await service.TokenAppearanceAsync(id, ogre, new(TokenLooks.Image, 100, null, 300, 200, ax - 1, ay), Master, default);
+            db.ChangeTracker.Clear();
+            stored = await db.SessionTokens.AsNoTracking().SingleAsync(t => t.Id == ogre);
+            Assert.Equal((ax - 1, 300), (stored.X, stored.Width!.Value));
+        }
+        Assert.Equal(403, await Status(() => service.TokenAppearanceAsync(id, ogre, new(TokenLooks.Image, 100, null, 100, 100), Player, default)));
+    }
+
     sealed class Clock(DateTimeOffset start) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = start;

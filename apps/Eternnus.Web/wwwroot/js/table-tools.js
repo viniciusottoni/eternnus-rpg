@@ -223,7 +223,8 @@ export async function openTokenLook({ base, campaignId, token }) {
     submitForm(e.currentTarget, async (data) => {
       const imageUrl = await sheets.imageFromUpload(data, campaignId, token.label);
       const look = lookFromForm(data, !!imageUrl || !!inherited);
-      await api(`${base}/tokens/${token.id}/appearance`, "POST", { ...look, imageUrl });
+      // A área própria da imagem livre (ADR-092) continua; muda pelas alças no mapa.
+      await api(`${base}/tokens/${token.id}/appearance`, "POST", { ...look, imageUrl, width: token.width ?? null, height: token.height ?? null });
       $("#modal").close();
     });
   };

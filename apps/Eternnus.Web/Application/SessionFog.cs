@@ -254,7 +254,7 @@ public partial class SessionService
     static object MasterToken(SessionToken t, FogToken f, string? image = null) => new
     {
         t.Id, t.CharacterId, t.Label, t.Side, t.X, t.Y, t.Fx, t.Fy, t.LastMovedTurn, light = f.Light, vision = f.Vision, perception = f.Perception, image, masterCharacterId = t.MasterCharacterId,
-        appearance = t.Appearance, size = t.Size, imageUrl = t.ImageUrl,
+        appearance = t.Appearance, size = t.Size, imageUrl = t.ImageUrl, width = t.Width, height = t.Height,
         overrides = new { light = t.Light, vision = t.Vision, perception = t.Perception, senses = t.Senses },
         hidden = t.CharacterId == null && t.Hidden, revealedTo = t.RevealedTo, dc = t.Dc, detectSense = t.DetectSense, detectRange = t.DetectRange,
     };
@@ -265,6 +265,7 @@ public partial class SessionService
         t.Id, t.CharacterId, label = perceived ? "?" : t.Label, t.Side, t.X, t.Y, t.Fx, t.Fy, t.LastMovedTurn, light = f.Light, perceived, image = perceived ? null : image,
         // Percebido não revela forma nem porte: marcador redondo padrão.
         appearance = perceived ? TokenLooks.Round : t.Appearance, size = perceived ? TokenLooks.DefaultSize : t.Size,
+        width = perceived ? null : t.Width, height = perceived ? null : t.Height,
     };
 
     /// <summary>Mapa, marcadores e névoa que <paramref name="viewer"/> pode receber. O mestre recebe tudo; jogadores, só o que enxergam.</summary>

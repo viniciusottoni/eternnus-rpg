@@ -41,7 +41,8 @@ public partial class SessionService
         int width = rows[0].Length, height = rows.Length, moved = 0;
         map.Entries = MapEntries.Fit(map.Entries, width, height);
         var tokens = await db.SessionTokens.Where(t => t.SessionId == sessionId).ToListAsync(ct);
-        var taken = tokens.Where(t => t.X < width && t.Y < height).Select(t => (t.X, t.Y)).ToHashSet();
+        // Casas ocupadas, inclusive as áreas de criaturas grandes (ADR-092).
+        var taken = TokenSpans.Taken(tokens.Where(t => t.X < width && t.Y < height));
         foreach (var t in tokens.Where(t => t.X >= width || t.Y >= height).OrderBy(t => t.Label))
         {
             if (NearestFree(Math.Min(t.X, width - 1), Math.Min(t.Y, height - 1), width, height, taken) is not { } spot) continue;

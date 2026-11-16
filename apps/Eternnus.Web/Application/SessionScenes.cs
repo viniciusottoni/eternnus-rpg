@@ -169,7 +169,7 @@ public partial class SessionService
     static SceneToken ToSceneToken(SessionToken t) => new()
     {
         CharacterId = t.CharacterId, MasterCharacterId = t.MasterCharacterId, Label = t.Label, Side = t.Side, X = t.X, Y = t.Y, Fx = t.Fx, Fy = t.Fy, Hidden = t.Hidden, Light = t.Light,
-        Appearance = t.Appearance, Size = t.Size, ImageUrl = t.ImageUrl,
+        Appearance = t.Appearance, Size = t.Size, ImageUrl = t.ImageUrl, Width = t.Width, Height = t.Height,
     };
 
     /// <summary>
@@ -183,6 +183,7 @@ public partial class SessionService
         if (await PlanSceneTokensAsync(s, scene, source, ct) is not { } plan) return;
         // Movimentação livre: várias criaturas por casa e posição fina preservada; com grade, uma por casa, no centro.
         int? Fine(int? value) => plan.Map.Free && value is >= 0 and < FinePositions.Scale ? value : null;
+        static (int? W, int? H) Span(SceneToken t) => TokenLooks.CleanSpan(t.Width, t.Height);
         var npcs = (await db.MasterCharacters.Where(m => m.CampaignId == s.CampaignId).Select(m => m.Id).ToListAsync(ct)).ToHashSet();
         foreach (var p in plan.Placements)
         {
@@ -194,14 +195,14 @@ public partial class SessionService
                 db.SessionTokens.Add(t == null
                     ? new() { SessionId = s.Id, CharacterId = cid, Label = label, Side = "ally", X = p.X, Y = p.Y }
                     : new() { SessionId = s.Id, CharacterId = cid, Label = label, Side = "ally", X = p.X, Y = p.Y, Fx = Fine(t.Fx), Fy = Fine(t.Fy),
-                        Appearance = TokenLooks.Clean(t.Appearance), Size = TokenLooks.CleanSize(t.Size ?? TokenLooks.DefaultSize), ImageUrl = t.ImageUrl });
+                        Appearance = TokenLooks.Clean(t.Appearance), Size = TokenLooks.CleanSize(t.Size ?? TokenLooks.DefaultSize), ImageUrl = t.ImageUrl, Width = Span(t).W, Height = Span(t).H });
                 continue;
             }
             db.SessionTokens.Add(new()
             {
                 SessionId = s.Id, Label = t!.Label, Side = Sides.Contains(t.Side) ? t.Side : "enemy", X = p.X, Y = p.Y, Fx = Fine(t.Fx), Fy = Fine(t.Fy), Hidden = t.Hidden,
                 Light = t.Light is >= 0 and <= TableFog.MaxRadius ? t.Light : null, MasterCharacterId = t.MasterCharacterId is { } m && npcs.Contains(m) ? m : null,
-                Appearance = TokenLooks.Clean(t.Appearance), Size = TokenLooks.CleanSize(t.Size ?? TokenLooks.DefaultSize), ImageUrl = t.ImageUrl,
+                Appearance = TokenLooks.Clean(t.Appearance), Size = TokenLooks.CleanSize(t.Size ?? TokenLooks.DefaultSize), ImageUrl = t.ImageUrl, Width = Span(t).W, Height = Span(t).H,
             });
         }
     }
@@ -302,7 +303,7 @@ public partial class SessionService
         var scene = await RequireSceneAsync(a, ct);
         var (fx, fy) = FinePositions.Clean(scene.Map.Free, x.Fx, x.Fy);
         if (!scene.Grid.Inside(x.X, x.Y) || scene.Grid.BlocksMove(x.X, x.Y)) throw new RuleException(400, "Esse ponto do mapa está bloqueado.");
-        if (!scene.Map.Free && scene.Raw.Values.Any(t => t.X == x.X && t.Y == x.Y)) throw new RuleException(409, "Já existe alguém nesse ponto.");
+        if (!scene.Map.Free && TokenSpans.Taken(scene.Raw.Values).Contains((x.X, x.Y))) throw new RuleException(409, "Já existe alguém nesse ponto.");
         if (scene.Raw.Count >= 60) throw new RuleException(409, "Limite de 60 marcadores no mapa.");
         if (x.Copy)
         {

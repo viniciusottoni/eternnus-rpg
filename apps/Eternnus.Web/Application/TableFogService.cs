@@ -122,6 +122,8 @@ public sealed class TableFogService(GameDb db)
         var ownerOf = owners.GroupBy(o => o.CharacterId!.Value).ToDictionary(g => g.Key, g => g.First().UserId);
         var scale = map.ScaleMeters;
         var manual = state.Manual ?? settings.ManualReveal;
+        // Área de criaturas grandes (ADR-092): só no mapa tático; na movimentação livre o marcador ocupa o próprio ponto.
+        TokenSpan Span(SessionToken t) => map.Free ? TokenSpan.One : t.SpanOf();
         var resolved = tokens.Select(t =>
         {
             var ch = t.CharacterId is { } cid ? characters.GetValueOrDefault(cid) : null;
@@ -130,7 +132,7 @@ public sealed class TableFogService(GameDb db)
             var senses = TableFog.ParseSenses(t.Senses ?? ch?.Senses).Select(x => (x.Name, x.Meters is { } m ? (int?)TableFog.MetersToCells(m, scale) : null)).ToList();
             return new FogToken(t.Id, t.CharacterId, t.CharacterId is { } c2 ? ownerOf.GetValueOrDefault(c2) : null, t.Side, t.X, t.Y,
                 manual ? 0 : Math.Clamp(light, 0, TableFog.MaxRadius), manual ? 0 : Math.Clamp(vision, 0, TableFog.MaxRadius), t.Perception ?? ch?.Perception ?? 0, senses,
-                t.CharacterId == null && t.Hidden, t.RevealedTo, t.Dc, t.DetectSense, t.DetectRange);
+                t.CharacterId == null && t.Hidden, t.RevealedTo, t.Dc, t.DetectSense, t.DetectRange, Span(t).W, Span(t).H);
         }).ToList();
         return new FogScene
         {

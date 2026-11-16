@@ -1971,6 +1971,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<int?>("Fy")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("Height")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("Hidden")
                         .HasColumnType("boolean");
 
@@ -2015,6 +2018,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<int?>("Vision")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Width")
                         .HasColumnType("integer");
 
                     b.Property<int>("X")
@@ -3322,6 +3328,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                             b1.Property<int?>("Fy");
 
+                            b1.Property<int?>("Height");
+
                             b1.Property<bool>("Hidden");
 
                             b1.Property<string>("ImageUrl")
@@ -3343,6 +3351,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
                                 .HasMaxLength(10);
 
                             b1.Property<int?>("Size");
+
+                            b1.Property<int?>("Width");
 
                             b1.Property<int>("X");
 
@@ -3376,6 +3386,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                             b1.Property<int?>("Fy");
 
+                            b1.Property<int?>("Height");
+
                             b1.Property<bool>("Hidden");
 
                             b1.Property<string>("ImageUrl")
@@ -3397,6 +3409,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
                                 .HasMaxLength(10);
 
                             b1.Property<int?>("Size");
+
+                            b1.Property<int?>("Width");
 
                             b1.Property<int>("X");
 

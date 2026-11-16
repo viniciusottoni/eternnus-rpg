@@ -1,5 +1,16 @@
 // Regras puras de névoa no cliente: decodificação das máscaras do servidor, alcance destacado e campos de configuração.
 // O servidor decide a visibilidade; o cliente só desenha o que recebeu e destaca alcances prováveis.
+// Casas ocupadas, inclusive as áreas de criaturas grandes (ADR-092). Mesma conta de token-look.js (takenKeys);
+// fica local porque este módulo é carregado sozinho nos testes.
+function takenKeys(tokens) {
+  const set = new Set();
+  for (const t of tokens || []) {
+    const span = t?.appearance === "image" && t.width > 0 && t.height > 0;
+    const w = span ? Math.max(1, Math.round(t.width / 100)) : 1, h = span ? Math.max(1, Math.round(t.height / 100)) : 1;
+    for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) set.add(`${t.x + dx}:${t.y + dy}`);
+  }
+  return set;
+}
 
 /** Conjunto de casas em base64 (bit i = casa i), igual ao servidor. */
 export function decodeBits(value, count) {
@@ -142,7 +153,8 @@ export function toggleDoorLocal(layer, x, y) {
 export function fogReach(fog, width, height, tokens, from, squares, pathMovement = true) {
   if (!fog?.active || !fog.cells?.length) return null;
   const known = decodeBits(fog.explored, width * height);
-  const taken = new Set(tokens.filter((t) => t.x !== from.x || t.y !== from.y).map((t) => t.x + ":" + t.y));
+  // Casas ocupadas por outros, inclusive as áreas de criaturas grandes (ADR-092).
+  const taken = takenKeys(tokens.filter((t) => t !== from && (t.x !== from.x || t.y !== from.y)));
   const at = (x, y) => (x >= 0 && y >= 0 && x < width && y < height ? fog.cells[y][x] : "#");
   const free = (x, y) => x >= 0 && y >= 0 && x < width && y < height && known[y * width + x] && !blocksMove(at(x, y)) && at(x, y) !== "?" && !taken.has(x + ":" + y);
   const out = [];

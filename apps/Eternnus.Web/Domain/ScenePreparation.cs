@@ -21,7 +21,7 @@ public record PreferencesInput(string? InterfaceMode);
 
 /// <summary>Marcador enviado pelo editor de preparação (posições privadas, sem apresentar a cena).</summary>
 public record SceneTokenInput(Guid? CharacterId, Guid? MasterCharacterId, string? Label, string? Side, int X, int Y, bool Hidden = false, int? Light = null, int? Fx = null, int? Fy = null,
-    string? Appearance = null, int? Size = null, string? ImageUrl = null, string? Layer = null);
+    string? Appearance = null, int? Size = null, string? ImageUrl = null, string? Layer = null, int? Width = null, int? Height = null);
 
 /// <summary>
 /// Regras puras da preparação de cenas: chave da camada, separação entre preparação e estado ao vivo, aplicação explícita e reinício.
@@ -59,7 +59,7 @@ public static class ScenePrep
     public static SceneToken Clone(SceneToken t) => new()
     {
         CharacterId = t.CharacterId, MasterCharacterId = t.MasterCharacterId, Label = t.Label, Side = t.Side, X = t.X, Y = t.Y, Fx = t.Fx, Fy = t.Fy,
-        Hidden = t.Hidden, Light = t.Light, Appearance = t.Appearance, Size = t.Size, ImageUrl = t.ImageUrl, Layer = t.Layer,
+        Hidden = t.Hidden, Light = t.Light, Appearance = t.Appearance, Size = t.Size, ImageUrl = t.ImageUrl, Layer = t.Layer, Width = t.Width, Height = t.Height,
     };
 
     static FogMark CloneMark(FogMark m) => new() { Id = m.Id, X = m.X, Y = m.Y, Kind = m.Kind, Label = m.Label, Dc = m.Dc, Sense = m.Sense, MaxDistance = m.MaxDistance };
@@ -150,6 +150,7 @@ public static class ScenePrep
     /// <summary>
     /// Valida o arranjo preparado: até 60 marcadores, dentro da grade, fora de casas que bloqueiam movimento e sem dois na mesma casa
     /// (em mapas de movimentação livre, <paramref name="free"/>, a casa pode ser dividida e a posição fina é guardada).
+    /// No mapa tático, a imagem livre com largura e altura ocupa todas as casas da sua área (<see cref="TokenSpan"/>).
     /// Personagens precisam estar vinculados à campanha; personagens do mestre, pertencer a ela.
     /// </summary>
     /// <remarks><paramref name="layers"/>: camadas da cena; o marcador fica numa delas (nunca na Base), senão em Elementos.</remarks>
@@ -164,12 +165,20 @@ public static class ScenePrep
         {
             if (!grid.Inside(t.X, t.Y)) throw new RuleException(400, "Há um marcador fora do mapa. Mova-o para dentro da grade.");
             if (grid.BlocksMove(t.X, t.Y)) throw new RuleException(400, $"A casa {t.X + 1}, {t.Y + 1} bloqueia movimento. Escolha outra casa.");
-            if (!taken.Add((t.X, t.Y)) && !free) throw new RuleException(400, $"Há dois marcadores na casa {t.X + 1}, {t.Y + 1}.");
-            var (fx, fy) = FinePositions.Clean(free, t.Fx, t.Fy);
-            if (t.Light is < 0 or > TableFog.MaxRadius) throw new RuleException(400, $"A luz vai de 0 a {TableFog.MaxRadius} casas.");
             // Aparência: ausente = redondo, 100%. O asset da imagem é conferido pelo serviço (pertence à campanha).
             var appearance = t.Appearance == null ? null : TokenLooks.Require(t.Appearance);
             var size = t.Size is { } sz ? TokenLooks.RequireSize(sz) : (int?)null;
+            var (width, height) = TokenLooks.RequireSpan(t.Width, t.Height);
+            if (!free)
+            {
+                // Mapa tático: a criatura grande ocupa a área inteira, que precisa caber, estar livre e não bloquear movimento.
+                var span = TokenSpan.Of(appearance, width, height);
+                if (span.Problem(grid, t.X, t.Y) is { } problem) throw new RuleException(400, $"{t.Label ?? "Marcador"}: {problem}");
+                if (span.Hits(t.X, t.Y, taken)) throw new RuleException(400, $"Há dois marcadores na casa {t.X + 1}, {t.Y + 1} (ou na área de uma criatura grande).");
+                taken.UnionWith(span.Cells(t.X, t.Y));
+            }
+            var (fx, fy) = FinePositions.Clean(free, t.Fx, t.Fy);
+            if (t.Light is < 0 or > TableFog.MaxRadius) throw new RuleException(400, $"A luz vai de 0 a {TableFog.MaxRadius} casas.");
             var image = NpcImages.Normalize(t.ImageUrl, out _);
             var layer = TokenLayer(t.Layer, layers);
             if (t.CharacterId is { } cid)
@@ -177,7 +186,7 @@ public static class ScenePrep
                 if (!characters.Contains(cid)) throw new RuleException(400, "Escolha personagens vinculados à campanha.");
                 if (!people.Add(cid)) throw new RuleException(400, "Cada personagem aparece uma vez na cena.");
                 var name = characterNames.GetValueOrDefault(cid) ?? "Personagem";
-                result.Add(new SceneToken { CharacterId = cid, Label = name.Length > 40 ? name[..40] : name, Side = "ally", X = t.X, Y = t.Y, Fx = fx, Fy = fy, Appearance = appearance, Size = size, ImageUrl = image, Layer = layer });
+                result.Add(new SceneToken { CharacterId = cid, Label = name.Length > 40 ? name[..40] : name, Side = "ally", X = t.X, Y = t.Y, Fx = fx, Fy = fy, Appearance = appearance, Size = size, ImageUrl = image, Layer = layer, Width = width, Height = height });
                 continue;
             }
             var label = LibraryService.Clean(t.Label ?? "", false).Trim();
@@ -185,7 +194,7 @@ public static class ScenePrep
             var side = t.Side ?? "enemy";
             if (!Sides.Contains(side)) throw new RuleException(400, "Escolha aliado, inimigo ou neutro.");
             if (t.MasterCharacterId is { } npc && !npcs.Contains(npc)) throw new RuleException(400, "Personagem do mestre não encontrado.");
-            result.Add(new SceneToken { MasterCharacterId = t.MasterCharacterId, Label = label, Side = side, X = t.X, Y = t.Y, Fx = fx, Fy = fy, Hidden = t.Hidden, Light = t.Light, Appearance = appearance, Size = size, ImageUrl = image, Layer = layer });
+            result.Add(new SceneToken { MasterCharacterId = t.MasterCharacterId, Label = label, Side = side, X = t.X, Y = t.Y, Fx = fx, Fy = fy, Hidden = t.Hidden, Light = t.Light, Appearance = appearance, Size = size, ImageUrl = image, Layer = layer, Width = width, Height = height });
         }
         return result;
     }
