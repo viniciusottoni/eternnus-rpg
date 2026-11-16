@@ -1,116 +1,26 @@
 import { helpButton } from "./help.js";
 import { formulaSuggestOn } from "./formula-suggest.js";
 import { simpleTemplateFormulaFields } from "./sheet-editor-policy.js";
-// Preparação e continuidade da campanha (carregado sob demanda): cenas, personagens do mestre, diário e modelos simples.
+// Preparação e continuidade da campanha (carregado sob demanda): entrada do gerenciador, cadastro de personagens do mestre, diário e modelos simples.
 import { api } from "./api.js";
-import { $, esc, button, modal, formError, submitForm, toast, empty } from "./ui.js";
-import { VISION_MODES, localDateTime, toLocalInput, browserZone, safeImageUrl } from "./play-policy.js";
-import { controlsHtml, bindLiveControls, pagerHtml, emptyTableHtml, filterRows, pageSlice, highlightIn } from "./data-table.js";
+import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
+import { localDateTime, toLocalInput, browserZone } from "./play-policy.js";
+import { highlightIn } from "./data-table.js";
 
-import { sceneKindLabel } from "./scene-policy.js";
-import { mapThumbnail } from "./table-map.js";
 const SIDES = [["enemy", "Inimigo"], ["neutral", "Neutro"], ["ally", "Aliado"]];
-/** Selo do lado (inimigo, neutro, aliado) com a cor do marcador no mapa; a classe vem só da lista fixa. */
-const sideChip = (side) => {
-  const [value, label] = SIDES.find(([v]) => v === side) || SIDES[0];
-  return ` <span class="chip side-chip side-${value}">${label}</span>`;
-};
 const options = (list, current) => list.map(([v, l]) => `<option value="${esc(v)}" ${v === current ? "selected" : ""}>${esc(l)}</option>`).join("");
-/** Miniatura do personagem na lista da Preparação: prévia da imagem (acervo ou https) ou a inicial do nome. */
-const npcThumb = (n) => {
-  const initial = esc((n.name || "?").trim().charAt(0).toUpperCase());
-  const src = safeImageUrl(n.imagePreview);
-  return src ? `<img class="npc-thumb" src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" decoding="async" data-initial="${initial}">` : `<span class="npc-thumb" aria-hidden="true">${initial}</span>`;
-};
 
-// ---------- Cenas e personagens do mestre ----------
-/** Estado da tabela de personagens do mestre (busca, filtros por coluna e página), por campanha. */
-const npcView = { campaign: "", q: "", side: "", kind: "", sharedWithPlayers: "", page: 1 };
-const resetNpcView = (campaign) => Object.assign(npcView, { campaign, q: "", side: "", kind: "", sharedWithPlayers: "", page: 1 });
-
-/** Busca geral e filtros por coluna (lado, tipo, visível ao grupo). Desenhados uma vez; filtram ao digitar. */
-function npcControls() {
-  return controlsHtml("npc", {
-    search: { label: "Buscar personagens do mestre", placeholder: "Nome, resumo ou ficha", value: npcView.q },
-    filters: [
-      { name: "side", label: "Lado", options: SIDES, value: npcView.side },
-      { name: "kind", label: "Tipo", options: [["npc", "Personagem"], ["creature", "Criatura"]], value: npcView.kind },
-      { name: "sharedWithPlayers", label: "Visível ao grupo", options: [["true", "Sim"], ["false", "Não"]], value: npcView.sharedWithPlayers },
-    ],
-  });
+// ---------- Preparação (ADR-081) ----------
+/**
+ * Preparação: gerenciador único com as pastas-raiz fixas Cenas, Mapas e Personagens (js/prep-explorer.js).
+ * `opts.category` abre numa raiz ("scenes" | "maps" | "characters"). Devolve a função de descarte do explorador.
+ */
+export async function renderPrep(d, target, opts = {}) {
+  return (await import("./prep-explorer.js")).renderPrepExplorer(d, target, opts);
 }
 
-/** Tabela de 20 por página a partir da lista já carregada (até MaxNpcs): filtrar e paginar não chamam a API. */
-function npcResults(d, items) {
-  const view = npcView;
-  const rows = filterRows(items, { q: view.q, fields: ["name", "summary", "templateName"], filters: { side: view.side, kind: view.kind, sharedWithPlayers: view.sharedWithPlayers } });
-  const pageData = pageSlice(rows, view.page);
-  view.page = pageData.page;
-  const filtered = Boolean(view.q || view.side || view.kind || view.sharedWithPlayers);
-  const body = pageData.items.map((n) => `<tr><td data-label="Personagem"><div class="npc-info-cell">${npcThumb(n)}<div><strong>${esc(n.name)}</strong><small>${esc(n.summary || "")}</small></div></div></td><td data-label="Tipo"><span class="chip">${n.kind === "creature" ? "criatura" : "personagem"}</span></td><td data-label="Lado">${sideChip(n.side)}</td><td data-label="Estado"><div class="npc-state">${n.copy ? '<span class="chip">cópia</span>' : ""}${n.sharedWithPlayers ? '<span class="chip">visível ao grupo</span>' : ""}${n.templateName ? `<span class="chip">ficha: ${esc(n.templateName)}</span>` : ""}</div>${n.page ? `<small>História: <a class="lore-link" href="#campaign/${esc(d.id)}/world/${esc(n.page.id)}">${esc(n.page.title)}</a></small>` : ""}${n.templateName || !n.resources.length ? "" : `<small>${n.resources.map((r) => `${esc(r.label)} ${r.value}${r.max != null ? "/" + r.max : ""}`).join(" · ")}</small>`}</td><td data-label="Ações"><div class="scene-actions">${button("Editar", "pp-npc", n.id, "subtle small")}${n.page || n.copy ? "" : button("+ História", "pp-npc-lore", n.id, "subtle small", d.archived ? "disabled" : `aria-label="Escrever a história de ${esc(n.name)} em Páginas"`)}${button("Ficha", "pp-npc-sheet", n.id, "subtle small")}${button("Copiar", "pp-npc-copy", n.id, "subtle small")}${button("Excluir", "pp-npc-delete", n.id, "text-button small")}</div></td></tr>`).join("");
-  return rows.length
-    ? `<div class="data-table-wrap" tabindex="0" role="region" aria-label="Personagens do mestre"><table class="data-table stack-table npc-table"><caption class="sr-only">Personagens do mestre, página ${pageData.page} de ${pageData.pages}${filtered ? ", com filtros" : ""}</caption><thead><tr><th scope="col">Personagem</th><th scope="col">Tipo</th><th scope="col">Lado</th><th scope="col">Estado</th><th scope="col">Ações</th></tr></thead><tbody>${body}</tbody></table></div>${pagerHtml({ page: pageData.page, pages: pageData.pages, total: pageData.total }, "pp-npc-page", "personagens")}`
-    : emptyTableHtml(filtered, "Nenhum personagem do mestre.");
-}
-
-/** Redesenha só a área da tabela (controles ficam, cursor e foco preservados). */
-function paintNpcResults(d, target, items, focusSel = "") {
-  const box = target.querySelector("#npc-results");
-  if (!box) return;
-  box.innerHTML = npcResults(d, items);
-  highlightIn(box.querySelector(".data-table-wrap"), npcView.q);
-  box.querySelectorAll("img.npc-thumb").forEach((img) => img.addEventListener("error", () => img.replaceWith(Object.assign(document.createElement("span"), { className: "npc-thumb", textContent: img.dataset.initial, ariaHidden: "true" })), { once: true }));
-  if (focusSel) box.querySelector(focusSel)?.focus();
-}
-
-/** Cena como ponto de entrada da preparação: cartões com miniatura; o editor único abre a preparação privada. */
-export async function renderPrep(d, target) {
-  if (npcView.campaign !== d.id) resetNpcView(d.id);
-  target.innerHTML = '<p class="loading-line" role="status">Reunindo cenas…</p>';
-  const [scenes, npcs, maps] = await Promise.all([api(`/campaigns/${d.id}/scenes`), api(`/campaigns/${d.id}/npcs`), api(`/campaigns/${d.id}/maps`).catch(() => ({ items: [] }))]);
-  if (!target.isConnected) return;
-  const mapOf = (key) => maps.items.find((m) => m.key === key);
-  const visionLabel = (v) => (VISION_MODES.find((x) => x[0] === v) || [])[1];
-  const card = (s) => {
-    const m = mapOf(s.mapKey);
-    const status = s.current ? "Em apresentação" : s.hasSaved ? "Já visitada" : "Preparada";
-    return `<li class="scene-card metal ${s.current ? "current" : ""}"><div class="scene-thumb" ${s.kind !== "text" && m ? `data-scene-map="${esc(m.key)}"` : ""} aria-hidden="true">${s.kind === "text" ? '<span class="scene-text-thumb">¶</span>' : ""}</div><div class="scene-card-body"><span class="scene-state ${s.current ? "live" : ""}">${esc(status)}</span><h3>${esc(s.name)}</h3><small>${esc(sceneKindLabel(s.kind))}${m ? " · " + esc(m.name) : ""}${s.visionMode ? " · " + esc(visionLabel(s.visionMode) || "") : ""}${s.prepared ? ` · ${s.prepared} marcadores` : ""}${s.layerMode === "scene" ? " · mapa próprio" : ""}</small>${s.sharedText ? `<p class="small">${esc(s.sharedText)}</p>` : ""}</div><div class="scene-actions">${button("Editar preparação", "pp-scene", s.id, "primary small", d.archived ? "disabled" : "")}<details class="more-options"><summary>Mais opções</summary>${button("Duplicar", "pp-scene-copy", s.id, "subtle small", d.archived ? "disabled" : "")}${button("Excluir cena", "pp-scene-delete", s.id, "text-button small", d.archived || s.current ? `aria-disabled="true" data-tip="${s.current ? "Apresente outra cena antes de excluir esta." : ""}"` : "")}</details></div></li>`;
-  };
-  target.innerHTML = `<div class="section-title"><h2>Cenas${helpButton("campanhas.preparo.cenas", "Cenas preparadas")}</h2>${button("+ Nova cena", "pp-scene", "", "primary small", d.archived ? "disabled" : "")}</div>
-  <p class="muted small section-lead">Prepare em particular: escolha o cenário, posicione personagens e escreva o texto. Nada aparece aos jogadores até você apresentar a cena na mesa.</p>
-  ${scenes.items.length ? `<ul class="scene-cards">${scenes.items.map(card).join("")}</ul>` : empty("Nenhuma cena ainda.", "Uma cena pode ser um mapa com grade, uma imagem ou só um texto para ler à mesa.", d.archived ? "" : "pp-scene", "+ Nova cena")}
-  <div class="section-title"><h2>Personagens do mestre${helpButton("campanhas.preparo.personagens", "Personagens do Mestre")}</h2>${button("+ Novo personagem", "pp-npc", "", "primary small", d.archived ? "disabled" : "")}</div>
-  <p class="muted small section-lead">Reutilize aliados e inimigos. Na mesa, use “Cópia para o encontro” para mexer nos recursos sem alterar o original. Marque “Visível para os jogadores” para apresentar o personagem em <a href="#campaign/${esc(d.id)}/npcs">NPCs conhecidos</a>. Use “+ História” para escrever a história dele em Páginas.</p>
-  ${npcs.items.length ? `<div class="npc-table-section">${npcControls()}<div id="npc-results"></div></div>` : empty("Nenhum personagem do mestre.", "Crie um com nome e resumo. Depois, em “Ficha”, escolha um modelo ou recursos simples como vida e moral.")}`;
-  target.querySelectorAll("[data-scene-map]").forEach((el) => mapThumbnail(el, mapOf(el.dataset.sceneMap)));
-  paintNpcResults(d, target, npcs.items);
-  bindLiveControls(target.querySelector("#npc-controls"), ({ q, filters }) => {
-    Object.assign(npcView, { q, side: filters.side || "", kind: filters.kind || "", sharedWithPlayers: filters.sharedWithPlayers || "", page: 1 });
-    paintNpcResults(d, target, npcs.items);
-  });
-  target.onclick = async (e) => {
-    const pageBtn = e.target.closest("[data-action='pp-npc-page']");
-    if (pageBtn) { if (!pageBtn.disabled) { npcView.page = Number(pageBtn.dataset.id); paintNpcResults(d, target, npcs.items, ".data-table-wrap"); } return; }
-    const b = e.target.closest("[data-action^='pp-']");
-    if (!b || b.disabled) return;
-    const id = b.dataset.id;
-    try {
-      if (b.dataset.action === "pp-scene") {
-        const { openSceneEditor } = await import("./scene-editor.js");
-        await openSceneEditor({ campaign: d, sceneId: id || null });
-        if (target.isConnected) await renderPrep(d, target);
-      }
-      if (b.dataset.action === "pp-scene-copy") { await api(`/campaigns/${d.id}/scenes/${id}/duplicate`, "POST"); await renderPrep(d, target); }
-      if (b.dataset.action === "pp-scene-delete" && confirm("Excluir esta cena? Mapas e personagens continuam na campanha. Uma preparação de mapa própria desta cena também é excluída.")) { await api(`/campaigns/${d.id}/scenes/${id}`, "DELETE"); await renderPrep(d, target); }
-      if (b.dataset.action === "pp-npc") await npcModal(d, npcs.items.find((n) => n.id === id), () => renderPrep(d, target));
-      if (b.dataset.action === "pp-npc-sheet") await (await import("./npc-sheet.js")).openNpcSheet({ campaignId: d.id, npcId: id, onSaved: () => target.isConnected && renderPrep(d, target) });
-      if (b.dataset.action === "pp-npc-lore") { const n = npcs.items.find((x) => x.id === id); await (await import("./campaign-workspace.js")).newPage(d, { kind: "text", title: n.name, npcId: n.id }, () => target.isConnected && renderPrep(d, target)); }
-      if (b.dataset.action === "pp-npc-copy") { await api(`/campaigns/${d.id}/npcs/${id}/copy`, "POST"); await renderPrep(d, target); }
-      if (b.dataset.action === "pp-npc-delete" && confirm("Excluir este personagem do mestre?")) { await api(`/campaigns/${d.id}/npcs/${id}`, "DELETE"); await renderPrep(d, target); }
-    } catch (error) { toast(error.message); }
-  };
-}
-async function npcModal(d, npc, done) {
+/** Cadastro do personagem do mestre. Na criação, `folderId` é a pasta de Personagens onde ele nasce (nulo = raiz). */
+export async function npcModal(d, npc, done, folderId = null) {
   const sheets = await import("./npc-sheet.js");
   const images = await sheets.imageChoices(d.id);
   modal(
@@ -121,9 +31,9 @@ async function npcModal(d, npc, done) {
     e.preventDefault();
     submitForm(e.currentTarget, async (data) => {
       // Vida e recursos ficam na ficha (modelo ou recursos simples); o cadastro não os envia e o servidor mantém os atuais.
-      const saved = await api(`/campaigns/${d.id}/npcs${npc ? "/" + npc.id : ""}`, npc ? "PUT" : "POST", { name: data.name, summary: data.summary, notes: data.notes, side: data.side, revision: npc?.revision || 0, kind: data.kind, imageUrl: await sheets.imageFromUpload(data, d.id, data.name), sharedWithPlayers: data.sharedWithPlayers === "on" });
+      const saved = await api(`/campaigns/${d.id}/npcs${npc ? "/" + npc.id : ""}`, npc ? "PUT" : "POST", { name: data.name, summary: data.summary, notes: data.notes, side: data.side, revision: npc?.revision || 0, kind: data.kind, imageUrl: await sheets.imageFromUpload(data, d.id, data.name), sharedWithPlayers: data.sharedWithPlayers === "on", ...(npc ? {} : { folderId: folderId || null }) });
       $("#modal").close();
-      await done();
+      await done(saved);
       // Personagem novo segue direto para a ficha: modelo ou recursos simples.
       if (!npc && saved?.id) await sheets.openNpcSheet({ campaignId: d.id, npcId: saved.id, onSaved: done }).catch((error) => toast(error.message));
     });

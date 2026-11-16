@@ -262,3 +262,11 @@ Preparação de cenas e de mapas/cenários reutiliza a mesma câmera, comandos c
 Cenários usam materiais próprios: neve azulada e pinheiros, capim ocre e acácias, dunas/cactos, mata escura, sarcófagos/lápides, telhados, basalto/lava e fundo submerso/corais. Objetos acompanham o chão vizinho para evitar quadrados de outro bioma; telhados adjacentes formam construções contínuas. Atlas, editor, seletor e mesa compartilham o renderizador Canvas. O catálogo de peças mostra nome e miniatura, seleção dourada e descrição textual de passagem/visão; não depende só da cor.
 
 Editor no modal compartilhado: metadados e ferramentas acima, catálogo por grupos à esquerda e tabuleiro à direita. Em até 700 px o catálogo fica acima da área de desenho, com rolagem própria e alvos de 44 px. Estado do rascunho/entradas em `role=status`; falha de salvar mantém o desenho e aparece no feedback comum. Zoom/pan e teclado usam `createBoard`, sem novo ciclo de animação.
+
+## Preparação e editores visuais (ADR-081)
+
+- **Gerenciador**: árvore à esquerda, conteúdo em grade (miniaturas reais) ou lista, barra de ferramentas no topo e painel de detalhes recolhível à direita. Mesmos tokens (`--gold`, `--bright`, `--line`, `--panel`, títulos em serifa); selos de estado com texto, nunca só cor.
+- **Editores**: janela em tela cheia sobre o diálogo comum (`editor-modal`). Topo baixo com título, menus e ações; barra vertical de ferramentas por ícone (44 px, botão ativo em dourado); palco escuro dominante com padrão quadriculado neutro para a área externa; painéis à direita (220–520 px, redimensionáveis e recolhíveis); barra de estado de 34 px. Ornamentos reduzidos para dar espaço ao canvas.
+- **Seleção**: contorno e alças douradas sobre o canvas; área fora da moldura do mapa escurecida.
+- **Celular/tablet**: ferramentas em faixa horizontal rolável, painéis como gaveta sobre o palco, janela de propriedades ancorada embaixo; áreas seguras respeitadas.
+- Estilos: `prep.css`, `editor.css` (núcleo), `editor-tiles.css`, `editor-image.css`, `editor-scene.css`.

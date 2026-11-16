@@ -8,15 +8,19 @@ public record CampaignTextConvertInput(int Revision);
 public record CampaignFolderInput(string Name, Guid? ParentId);
 public record CampaignFolderNameInput(string Name);
 /// <summary><c>Purpose</c>: <c>map</c> ou <c>portrait</c> (ver <see cref="CampaignAssetPurposes"/>); nulo mantém a categoria atual (novo = mapa).
-/// <c>FreeMovement</c>: marcadores em qualquer ponto da imagem (exige grade, que vira referência de escala, paredes e névoa).</summary>
-public record CampaignMapInput(string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int Revision = 0, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, string? Purpose = null, bool FreeMovement = false);
+/// <c>FreeMovement</c>: marcadores em qualquer ponto da imagem (exige grade, que vira referência de escala, paredes e névoa).
+/// <c>Summary</c>: descrição (nula mantém). <c>SourceKey</c>: cenário oficial usado como modelo, só na criação.</summary>
+public record CampaignMapInput(string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int Revision = 0, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, string? Purpose = null, bool FreeMovement = false, string? Summary = null, string? SourceKey = null);
 /// <summary>Mapa importado de um link https: o servidor baixa uma vez e trata como upload (ver RemoteImageFetcher).</summary>
-public record CampaignMapImportInput(string Url, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, bool FreeMovement = false);
+public record CampaignMapImportInput(string Url, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, bool FreeMovement = false, string? Summary = null, string? SourceKey = null);
 /// <summary>Preparação de névoa/luz de um mapa: estado completo editado no editor e a revisão lida.</summary>
 public record MapLayerInput(bool? Fog, string[] Cells, List<FogLight>? Lights, string? Revealed, List<FogMarkInput>? Marks, int Revision, bool ResetExploration = false, string? PrepVersion = null);
-public record CampaignMapView(Guid Id, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int PixelWidth, int PixelHeight, int Revision, string? ImageUrl, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, bool FreeMovement = false, [property: System.Text.Json.Serialization.JsonIgnore] string? TileData = null)
+public record CampaignMapView(Guid Id, string Name, Guid? FolderId, int GridPixels, decimal ScaleMeters, int PixelWidth, int PixelHeight, int Revision, string? ImageUrl, bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, bool FreeMovement = false, [property: System.Text.Json.Serialization.JsonIgnore] string? TileData = null,
+    [property: System.Text.Json.Serialization.JsonIgnore] string? Composition = null)
 {
     public bool IsTileMap => TileData != null;
+    /// <summary>Terreno (Base) de mapa de tiles com objetos por cima, para desenhar o piso sob eles; nulo nos demais. Jogadores recebem mascarado como <see cref="Rows"/>.</summary>
+    public string[]? Terrain => TileData == null ? null : TileLayers.Terrain(Composition, TileData);
     public string Key => "asset:" + Id;
     /// <summary>Com grade: mapa tático (marcadores, névoa, movimento). Sem grade: imagem para cenas sem grade.</summary>
     public string Kind => HasGrid ? MapKinds.Tileset : MapKinds.Cartographic;
@@ -27,7 +31,7 @@ public record CampaignMapView(Guid Id, string Name, Guid? FolderId, int GridPixe
     public int Height => IsTileMap ? Rows.Length : HasGrid ? (PixelHeight - GridOffsetY) / GridPixels : 0;
     public string[] Rows => TileData?.Split('\n') ?? (HasGrid ? Grid(PixelWidth, PixelHeight, GridPixels, GridOffsetX, GridOffsetY) : []);
     /// <summary>Mapa com grade para névoa e movimento; nulo para imagem sem grade.</summary>
-    public BattleMap? Battle() => HasGrid ? new(Key, Name, Kind, Description, ImageUrl, Rows) { ScaleMeters = ScaleMeters, Free = FreeMovement } : null;
+    public BattleMap? Battle() => HasGrid ? new(Key, Name, Kind, Description, ImageUrl, Rows) { ScaleMeters = ScaleMeters, Free = FreeMovement, Terrain = Terrain } : null;
     /// <summary>
     /// Grade autoritativa: casas inteiras a partir do deslocamento (faixas parciais nas bordas ficam fora).
     /// Mesma conta em <c>scene-policy.js</c> (<c>gridFor</c>).
@@ -45,8 +49,8 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
 {
     public const int MaxImageBytes = 10 * 1024 * 1024;
     public const int MaxImageRequestBytes = MaxImageBytes + 64 * 1024;
-    const long MaxStorage = 250L * 1024 * 1024;
-    public const int PageSize = 20, MaxMaps = 50, MaxPortraits = PreparationService.MaxNpcs;
+    internal const long MaxStorage = 250L * 1024 * 1024;
+    public const int PageSize = 20, MaxMaps = 50, MaxPortraits = PreparationService.MaxNpcs, MaxFolders = 100, MaxFolderDepth = 8;
     static readonly SemaphoreSlim Images = new(2);
     IQueryable<CampaignLibraryEntry> Texts => db.Set<CampaignLibraryEntry>();
     IQueryable<CampaignMap> Maps => db.Set<CampaignMap>();
@@ -113,16 +117,17 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
         var item = await Texts.SingleOrDefaultAsync(x => x.CampaignId == campaign && x.Id == id && x.ConvertedPageId == null, ct) ?? throw Missing();
         db.Remove(item); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
-    static CampaignMapView View(CampaignMap m) => new(m.Id, m.Name, m.FolderId, m.TileData == null ? m.GridPixels : 0, m.ScaleMeters, m.Width, m.Height, m.Revision, m.TileData == null ? $"/api/campaigns/{m.CampaignId}/assets/maps/{m.Id}/image" : null, m.HasGrid, m.GridOffsetX, m.GridOffsetY, m.FreeMovement, m.TileData);
+    static CampaignMapView View(CampaignMap m) => new(m.Id, m.Name, m.FolderId, m.TileData == null ? m.GridPixels : 0, m.ScaleMeters, m.Width, m.Height, m.Revision, m.TileData == null ? $"/api/campaigns/{m.CampaignId}/assets/maps/{m.Id}/image" : null, m.HasGrid, m.GridOffsetX, m.GridOffsetY, m.FreeMovement, m.TileData, m.TileData == null ? null : m.Composition);
     static IQueryable<CampaignMapView> Views(IQueryable<CampaignMap> query, Guid campaign) =>
-        query.Select(m => new CampaignMapView(m.Id, m.Name, m.FolderId, m.TileData == null ? m.GridPixels : 0, m.ScaleMeters, m.Width, m.Height, m.Revision, m.TileData == null ? $"/api/campaigns/{campaign}/assets/maps/{m.Id}/image" : null, m.HasGrid, m.GridOffsetX, m.GridOffsetY, m.FreeMovement, m.TileData));
+        query.Select(m => new CampaignMapView(m.Id, m.Name, m.FolderId, m.TileData == null ? m.GridPixels : 0, m.ScaleMeters, m.Width, m.Height, m.Revision, m.TileData == null ? $"/api/campaigns/{campaign}/assets/maps/{m.Id}/image" : null, m.HasGrid, m.GridOffsetX, m.GridOffsetY, m.FreeMovement, m.TileData, m.TileData == null ? null : m.Composition));
+    internal Task<List<CampaignMapView>> MapViewsAsync(IQueryable<CampaignMap> query, Guid campaign, CancellationToken ct) => Views(query, campaign).ToListAsync(ct);
     /// <summary>Acervo por categoria isolada: mapas (com pastas) ou retratos de NPC; uma categoria nunca aparece na outra.</summary>
     public async Task<object> MapTreeAsync(Guid campaign, string user, Guid? folderId, int page, CancellationToken ct, string? purpose = null)
     {
         await Access(campaign, user, true, ct); page = Math.Clamp(page, 1, 100000);
         var category = CampaignAssetPurposes.Normalize(purpose);
         await CheckFolder(campaign, folderId, ct);
-        var folders = await Folders.AsNoTracking().Where(x => x.CampaignId == campaign).OrderBy(x => x.Name).Take(100).ToListAsync(ct);
+        var folders = await Folders.AsNoTracking().Where(x => x.CampaignId == campaign && x.Category == PrepCategories.Maps).OrderBy(x => x.Name).Take(MaxFolders).ToListAsync(ct);
         var query = Maps.AsNoTracking().Where(x => x.CampaignId == campaign && x.Purpose == category && x.FolderId == folderId);
         var total = await query.CountAsync(ct);
         var items = await Views(query.OrderBy(x => x.Name).ThenBy(x => x.Id).Skip((page - 1) * PageSize).Take(PageSize), campaign).ToListAsync(ct);
@@ -150,10 +155,8 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
     {
         var name = Name(x.Name, 100);
         await using var tx = await db.Database.BeginTransactionAsync(ct); await Lock(campaign, user, ct);
-        if (await Folders.CountAsync(f => f.CampaignId == campaign, ct) >= 100) throw new RuleException(409, "Limite de 100 pastas por campanha.");
-        var parent = x.ParentId; var depth = 1;
-        while (parent != null) { if (++depth > 8) throw new RuleException(400, "Use até oito níveis de pastas."); parent = (await Folders.SingleOrDefaultAsync(f => f.CampaignId == campaign && f.Id == parent, ct) ?? throw Missing()).ParentId; }
-        var folder = new CampaignMapFolder { CampaignId = campaign, ParentId = x.ParentId, Name = name };
+        await CheckFolderLimitsAsync(campaign, PrepCategories.Maps, x.ParentId, 1, ct);
+        var folder = new CampaignMapFolder { CampaignId = campaign, ParentId = x.ParentId, Name = name, Category = PrepCategories.Maps };
         db.Add(folder); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return folder;
     }
     /// <summary>Renomeia a pasta sob o mesmo bloqueio da campanha; o lugar na árvore e o conteúdo não mudam.</summary>
@@ -161,19 +164,21 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
     {
         var name = Name(x.Name, 100);
         await using var tx = await db.Database.BeginTransactionAsync(ct); await Lock(campaign, user, ct);
-        var folder = await Folders.SingleOrDefaultAsync(f => f.CampaignId == campaign && f.Id == id, ct) ?? throw Missing();
+        var folder = await Folders.SingleOrDefaultAsync(f => f.CampaignId == campaign && f.Id == id && f.Category == PrepCategories.Maps, ct) ?? throw Missing();
         folder.Name = name; await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return folder;
     }
     public async Task DeleteFolderAsync(Guid campaign, Guid id, string user, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct); await Lock(campaign, user, ct);
-        var folder = await Folders.SingleOrDefaultAsync(f => f.CampaignId == campaign && f.Id == id, ct) ?? throw Missing();
-        if (await Folders.AnyAsync(f => f.ParentId == id, ct) || await Maps.AnyAsync(m => m.FolderId == id, ct)) throw new RuleException(409, "Esvazie a pasta antes de excluir.");
+        var folder = await Folders.SingleOrDefaultAsync(f => f.CampaignId == campaign && f.Id == id && f.Category == PrepCategories.Maps, ct) ?? throw Missing();
+        await EnsureFolderEmptyAsync(folder, ct);
         db.Remove(folder); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
     public async Task<CampaignMapView> SaveMapAsync(Guid campaign, Guid? id, string user, CampaignMapInput x, UploadedDocument? image, CancellationToken ct)
     {
         await Access(campaign, user, true, ct); var name = Name(x.Name, 120);
+        var summary = x.Summary == null ? null : Summary(x.Summary);
+        var sourceKey = id == null ? SourceKey(x.SourceKey) : null;
         if (x.GridPixels is < 8 or > 1024 || x.ScaleMeters is < 0.01m or > 1000m || decimal.Round(x.ScaleMeters, 2) != x.ScaleMeters) throw new RuleException(400, "Grade: 8–1.024 pixels. Escala: 0,01–1.000 metros, até duas casas decimais.");
         if (x.GridOffsetX < 0 || x.GridOffsetY < 0 || x.GridOffsetX >= x.GridPixels || x.GridOffsetY >= x.GridPixels) throw new RuleException(400, "O deslocamento da grade vai de 0 até o tamanho do quadrado menos 1 pixel.");
         // Retratos guardam a transparência do PNG (imagem livre no mapa); mapas continuam JPEG.
@@ -181,7 +186,7 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
             || (x.Purpose == null && id != null && await Maps.AnyAsync(m => m.Id == id && m.CampaignId == campaign && m.Purpose == CampaignAssetPurposes.Portrait, ct));
         (byte[] Bytes, int Width, int Height)? normalized = image == null ? null : await Normalize(image, ct, keepAlpha);
         await using var tx = await db.Database.BeginTransactionAsync(ct); await Lock(campaign, user, ct); await CheckFolder(campaign, x.FolderId, ct);
-        var map = id is { } key ? await Maps.SingleOrDefaultAsync(m => m.Id == key && m.CampaignId == campaign, ct) ?? throw Missing() : new CampaignMap { CampaignId = campaign };
+        var map = id is { } key ? await Maps.SingleOrDefaultAsync(m => m.Id == key && m.CampaignId == campaign && m.Purpose != CampaignAssetPurposes.Layer, ct) ?? throw Missing() : new CampaignMap { CampaignId = campaign, SourceKey = sourceKey };
         if (map.TileData != null) throw new RuleException(409, "Edite este mapa no editor de tiles.");
         if (id != null && map.Revision != x.Revision) throw Stale();
         if (id != null) await EnsureMapIdleAsync(campaign, map.Id, ct);
@@ -223,6 +228,8 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
         // Voltar de livre para grade: posições finas preparadas ficam guardadas, mas a grade usa o centro da casa
         // e a preparação passa a exigir uma casa por marcador (ver ScenePrep.ValidateTokens).
         map.FreeMovement = x.FreeMovement;
+        if (summary != null) map.Summary = summary;
+        map.UpdatedAt = DateTime.UtcNow;
         if (id == null) db.Add(map); else map.Revision++;
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return View(map);
     }
@@ -237,9 +244,11 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
     public async Task DeleteMapAsync(Guid campaign, Guid id, string user, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct); await Lock(campaign, user, ct);
-        var map = await Maps.SingleOrDefaultAsync(m => m.CampaignId == campaign && m.Id == id, ct) ?? throw Missing();
+        var map = await Maps.SingleOrDefaultAsync(m => m.CampaignId == campaign && m.Id == id && m.Purpose != CampaignAssetPurposes.Layer, ct) ?? throw Missing();
         await EnsureMapIdleAsync(campaign, id, ct);
         var key = "asset:" + id;
+        // Imagens-fonte dos elementos do mapa saem com ele.
+        await Maps.Where(m => m.CampaignId == campaign && m.OwnerMapId == id && m.Purpose == CampaignAssetPurposes.Layer).ExecuteDeleteAsync(ct);
         // Camada compartilhada e camadas próprias de cenas ({chave}@{cena}).
         await db.Set<CampaignMapLayer>().Where(l => l.CampaignId == campaign && (l.MapKey == key || l.MapKey.StartsWith(key + "@"))).ExecuteDeleteAsync(ct);
         db.Remove(map); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
@@ -378,10 +387,59 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
         var after = pending ? ScenePrep.PrepOf(draft) : TableFogService.PreparedOf(saved, MapFogState.Parse(saved.State) ?? draft, map, settings);
         return new { revision = saved.Revision, prepVersion = TableFogService.PrepVersion(after), pendingLive = pending, inUse = active != null };
     }
-    async Task CheckFolder(Guid campaign, Guid? folder, CancellationToken ct) { if (folder != null && !await Folders.AnyAsync(f => f.CampaignId == campaign && f.Id == folder, ct)) throw Missing(); }
-    static string Name(string? value, int max) { var s = LibraryService.Clean(value ?? "", false); return s.Length is 0 || s.Length > max ? throw new RuleException(400, $"Informe um nome de até {max} caracteres.") : s; }
-    static RuleException Missing() => new(404, "Recurso da campanha não encontrado.");
-    static RuleException Stale() => new(409, "O recurso mudou. Atualize antes de editar novamente.");
+    /// <summary>Pasta de destino de um mapa: existe nesta campanha e é da categoria Mapas.</summary>
+    async Task CheckFolder(Guid campaign, Guid? folder, CancellationToken ct) => await CheckFolderAsync(db, campaign, folder, PrepCategories.Maps, ct);
+    internal static async Task CheckFolderAsync(GameDb db, Guid campaign, Guid? folder, string category, CancellationToken ct)
+    {
+        if (folder == null) return;
+        var found = await db.Set<CampaignMapFolder>().Where(f => f.CampaignId == campaign && f.Id == folder).Select(f => f.Category).SingleOrDefaultAsync(ct) ?? throw Missing();
+        if (found != category) throw new RuleException(400, PrepCategoryMessage(category));
+    }
+    internal static string PrepCategoryMessage(string category) => category switch
+    {
+        PrepCategories.Scenes => "Cenas só ficam em pastas de Cenas.",
+        PrepCategories.Characters => "Personagens só ficam em pastas de Personagens.",
+        _ => "Mapas só ficam em pastas de Mapas.",
+    };
+    /// <summary>Limite de pastas por categoria e profundidade (oito níveis) para <paramref name="adding"/> pastas sob <paramref name="parent"/>.
+    /// <paramref name="subtreeHeight"/>: níveis da árvore que entra (1 = uma pasta sem subpastas).</summary>
+    internal async Task CheckFolderLimitsAsync(Guid campaign, string category, Guid? parent, int adding, CancellationToken ct, int subtreeHeight = 1)
+    {
+        if (adding > 0 && await Folders.CountAsync(f => f.CampaignId == campaign && f.Category == category, ct) + adding > MaxFolders)
+            throw new RuleException(409, $"Limite de {MaxFolders} pastas por categoria.");
+        var depth = subtreeHeight;
+        for (var current = parent; current != null;)
+        {
+            var row = await Folders.Where(f => f.CampaignId == campaign && f.Id == current).Select(f => new { f.ParentId, f.Category }).SingleOrDefaultAsync(ct) ?? throw Missing();
+            if (row.Category != category) throw new RuleException(400, "A pasta de destino é de outra categoria.");
+            if (++depth > MaxFolderDepth) throw new RuleException(400, "Use até oito níveis de pastas.");
+            current = row.ParentId;
+        }
+        if (depth > MaxFolderDepth) throw new RuleException(400, "Use até oito níveis de pastas.");
+    }
+    /// <summary>Excluir pasta exige que esteja vazia: sem subpastas nem itens da categoria dela.</summary>
+    internal async Task EnsureFolderEmptyAsync(CampaignMapFolder folder, CancellationToken ct)
+    {
+        var id = folder.Id;
+        var busy = await Folders.AnyAsync(f => f.ParentId == id, ct) || folder.Category switch
+        {
+            PrepCategories.Scenes => await db.Scenes.AnyAsync(s => s.FolderId == id, ct),
+            PrepCategories.Characters => await db.MasterCharacters.AnyAsync(m => m.FolderId == id, ct),
+            _ => await Maps.AnyAsync(m => m.FolderId == id, ct),
+        };
+        if (busy) throw new RuleException(409, "Esvazie a pasta antes de excluir.");
+    }
+    internal static string Summary(string? value)
+    {
+        var text = LibraryService.Clean(value ?? "", true);
+        return text.Length > 500 ? throw new RuleException(400, "A descrição do mapa aceita até 500 caracteres.") : text;
+    }
+    /// <summary>Cenário oficial usado como modelo (só na criação); vazio = mapa criado do zero.</summary>
+    internal static string? SourceKey(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : BattleMaps.Find(value.Trim()) is { } official ? official.Key : throw new RuleException(400, "Modelo oficial não encontrado.");
+    internal static string Name(string? value, int max) { var s = LibraryService.Clean(value ?? "", false); return s.Length is 0 || s.Length > max ? throw new RuleException(400, $"Informe um nome de até {max} caracteres.") : s; }
+    internal static RuleException Missing() => new(404, "Recurso da campanha não encontrado.");
+    internal static RuleException Stale() => new(409, "O recurso mudou. Atualize antes de editar novamente.");
     /// <summary>Tipo servido para bytes do acervo: PNG (retrato com transparência) ou JPEG (demais).</summary>
     public static string ImageType(byte[] bytes) => DocumentFiles.Sniff(bytes) == DocumentKinds.Png ? DocumentKinds.Png : DocumentKinds.Jpeg;
 

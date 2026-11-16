@@ -20,7 +20,7 @@ function hueOf(text) {
   for (const c of String(text)) h = (h * 31 + c.charCodeAt(0)) % 360;
   return h;
 }
-function buildStatic(rows, s) {
+function buildStatic(rows, s, ground = null) {
   const w = rows[0].length,
     h = rows.length;
   const layer = document.createElement("canvas");
@@ -30,7 +30,7 @@ function buildStatic(rows, s) {
   const outdoor = rows.some(row => row.includes(","));
   const timber = !outdoor && rows.some(row => row.includes("d")) && !rows.some(row => row.includes("~"));
   for (let y = 0; y < h; y++)
-    for (let x = 0; x < w; x++) drawTile(g, rows, x, y, s, outdoor, timber);
+    for (let x = 0; x < w; x++) drawTile(g, rows, x, y, s, outdoor, timber, ground);
   // Vinheta para concentrar a atenção no centro da cena.
   const v = g.createRadialGradient(
     layer.width / 2,
@@ -61,7 +61,7 @@ export function mapThumbnail(el, map) {
   }
   const canvas = document.createElement("canvas");
   const s = 24;
-  const layer = buildStatic(map.rows, s);
+  const layer = buildStatic(map.rows, s, map.terrain);
   canvas.width = layer.width;
   canvas.height = layer.height;
   const g = canvas.getContext("2d");
@@ -547,15 +547,17 @@ export function createBoard(host, handlers = {}) {
     return { ...token, x: c.x - 0.5, y: c.y - 0.5 };
   };
   const compact = matchMedia("(max-width: 900px), (max-width: 1200px) and (pointer: coarse)");
-  let enlarged = !!handlers.camera && compact.matches, panning = enlarged, cameraDrag = null;
+  // Editor (ADR-081): roda = zoom no cursor, espaço/botão do meio = mover a vista; sem ampliação automática no celular.
+  const editor = !!handlers.editor;
+  let enlarged = !!handlers.camera && !editor && compact.matches, panning = enlarged, cameraDrag = null, panHold = false, panTool = false;
   let zoomLevel = null, currentZoom = 1, maxZoom = 3;
   let centerX = .5, centerY = .5, previousWidth = 0, previousHeight = 0, resetCamera = true;
-  const camera = handlers.camera ? document.createElement("div") : null;
+  const camera = handlers.camera || editor ? document.createElement("div") : null;
   if (camera) {
     host.classList.add("board-viewport");
     camera.className = "map-camera-controls";
     camera.innerHTML = `<button type="button" class="subtle" data-camera="out" aria-label="Afastar mapa">−</button><button type="button" class="subtle" data-camera="in" aria-label="Aproximar mapa">+</button><button type="button" class="subtle" data-camera="size">Mapa inteiro</button><button type="button" class="subtle" data-camera="pan" aria-pressed="true" aria-describedby="${instructionId}">Arrastar mapa</button><span id="${instructionId}">Arraste para explorar</span><span class="camera-help">Visão${helpButton("mesa.mapa.camera", "Ampliar e percorrer o mapa")}</span>`;
-    handlers.camera.append(camera);
+    if (handlers.camera) handlers.camera.append(camera);
     camera.addEventListener("click", (e) => {
       const action = e.target.closest("[data-camera]")?.dataset.camera;
       if (action === "size") { enlarged = !enlarged; zoomLevel = null; panning = enlarged; resetCamera = true; layout(); draw(); }
@@ -570,7 +572,7 @@ export function createBoard(host, handlers = {}) {
     camera.querySelector('[data-camera="size"]').setAttribute("aria-pressed", String(enlarged));
     camera.querySelector('[data-camera="pan"]').setAttribute("aria-pressed", String(panning));
     camera.querySelector(`#${instructionId}`).textContent = panning ? "Arraste ou use dois dedos" : "Toque para interagir · pinça para zoom";
-    host.classList.toggle("camera-pan", panning);
+    host.classList.toggle("camera-pan", panning || panHold || panTool);
     canvas.style.touchAction = "none";
     host.dataset.zoom = currentZoom.toFixed(3);
     camera.querySelector('[data-camera="out"]').disabled = currentZoom <= 1.001;
@@ -602,7 +604,7 @@ export function createBoard(host, handlers = {}) {
     if (Number.isFinite(ratio) && ratio > 0) {
       const fitWidth = Math.min(width, height * ratio), fitHeight = fitWidth / ratio;
       const cover = Math.max(width / fitWidth, height / fitHeight);
-      maxZoom = Math.max(3, cover * 3);
+      maxZoom = editor ? Math.max(8, cover * 4) : Math.max(3, cover * 3);
       currentZoom = Math.max(1, Math.min(maxZoom, zoomLevel ?? (enlarged ? cover : 1)));
       width = Math.max(width, fitWidth * currentZoom);
       height = Math.max(height, fitHeight * currentZoom);
@@ -632,9 +634,9 @@ export function createBoard(host, handlers = {}) {
     ox = Math.floor((canvas.width - cell * r[0].length) / 2);
     oy = Math.floor((canvas.height - cell * r.length) / 2);
     // As linhas mudam quando o jogador explora (casas "?" passam a ter terreno): a camada estática é refeita.
-    const key = state.map.key + ":" + cell + ":" + (uploaded() ? "" : r.join("|"));
+    const key = state.map.key + ":" + cell + ":" + (uploaded() ? "" : r.join("|") + "/" + (state.map.terrain || []).join("|"));
     if (key !== layerKey) {
-      layer = uploaded() ? null : buildStatic(r, cell);
+      layer = uploaded() ? null : buildStatic(r, cell, state.map.terrain || null);
       layerKey = key;
     }
   }
@@ -750,6 +752,9 @@ export function createBoard(host, handlers = {}) {
       const placed = land ? { ...token, x: land.x, y: land.y } : visualOf(token);
       const visual = move && fraction < 1 ? { ...placed, x: move.x + (placed.x - move.x) * eased, y: move.y + (placed.y - move.y) * eased } : placed;
       if (fraction >= 1) moves.delete(token.id);
+      // Opacidade/visibilidade de camada no editor (organização visual; não muda o que os jogadores veem).
+      if (token.alpha === 0) continue;
+      if (token.alpha != null && token.alpha < 1) { g.save(); g.globalAlpha = token.alpha; }
       drawToken(
         g,
         visual,
@@ -759,13 +764,14 @@ export function createBoard(host, handlers = {}) {
             token.characterId &&
             token.characterId === state.session.activeCharacterId,
           mine: token.characterId && token.characterId === state.me.characterId,
-          selected: token.id === view.selected,
+          selected: token.id === view.selected || !!view.selectedIds?.includes(token.id),
           offline: token.characterId && !online.has(token.characterId),
           animate,
           portrait: portraitFor(token.image, redraw),
         },
         t,
       );
+      if (token.alpha != null && token.alpha < 1) g.restore();
       const hit = view.bubbles === false ? null : drawBubbles(g, visual, cell, token.bubble);
       if (hit) bubbleHits.push({ ...hit, token });
     }
@@ -882,7 +888,8 @@ export function createBoard(host, handlers = {}) {
   }
   // A câmera só desloca a visão local; nunca move marcadores nem pinta névoa.
   host.addEventListener("pointerdown", (e) => {
-    if (!panning || e.button !== 0) return;
+    const middle = editor && e.button === 1;
+    if (!middle && (!(panning || panHold || panTool) || e.button !== 0)) return;
     e.preventDefault();
     cameraDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, left: host.scrollLeft, top: host.scrollTop };
     host.setPointerCapture(e.pointerId);
@@ -904,7 +911,7 @@ export function createBoard(host, handlers = {}) {
   };
   canvas.addEventListener("pointerdown", (e) => {
     suppressClick = false;
-    if (panning || view.mode === "paint" || !tileset()) return;
+    if (panning || panHold || panTool || e.button !== 0 || view.mode === "paint" || !tileset()) return;
     const p = boardPoint(e);
     if (handleHit && handlers.onResize && Math.hypot(p.px - handleHit.x, p.py - handleHit.y) <= handleHit.r) {
       e.preventDefault();
@@ -992,7 +999,7 @@ export function createBoard(host, handlers = {}) {
   // Pintura por arraste (mestre): junta as casas e envia uma única escrita ao soltar.
   let stroke = null;
   canvas.addEventListener("pointerdown", (e) => {
-    if (panning || view.mode !== "paint" || !tileset()) return;
+    if (panning || panHold || panTool || e.button !== 0 || view.mode !== "paint" || !tileset()) return;
     const c = cellAt(e.clientX, e.clientY);
     if (!c) return;
     e.preventDefault();
@@ -1035,6 +1042,7 @@ export function createBoard(host, handlers = {}) {
   };
   canvas.addEventListener("click", (e) => {
     if (suppressClick) { suppressClick = false; return; }
+    if (panHold || panTool) return;
     if (view.mode === "paint") return;
     // Névoa, paredes, luzes e marcas continuam por casa; posicionar usa o ponto fino no modo livre.
     if (view.mode === "fog") { if (!panning) activate(cellAt(e.clientX, e.clientY)); return; }
@@ -1083,6 +1091,31 @@ export function createBoard(host, handlers = {}) {
     cursor = null;
     draw();
   });
+  // ---------- Extras do editor (ADR-081) ----------
+  if (editor) {
+    host.addEventListener("wheel", (e) => {
+      if (!tileset() && !uploaded()) return;
+      e.preventDefault();
+      const factor = Math.exp(-Math.max(-60, Math.min(60, e.deltaY * (e.deltaMode === 1 ? 16 : 1))) / 240);
+      zoomAt(currentZoom * factor, e.clientX, e.clientY);
+      handlers.onZoom?.();
+    }, { passive: false });
+    host.addEventListener("auxclick", (e) => { if (e.button === 1) e.preventDefault(); });
+    canvas.addEventListener("pointermove", (e) => { if (!cameraDrag) handlers.onHover?.(pointAt(e.clientX, e.clientY)); });
+    canvas.addEventListener("pointerleave", () => handlers.onHover?.(null));
+    canvas.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      const c = pointAt(e.clientX, e.clientY);
+      handlers.onContext?.({ cell: c, token: c ? tokenAt(c) || null : null, x: e.clientX, y: e.clientY });
+    });
+    canvas.addEventListener("keydown", (e) => {
+      if ((e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) && cursor) {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        handlers.onContext?.({ cell: cursor, token: (state.tokens || []).find((t) => t.x === cursor.x && t.y === cursor.y) || null, x: rect.left + (ox + (cursor.x + 1) * cell) / dpr, y: rect.top + (oy + (cursor.y + 1) * cell) / dpr });
+      }
+    });
+  }
   const observer = new ResizeObserver(() => {
     layout();
     draw();
@@ -1154,6 +1187,20 @@ export function createBoard(host, handlers = {}) {
       draw();
     },
     interact() { panning = false; updateCamera(); },
+    /** Câmera do editor: zoom ancorado, ajustar, 100% (`natural` = pixels por casa no tamanho real), mão e espaço. */
+    camera: {
+      zoomIn: () => zoomAt(currentZoom * 1.25),
+      zoomOut: () => zoomAt(currentZoom / 1.25),
+      fit: () => { zoomLevel = 1; enlarged = false; resetCamera = true; layout(); draw(); updateCamera(); },
+      actual: (natural = 64) => { const fitCell = cell / dpr / currentZoom; if (fitCell > 0) zoomAt(natural / fitCell); },
+      zoom: (natural = 64) => (cell > 0 ? cell / dpr / natural : 1),
+      setPanHold: (on) => { panHold = !!on; host.classList.toggle("camera-pan", panHold || panTool || panning); },
+      setPan: (on) => { panTool = !!on; host.classList.toggle("camera-pan", panHold || panTool || panning); },
+      cellAt: (x, y) => cellAt(x, y),
+      pointAt: (x, y) => pointAt(x, y),
+      /** Retângulo de uma casa em coordenadas da janela (para posicionar menus/alças). */
+      cellRect: (c) => { const r = canvas.getBoundingClientRect(); return { x: r.left + (ox + c.x * cell) / dpr, y: r.top + (oy + c.y * cell) / dpr, size: cell / dpr }; },
+    },
     focus() {
       canvas.focus();
     },

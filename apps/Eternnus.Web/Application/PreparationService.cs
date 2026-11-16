@@ -4,9 +4,12 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
 
-/// <summary>Preparação da cena. <c>Prepared</c> nulo mantém o arranjo; <c>LayerMode</c> nulo mantém o alcance da preparação do mapa.</summary>
-public record SceneInput(string Name, string? Description, string Kind, string? MapKind, string? MapKey, string? SharedText, string? PrivateNotes, string? VisionMode, int Order = 0, int Revision = 0, List<SceneTokenInput>? Prepared = null, string? LayerMode = null);
-public record NpcInput(string Name, string? Summary, string? Notes, string? Side, List<NpcResource>? Resources, int Revision = 0, string? Kind = null, string? ImageUrl = null, bool? SharedWithPlayers = null);
+/// <summary>Preparação da cena. <c>Prepared</c> nulo mantém o arranjo; <c>LayerMode</c> nulo mantém o alcance da preparação do mapa.
+/// <c>FolderId</c>: pasta de Cenas (só na criação). <c>Layers</c>: camadas visuais do editor (nulo mantém).</summary>
+public record SceneInput(string Name, string? Description, string Kind, string? MapKind, string? MapKey, string? SharedText, string? PrivateNotes, string? VisionMode, int Order = 0, int Revision = 0, List<SceneTokenInput>? Prepared = null, string? LayerMode = null,
+    Guid? FolderId = null, List<EditorLayer?>? Layers = null);
+/// <summary><c>FolderId</c>: pasta de Personagens (só na criação).</summary>
+public record NpcInput(string Name, string? Summary, string? Notes, string? Side, List<NpcResource>? Resources, int Revision = 0, string? Kind = null, string? ImageUrl = null, bool? SharedWithPlayers = null, Guid? FolderId = null);
 public record ScheduleInput(DateTimeOffset? At, string? Note);
 public record AttendanceInput(string Status);
 public record InviteCodeInput(string Code);
@@ -68,6 +71,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
             {
                 s.Id, s.Name, s.Description, s.Kind, s.MapKind, s.MapKey, s.SharedText, s.PrivateNotes, s.VisionMode, s.LayerMode, s.Order, s.Revision, s.HasSaved,
                 prepared = s.Prepared.Count, s.UpdatedAt, current = active?.SceneId == s.Id,
+                layers = EditorLayers.Parse(s.Layers), s.FolderId, s.CreatedAt,
             }),
             activeSessionId = active?.Id,
             characters = await CampaignCharactersAsync(campaignId, ct),
@@ -86,6 +90,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         {
             s.Id, s.Name, s.Description, s.Kind, s.MapKind, s.MapKey, s.SharedText, s.PrivateNotes, s.VisionMode, s.LayerMode, s.Order, s.Revision, s.HasSaved,
             prepared = s.Prepared, s.UpdatedAt,
+            layers = EditorLayers.Parse(s.Layers), s.FolderId, s.CreatedAt,
             live = active == null ? null : new
             {
                 sessionId = active.Id, current,
@@ -111,6 +116,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         if (!SceneKinds.All.Contains(x.Kind)) throw new RuleException(400, "Escolha mapa, imagem ou apresentação textual.");
         if (!VisionModes.IsValid(x.VisionMode)) throw new RuleException(400, "Escolha a visão: tudo visível, revelação manual ou por personagem.");
         if (x.LayerMode != null && !SceneLayerModes.IsValid(x.LayerMode)) throw new RuleException(400, "Escolha preparação compartilhada com o mapa ou própria da cena.");
+        var layers = x.Layers == null ? null : EditorLayers.Validate(x.Layers);
         var kind = x.Kind == SceneKinds.Text ? "" : x.Kind == SceneKinds.Map ? MapKinds.Tileset : MapKinds.Cartographic;
         var key = x.Kind == SceneKinds.Text ? "" : Text(x.MapKey, 80, "Escolha o mapa da cena.", true);
         // O tipo da cena decide como o mapa é usado: com grade (tático) ou só imagem; a mesma imagem serve aos dois.
@@ -130,7 +136,8 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         else
         {
             if (await db.Scenes.CountAsync(s => s.CampaignId == campaignId, ct) >= MaxScenes) throw new RuleException(409, $"A campanha aceita até {MaxScenes} cenas.");
-            scene = new Scene { CampaignId = campaignId, Order = x.Order };
+            await CampaignAssetsService.CheckFolderAsync(db, campaignId, x.FolderId, PrepCategories.Scenes, ct);
+            scene = new Scene { CampaignId = campaignId, Order = x.Order, FolderId = x.FolderId, CreatedAt = Now };
             db.Scenes.Add(scene);
         }
         scene.Name = name; scene.Description = Text(x.Description, 1000, "A descrição aceita até 1.000 caracteres.");
@@ -139,14 +146,18 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         scene.PrivateNotes = Text(x.PrivateNotes, 4000, "As notas privadas aceitam até 4.000 caracteres.");
         scene.VisionMode = x.Kind == SceneKinds.Map ? x.VisionMode : null; scene.Order = Math.Clamp(x.Order, 0, 10000); scene.UpdatedAt = Now;
         scene.LayerMode = x.Kind == SceneKinds.Map ? x.LayerMode ?? scene.LayerMode : SceneLayerModes.Map;
-        if (x.Prepared != null) scene.Prepared = x.Kind == SceneKinds.Map ? await ValidArrangementAsync(campaignId, scene, x.Prepared, ct) : [];
+        if (layers != null) scene.Layers = EditorLayers.Serialize(layers);
+        var layerIds = EditorLayers.Parse(scene.Layers).Select(l => l.Id).ToHashSet();
+        if (x.Prepared != null) scene.Prepared = x.Kind == SceneKinds.Map ? await ValidArrangementAsync(campaignId, scene, x.Prepared, layerIds, ct) : [];
+        // Camada removida: os marcadores dela voltam para Elementos (organização do editor; a mesa não muda).
+        else foreach (var t in scene.Prepared.Where(t => t.Layer != null && ScenePrep.TokenLayer(t.Layer, layerIds) != t.Layer)) t.Layer = EditorLayers.Elements;
         try { await db.SaveChangesAsync(ct); } catch (DbUpdateConcurrencyException) { throw new RuleException(409, "A cena mudou em outra tela. Recarregue antes de salvar."); }
         await tx.CommitAsync(ct);
         return new { scene.Id, scene.Revision };
     }
 
     /// <summary>Arranjo privado validado contra a grade e a preparação do mapa da cena (paredes e obstáculos).</summary>
-    async Task<List<SceneToken>> ValidArrangementAsync(Guid campaignId, Scene scene, List<SceneTokenInput> input, CancellationToken ct)
+    async Task<List<SceneToken>> ValidArrangementAsync(Guid campaignId, Scene scene, List<SceneTokenInput> input, IReadOnlySet<string> layers, CancellationToken ct)
     {
         var fog = new TableFogService(db);
         var map = await fog.MapAsync(campaignId, scene.MapKey, ct) ?? throw new RuleException(400, "Escolha um mapa com grade para posicionar marcadores.");
@@ -156,7 +167,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         var prep = TableFogService.PreparedOf(row, state, map, settings);
         var characters = await CampaignCharactersAsync(campaignId, ct);
         var npcs = (await db.MasterCharacters.AsNoTracking().Where(m => m.CampaignId == campaignId).Select(m => m.Id).ToListAsync(ct)).ToHashSet();
-        var tokens = ScenePrep.ValidateTokens(input, new FogGrid(map.Width, map.Height, prep.Cells), characters.Select(c => c.Id).ToHashSet(), characters.ToDictionary(c => c.Id, c => c.Name), npcs, map.Free);
+        var tokens = ScenePrep.ValidateTokens(input, new FogGrid(map.Width, map.Height, prep.Cells), characters.Select(c => c.Id).ToHashSet(), characters.ToDictionary(c => c.Id, c => c.Name), npcs, map.Free, layers);
         foreach (var image in tokens.Select(t => t.ImageUrl).Where(i => i != null).Distinct()) await ValidImageAsync(campaignId, image, db, ct);
         return tokens;
     }
@@ -172,20 +183,23 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         {
             CampaignId = campaignId, Name = Cut(s.Name, 72) + " (cópia)", Description = s.Description, Kind = s.Kind, MapKind = s.MapKind, MapKey = s.MapKey,
             SharedText = s.SharedText, PrivateNotes = s.PrivateNotes, VisionMode = s.VisionMode, LayerMode = s.LayerMode, Order = s.Order + 1, UpdatedAt = Now,
-            Prepared = s.Prepared.Select(t => new SceneToken { CharacterId = t.CharacterId, MasterCharacterId = t.MasterCharacterId, Label = t.Label, Side = t.Side, X = t.X, Y = t.Y, Fx = t.Fx, Fy = t.Fy, Hidden = t.Hidden, Light = t.Light }).ToList(),
+            CreatedAt = Now, FolderId = s.FolderId, Layers = s.Layers, Prepared = s.Prepared.Select(ScenePrep.Clone).ToList(),
         };
         db.Scenes.Add(copy);
-        // Preparação própria: a cópia recebe a preparação do mapa (sem explorações) e segue independente.
-        if (s.LayerMode == SceneLayerModes.Scene && s.MapKey.Length > 0)
-        {
-            var sourceKey = ScenePrep.LayerKey(s);
-            var source = await db.Set<CampaignMapLayer>().AsNoTracking().Where(l => l.CampaignId == campaignId && l.MapKey == sourceKey).Select(l => new { l.State, l.Prepared }).SingleOrDefaultAsync(ct);
-            if ((MapFogState.Parse(source?.Prepared) ?? MapFogState.Parse(source?.State)) is { } layer)
-                db.Add(new CampaignMapLayer { CampaignId = campaignId, MapKey = ScenePrep.LayerKey(s.MapKey, copy.Id), State = ScenePrep.PrepOf(layer).Serialize(), UpdatedAt = Now });
-        }
+        await CopyOwnLayerAsync(db, s, copy, Now, ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return new { copy.Id, copy.Revision };
+    }
+
+    /// <summary>Preparação própria: a cópia recebe a preparação da cena de origem (sem explorações) e segue independente.</summary>
+    internal static async Task CopyOwnLayerAsync(GameDb db, Scene source, Scene copy, DateTime now, CancellationToken ct)
+    {
+        if (source.LayerMode != SceneLayerModes.Scene || source.MapKey.Length == 0) return;
+        var sourceKey = ScenePrep.LayerKey(source);
+        var row = await db.Set<CampaignMapLayer>().AsNoTracking().Where(l => l.CampaignId == source.CampaignId && l.MapKey == sourceKey).Select(l => new { l.State, l.Prepared }).SingleOrDefaultAsync(ct);
+        if ((MapFogState.Parse(row?.Prepared) ?? MapFogState.Parse(row?.State)) is { } layer)
+            db.Add(new CampaignMapLayer { CampaignId = source.CampaignId, MapKey = ScenePrep.LayerKey(source.MapKey, copy.Id), State = ScenePrep.PrepOf(layer).Serialize(), UpdatedAt = now });
     }
 
     public async Task DeleteSceneAsync(Guid campaignId, Guid id, string user, CancellationToken ct)
@@ -212,6 +226,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
             items = items.Select(m => new
             {
                 m.Id, m.Name, m.Summary, m.Notes, m.Side, m.Resources, m.SourceId, m.Revision, copy = m.SourceId != null, m.Kind, m.ImageUrl, imagePreview = SessionService.PreviewUrl(m), m.SharedWithPlayers,
+                m.FolderId, m.CreatedAt, m.UpdatedAt,
                 templateName = m.TemplateVersionId is { } v && templates.TryGetValue(v, out var name) ? name : null,
                 page = lore.GetValueOrDefault(m.Id),
             })
@@ -236,7 +251,8 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         else
         {
             if (await db.MasterCharacters.CountAsync(m => m.CampaignId == campaignId, ct) >= MaxNpcs) throw new RuleException(409, $"A campanha aceita até {MaxNpcs} personagens do mestre.");
-            npc = new MasterCharacter { CampaignId = campaignId };
+            await CampaignAssetsService.CheckFolderAsync(db, campaignId, x.FolderId, PrepCategories.Characters, ct);
+            npc = new MasterCharacter { CampaignId = campaignId, FolderId = x.FolderId, CreatedAt = Now };
             db.MasterCharacters.Add(npc);
         }
         npc.Name = name; npc.Side = side; npc.UpdatedAt = Now;
@@ -313,7 +329,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         var image = await db.MasterCharacters.AsNoTracking().Where(m => m.Id == npcId && m.CampaignId == campaignId && m.SharedWithPlayers).Select(m => m.ImageUrl).SingleOrDefaultAsync(ct);
         NpcImages.Normalize(image, out var asset);
         if (asset is not { } assetId) throw new RuleException(404, "Imagem não encontrada.");
-        return await db.Set<CampaignMap>().AsNoTracking().Where(m => m.Id == assetId && m.CampaignId == campaignId).Select(m => m.Content).SingleOrDefaultAsync(ct)
+        return await db.Set<CampaignMap>().AsNoTracking().Where(m => m.Id == assetId && m.CampaignId == campaignId && m.Purpose != CampaignAssetPurposes.Layer).Select(m => m.Content).SingleOrDefaultAsync(ct)
             ?? throw new RuleException(404, "Imagem não encontrada.");
     }
 
@@ -321,7 +337,8 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
     public static async Task<string?> ValidImageAsync(Guid campaignId, string? input, GameDb db, CancellationToken ct)
     {
         var url = NpcImages.Normalize(input, out var asset);
-        if (asset is { } id && !await db.Set<CampaignMap>().AnyAsync(m => m.Id == id && m.CampaignId == campaignId && m.TileData == null, ct))
+        // Imagens-fonte de mapa (camadas) são só do editor do mestre: nunca viram imagem de NPC ou marcador.
+        if (asset is { } id && !await db.Set<CampaignMap>().AnyAsync(m => m.Id == id && m.CampaignId == campaignId && m.TileData == null && m.Purpose != CampaignAssetPurposes.Layer, ct))
             throw new RuleException(400, "Escolha uma imagem do acervo desta campanha.");
         return url;
     }
@@ -342,6 +359,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
     public static MasterCharacter CopyOf(MasterCharacter m, DateTime now) => new()
     {
         CampaignId = m.CampaignId, Name = Cut(m.Name, 32) + " (cópia)", Summary = m.Summary, Notes = m.Notes, Side = m.Side, SourceId = m.SourceId ?? m.Id, UpdatedAt = now,
+        CreatedAt = now, FolderId = m.FolderId,
         Kind = m.Kind, TemplateVersionId = m.TemplateVersionId, Values = m.Values, ImageUrl = m.ImageUrl,
         Resources = m.Resources.Select(r => new NpcResource { Label = r.Label, Value = r.Max ?? r.Value, Max = r.Max }).ToList(),
     };
@@ -368,5 +386,5 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         await tx.CommitAsync(ct);
     }
 
-    static string Cut(string s, int max) => s.Length > max ? s[..max] : s;
+    internal static string Cut(string s, int max) => s.Length > max ? s[..max] : s;
 }

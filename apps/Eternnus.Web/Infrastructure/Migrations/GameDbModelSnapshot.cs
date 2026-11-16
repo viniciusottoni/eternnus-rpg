@@ -439,9 +439,16 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<Guid>("CampaignId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Composition")
+                        .HasMaxLength(400000)
+                        .HasColumnType("character varying(400000)");
+
                     b.Property<byte[]>("Content")
                         .IsRequired()
                         .HasColumnType("bytea");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("FolderId")
                         .HasColumnType("uuid");
@@ -469,6 +476,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
+                    b.Property<Guid?>("OwnerMapId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Purpose")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -482,9 +492,21 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasPrecision(8, 2)
                         .HasColumnType("numeric(8,2)");
 
+                    b.Property<string>("SourceKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("TileData")
                         .HasMaxLength(4160)
                         .HasColumnType("character varying(4160)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Width")
                         .HasColumnType("integer");
@@ -494,6 +516,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.HasIndex("FolderId");
 
                     b.HasIndex("CampaignId", "FolderId");
+
+                    b.HasIndex("CampaignId", "OwnerMapId");
 
                     b.ToTable("CampaignMap");
                 });
@@ -506,6 +530,11 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                     b.Property<Guid>("CampaignId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -520,6 +549,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.HasIndex("ParentId");
 
                     b.HasIndex("CampaignId", "ParentId");
+
+                    b.HasIndex("CampaignId", "Category", "ParentId");
 
                     b.ToTable("CampaignMapFolder");
                 });
@@ -1315,6 +1346,12 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<Guid>("CampaignId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("FolderId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("ImageUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -1366,6 +1403,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasColumnType("character varying(100000)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FolderId");
 
                     b.HasIndex("CampaignId", "Name");
 
@@ -1718,10 +1757,16 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<Guid>("CampaignId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid?>("FolderId")
+                        .HasColumnType("uuid");
 
                     b.Property<bool>("HasSaved")
                         .HasColumnType("boolean");
@@ -1735,6 +1780,10 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Layers")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<string>("MapKey")
                         .IsRequired()
@@ -1776,6 +1825,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasColumnType("character varying(10)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FolderId");
 
                     b.HasIndex("CampaignId", "Order");
 
@@ -2970,6 +3021,11 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Eternnus.Web.CampaignMapFolder", null)
+                        .WithMany()
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.OwnsMany("Eternnus.Web.NpcResource", "Resources", b1 =>
                         {
                             b1.Property<Guid>("MasterCharacterId");
@@ -3158,6 +3214,11 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Eternnus.Web.CampaignMapFolder", null)
+                        .WithMany()
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.OwnsMany("Eternnus.Web.SceneToken", "Prepared", b1 =>
                         {
                             b1.Property<Guid>("SceneId");
@@ -3182,6 +3243,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             b1.Property<string>("Label")
                                 .IsRequired()
                                 .HasMaxLength(40);
+
+                            b1.Property<string>("Layer")
+                                .HasMaxLength(24);
 
                             b1.Property<int?>("Light");
 
@@ -3233,6 +3297,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                             b1.Property<string>("Label")
                                 .IsRequired()
                                 .HasMaxLength(40);
+
+                            b1.Property<string>("Layer")
+                                .HasMaxLength(24);
 
                             b1.Property<int?>("Light");
 

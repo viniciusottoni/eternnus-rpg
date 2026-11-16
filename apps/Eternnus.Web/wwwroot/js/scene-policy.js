@@ -1,4 +1,5 @@
 import { decodeBits, encodeBits, lineClear } from "./fog-policy.js";
+import { ensureLayers } from "./editor-policy.js";
 
 // Regras puras do editor de cenas e da mesa do mestre: apresentação Básica/Completa, inventário de ferramentas,
 // seletor de cenários, grade, visibilidade e estados de preparação. Sem DOM nem HTTP; o servidor sempre decide.
@@ -269,3 +270,121 @@ export function simulateView({ visionMode, layer, width, height, tokens, charact
   return { fog: { active: true, visible: bits, explored: bits, cells: layer.cells, lights: [], marks: [] }, tokens: shown };
 }
 
+
+// ---------- Editor de cenas sobre o núcleo gráfico (ADR-081) ----------
+// Camadas da cena só organizam marcadores no editor: olho, cadeado e opacidade nunca mudam o que o jogador vê.
+
+/** Lados de um marcador, em linguagem simples. */
+export const SCENE_SIDES = Object.freeze([["enemy", "Inimigo"], ["neutral", "Neutro"], ["ally", "Aliado"]]);
+const sideName = (side) => (SCENE_SIDES.find(([v]) => v === side) || [, ""])[1];
+
+/** Camadas persistidas da cena (Base e Elementos sempre presentes; só os campos do contrato). */
+export function sceneLayers(layers) {
+  return ensureLayers(layers).map(({ id, name, kind, visible, locked, opacity }) => ({ id, name, kind, visible, locked, opacity }));
+}
+
+/** Camada de um marcador: precisa existir e não pode ser a Base (referência do mapa); senão, Elementos. */
+export function tokenLayerOf(layerId, layers = []) {
+  const id = String(layerId || "");
+  return id && id !== "base" && layers.some((l) => l.id === id) ? id : "elements";
+}
+
+/** Alfa de exibição no editor: camada oculta não é desenhada; opacidade 0–100 vira 0–1. */
+export function layerAlpha(layer) {
+  if (!layer) return 1;
+  if (layer.visible === false) return 0;
+  const o = Number(layer.opacity);
+  return Number.isFinite(o) ? Math.max(0, Math.min(100, o)) / 100 : 1;
+}
+
+/** Casa livre mais próxima de (x, y) em anéis crescentes; empate pela distância em linha reta. Null quando não há. */
+export function nearestFreeCell(cells, width, height, tokens, x, y, free = false) {
+  if (!(width > 0 && height > 0)) return null;
+  const sx = Math.max(0, Math.min(width - 1, Math.round(x))), sy = Math.max(0, Math.min(height - 1, Math.round(y)));
+  const max = Math.max(width, height);
+  for (let r = 0; r <= max; r++) {
+    const ring = [];
+    for (let yy = sy - r; yy <= sy + r; yy++)
+      for (let xx = sx - r; xx <= sx + r; xx++)
+        if (Math.max(Math.abs(xx - sx), Math.abs(yy - sy)) === r && xx >= 0 && yy >= 0 && xx < width && yy < height) ring.push([xx, yy]);
+    ring.sort((a, b) => ((a[0] - x) ** 2 + (a[1] - y) ** 2) - ((b[0] - x) ** 2 + (b[1] - y) ** 2));
+    for (const [xx, yy] of ring) if (!placementProblem(cells, width, height, tokens, xx, yy, -1, free)) return { x: xx, y: yy };
+  }
+  return null;
+}
+
+/** Itens da área de transferência: cópia de cada marcador com a posição relativa ao canto do grupo. */
+export function clipboardFrom(tokens, indices) {
+  const list = [...new Set(indices)].sort((a, b) => a - b).map((i) => tokens[i]).filter(Boolean);
+  if (!list.length) return [];
+  const ax = Math.min(...list.map((t) => t.x)), ay = Math.min(...list.map((t) => t.y));
+  return list.map((t) => ({ token: { ...t }, dx: t.x - ax, dy: t.y - ay }));
+}
+
+/**
+ * Colar a partir da casa `anchor`: cada item tenta a casa relativa e, se ela não servir, a casa livre mais próxima
+ * (mesma validação de "Colocar aqui"). Personagens dos jogadores já presentes não entram de novo.
+ * Devolve { placed, skipped } sem alterar `tokens`.
+ */
+export function pastePlacement({ cells, width, height, tokens = [], items = [], anchor, free = false }) {
+  const placed = [];
+  let skipped = 0;
+  const present = new Set(tokens.map((t) => t.characterId).filter(Boolean));
+  for (const item of items) {
+    const t = item.token;
+    if (t.characterId && present.has(t.characterId)) { skipped++; continue; }
+    const all = [...tokens, ...placed];
+    const tx = anchor.x + item.dx, ty = anchor.y + item.dy;
+    const exact = !placementProblem(cells, width, height, all, tx, ty, -1, free);
+    const spot = exact ? { x: tx, y: ty } : nearestFreeCell(cells, width, height, all, tx, ty, free);
+    if (!spot) { skipped++; continue; }
+    placed.push({ ...t, x: spot.x, y: spot.y, fx: free && exact ? t.fx ?? null : null, fy: free && exact ? t.fy ?? null : null });
+    if (t.characterId) present.add(t.characterId);
+  }
+  return { placed, skipped };
+}
+
+/** Move vários marcadores pelo mesmo deslocamento (setas ou arraste em grupo). Tudo ou nada: { tokens } ou { error }. */
+export function moveTokensBy(cells, width, height, tokens, indices, dx, dy, free = false) {
+  const set = new Set(indices.filter((i) => tokens[i]));
+  if (!set.size) return { error: "Selecione um marcador." };
+  const others = tokens.filter((_, i) => !set.has(i));
+  const next = tokens.map((t) => ({ ...t }));
+  const moved = [];
+  for (const i of set) {
+    const x = tokens[i].x + dx, y = tokens[i].y + dy;
+    const problem = placementProblem(cells, width, height, [...others, ...moved], x, y, -1, free);
+    if (problem) return { error: problem };
+    next[i] = { ...tokens[i], x, y };
+    moved.push(next[i]);
+  }
+  return { tokens: next };
+}
+
+/**
+ * Grupos do painel Estrutura: marcadores por camada (a mais alta primeiro, sem a Base) e, quando `technical`,
+ * a preparação do mapa (focos de luz, marcas ocultas e portas). Ids: t{índice}, light:x:y, mark:x:y, door:x:y.
+ */
+export function structureGroups({ tokens = [], layers = [], selected = [], layer = null, technical = false, kinds = [] } = {}) {
+  const chosen = new Set(selected);
+  const list = ensureLayers(layers);
+  const groups = [...list].reverse().filter((l) => l.id !== "base").map((l) => ({
+    id: l.id, label: l.name, showEmpty: true,
+    items: tokens.map((t, i) => [t, i]).filter(([t]) => tokenLayerOf(t.layer, list) === l.id).map(([t, i]) => ({
+      id: `t${i}`, label: t.label || "Marcador", icon: "character", hidden: !!t.hidden, locked: !!l.locked, selected: chosen.has(i),
+      meta: [sideName(t.side), t.characterId ? "personagem" : t.masterCharacterId ? "do mestre" : "", t.hidden ? "oculto" : ""].filter(Boolean).join(" · "),
+    })),
+  }));
+  if (!technical || !layer) return groups;
+  const at = (x, y) => `coluna ${x + 1}, linha ${y + 1}`;
+  const doors = [];
+  (layer.cells || []).forEach((row, y) => [...String(row)].forEach((c, x) => { if ((c === "d" || c === "o") && doors.length < 200) doors.push({ x, y, open: c === "o" }); }));
+  return [...groups,
+    { id: "lights", label: "Focos de luz", items: (layer.lights || []).map((l) => ({ id: `light:${l.x}:${l.y}`, label: `Foco de luz (${at(l.x, l.y)})`, meta: `raio ${l.radius}`, icon: "light" })) },
+    { id: "marks", label: "Marcas ocultas", items: (layer.marks || []).map((m) => ({ id: `mark:${m.x}:${m.y}`, label: m.label || "Marca", meta: `${(kinds.find(([v]) => v === m.kind) || [, ""])[1]} · ${at(m.x, m.y)}`.replace(/^ · /, ""), icon: "mark" })) },
+    { id: "doors", label: "Portas", items: doors.map((d) => ({ id: `door:${d.x}:${d.y}`, label: `Porta (${at(d.x, d.y)})`, meta: d.open ? "aberta" : "fechada", icon: "door" })) },
+  ];
+}
+
+/** Igualdade de instantâneos (rascunho/preparação) para recalcular "alterações não salvas" depois de desfazer. */
+export const sameSnapshot = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);

@@ -272,6 +272,10 @@ public partial class SessionService
         var width = scene.Map.Width;
         var node = JsonSerializer.SerializeToNode(map, Json)!.AsObject();
         node["rows"] = JsonSerializer.SerializeToNode(TableFogService.MaskRows(scene.Map.Rows, known, width));
+        // Terreno sob os objetos (mapa de tiles com camadas): mesma máscara das casas desconhecidas; sem ele, nada de terreno.
+        node.Remove("terrain");
+        if (scene.Map.Terrain is { } terrain && terrain.Length == scene.Map.Rows.Length)
+            node["terrain"] = JsonSerializer.SerializeToNode(TableFogService.MaskRows(terrain, known, width));
         var version = TableFogService.ImageVersion(known);
         if (scene.Map.Key.StartsWith("asset:") && node["imageUrl"]?.GetValue<string>() is { } url)
             node["imageUrl"] = url + "?v=" + version + (viewAs ? "&as=" + Uri.EscapeDataString(viewer) : "");

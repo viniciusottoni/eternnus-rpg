@@ -38,6 +38,15 @@ export function validHelpEntry(entry) {
 
 // Índice pequeno, sem parágrafos. Catálogos longos são importados ao abrir um ⓘ.
 export const HELP_KEYS = Object.freeze({
+  "campanhas.preparo.explorador": "master",
+  "campanhas.mapas.novo": "master",
+  "campanhas.cenas.nova": "master",
+  "campanhas.cenas.camadas": "master",
+  "campanhas.mapas.imagem": "master",
+  "campanhas.mapas.area-visivel": "master",
+  "campanhas.editor.camadas": "master",
+  "campanhas.editor.atalhos": "master",
+
   "campanhas.mapas.tiles": "master",
   "mesa.tela.horizontal": "all",
   "mesa.mapa.camera": "all",

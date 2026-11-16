@@ -614,3 +614,19 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | “Liberar movimento” / “Bloquear movimento” | `table.js` | Texto visível + `aria-pressed`; ⓘ `mesa.turnos.liberar-movimento` (mestre) |
 | Opção “Movimento só com liberação do mestre” | `table-settings.js` | ⓘ `mesa.turnos.liberar-movimento` e auxiliar visível |
 | Selo “Movimento aguardando o mestre” e motivo do “Mover” desabilitado | `table.js` | Texto visível (`role="status"`) e `data-tip` com o motivo |
+
+## Classificação — Preparação unificada e editores visuais (ADR-081)
+
+| Elemento | Nível / chave |
+| --- | --- |
+| Gerenciador da Preparação (árvore, conteúdo, detalhes, arrastar, atalhos) | ⓘ `campanhas.preparo.explorador` no título da área |
+| Novo mapa (do zero / a partir de modelo) | ⓘ `campanhas.mapas.novo` no diálogo de escolha |
+| Nova cena (do zero / a partir de mapa) | ⓘ `campanhas.cenas.nova` no diálogo de escolha |
+| Painel Camadas (olho, cadeado, opacidade, ordem, obrigatórias) | ⓘ `campanhas.editor.camadas` no título do painel |
+| Atalhos de teclado e mouse do editor | ⓘ `campanhas.editor.atalhos` na barra de estado |
+| Camadas da cena (só organização no editor) | ⓘ `campanhas.cenas.camadas` + nota visível no painel |
+| Editor de mapa de imagem e área visível/externa | ⓘ `campanhas.mapas.imagem` e `campanhas.mapas.area-visivel` |
+| Ferramentas da barra lateral (só ícone) | Nome acessível com atalho (`aria-label`), tooltip automático do componente compartilhado; motivo de indisponibilidade em `data-tip` |
+| Menus, menus de contexto e janela de propriedades | Rótulos visíveis e atalho exibido; navegação por setas, Enter e Esc |
+| Zoom, coordenadas, dimensões e estado | Texto visível na barra de estado; mensagens em região `aria-live` |
+| Excluir, mudar a grade de mapa preparado, sair sem salvar | Confirmação com consequências explícitas |
