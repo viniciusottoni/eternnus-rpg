@@ -108,6 +108,8 @@ export const STATIC_PATHS = Object.freeze([
     "draft-policy",
     "wall-policy",
     "grid-align-policy",
+    "image-drop",
+    "scene-composition",
   ].map((name) => `/js/${name}.js`),
   ...["conta", "campanhas", "sessoes", "mesa", "fichas", "modelos", "biblioteca", "guilda", "progresso", "suporte", "admin"].map((area) => `/js/help/${area}.js`),
   "/assets/valley.webp",

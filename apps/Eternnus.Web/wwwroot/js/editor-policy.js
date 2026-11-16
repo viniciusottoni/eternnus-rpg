@@ -248,6 +248,7 @@ export const rulerLabel = (value) => {
 
 /** Catálogo dos contextos (ordem de exibição, ícone do núcleo e descrição curta para a dica). */
 export const EDITOR_CONTEXTS = Object.freeze([
+  Object.freeze({ id: "compose", label: "Composição", icon: "image", tip: "Imagens da cena por cima do mapa: arrastar, posicionar, redimensionar, girar e organizar em camadas." }),
   Object.freeze({ id: "elements", label: "Elementos", icon: "character", tip: "Selecionar, mover e transformar objetos, personagens e recursos visuais." }),
   Object.freeze({ id: "terrain", label: "Terreno", icon: "brush", tip: "Pintar tiles, preencher áreas, texturas e superfícies do mapa." }),
   Object.freeze({ id: "walls", label: "Paredes e portas", icon: "wall", tip: "Construir obstáculos, portas, janelas e passagens." }),

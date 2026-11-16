@@ -535,3 +535,22 @@ Todas as rotas exigem `Verified`; só o mestre (403 jogador, 404 sem vínculo); 
 | POST `/api/sessions/{id}/fog/lights` | Aceita também `dim, color, intensity, animation` (nulos = luz quente padrão). |
 | POST `/api/campaigns/{id}/prep/preview-view` | `{ mapKey, sceneId?, layer? (corpo de PUT layers), tokens (arranjo da cena), visionMode?, viewerCharacterId? \| viewerUserId? \| party }` → `{ active, viewer, remember?, visible, explored, cells, lights, walls, marks, shown, perceived }`; `shown`/`perceived` são índices de `tokens`. Somente leitura: nada é gravado. 400 entrada inválida ou personagem não posicionado. |
 | GET `/api/sessions/{id}/live` (jogador) | `fog.walls`: só segmentos que bloqueiam movimento agora e tocam casas conhecidas, `{x1,y1,x2,y2,door}` com `door` = `"open"`/`"closed"` para portas não secretas e nulo nos demais. Mestre recebe `fog.walls` completo. |
+
+## Composição da cena, pontos de entrada e posições iniciais — ADR-090
+
+Todas exigem `Verified`, são do mestre da campanha (jogador 403/404) e as escritas passam pelo antiforgery comum (`js/api.js`). Campanha arquivada responde 409 em escritas.
+
+| Método/caminho | Contrato |
+| --- | --- |
+| POST `/api/campaigns/{id}/scenes/{sceneId}/sources` | multipart `file` (PNG/JPEG ≤ 10 MiB, transparência preservada) + `name` opcional → `{id,key,name,width,height,imageUrl}`. Até 40 por cena; limite de 250 MB da campanha. Limite de taxa `upload`. |
+| PUT `/api/campaigns/{id}/scenes/{sceneId}/composition` | multipart `composition` (JSON; vazio remove), `revision` (da cena), `file` opcional (sobreposição PNG transparente do tamanho do mapa). 409 se a cena não usa mapa de imagem da campanha ou revisão obsoleta; 400 para tamanho diferente do mapa, `self`, fonte que não é da cena nem imagem da campanha, ou sobreposição sem composição. → `{revision, composition, overlayId}`. Não altera a mesa. |
+| GET `/api/campaigns/{id}/scenes/{sceneId}` | + `composition`, `overlayId`, `entry` e `live.compositionPending`. GET `/scenes` + `entry`, `hasComposition`. |
+| POST/PUT `/api/campaigns/{id}/scenes` | `SceneInput.entry`: nulo mantém; `""` limpa; JSON `{"ref":"id"}` ou `{"x","y","w","h"}` validado contra o mapa. Trocar o mapa (ou tornar a cena textual) limpa composição, sobreposição e entrada e remove as imagens da cena. |
+| GET `/api/campaigns/{id}/assets/layers?key=` | + `entries`, `entriesEditable`, `mapRevision`. |
+| PUT `/api/campaigns/{id}/assets/entries?key=asset:{guid}` | `{entries:[{id,name,kind,x,y,w,h}], revision}` (revisão do mapa) → `{entries, revision}`. Tipos `party`/`enemies`/`reinforcements`/`other`; até 12; até 20 × 20 casas. 404 cenário pronto; 409 revisão obsoleta ou mapa sem grade. |
+| GET `/api/campaigns/{id}/assets/maps/{mapId}/image?overlay={id}` | Mescla a sobreposição da sessão ativa naquele mapa (mesmo `OverlayId` e tamanho) antes da máscara de névoa; senão, comportamento anterior. Imagens-fonte e sobreposições lidas por id: 404 para jogador. |
+| GET `/api/sessions/{id}/live` | `map.imageUrl` traz `?overlay=` quando a cena apresentada tem composição. |
+| POST `/api/sessions/{id}/scene/apply` | + `composition` (bool): passa a sobreposição salva para a mesa ("composição visual"). |
+| GET `/api/sessions/{id}/scene/reposition?sceneId=` | Só leitura (mestre, cena em apresentação): `{moves:[{label,characterId,tokenId,from,to}], unchanged}` do que `apply` com `tokens` faria. |
+
+Regra única de posicionamento (apresentar, aplicar com marcadores, entrar na mesa, prévia): posição preparada › área de entrada da cena › primeira Entrada do grupo do mapa › pontos `S` e casa livre mais próxima.

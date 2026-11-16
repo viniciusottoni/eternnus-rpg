@@ -731,7 +731,9 @@ export function createBoard(host, handlers = {}) {
   // Editor (ADR-081): roda = zoom no cursor, espaço/botão do meio = mover a vista; sem ampliação automática no celular.
   const editor = !!handlers.editor;
   let enlarged = !!handlers.camera && !editor && compact.matches, panning = enlarged, cameraDrag = null, panHold = false, panTool = false;
-  let zoomLevel = null, currentZoom = 1, maxZoom = 3;
+  // Zoom relativo a "ajustar à tela" (1). Só o editor afasta além disso: o mapa fica menor e centralizado no palco.
+  const minZoom = editor ? .1 : 1;
+  let zoomLevel = null, currentZoom = 1, maxZoom = 3, fitW = 0;
   let centerX = .5, centerY = .5, previousWidth = 0, previousHeight = 0, resetCamera = true;
   const camera = handlers.camera || editor ? document.createElement("div") : null;
   if (camera) {
@@ -771,7 +773,7 @@ export function createBoard(host, handlers = {}) {
     next.src = src;
   }
   image.onerror = () => { status.textContent = "Não foi possível carregar o mapa. Tente atualizar a mesa."; };
-  image.onload = () => { layout(); };
+  image.onload = () => { layout(); if (editor) handlers.onZoom?.(); };
 
   // Camada estática (ADR-081): desenhada fora da tela numa resolução própria e escalada ao desenhar.
   // O zoom reaproveita a camada atual e refaz a nitidez em fatias curtas, sem travar a interface; quando a grade muda
@@ -855,17 +857,23 @@ export function createBoard(host, handlers = {}) {
       centerY = (host.scrollTop + previousHeight / 2) / Math.max(1, surface.offsetHeight);
     }
     const ratio = tileset() ? rows()[0].length / rows().length : image.naturalWidth / image.naturalHeight;
-    let width = host.clientWidth, height = host.clientHeight;
+    let width = host.clientWidth, height = host.clientHeight, contentW = 0, contentH = 0;
     if (Number.isFinite(ratio) && ratio > 0) {
       const fitWidth = Math.min(width, height * ratio), fitHeight = fitWidth / ratio;
       const cover = Math.max(width / fitWidth, height / fitHeight);
       maxZoom = editor ? Math.max(8, cover * 4) : Math.max(3, cover * 3);
-      currentZoom = Math.max(1, Math.min(maxZoom, zoomLevel ?? (enlarged ? cover : 1)));
-      width = Math.max(width, fitWidth * currentZoom);
-      height = Math.max(height, fitHeight * currentZoom);
+      currentZoom = Math.max(minZoom, Math.min(maxZoom, zoomLevel ?? (enlarged ? cover : 1)));
+      fitW = fitWidth;
+      contentW = fitWidth * currentZoom; contentH = fitHeight * currentZoom;
+      width = Math.max(width, contentW);
+      height = Math.max(height, contentH);
     }
     surface.style.width = `${width}px`;
     surface.style.height = `${height}px`;
+    // Imagem sem grade no editor: tamanho exato do zoom, centralizada (permite afastar abaixo de "ajustar à tela").
+    if (editor && !tileset() && contentW > 0) {
+      Object.assign(image.style, { position: "absolute", width: `${contentW}px`, height: `${contentH}px`, left: `${(width - contentW) / 2}px`, top: `${(height - contentH) / 2}px` });
+    }
     // O canvas cobre só a área visível (fixo na rolagem); a superfície ampliada só dá a extensão da rolagem.
     // Assim cada quadro desenha a janela visível, não o mapa ampliado inteiro.
     const viewW = Math.max(1, host.clientWidth), viewH = Math.max(1, host.clientHeight);
@@ -888,9 +896,10 @@ export function createBoard(host, handlers = {}) {
     if (!tileset()) return;
     const r = rows();
     // Casa em pixels inteiros: camada em cache alinhada (repintura sem emendas) e grade nítida.
+    // A casa sai do conteúdo ampliado (não da superfície), para o zoom abaixo de "ajustar à tela" também reduzir o mapa.
     cell = Math.max(
       1,
-      Math.floor(Math.min(width * dpr / r[0].length, height * dpr / r.length)),
+      Math.floor(Math.min((contentW || width) * dpr / r[0].length, (contentH || height) * dpr / r.length)),
     );
     baseX = Math.floor((width * dpr - cell * r[0].length) / 2);
     baseY = Math.floor((height * dpr - cell * r.length) / 2);
@@ -904,7 +913,7 @@ export function createBoard(host, handlers = {}) {
     const y = clientY == null ? host.clientHeight / 2 : clientY - rect.top;
     const anchorX = (host.scrollLeft + x) / Math.max(1, surface.offsetWidth);
     const anchorY = (host.scrollTop + y) / Math.max(1, surface.offsetHeight);
-    zoomLevel = Math.max(1, Math.min(maxZoom, value));
+    zoomLevel = Math.max(minZoom, Math.min(maxZoom, value));
     enlarged = zoomLevel > 1.001;
     layout();
     host.scrollLeft = anchorX * surface.offsetWidth - x;
@@ -1386,7 +1395,8 @@ export function createBoard(host, handlers = {}) {
   // ---------- Extras do editor (ADR-081) ----------
   if (editor) {
     host.addEventListener("wheel", (e) => {
-      if (!tileset() && !uploaded()) return;
+      // Imagem sem grade também aproxima com a roda, depois de carregada.
+      if (!tileset() && !uploaded() && !(image.naturalWidth > 0)) return;
       e.preventDefault();
       const factor = Math.exp(-Math.max(-60, Math.min(60, e.deltaY * (e.deltaMode === 1 ? 16 : 1))) / 240);
       zoomAt(currentZoom * factor, e.clientX, e.clientY);
@@ -1412,6 +1422,7 @@ export function createBoard(host, handlers = {}) {
   const observer = new ResizeObserver(() => {
     layout();
     draw();
+    if (editor) handlers.onZoom?.();
   });
   observer.observe(host);
   const motion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -1485,8 +1496,15 @@ export function createBoard(host, handlers = {}) {
       zoomIn: () => zoomAt(currentZoom * 1.25),
       zoomOut: () => zoomAt(currentZoom / 1.25),
       fit: () => { zoomLevel = 1; enlarged = false; resetCamera = true; layout(); draw(); updateCamera(); },
-      actual: (natural = 64) => { const fitCell = cell / dpr / currentZoom; if (fitCell > 0) zoomAt(natural / fitCell); },
-      zoom: (natural = 64) => (cell > 0 ? cell / dpr / natural : 1),
+      // Imagem sem grade: 100% = um pixel da imagem por pixel da tela (não há casas para medir).
+      actual: (natural = 64) => {
+        if (!tileset()) { if (image.naturalWidth > 0 && fitW > 0) zoomAt(image.naturalWidth / fitW); return; }
+        const fitCell = cell / dpr / currentZoom; if (fitCell > 0) zoomAt(natural / fitCell);
+      },
+      zoom: (natural = 64) => {
+        if (!tileset()) return image.naturalWidth > 0 && fitW > 0 ? fitW * currentZoom / image.naturalWidth : 1;
+        return cell > 0 ? cell / dpr / natural : 1;
+      },
       setPanHold: (on) => { panHold = !!on; host.classList.toggle("camera-pan", panHold || panTool || panning); },
       setPan: (on) => { panTool = !!on; host.classList.toggle("camera-pan", panHold || panTool || panning); },
       cellAt: (x, y) => cellAt(x, y),

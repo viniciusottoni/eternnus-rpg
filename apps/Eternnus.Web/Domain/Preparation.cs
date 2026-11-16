@@ -70,6 +70,13 @@ public class Scene
     public Guid? FolderId { get; set; }
     /// <summary>Camadas visuais do editor (JSON de <see cref="EditorLayer"/>); nulo = Base e Elementos.</summary>
     [MaxLength(4000)] public string? Layers { get; set; }
+    /// <summary>Composição visual própria da cena (JSON de <see cref="CompositionDocument"/>) sobre a imagem do mapa; nula = só o mapa.
+    /// Imagens-fonte são da cena (<see cref="CampaignMap.OwnerSceneId"/>) ou imagens da campanha reaproveitadas sem cópia.</summary>
+    [MaxLength(400000)] public string? Composition { get; set; }
+    /// <summary>Camada achatada (PNG transparente, tamanho do mapa) do que os jogadores veem da composição; nula = nada sobre o mapa.</summary>
+    public Guid? OverlayId { get; set; }
+    /// <summary>Entrada da cena (<see cref="SceneEntry"/>, JSON): ponto do mapa ou área própria; nula = entrada do mapa.</summary>
+    [MaxLength(400)] public string? Entry { get; set; }
 }
 
 /// <summary>Recurso configurável de um personagem do mestre (vida, estresse, munição…).</summary>

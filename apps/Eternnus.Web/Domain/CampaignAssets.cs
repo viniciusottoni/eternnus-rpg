@@ -70,6 +70,10 @@ public class CampaignMap
     [MaxLength(400000)] public string? Composition { get; set; }
     /// <summary>Mapa dono de uma imagem-fonte (<see cref="CampaignAssetPurposes.Layer"/>); nulo nas demais imagens.</summary>
     public Guid? OwnerMapId { get; set; }
+    /// <summary>Cena dona de uma imagem (<see cref="CampaignAssetPurposes.Layer"/>): fontes e camadas achatadas da composição da cena.</summary>
+    public Guid? OwnerSceneId { get; set; }
+    /// <summary>Pontos de entrada do mapa com grade (JSON de <see cref="MapEntry"/>); nulo = nenhum.</summary>
+    [MaxLength(4000)] public string? Entries { get; set; }
 }
 /// <summary>Categorias de imagem do acervo da campanha.</summary>
 public static class CampaignAssetPurposes
@@ -111,6 +115,7 @@ public static class CampaignAssetsModel
         b.Entity<CampaignMap>().HasOne<CampaignMapFolder>().WithMany().HasForeignKey(x => x.FolderId).OnDelete(DeleteBehavior.NoAction);
         b.Entity<CampaignMap>().HasIndex(x => new { x.CampaignId, x.FolderId });
         b.Entity<CampaignMap>().HasIndex(x => new { x.CampaignId, x.OwnerMapId });
+        b.Entity<CampaignMap>().HasIndex(x => new { x.CampaignId, x.OwnerSceneId });
         b.Entity<CampaignMap>().Property(x => x.Revision).IsConcurrencyToken();
         b.Entity<CampaignMap>().Property(x => x.ScaleMeters).HasPrecision(8, 2);
         b.Entity<CampaignMapLayer>().HasOne<Campaign>().WithMany().HasForeignKey(x => x.CampaignId).OnDelete(DeleteBehavior.Cascade);

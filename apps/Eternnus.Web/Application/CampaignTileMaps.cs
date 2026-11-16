@@ -78,6 +78,7 @@ public sealed partial class CampaignAssetsService
             db.Add(map);
         }
         map.Name = name; map.ScaleMeters = x.ScaleMeters; map.TileData = data;
+        map.Entries = MapEntries.Fit(map.Entries, rows[0].Length, rows.Length);
         if (id == null || !x.KeepFolder) map.FolderId = x.FolderId;
         map.Composition = TileLayers.Serialize(layers);
         if (summary != null) map.Summary = summary;

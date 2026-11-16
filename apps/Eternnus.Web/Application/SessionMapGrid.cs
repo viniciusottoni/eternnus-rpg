@@ -39,6 +39,7 @@ public partial class SessionService
         map.GridPixels = x.GridPixels; map.GridOffsetX = x.GridOffsetX; map.GridOffsetY = x.GridOffsetY; map.ScaleMeters = x.ScaleMeters;
         map.Revision++;
         int width = rows[0].Length, height = rows.Length, moved = 0;
+        map.Entries = MapEntries.Fit(map.Entries, width, height);
         var tokens = await db.SessionTokens.Where(t => t.SessionId == sessionId).ToListAsync(ct);
         var taken = tokens.Where(t => t.X < width && t.Y < height).Select(t => (t.X, t.Y)).ToHashSet();
         foreach (var t in tokens.Where(t => t.X >= width || t.Y >= height).OrderBy(t => t.Label))

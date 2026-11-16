@@ -234,9 +234,10 @@ public sealed class TableFogService(GameDb db)
     /// Imagem do mapa enviado para um jogador: casas não exploradas (e faixas fora da grade) em preto.
     /// Nenhum pixel de casa desconhecida sai do servidor. Falha nunca devolve a imagem completa.
     /// </summary>
-    public static async Task<byte[]> MaskAsync(Guid mapId, int mapRevision, byte[] content, int gridPixels, int width, int height, bool[] known, CancellationToken ct, int offsetX = 0, int offsetY = 0)
+    /// <remarks><paramref name="variant"/>: identifica a imagem de base quando não é a do mapa (ex.: camada da cena aplicada).</remarks>
+    public static async Task<byte[]> MaskAsync(Guid mapId, int mapRevision, byte[] content, int gridPixels, int width, int height, bool[] known, CancellationToken ct, int offsetX = 0, int offsetY = 0, string? variant = null)
     {
-        var key = $"{mapId}:{mapRevision}:{offsetX}:{offsetY}:{ImageVersion(known)}";
+        var key = $"{mapId}:{mapRevision}:{offsetX}:{offsetY}:{ImageVersion(known)}:{variant}";
         if (MaskCache.TryGetValue(key, out byte[]? cached) && cached != null) return cached;
         if (!await Masking.WaitAsync(TimeSpan.FromSeconds(10), ct)) throw new RuleException(429, "O mapa está sendo preparado. Tente novamente em instantes.");
         try
@@ -259,6 +260,32 @@ public sealed class TableFogService(GameDb db)
                 }
             if (any) drawables.Draw(image);
             image.Strip(); image.Quality = 85;
+            var bytes = image.ToByteArray(MagickFormat.Jpeg);
+            MaskCache.Set(key, bytes, new MemoryCacheEntryOptions { Size = bytes.Length, SlidingExpiration = TimeSpan.FromMinutes(20) });
+            return bytes;
+        }
+        catch (MagickException) { throw new RuleException(503, "Não foi possível preparar o mapa agora. Tente novamente."); }
+        finally { Masking.Release(); }
+    }
+
+    /// <summary>
+    /// Imagem do mapa com a camada achatada da composição da cena por cima (mesmo tamanho), em JPEG.
+    /// Guardada no mesmo cache das imagens mascaradas, pela revisão do mapa e pela camada.
+    /// </summary>
+    public static async Task<byte[]> CompositeAsync(Guid mapId, int mapRevision, Guid overlayId, byte[] content, byte[] overlay, CancellationToken ct)
+    {
+        var key = $"composite:{mapId}:{mapRevision}:{overlayId:N}";
+        if (MaskCache.TryGetValue(key, out byte[]? cached) && cached != null) return cached;
+        if (!await Masking.WaitAsync(TimeSpan.FromSeconds(10), ct)) throw new RuleException(429, "O mapa está sendo preparado. Tente novamente em instantes.");
+        try
+        {
+            RuntimeHelpers.RunClassConstructor(typeof(AvatarProcessor).TypeHandle);
+            static MagickFormat Format(byte[] bytes) => CampaignAssetsService.ImageType(bytes) == DocumentKinds.Png ? MagickFormat.Png : MagickFormat.Jpeg;
+            using var image = new MagickImage(content, new MagickReadSettings { Format = Format(content) });
+            using var layer = new MagickImage(overlay, new MagickReadSettings { Format = Format(overlay) });
+            image.Composite(layer, 0, 0, CompositeOperator.Over);
+            image.BackgroundColor = MagickColors.Black; image.Alpha(AlphaAction.Remove);
+            image.Strip(); image.Quality = 90;
             var bytes = image.ToByteArray(MagickFormat.Jpeg);
             MaskCache.Set(key, bytes, new MemoryCacheEntryOptions { Size = bytes.Length, SlidingExpiration = TimeSpan.FromMinutes(20) });
             return bytes;

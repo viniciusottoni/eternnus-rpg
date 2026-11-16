@@ -42,6 +42,8 @@ export function normalizeLayers(list) {
     return {
       id, kind, name: String(l?.name ?? name).trim().slice(0, LIMITS.layerName) || name,
       visible: l?.visible !== false, locked: !!l?.locked, opacity: clamp(opacity, 0, 100),
+      // Composição de cena (ADR-090): camada "só o mestre vê" fica fora da imagem dos jogadores. Mapas não usam.
+      ...(l?.secret ? { secret: true } : {}),
     };
   };
   const required = REQUIRED.map(([id, name]) => layer(input.find((l) => l.id === id), id, id, name));
@@ -80,6 +82,8 @@ export function normalizeElement(raw, layerIds = null) {
   };
   // Grupo (ADR-086): opcional; documentos antigos não têm o campo e continuam iguais.
   if (typeof raw?.group === "string" && ID.test(raw.group)) el.group = raw.group;
+  // Elemento "só o mestre vê" (ADR-090, composição de cena): diferente de `visible`, que é só do editor.
+  if (raw?.secret) el.secret = true;
   if (type === "image") el.src = String(raw?.src ?? "");
   if (type === "text") {
     el.text = String(raw?.text ?? "").slice(0, LIMITS.text);
@@ -118,11 +122,12 @@ export function serializeComposition(doc) {
   const out = {
     v: 1,
     artboard: { width: Math.round(doc.artboard.width), height: Math.round(doc.artboard.height), background: doc.artboard.background || "#000000" },
-    layers: doc.layers.map((l) => ({ id: l.id, name: l.name, kind: l.kind, visible: !!l.visible, locked: !!l.locked, opacity: Math.round(l.opacity) })),
+    layers: doc.layers.map((l) => ({ id: l.id, name: l.name, kind: l.kind, visible: !!l.visible, locked: !!l.locked, opacity: Math.round(l.opacity), ...(l.secret ? { secret: true } : {}) })),
     elements: doc.elements.map((e) => {
       const base = { id: e.id, layer: e.layer, type: e.type, name: e.name || null, x: round2(e.x), y: round2(e.y), width: round2(e.width), height: round2(e.height),
         rotation: round2(e.rotation), opacity: round2(e.opacity), visible: !!e.visible, locked: !!e.locked, flipX: !!e.flipX, flipY: !!e.flipY };
       if (e.group && ID.test(e.group)) base.group = e.group;
+      if (e.secret) base.secret = true;
       if (e.type === "image") base.src = e.src;
       if (e.type === "text") Object.assign(base, { text: e.text, fontSize: round2(e.fontSize), fontFamily: e.fontFamily, color: e.color, align: e.align, bold: !!e.bold, italic: !!e.italic });
       if (e.type === "rect" || e.type === "ellipse") Object.assign(base, { fill: e.fill || null, stroke: e.stroke || null, strokeWidth: round2(e.strokeWidth || 0) });

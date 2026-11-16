@@ -139,7 +139,7 @@ export function visibleSources(doc) {
  * Achata o documento fora da tela exatamente no tamanho do artboard: fundo, camadas/elementos visíveis, transformações.
  * O que está na área externa fica de fora (o canvas recorta). Recusa se alguma imagem visível não carregou.
  */
-export async function flattenComposition(doc, cache) {
+export async function flattenComposition(doc, cache, { transparent = false } = {}) {
   const entries = await cache.ready(visibleSources(doc));
   if (entries.some((e) => e.state !== "ready")) throw new Error("Uma imagem visível não carregou. Recarregue o editor ou oculte/exclua o elemento marcado como indisponível.");
   const canvas = document.createElement("canvas");
@@ -147,8 +147,11 @@ export async function flattenComposition(doc, cache) {
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("O navegador não liberou o desenho em canvas.");
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
-  ctx.fillStyle = doc.artboard.background || "#000000";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Sobreposição de cena (ADR-090): fundo transparente; o servidor a mescla sobre a imagem do mapa.
+  if (!transparent) {
+    ctx.fillStyle = doc.artboard.background || "#000000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
   renderElements(ctx, doc, cache, { placeholder: false });
   return canvas;
 }
@@ -182,7 +185,9 @@ export function createCompositionSurface(host, ctl) {
   let width = 0, height = 0, dpr = 1, frame = 0, fitted = false, panHold = false, drag = null, hover = null, lastDoc = null, disposed = false;
   const touches = new Map();
   let pinch = null;
-  const cache = createImageCache((src) => ctl.resolveSrc(src), () => invalidate());
+  // Cache externo (editor de cenas, ADR-090) evita baixar a mesma imagem duas vezes; o dono o limpa.
+  const ownCache = !ctl.cache;
+  const cache = ctl.cache || createImageCache((src) => ctl.resolveSrc(src), () => invalidate());
   const pattern = (() => {
     const p = document.createElement("canvas"); p.width = p.height = 32;
     const g = p.getContext("2d");
@@ -624,7 +629,7 @@ export function createCompositionSurface(host, ctl) {
       if (frame) cancelAnimationFrame(frame);
       observer.disconnect();
       canvas.remove();
-      cache.clear();
+      if (ownCache) cache.clear();
     },
   };
 }

@@ -302,23 +302,15 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         if (map == null) return;
         var taken = (await db.SessionTokens.Where(t => t.SessionId == s.Id).Select(t => new { t.X, t.Y }).ToListAsync(ct)).Select(t => (t.X, t.Y)).ToHashSet();
         taken.UnionWith(db.SessionTokens.Local.Where(t => t.SessionId == s.Id).Select(t => (t.X, t.Y)));
-        // Paredes e obstáculos pintados pelo mestre também valem para o ponto de entrada.
-        var (_, layer) = await Fog.LayerAsync(s.CampaignId, map, TableSettings.Default, false, ct);
+        // Paredes e obstáculos pintados pelo mestre (na camada em uso) também valem para o ponto de entrada.
+        var (_, layer) = await Fog.LayerAsync(s.CampaignId, map, TableSettings.Default, false, ct, ScenePrep.SessionLayer(s));
         var grid = FogGrid.Of(map, layer);
-        var spot = FreeSpot(map, taken, (x, y) => grid.Inside(x, y) && !grid.BlocksMove(x, y));
+        // Quem chega no meio da cena entra pela entrada da cena apresentada; senão, pela do mapa (ver ScenePlacement).
+        var sceneEntry = s.SceneId is { } sceneId
+            ? await db.Scenes.AsNoTracking().Where(x => x.Id == sceneId && x.CampaignId == s.CampaignId && x.Kind == SceneKinds.Map && x.MapKey == s.MapKey).Select(x => x.Entry).FirstOrDefaultAsync(ct)
+            : null;
+        var spot = ScenePlacement.Spot(map, grid, taken, await EntryRectsAsync(s, sceneEntry, ct));
         if (spot is { } p) db.SessionTokens.Add(new() { SessionId = s.Id, CharacterId = character.Id, Label = character.Name.Length > 40 ? character.Name[..40] : character.Name, Side = "ally", X = p.X, Y = p.Y });
-    }
-
-    static (int X, int Y)? FreeSpot(BattleMap map, HashSet<(int, int)> taken, Func<int, int, bool> canStand)
-    {
-        foreach (var spawn in map.Spawns()) if (!taken.Contains(spawn) && canStand(spawn.X, spawn.Y)) return spawn;
-        // Ao esgotar os pontos de entrada, procura a célula livre mais próxima do primeiro ponto.
-        var origin = map.Spawns().FirstOrDefault();
-        for (var radius = 1; radius < Math.Max(map.Width, map.Height); radius++)
-            for (var y = origin.Y - radius; y <= origin.Y + radius; y++)
-                for (var x = origin.X - radius; x <= origin.X + radius; x++)
-                    if (canStand(x, y) && !taken.Contains((x, y))) return (x, y);
-        return null;
     }
 
     public async Task HeartbeatAsync(Guid sessionId, string user, CancellationToken ct)
@@ -363,6 +355,8 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         await AwardSessionXpAsync(a, ct);
         // Mesa fechada deixa de ser novidade.
         await NoticeService.ForgetAsync(db, a.Session.CampaignId, sessionId.ToString(), ct, NoticeAreas.Table);
+        // Camada de composição guardada só para esta mesa (a cena já tem outra) deixa de ser necessária.
+        await CampaignAssetsService.ReleaseOverlayAsync(db, a.Campaign.Id, a.Session.OverlayId, null, a.Session.Id, ct);
         await CommitAsync(tx, a.Session, ct);
     }
 
@@ -548,6 +542,10 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
             await SaveSceneStateAsync(a.Session, current, ct);
         a.Session.SceneId = null; a.Session.LayerKey = null; a.Session.SceneName = null; a.Session.SceneText = null;
         a.Session.MapKind = map.Kind; a.Session.MapKey = map.Key;
+        // Cenário improvisado mostra só o mapa: a camada da composição da cena anterior sai da mesa.
+        var previousOverlay = a.Session.OverlayId;
+        a.Session.OverlayId = null;
+        await CampaignAssetsService.ReleaseOverlayAsync(db, a.Campaign.Id, previousOverlay, null, a.Session.Id, ct);
         if (map.Kind == MapKinds.Tileset)
         {
             // Novo tileset: criaturas do cenário anterior saem e os aventureiros voltam aos pontos de entrada.
@@ -870,8 +868,12 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         var builtIn = BattleMaps.Find(s.MapKey);
         if (builtIn != null) return new { kind = builtIn.Kind, key = builtIn.Key, name = builtIn.Name, imageUrl = builtIn.ImageUrl, rows = builtIn.Rows, width = builtIn.Width, height = builtIn.Height, scaleMeters = builtIn.ScaleMeters };
         if (s.MapKey.StartsWith("asset:") && await new CampaignAssetsService(db).ResolveMapAsync(s.CampaignId, s.MapKey, ct) is { } asset)
-            return s.MapKind == MapKinds.Tileset && asset.HasGrid ? asset
-                : new { kind = MapKinds.Cartographic, key = asset.Key, name = asset.Name, imageUrl = asset.ImageUrl, rows = Array.Empty<string>(), width = 0, height = 0 };
+        {
+            // Composição da cena na mesa: a mesma rota da imagem, com a camada aplicada pelo servidor (antes da névoa).
+            var image = s.OverlayId is { } overlay && asset.ImageUrl != null ? $"{asset.ImageUrl}?overlay={overlay:N}" : asset.ImageUrl;
+            return s.MapKind == MapKinds.Tileset && asset.HasGrid ? asset with { ImageUrl = image }
+                : new { kind = MapKinds.Cartographic, key = asset.Key, name = asset.Name, imageUrl = image, rows = Array.Empty<string>(), width = 0, height = 0 };
+        }
         var resource = s.MapKey.StartsWith("resource:") && Guid.TryParse(s.MapKey[9..], out var rid)
             ? await db.Resources.AsNoTracking().Where(r => r.Id == rid && r.CampaignId == s.CampaignId).Select(r => new { r.Name, r.Content }).SingleOrDefaultAsync(ct) : null;
         return new { kind = MapKinds.Cartographic, key = s.MapKey, name = resource?.Name ?? "Mapa indisponível", imageUrl = resource?.Content, rows = Array.Empty<string>(), width = 0, height = 0 };

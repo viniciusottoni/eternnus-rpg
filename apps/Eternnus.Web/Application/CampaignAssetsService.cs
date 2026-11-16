@@ -214,7 +214,9 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
         if (x.HasGrid)
         {
             if (x.GridPixels > Math.Min(map.Width, map.Height)) throw new RuleException(400, "O quadrado deve caber na imagem.");
-            _ = CampaignMapView.Grid(map.Width, map.Height, x.GridPixels, x.GridOffsetX, x.GridOffsetY);
+            var rows = CampaignMapView.Grid(map.Width, map.Height, x.GridPixels, x.GridOffsetX, x.GridOffsetY);
+            // Grade menor: pontos de entrada que não cabem mais saem do mapa.
+            map.Entries = MapEntries.Fit(map.Entries, rows[0].Length, rows.Length);
         }
         else if (id != null && map.HasGrid)
         {
@@ -274,6 +276,10 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
         var map = await Maps.SingleOrDefaultAsync(m => m.CampaignId == campaign && m.Id == id && m.Purpose != CampaignAssetPurposes.Layer, ct) ?? throw Missing();
         await EnsureMapIdleAsync(campaign, id, ct);
         var key = "asset:" + id;
+        // Imagem usada na composição de cenas (reaproveitada sem cópia): o mestre a retira delas antes.
+        var pattern = "\"" + key + "\"";
+        var composed = await db.Scenes.CountAsync(s => s.CampaignId == campaign && s.Composition != null && s.Composition.Contains(pattern), ct);
+        if (composed > 0) throw new RuleException(409, $"{composed} cena(s) usam esta imagem na composição visual. Retire-a delas antes de excluir.");
         // Imagens-fonte dos elementos do mapa saem com ele.
         await Maps.Where(m => m.CampaignId == campaign && m.OwnerMapId == id && m.Purpose == CampaignAssetPurposes.Layer).ExecuteDeleteAsync(ct);
         // Camada compartilhada e camadas próprias de cenas ({chave}@{cena}).
@@ -286,8 +292,10 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
     /// <summary>
     /// Bytes do mapa. Mestre recebe a imagem completa (ou, com <paramref name="asUser"/>, a versão de um jogador);
     /// jogador só durante a sessão ativa e, com névoa ativa, apenas os pixels das casas que já explorou.
+    /// <paramref name="overlay"/>: camada da composição da cena na mesa; só vale quando é a da sessão ativa neste mapa
+    /// (senão é ignorada). Ela é aplicada sobre a imagem antes da névoa; imagens da cena nunca são servidas por id a jogadores.
     /// </summary>
-    public async Task<byte[]> ImageAsync(Guid campaign, Guid id, string user, CancellationToken ct, string? asUser = null)
+    public async Task<byte[]> ImageAsync(Guid campaign, Guid id, string user, CancellationToken ct, string? asUser = null, Guid? overlay = null)
     {
         var c = await Access(campaign, user, false, ct);
         var key = "asset:" + id;
@@ -295,16 +303,29 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
         var master = c.OwnerId == user;
         if (!master && session == null) throw Missing();
         var map = await Maps.AsNoTracking().Where(m => m.CampaignId == campaign && m.Id == id && m.TileData == null)
-            .Select(m => new { m.Content, m.GridPixels, m.Revision, m.HasGrid, m.GridOffsetX, m.GridOffsetY }).SingleOrDefaultAsync(ct) ?? throw Missing();
+            .Select(m => new { m.Content, m.GridPixels, m.Revision, m.HasGrid, m.GridOffsetX, m.GridOffsetY, m.Width, m.Height, m.Purpose }).SingleOrDefaultAsync(ct) ?? throw Missing();
+        var content = map.Content;
+        string? variant = null;
+        if (overlay is { } layerId && session?.OverlayId == layerId && map.Purpose == CampaignAssetPurposes.Map)
+        {
+            var layer = await Maps.AsNoTracking().Where(m => m.CampaignId == campaign && m.Id == layerId && m.Purpose == CampaignAssetPurposes.Layer && m.OwnerSceneId != null)
+                .Select(m => new { m.Content, m.Width, m.Height }).SingleOrDefaultAsync(ct);
+            // Camada de outro tamanho (imagem do mapa trocada depois) é ignorada: a mesa mostra só o mapa.
+            if (layer != null && layer.Width == map.Width && layer.Height == map.Height)
+            {
+                content = await TableFogService.CompositeAsync(id, map.Revision, layerId, map.Content, layer.Content, ct);
+                variant = layerId.ToString("N");
+            }
+        }
         var viewer = master ? asUser : user;
         // Imagem sem grade (ou apresentada como cena sem grade) não tem névoa: só chega a jogadores enquanto está na mesa.
-        if (viewer == null || session == null || !map.HasGrid) return map.Content;
+        if (viewer == null || session == null || !map.HasGrid) return content;
         if (master && !await db.SessionParticipants.AnyAsync(p => p.SessionId == session.Id && p.UserId == viewer && !p.IsMaster, ct)) throw Missing();
         var scene = await new TableFogService(db).SceneAsync(session, c, false, ct);
-        if (scene == null || !scene.Active) return map.Content;
+        if (scene == null || !scene.Active) return content;
         var view = scene.View(viewer);
         var known = scene.Settings.RememberExplored ? view.Explored : view.Visible;
-        return await TableFogService.MaskAsync(id, map.Revision, map.Content, map.GridPixels, scene.Map.Width, scene.Map.Height, known, ct, map.GridOffsetX, map.GridOffsetY);
+        return await TableFogService.MaskAsync(id, map.Revision, content, map.GridPixels, scene.Map.Width, scene.Map.Height, known, ct, map.GridOffsetX, map.GridOffsetY, variant);
     }
 
     // ---------- Preparação de névoa e luz ----------
@@ -335,6 +356,7 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
         var explored = new bool[map.Width * map.Height];
         foreach (var e in state.Explored.Values) explored = Bits.Or(explored, Bits.Decode(e, explored.Length));
         var asset = await ResolveMapAsync(campaign, map.Key, ct);
+        var entries = asset == null ? [] : MapEntries.Parse(await Maps.AsNoTracking().Where(m => m.CampaignId == campaign && m.Id == asset.Id).Select(m => m.Entries).SingleOrDefaultAsync(ct));
         var shared = layerKey == map.Key
             ? await db.Scenes.AsNoTracking().Where(s => s.CampaignId == campaign && s.MapKey == map.Key && s.LayerMode == SceneLayerModes.Map && s.Kind == SceneKinds.Map).OrderBy(s => s.Name).Select(s => new { s.Id, s.Name }).Take(20).ToListAsync(ct)
             : [];
@@ -343,6 +365,8 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
             key = map.Key, layerKey, mode = layerKey == map.Key ? SceneLayerModes.Map : SceneLayerModes.Scene, name = map.Name, kind = map.Kind, width = map.Width, height = map.Height, rows = map.Rows, imageUrl = map.ImageUrl, scaleMeters = map.ScaleMeters,
             gridPixels = asset?.GridPixels, gridOffsetX = asset?.GridOffsetX, gridOffsetY = asset?.GridOffsetY, pixelWidth = asset?.PixelWidth, pixelHeight = asset?.PixelHeight,
             freeMovement = map.Free,
+            // Pontos de entrada: editáveis só em mapas da campanha (oficiais não têm). mapRevision = revisão do mapa para salvá-los.
+            entries, entriesEditable = asset != null, mapRevision = asset?.Revision,
             fog = prep.Fog, manual = prep.Manual, cells = prep.Cells, lights = prep.Lights, revealed = prep.Revealed, marks = prep.Marks, walls = prep.Walls, explored = Bits.Encode(explored),
             revision = row?.Revision ?? 0, prepVersion = TableFogService.PrepVersion(prep), settings,
             inUse = await LiveOn(campaign, map.Key, layerKey).AnyAsync(ct),

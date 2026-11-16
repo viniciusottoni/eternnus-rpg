@@ -18,7 +18,7 @@ public sealed partial class CampaignAssetsService
     public const long MaxCompositionRequestBytes = MaxImageBytes + 2L * 1024 * 1024;
 
     static object SourceView(CampaignMap m) => new { m.Id, key = "asset:" + m.Id, m.Name, m.Width, m.Height, imageUrl = $"/api/campaigns/{m.CampaignId}/assets/maps/{m.Id}/image" };
-    static JsonElement CompositionJson(CompositionDocument doc) => JsonSerializer.SerializeToElement(doc, EditorLayers.Json);
+    internal static JsonElement CompositionJson(CompositionDocument doc) => JsonSerializer.SerializeToElement(doc, EditorLayers.Json);
 
     async Task EnsureNotArchivedAsync(Guid campaign, CancellationToken ct)
     {
@@ -49,6 +49,8 @@ public sealed partial class CampaignAssetsService
         if (x.GridPixels is < 8 or > 1024 || x.ScaleMeters is < 0.01m or > 1000m || decimal.Round(x.ScaleMeters, 2) != x.ScaleMeters) throw new RuleException(400, "Grade: 8–1.024 pixels. Escala: 0,01–1.000 metros, até duas casas decimais.");
         if (x.GridOffsetX < 0 || x.GridOffsetY < 0 || x.GridOffsetX >= x.GridPixels || x.GridOffsetY >= x.GridPixels) throw new RuleException(400, "O deslocamento da grade vai de 0 até o tamanho do quadrado menos 1 pixel.");
         var (doc, sources, usesSelf) = MapComposition.Parse(x.Composition);
+        // Camada secreta é recurso da composição de cenas: no mapa, a marca não tem efeito e sai.
+        doc = MapComposition.WithoutSecrets(doc);
         var flat = await Normalize(image, ct);
         if (flat.Width != doc.Artboard!.Width || flat.Height != doc.Artboard.Height) throw new RuleException(400, "A imagem achatada não tem o tamanho da área visível. Salve novamente.");
         var hasGrid = x.HasGrid; var free = hasGrid && x.FreeMovement;
@@ -93,7 +95,11 @@ public sealed partial class CampaignAssetsService
             var count = await db.Scenes.CountAsync(s => s.CampaignId == campaign && s.MapKey == assetKey && s.Kind == SceneKinds.Map, ct);
             if (count > 0) throw new RuleException(409, $"{count} cena(s) usam este mapa com grade. Troque o cenário delas antes de deixar só a imagem.");
         }
-        if (grid != null) await PruneSceneTokensAsync(campaign, map.Id, grid[0].Length, grid.Length, ct);
+        if (grid != null)
+        {
+            await PruneSceneTokensAsync(campaign, map.Id, grid[0].Length, grid.Length, ct);
+            map.Entries = MapEntries.Fit(map.Entries, grid[0].Length, grid.Length);
+        }
         if (removed.Count > 0)
         {
             var ids = removed.Select(o => o.Id).ToList();

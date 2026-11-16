@@ -103,12 +103,37 @@ public static class CampaignAssetsEndpoints
         // scene (opcional): camada própria da cena quando ela usa preparação própria; senão, a do mapa.
         api.MapGet("/layers", (Guid campaignId, string key, Guid? scene, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.LayerAsync(campaignId, key, Id(u), ct, scene));
         api.MapPut("/layers", (Guid campaignId, string key, Guid? scene, MapLayerInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveLayerAsync(campaignId, key, Id(u), x, ct, scene));
-        api.MapGet("/maps/{id:guid}/image", async (Guid campaignId, Guid id, string? @as, HttpContext http, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
+        // Pontos de entrada do mapa da campanha (key = asset:{guid}); mapas oficiais respondem 404.
+        api.MapPut("/entries", (Guid campaignId, string key, MapEntriesInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveEntriesAsync(campaignId, key, Id(u), x, ct));
+        // overlay (opcional): camada da composição da cena na mesa; só vale quando é a da sessão ativa neste mapa.
+        api.MapGet("/maps/{id:guid}/image", async (Guid campaignId, Guid id, string? @as, Guid? overlay, HttpContext http, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
         {
-            var bytes = await s.ImageAsync(campaignId, id, Id(u), ct, string.IsNullOrEmpty(@as) ? null : @as);
+            var bytes = await s.ImageAsync(campaignId, id, Id(u), ct, string.IsNullOrEmpty(@as) ? null : @as, overlay);
             http.Response.Headers.CacheControl = "private, no-store";
             http.Response.Headers["X-Content-Type-Options"] = "nosniff";
             return Results.File(bytes, CampaignAssetsService.ImageType(bytes), enableRangeProcessing: false);
         });
+
+        // Composição visual própria da cena (mestre): imagens-fonte da cena e composição + camada achatada para os jogadores.
+        var scenes = app.MapGroup("/api/campaigns/{campaignId:guid}/scenes/{sceneId:guid}").RequireAuthorization("Verified");
+        scenes.MapPost("/sources", async (Guid campaignId, Guid sceneId, HttpRequest request, DocumentFiles files, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            await s.EnsureMasterAsync(campaignId, Id(u), ct);
+            var form = await ReadImageFormAsync(request, 512, ct);
+            if (form.Files.Count != 1 || form.Files[0].Name != "file" || form.Keys.Any(k => k != "name")) throw new RuleException(400, "Envie uma imagem e, se quiser, o nome.");
+            var document = await files.ReadAsync(form.Files[0], new[] { DocumentKinds.Png, DocumentKinds.Jpeg }, ct);
+            return Results.Ok(await s.AddSceneSourceAsync(campaignId, sceneId, Id(u), form["name"].ToString(), document, ct));
+        }).RequireRateLimiting("upload");
+        scenes.MapPut("/composition", async (Guid campaignId, Guid sceneId, HttpRequest request, DocumentFiles files, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            await s.EnsureMasterAsync(campaignId, Id(u), ct);
+            var form = await ReadImageFormAsync(request, MapComposition.MaxLength, ct);
+            // Sem arquivo = nada da composição para os jogadores; composição vazia remove a composição da cena.
+            if (form.Files.Count > 1 || (form.Files.Count == 1 && form.Files[0].Name != "file") || form.Keys.Any(k => k is not ("composition" or "revision")))
+                throw new RuleException(400, "Envie a composição, a revisão da cena e, se houver, a camada achatada.");
+            if (!int.TryParse(form["revision"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var revision)) throw new RuleException(400, "Revisão inválida.");
+            var document = form.Files.Count == 1 ? await files.ReadAsync(form.Files[0], new[] { DocumentKinds.Png, DocumentKinds.Jpeg }, ct) : null;
+            return Results.Ok(await s.SaveSceneCompositionAsync(campaignId, sceneId, Id(u), form["composition"].ToString(), revision, document, ct));
+        }).RequireRateLimiting("upload");
     }
 }

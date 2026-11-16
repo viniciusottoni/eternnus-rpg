@@ -287,7 +287,7 @@ public partial class SessionService
             node["terrain"] = JsonSerializer.SerializeToNode(TableFogService.MaskRows(terrain, known, width));
         var version = TableFogService.ImageVersion(known);
         if (scene.Map.Key.StartsWith("asset:") && node["imageUrl"]?.GetValue<string>() is { } url)
-            node["imageUrl"] = url + "?v=" + version + (viewAs ? "&as=" + Uri.EscapeDataString(viewer) : "");
+            node["imageUrl"] = url + (url.Contains('?') ? "&v=" : "?v=") + version + (viewAs ? "&as=" + Uri.EscapeDataString(viewer) : "");
         var tokens = scene.Raw.Values.Where(t => view.Tokens.Contains(t.Id)).Select(t => PlayerToken(t, effective[t.Id], view.PerceivedTokens.Contains(t.Id), Image(t.Id))).ToList();
         var fog = new
         {

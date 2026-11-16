@@ -418,6 +418,22 @@ function treasure(g,type) {
   }
 }
 
+/**
+ * Entrada do grupo (S): anel dourado com contorno escuro e bandeira vermelha, legível sobre neve, grama, pedra ou água.
+ * Contraste por forma e por duas cores (claro sobre escuro), não só por matiz. O terreno continua visível dentro do anel.
+ */
+function spawnMark(g,detail) {
+  const ring=(r,color,width)=>{g.beginPath();g.arc(50,50,r,0,Math.PI*2);g.strokeStyle=color;g.lineWidth=width;g.stroke();};
+  g.beginPath();g.arc(50,50,30,0,Math.PI*2);g.fillStyle="#f2cf7a33";g.fill();
+  ring(31,"#120d05cc",detail?10:13);
+  ring(31,"#f2cf7a",detail?4.5:7);
+  // Bandeira: mastro escuro com filete claro e flâmula vermelha (o grupo começa aqui).
+  line(g,[[43,70],[43,30]],"#120d05",detail?7:9);
+  line(g,[[43,70],[43,30]],"#f6e2b0",detail?3:4);
+  shape(g,[[44,30],[66,38],[44,47]],"#d9483b","#120d05",detail?3:4);
+  if(detail) for(let i=0;i<4;i++){g.save();g.translate(50,50);g.rotate(i*Math.PI/2);line(g,[[-30,-42],[-42,-42],[-42,-30]],"#120d05aa",5);line(g,[[-30,-42],[-42,-42],[-42,-30]],"#f2cf7a",2.2);g.restore();}
+}
+
 /** Desenho compartilhado entre miniaturas, editor e mesa; omite detalhes finos em escalas pequenas. */
 /**
  * `ground` (opcional, mesmas dimensões): terreno da camada Base sob objetos de camadas superiores (ADR-081).
@@ -472,10 +488,7 @@ export function drawTile(g, rows, x, y, size, outdoor, timber, ground = null) {
       const yy=i*20;g.fillStyle=gradient(g,"#9b9981","#566258",0,yy,0,yy+16);g.fillRect(0,yy,100,16);
       line(g,[[0,yy+2],[100,yy+2]],"#d2c6a26b",1.5);line(g,[[0,yy+18],[100,yy+18]],"#1e312e",3);
     }
-    if(c==="S") {
-      // Marcas de canto indicam a entrada sem substituir o terreno.
-      for(let i=0;i<4;i++){g.save();g.translate(50,50);g.rotate(i*Math.PI/2);line(g,[[-24,-32],[-32,-32],[-32,-24]],"#ddc58b66",1.5);g.restore();}
-    }
+    if(c==="S") spawnMark(g,detail);
   }
   if(c==="T") {
     shape(g,[[41,76],[44,43],[53,39],[58,46],[55,80]],"#282f2b","#afa078",2);
