@@ -9,37 +9,7 @@ namespace Eternnus.Tests;
 /// <summary>Regras puras de luz, visão, caminho e detecção.</summary>
 public sealed class FogRulesTests
 {
-    static uint Crc32(byte[] data)
-    {
-        var crc = 0xFFFFFFFFu;
-        foreach (var b in data)
-        {
-            crc ^= b;
-            for (var k = 0; k < 8; k++) crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
-        }
-        return ~crc;
-    }
-
-    static byte[] WhitePng(int width, int height)
-    {
-        static void Chunk(Stream s, string type, byte[] data)
-        {
-            var len = new byte[4]; System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(len, data.Length); s.Write(len);
-            var body = System.Text.Encoding.ASCII.GetBytes(type).Concat(data).ToArray(); s.Write(body);
-            var crc = new byte[4]; System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(crc, Crc32(body)); s.Write(crc);
-        }
-        var header = new byte[13];
-        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(header, width);
-        System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(4), height);
-        header[8] = 8; header[9] = 2; // 8 bits, RGB
-        using var raw = new MemoryStream();
-        using (var z = new System.IO.Compression.ZLibStream(raw, System.IO.Compression.CompressionLevel.Fastest, true))
-            for (var y = 0; y < height; y++) { z.WriteByte(0); z.Write(Enumerable.Repeat((byte)255, width * 3).ToArray()); }
-        using var png = new MemoryStream();
-        png.Write([137, 80, 78, 71, 13, 10, 26, 10]);
-        Chunk(png, "IHDR", header); Chunk(png, "IDAT", raw.ToArray()); Chunk(png, "IEND", []);
-        return png.ToArray();
-    }
+    static byte[] WhitePng(int width, int height) => TestPng.Solid(width, height, 255, 255, 255);
 
     static FogGrid Grid(params string[] rows) => new(rows[0].Length, rows.Length, rows);
 

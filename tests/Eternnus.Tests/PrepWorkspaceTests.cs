@@ -47,11 +47,8 @@ public sealed class PrepWorkspaceTests : IAsyncLifetime
     static TileLayerInput Layer(string id, string kind, string[] rows, bool visible = true) => new(id, id, kind, visible, false, 100, rows);
     static TileMapInput Tiles(List<TileLayerInput?>? layers, int revision = 0) => new("Bosque", null, 1.5m, Rows(), revision, Layers: layers);
 
-    static byte[] Png(int width, int height, bool alpha = false)
-    {
-        using var image = new MagickImage(alpha ? MagickColors.Transparent : MagickColors.SteelBlue, (uint)width, (uint)height);
-        return image.ToByteArray(MagickFormat.Png);
-    }
+    static byte[] Png(int width, int height, bool alpha = false) =>
+        alpha ? TestPng.Solid(width, height, 0, 0, 0, 0) : TestPng.Solid(width, height, 70, 130, 180);
     static UploadedDocument Upload(byte[] bytes) => new(bytes, DocumentKinds.Png, "a.png", "");
 
     async Task<CampaignMapView> ImageMapAsync(string name = "Salão", int size = 128) =>
