@@ -2336,6 +2336,50 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Eternnus.Web.StoreExposure", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime?>("ClickedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Cycle")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Strategy")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("ProductId", "CreatedAt");
+
+                    b.HasIndex("UserId", "Cycle", "ProductId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "ProductId", "CreatedAt");
+
+                    b.ToTable("StoreExposures", (string)null);
+                });
+
             modelBuilder.Entity("Eternnus.Web.StoreInteraction", b =>
                 {
                     b.Property<long>("Id")
@@ -2443,6 +2487,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<int>("Priority")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("PublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("Revision")
                         .IsConcurrencyToken()
                         .HasColumnType("integer");
@@ -2511,15 +2558,56 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.ToTable("StoreProductTags", (string)null);
                 });
 
+            modelBuilder.Entity("Eternnus.Web.StoreRotationState", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTime>("AdvancedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Cycle")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ServedExplore")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ServedNew")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ServedPopular")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ServedRelated")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("StoreRotationStates", (string)null);
+                });
+
             modelBuilder.Entity("Eternnus.Web.StoreSettings", b =>
                 {
                     b.Property<int>("Id")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("CatalogCoverage")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("CategoryDiversity")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("FatigueImpressions")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("LearnFromClicks")
                         .HasColumnType("boolean");
 
                     b.Property<int>("MaxPerMarketplace")
@@ -2536,6 +2624,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<int>("PriceStaleHours")
                         .HasColumnType("integer");
 
+                    b.Property<int>("RepeatWindow")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("RequireImage")
                         .HasColumnType("boolean");
 
@@ -2543,7 +2634,22 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("integer");
 
+                    b.Property<bool>("RotateOnNavigation")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("RotationHours")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ShareExplore")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ShareNew")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SharePopular")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ShareRelated")
                         .HasColumnType("integer");
 
                     b.Property<int>("ShowcaseMedium")
@@ -2554,6 +2660,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                     b.Property<int>("ShowcaseWide")
                         .HasColumnType("integer");
+
+                    b.Property<bool>("SmartRotation")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Synonyms")
                         .IsRequired()
@@ -2607,6 +2716,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<DateTime?>("InterestsResetAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("LearnFromClicks")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("MessagesConsentAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2626,6 +2738,36 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.HasIndex("AnalyzeMessages", "InterestsComputedAt");
 
                     b.ToTable("StoreUserPreferences", (string)null);
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreUserProductStat", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Exposures")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("FirstExposedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("LastCycle")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("LastExposedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId", "ProductId");
+
+                    b.HasIndex("LastExposedAt");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("StoreUserProductStats", (string)null);
                 });
 
             modelBuilder.Entity("Eternnus.Web.StoredFile", b =>
@@ -4140,6 +4282,21 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Navigation("Pages");
                 });
 
+            modelBuilder.Entity("Eternnus.Web.StoreExposure", b =>
+                {
+                    b.HasOne("Eternnus.Web.StoreProduct", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Eternnus.Web.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Eternnus.Web.StoreInteraction", b =>
                 {
                     b.HasOne("Eternnus.Web.StoreProduct", null)
@@ -4187,6 +4344,15 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Eternnus.Web.StoreRotationState", b =>
+                {
+                    b.HasOne("Eternnus.Web.AppUser", null)
+                        .WithOne()
+                        .HasForeignKey("Eternnus.Web.StoreRotationState", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Eternnus.Web.StoreUserInterest", b =>
                 {
                     b.HasOne("Eternnus.Web.AppUser", null)
@@ -4206,6 +4372,21 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.HasOne("Eternnus.Web.AppUser", null)
                         .WithOne()
                         .HasForeignKey("Eternnus.Web.StoreUserPreferences", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreUserProductStat", b =>
+                {
+                    b.HasOne("Eternnus.Web.StoreProduct", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Eternnus.Web.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

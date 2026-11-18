@@ -1483,6 +1483,10 @@ export function createBoard(host, handlers = {}) {
     host.addEventListener("auxclick", (e) => { if (e.button === 1) e.preventDefault(); });
     canvas.addEventListener("pointermove", (e) => { if (!cameraDrag) handlers.onHover?.(pointAt(e.clientX, e.clientY)); });
     canvas.addEventListener("pointerleave", () => handlers.onHover?.(null));
+  }
+  // Botão direito e tecla de menu (Menu ou Shift+F10): editor e mesa ao vivo usam o menu de contexto do núcleo,
+  // nunca o do navegador ("Salvar imagem como…" sobre o canvas).
+  if (editor || handlers.onContext) {
     canvas.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       const c = pointAt(e.clientX, e.clientY);

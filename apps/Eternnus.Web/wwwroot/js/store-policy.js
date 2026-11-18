@@ -111,6 +111,42 @@ export function showcaseColumns(width, layout) {
   return l.narrow;
 }
 
+// ---------- Exibição confirmada (ADR-108) ----------
+/** Um cartão conta como exibido com ao menos metade visível por cerca de um segundo, com a aba visível. */
+export const EXPOSURE_RATIO = 0.5;
+export const EXPOSURE_MS = 1000;
+
+/** Navegação real: a rota mudou desde a última sincronização da vitrine (renderizar de novo a mesma rota não conta). */
+export const isNewNavigation = (previousRoute, hash) => previousRoute !== String(hash ?? "");
+
+/** Entrada do IntersectionObserver suficiente para começar a contar a exibição. */
+export const exposureVisible = (entry, documentVisible = true) =>
+  !!entry && entry.isIntersecting === true && Number(entry.intersectionRatio) >= EXPOSURE_RATIO && documentVisible === true;
+
+/**
+ * Cartões já confirmados por exibição (token da exibição → produtos). Cada produto conta uma vez por exibição, mesmo
+ * que o cartão saia e volte à tela ou a largura mude. Guarda só as últimas exibições; nada vai ao armazenamento.
+ */
+export function createExposureLedger(maxViews = 20) {
+  const views = new Map();
+  return {
+    add(view, id) {
+      if (!view || !id) return false;
+      let seen = views.get(view);
+      if (!seen) {
+        seen = new Set();
+        views.set(view, seen);
+        if (views.size > maxViews) views.delete(views.keys().next().value);
+      }
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    },
+    has: (view, id) => !!views.get(view)?.has(id),
+    clear: () => views.clear(),
+  };
+}
+
 // ---------- Catálogo ----------
 export const SORTS = Object.freeze([
   ["relevance", "Relevância"],
@@ -140,8 +176,8 @@ export const centsToInput = (cents) => (Number.isInteger(cents) ? (cents / 100).
 export const hasExplicitFilters = (f) =>
   !!(f.q || f.systems.length || f.categories.length || f.marketplaces.length || parseReais(f.minPrice) !== null || parseReais(f.maxPrice) !== null || f.available || f.onSale);
 
-/** Query string do catálogo (somente valores válidos). */
-export function catalogQuery(f, campaignId = "") {
+/** Query string do catálogo (somente valores válidos). `seed` fixa a ordem dos empates durante a sessão de catálogo. */
+export function catalogQuery(f, campaignId = "", seed = 0) {
   const q = new URLSearchParams();
   const term = String(f.q || "").trim().slice(0, 100);
   if (term.length >= 2) q.set("q", term);
@@ -156,6 +192,7 @@ export function catalogQuery(f, campaignId = "") {
   if (SORTS.some(([key]) => key === f.sort) && f.sort !== "relevance") q.set("sort", f.sort);
   if (Number.isInteger(f.page) && f.page > 1) q.set("page", String(Math.min(f.page, 500)));
   if (GUID.test(campaignId)) q.set("campaignId", campaignId);
+  if (Number.isInteger(seed) && seed > 0 && seed <= 2147483647) q.set("seed", String(seed));
   return q.toString();
 }
 

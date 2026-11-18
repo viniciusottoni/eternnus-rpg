@@ -26,6 +26,7 @@ export function tableCommands(ctx = {}) {
     { id: "explore", label: "Exploração e marcas ocultas", group: "Névoa", keywords: ["armadilha", "porta secreta", "pista", "marca"], masterOnly: true, basic: false, action: "t-fog-group", arg: "explore", disabled: grid },
     { id: "tokenSenses", label: "Luz e visão do marcador selecionado", group: "Elementos", keywords: ["visao no escuro", "tocha", "sentidos"], masterOnly: true, basic: false, action: "t-token-settings", disabled: sel ? null : "Selecione um marcador no mapa." },
     { id: "tokenEdit", label: "Editar marcador selecionado", group: "Elementos", keywords: ["nome", "lado", "ficha"], masterOnly: true, action: "t-token-edit", disabled: creature ? null : "Selecione uma criatura no mapa." },
+    { id: "tokenRemove", label: "Remover marcador selecionado", group: "Elementos", keywords: ["apagar", "excluir", "delete", "token"], masterOnly: true, action: "t-tool-remove", disabled: creature ? null : "Selecione uma criatura no mapa." },
     { id: "tableSettings", label: "Configuração da mesa", group: "Sessão", keywords: ["nevoa", "tochas", "regras"], masterOnly: true, basic: false, action: "t-table-settings" },
     // Mestre — condução.
     { id: "order", label: "Ordem de turnos", group: "Turnos", keywords: ["iniciativa", "combate"], masterOnly: true, action: "t-order" },

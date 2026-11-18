@@ -48,6 +48,9 @@ public class GameDb(DbContextOptions<GameDb> options) : IdentityDbContext<AppUse
     public DbSet<StoreInteraction> StoreInteractions => Set<StoreInteraction>();
     public DbSet<StoreUserPreferences> StorePreferences => Set<StoreUserPreferences>();
     public DbSet<StoreUserInterest> StoreInterests => Set<StoreUserInterest>();
+    public DbSet<StoreExposure> StoreExposures => Set<StoreExposure>();
+    public DbSet<StoreUserProductStat> StoreUserProductStats => Set<StoreUserProductStat>();
+    public DbSet<StoreRotationState> StoreRotationStates => Set<StoreRotationState>();
     protected override void OnModelCreating(ModelBuilder b)
     {
         base.OnModelCreating(b);

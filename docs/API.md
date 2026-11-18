@@ -596,24 +596,25 @@ Regra única de posicionamento (apresentar, aplicar com marcadores, entrar na me
 | POST `/api/sessions/{id}/tokens/{tokenId}/settings` | Mestre | Acrescenta `unlinkSheet` (bool): a criatura deixa de apontar para a ficha (que continua em Preparação › Personagens). Com `templateId` junto, troca a ficha. Personagem de jogador `409`. |
 | Eventos | — | `map` de revelar/cobrir passa a ser privado do mestre com `{tool, cells, mapKey, layerKey, undoable}` (faixas compactas "a-b,c"; pinceladas que não cabem em 3.200 caracteres ficam sem desfazer). Pintura sem mudança não gera evento. Remoção de marcador: o evento privado do mestre guarda o retrato para desfazer; se o marcador era visível ao grupo, os jogadores recebem uma cópia sem dados (`IsRecipientCopy`). |
 
-## Loja do Aventureiro (ADR-104)
+## Loja do Aventureiro (ADR-104, ADR-108)
 
 Contrato completo, formatos (`Card`, `Preferences`, `ProductInput`, `Settings`) e regras em [LOJA_AFILIADOS.md §9](LOJA_AFILIADOS.md#9-contrato-http). Todas as rotas exigem `Verified`; `/api/admin/store/**` também exige `Admin`. Escritas usam o antiforgery comum.
 
 | Rota | Resumo |
 | --- | --- |
-| `GET /store/products` | Catálogo paginado (24) e filtrado no servidor: `q`, `system` (GUID ou `generic`, repetível), `category`, `marketplace`, `minPrice`, `maxPrice`, `available`, `onSale`, `sort`, `page`, `campaignId`. Sem busca e com `sort=relevance`, ordem personalizada (`personalized: true`). |
+| `GET /store/products` | Catálogo paginado (24) e filtrado no servidor: `q`, `system` (GUID ou `generic`, repetível), `category`, `marketplace`, `minPrice`, `maxPrice`, `available`, `onSale`, `sort`, `page`, `campaignId`, `seed` (1–2.147.483.647: sessão de catálogo; fixa a ordem dos empates entre páginas). Sem busca e com `sort=relevance`, ordem personalizada (`personalized: true`). |
 | `GET /store/products/{id}` | Produto ativo com descrição completa; inativo/excluído 404. |
 | `GET /store/suggestions?q=` | Até 8 títulos para o campo de busca. |
 | `GET /store/categories` | Categorias, sistemas e lojas com contagem de produtos ativos, `genericCount`, `popularity`, `priceStaleHours`. |
-| `GET /store/recommendations?page=&campaignId=` | Vitrine (até 3). `show=false` com `reason` `disabled`, `page`, `hidden` ou `empty`. `campaignId` só vale para quem é mestre ou integrante. |
-| `GET`/`PUT /store/preferences` | Mostrar vitrine, usar sistemas das campanhas, consentimento para análise de mensagens (opt-in) e sistema de interesse; inclui os termos inferidos do próprio usuário. |
+| `GET /store/recommendations?page=&campaignId=` | Vitrine (até 3) do Round Robin inteligente; só lê. `view: { token, cycle, strategies[] }` (fila de cada cartão: `popular`, `new`, `related`, `explore` ou `ranked`). `show=false` com `reason` `disabled`, `page`, `hidden` ou `empty`. `campaignId` só vale para quem é mestre ou integrante. |
+| `POST /store/impressions` | `{ view, productIds }` (1–3 cartões que ficaram ≥ 50% visíveis por ~1 s), 204. Token inválido, expirado, de outra pessoa ou produto fora da exibição: 400. Idempotente por usuário, ciclo e produto; avança o ciclo uma vez. Vitrine desligada/oculta: 204 sem gravar. Limite `store-impressions` (60/min). |
+| `GET`/`PUT /store/preferences` | Mostrar vitrine, usar sistemas das campanhas, consentimento para análise de mensagens (opt-in), sistema de interesse e `learnFromClicks`; inclui os termos inferidos e os sistemas aprendidos (`learnedSystems`) do próprio usuário. |
 | `DELETE /store/interests` | Apaga os interesses inferidos (204). |
 | `POST /store/interactions` | `{ productId, surface }` (`showcase`, `store`, `detail`), 204; limite `store` (30/min). |
 | `/admin/store/products` (`GET`, `POST`), `/{id}` (`GET`, `PUT`, `DELETE` lógico), `/{id}/status` (`POST`) | Gestão com revisão (409 em conflito) e auditoria sem a URL afiliada. |
 | `POST /admin/store/preview-link` | `{ url }` → loja, identificador, metadados públicos quando permitidos, `notes`, `duplicateOf`; limite `store-preview` (20/5 min). |
 | `/admin/store/categories` (`GET`, `POST`, `PUT /{id}`, `DELETE /{id}`) | Taxonomia; excluir categoria com produtos: 409. |
-| `GET`/`PUT /admin/store/settings` | Vitrine e recomendação (revisão). |
-| `GET /admin/store/metrics?days=` | Agregados de cliques (7–365 dias); `impressionsTracked: false`. |
+| `GET`/`PUT /admin/store/settings` | Vitrine, recomendação e rotação inteligente (revisão). Proporções das filas somam 100 e exploração ≥ 5: senão 400. |
+| `GET /admin/store/metrics?days=` | Agregados (7–365 dias): cliques, exibições, CTR atribuído e suavizado por fila e por produto, cobertura do catálogo ativo, menos exibidos, exibições por loja/sistema/categoria; `impressionsTracked: true`. Nunca dados individuais. |
 
 Excluir um sistema de RPG associado a produtos devolve 409 (`DELETE /admin/rpg-systems/{id}`).

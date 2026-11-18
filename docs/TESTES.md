@@ -1,5 +1,15 @@
 # Validação
 
+## Loja do Aventureiro: Round Robin inteligente da vitrine (ADR-108) — 18 de novembro de 2026
+
+| Verificação | Resultado |
+| --- | --- |
+| `dotnet build apps/Eternnus.Web` | 0 erros |
+| `dotnet ef migrations has-pending-model-changes` | Nenhuma alteração pendente depois da migração `SmartStoreRotation` |
+| `dotnet test --filter StoreTests` | 65 passaram, 0 falharam (42 anteriores + 23 em `StoreRotationTests.cs`): navegações renovam a vitrine inclusive ao voltar; re-render e reenvio não avançam o ciclo; exibição cancelada/forjada/alheia não grava; estado sobrevive a reinício; duas abas contam uma vez; relevantes predominam com exploração ≤ 20% e metas 40/30/20/10; 1º cartão no celular alterna as quatro filas; inéditos antes de repetidos e resfriamento por exibições sem clique; catálogo pequeno repete; aprendizado gradual por cliques distintos (e desligável); exploração continua após muitos cliques; cobertura total com perfil e de 231 produtos além da janela de 192; novos entram e pausados saem na hora; fila recomeça pelos mais antigos; só cartões visíveis contam e resize não duplica; vitrine oculta não grava; CTR atribuído, suavizado e deduplicado; histórico de um usuário não afeta outro; cenários de várias campanhas; validação das proporções e ranking clássico; paginação estável com `seed`; retenção. Suíte completa não executada. |
+| `node --test` store-policy (+5), help-catalog, help-policy, help-fields, pwa, service-worker, frontend | 48 passaram, 0 falharam |
+| `node tests/store-ui.mjs` (PostgreSQL do harness com as migrações + Chrome headless) | Passou: GET não grava; POST de exibição exige CSRF, token do próprio usuário e é idempotente; desktop confirma 3 cartões após ~1 s e avança o ciclo; re-render da mesma rota não consulta de novo; mudar a largura não duplica; cada navegação consulta de novo; celular confirma só 1 cartão; painel com rotação ligada por padrão, soma das proporções e erro ao passar de 100%; API recusa exploração 0; indicadores com exibições, CTR por fila, cobertura e menos exibidos, sem dados individuais. Capturas `admin-loja-rotacao.png` e `admin-loja.png` em `artifacts/qa/loja/` |
+
 ## Loja do Aventureiro: afiliados e recomendações (ADR-104) — 18 de novembro de 2026
 
 | Verificação | Resultado |
@@ -709,3 +719,6 @@ Ambiente: PostgreSQL 17 no Docker Desktop (banco descartável por suíte) e Chro
 | `table-vtt-ui.mjs` | Uma execução falhou em "jogador ajusta a própria vida pela bolha" (espera fixa de 1,2 s sob carga); o passo isolado passa (POST 200, vida 7). Segue a falha anterior "porta do UVTT na casa certa", igual no código anterior |
 | `token-look.mjs`, `soundtrack-ui.mjs`, `free-movement.mjs`, `help-ui.mjs` | Falham igual no código anterior: "alça reduziu o dragão", alinhamento do áudio após reconectar (linha 239), `[data-action=ca-upload]` e `[data-ed-tool=scenery]` |
 | Capturas (roteiro próprio) | Mestre e jogador em 1.440 × 900, mestre em 2.560 × 1.280 e ambos em 844 × 390 (deitado): topo sem corte, trilho, barra contextual de paredes, abas, Trilha e barra de turno em uma fila |
+
+- `node tests/table-context-menu.mjs` (ADR-107; PostgreSQL isolado + Chrome/Playwright, 1.440 × 900): 39 verificações aprovadas. Trilho e bandeja a ≥ 8 px dos painéis, cartão arredondado; ⓘ na mesma linha da última palavra em rótulo estreito e no “Apresentar imagem temporária”; botão direito no marcador abre o menu (Editar, Remover) e seleciona; Remover pelo menu; Ctrl+Z desfaz; Delete remove a criatura selecionada e não remove personagem de jogador; menu da casa (Adicionar personagem aqui, Desfazer); sem erros de script. Capturas em `artifacts/qa-context`.
+- `table-vtt-ui.mjs`: falhou por tempo de espera no destaque/bandeja do jogador, igual no código anterior (`git stash`), antes e depois da mudança.

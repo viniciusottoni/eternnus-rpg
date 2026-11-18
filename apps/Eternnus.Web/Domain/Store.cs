@@ -51,6 +51,18 @@ public static class StoreSurfaces
     public static readonly string[] All = [Showcase, Store, Detail];
 }
 
+/// <summary>Filas do Round Robin inteligente da vitrine (ADR-108). A ordem dos índices é a dos vetores de proporção e de
+/// exibições servidas. <see cref="Ranked"/> marca exibições do ranking clássico (rotação inteligente desligada).</summary>
+public static class StoreStrategies
+{
+    public const string Popular = "popular", New = "new", Related = "related", Explore = "explore", Ranked = "ranked";
+    public const int PopularIndex = 0, NewIndex = 1, RelatedIndex = 2, ExploreIndex = 3, Count = 4;
+    public static readonly string[] Rotating = [Popular, New, Related, Explore];
+    public static readonly string[] All = [Popular, New, Related, Explore, Ranked];
+    public static string Key(int index) => Rotating[index];
+    public static int Index(string key) => Array.IndexOf(Rotating, key);
+}
+
 /// <summary>Páginas onde a vitrine pode aparecer (o administrador escolhe um subconjunto). Mesa, editores, sessão, ficha,
 /// admin, conta, login e cadastro nunca constam desta lista.</summary>
 public static class StorePages
@@ -94,6 +106,8 @@ public class StoreProduct
     public int Clicks { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>Primeira ativação (ADR-108): base da novidade. Edições e pausas não a reiniciam.</summary>
+    public DateTime? PublishedAt { get; set; }
     public DateTime? DeletedAt { get; set; }
     public int Revision { get; set; } = 1;
     public List<StoreProductSystem> Systems { get; set; } = [];
@@ -147,8 +161,30 @@ public class StoreSettings
     public bool RequireImage { get; set; } = true;
     /// <summary>Um grupo de sinônimos por linha, termos separados por vírgula.</summary>
     [MaxLength(8000)] public string Synonyms { get; set; } = "dado, dados, d20, poliedrico\nminiatura, miniaturas, mini, figura\nescudo do mestre, escudo do narrador";
+
+    // ---------- Round Robin inteligente (ADR-108) ----------
+    /// <summary>Vitrine por filas (populares, novidades, descoberta, exploração). Desligado: ranking clássico com rotação por janela.</summary>
+    public bool SmartRotation { get; set; } = true;
+    /// <summary>Cada exibição confirmada avança o ciclo. Desligado: o ciclo só avança uma vez por <see cref="RotationHours"/>.</summary>
+    public bool RotateOnNavigation { get; set; } = true;
+    /// <summary>Um produto exibido não volta nas próximas N navegações exibidas, se houver alternativa.</summary>
+    public int RepeatWindow { get; set; } = 10;
+    /// <summary>Metas cumulativas por fila (somam 100; exploração nunca é zero).</summary>
+    public int SharePopular { get; set; } = 40;
+    public int ShareNew { get; set; } = 30;
+    public int ShareRelated { get; set; } = 20;
+    public int ShareExplore { get; set; } = 10;
+    /// <summary>Exibições sem clique a partir das quais o resfriamento do produto dobra para o usuário (0 = desligado).</summary>
+    public int FatigueImpressions { get; set; } = 6;
+    /// <summary>Cliques do próprio usuário ensinam sistemas e categorias (o usuário também pode desligar).</summary>
+    public bool LearnFromClicks { get; set; } = true;
+    /// <summary>Descoberta e exploração percorrem o catálogo do menos exibido para o mais exibido.</summary>
+    public bool CatalogCoverage { get; set; } = true;
+
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public int Revision { get; set; } = 1;
+
+    public int[] Shares() => [SharePopular, ShareNew, ShareRelated, ShareExplore];
 }
 
 /// <summary>Clique registrado por POST explícito. Nunca guarda texto de conversa.</summary>
@@ -173,7 +209,60 @@ public class StoreUserPreferences
     /// <summary>Último pedido de exclusão: conteúdo anterior nunca volta a ser analisado.</summary>
     public DateTime? InterestsResetAt { get; set; }
     public DateTime? InterestsComputedAt { get; set; }
+    /// <summary>Usar os próprios cliques para aprender sistemas e categorias (ADR-108). Desligar não apaga os cliques (métricas).</summary>
+    public bool LearnFromClicks { get; set; } = true;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Exibição confirmada de um produto na vitrine (cartão ≥ 50% visível por ~1 s). Uma linha por usuário, ciclo e
+/// produto: repetições do mesmo evento (outra aba, nova tentativa) não contam de novo. <see cref="ClickedAt"/> atribui o
+/// clique da vitrine à exibição (CTR).</summary>
+public class StoreExposure
+{
+    public long Id { get; set; }
+    public Guid ProductId { get; set; }
+    [MaxLength(450)] public string UserId { get; set; } = "";
+    public long Cycle { get; set; }
+    [MaxLength(12)] public string Strategy { get; set; } = StoreStrategies.Popular;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? ClickedAt { get; set; }
+}
+
+/// <summary>Resumo por usuário e produto para a seleção sem varrer exposições: quantas vezes, em que ciclo e quando foi visto.</summary>
+public class StoreUserProductStat
+{
+    [MaxLength(450)] public string UserId { get; set; } = "";
+    public Guid ProductId { get; set; }
+    public int Exposures { get; set; }
+    public long LastCycle { get; set; }
+    public DateTime FirstExposedAt { get; set; } = DateTime.UtcNow;
+    public DateTime LastExposedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Progresso do ciclo da vitrine por usuário (persistido: sobrevive a reinícios e vale entre instâncias). O ciclo
+/// só avança por exibição confirmada; as contagens servidas por fila guiam as metas cumulativas.</summary>
+public class StoreRotationState
+{
+    [MaxLength(450)] public string UserId { get; set; } = "";
+    public long Cycle { get; set; }
+    public long ServedPopular { get; set; }
+    public long ServedNew { get; set; }
+    public long ServedRelated { get; set; }
+    public long ServedExplore { get; set; }
+    public DateTime AdvancedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    public long[] Served() => [ServedPopular, ServedNew, ServedRelated, ServedExplore];
+    public void Count(int strategy)
+    {
+        switch (strategy)
+        {
+            case StoreStrategies.PopularIndex: ServedPopular++; break;
+            case StoreStrategies.NewIndex: ServedNew++; break;
+            case StoreStrategies.RelatedIndex: ServedRelated++; break;
+            case StoreStrategies.ExploreIndex: ServedExplore++; break;
+        }
+    }
 }
 
 /// <summary>Interesse inferido (termo do vocabulário do catálogo e peso 0–1). Só existe com consentimento.</summary>
@@ -255,5 +344,23 @@ public static class StoreModel
         b.Entity<StoreUserInterest>().ToTable("StoreUserInterests");
         b.Entity<StoreUserInterest>().HasKey(x => new { x.UserId, x.Term });
         b.Entity<StoreUserInterest>().HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+
+        b.Entity<StoreExposure>().ToTable("StoreExposures");
+        b.Entity<StoreExposure>().HasIndex(x => new { x.UserId, x.Cycle, x.ProductId }).IsUnique();
+        b.Entity<StoreExposure>().HasIndex(x => new { x.UserId, x.ProductId, x.CreatedAt });
+        b.Entity<StoreExposure>().HasIndex(x => new { x.ProductId, x.CreatedAt });
+        b.Entity<StoreExposure>().HasIndex(x => x.CreatedAt);
+        b.Entity<StoreExposure>().HasOne<StoreProduct>().WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<StoreExposure>().HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+
+        b.Entity<StoreUserProductStat>().ToTable("StoreUserProductStats");
+        b.Entity<StoreUserProductStat>().HasKey(x => new { x.UserId, x.ProductId });
+        b.Entity<StoreUserProductStat>().HasIndex(x => x.LastExposedAt);
+        b.Entity<StoreUserProductStat>().HasOne<StoreProduct>().WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<StoreUserProductStat>().HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+
+        b.Entity<StoreRotationState>().ToTable("StoreRotationStates");
+        b.Entity<StoreRotationState>().HasKey(x => x.UserId);
+        b.Entity<StoreRotationState>().HasOne<AppUser>().WithOne().HasForeignKey<StoreRotationState>(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }
