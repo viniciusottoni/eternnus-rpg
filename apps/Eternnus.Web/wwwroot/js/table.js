@@ -8,6 +8,7 @@ import {
   $,
   esc,
   button,
+  iconButton,
   actionBar,
   modal,
   formError,
@@ -17,6 +18,7 @@ import {
   liveBadge,
 } from "./ui.js";
 import { createBoard } from "./table-map.js";
+import { icon } from "./icons.js";
 import { mountTemporaryImages } from "./temporary-images.js";
 import { mountSoundtrack } from "./table-soundtrack.js";
 import {
@@ -63,6 +65,8 @@ const FOG_GROUPS = {
   light: { label: "Luz e visão", tools: ["light"] },
   explore: { label: "Exploração", tools: ["reveal", "conceal", "mark"] },
 };
+/** Ícones de linha (icons.js) das ferramentas de névoa, paredes e luz. */
+const FOG_ICONS = { reveal: "sun", conceal: "moon", wall: "wall", blockMove: "blockMove", blockLight: "blockLight", door: "door", toggleDoor: "doorToggle", erase: "erase", light: "light", mark: "warning" };
 
 const time = (iso) =>
   new Date(iso).toLocaleTimeString("pt-BR", {
@@ -171,7 +175,7 @@ function mountTable(campaignId, sessionId, isMaster) {
 
   $("#app").className = "table-app";
   $("#app").innerHTML = `<div class="table-shell">
-    <header class="table-top"><a class="table-brand" href="#campaign/${esc(campaignId)}" aria-label="Voltar à campanha"><img src="/assets/eternnus-logo.webp" alt="Eternnus RPG"></a><div class="table-title"><h1><span id="t-campaign">Mesa</span> <span class="online-badge" data-tip="A sessão está ativa; presenças aparecem no grupo." id="t-online"><i aria-hidden="true"></i>ONLINE</span></h1><p id="t-sub">Conectando à sessão…</p></div><div class="table-top-scroll" role="group" aria-label="Comandos da sessão — deslize para ver mais"><button type="button" id="t-fullscreen" class="subtle" hidden>Tela cheia</button><div class="table-top-actions" id="t-top"></div><div class="session-audio-host" id="t-audio" hidden></div><div class="music-dock"></div></div></header>
+    <header class="table-top"><a class="table-brand" href="#campaign/${esc(campaignId)}" aria-label="Voltar à campanha"><img src="/assets/eternnus-logo.webp" alt="Eternnus RPG"></a><div class="table-title"><h1><span id="t-campaign">Mesa</span> <span class="online-badge" data-tip="A sessão está ativa; presenças aparecem no grupo." id="t-online"><i aria-hidden="true"></i>ONLINE</span></h1><p id="t-sub">Conectando à sessão…</p></div><div class="table-top-scroll" role="group" aria-label="Comandos da sessão — deslize para ver mais"><button type="button" id="t-fullscreen" class="subtle tool-icon" hidden></button><div class="table-top-actions" id="t-top"></div><div class="session-audio-host" id="t-audio" hidden></div><div class="music-dock"></div></div></header>
     <aside class="party" aria-labelledby="party-title" tabindex="-1"><h2 id="party-title"><span aria-hidden="true">⚔</span> Aventureiros <span class="count-chip" id="t-count">0 online</span></h2>${isMaster ? button("Visão do grupo", "t-party-view", "", "subtle small party-view-button") : ""}<ul id="t-party" class="party-list"></ul>${isMaster ? `<details class="npc-dock" id="t-npc-dock"><summary>Personagens do mestre</summary><p class="form-help">Arraste para o mapa ou use “Colocar” e escolha a casa.</p><ul class="npc-dock-list" id="t-npc-dock-list"></ul></details>` : ""}<p class="party-caption">Avatares conectados e estado atual${helpButton("mesa.mapa.legenda", "Marcadores, vida e presença")}</p></aside>
     <main class="stage" id="main" tabindex="-1" aria-label="Mapa da sessão"><div class="stage-chip" id="t-chip"></div><div class="stage-tools" id="t-tools" role="toolbar" aria-label="Ferramentas do mapa" aria-orientation="vertical"></div><div class="fog-palette" id="t-fog" role="toolbar" aria-label="Névoa e luz" hidden></div><div class="play-banner" id="t-banner" role="status" hidden></div><div class="pending-banner" id="t-pending" role="status" hidden></div><div class="board" id="t-board"></div><div class="turn-herald" id="t-herald" aria-hidden="true"><span></span></div><div class="roll-spotlight" id="t-spot" role="status" aria-live="polite" hidden></div><div class="dice-tray" id="t-dice" role="toolbar" aria-label="Dados rápidos"></div><div class="drop-veil" id="t-drop" hidden><p><strong>Solte para usar como mapa</strong><span>Imagem PNG, JPEG ou WebP, ou arquivo UVTT (.dd2vtt, .uvtt, .df2vtt)</span></p></div><input type="file" id="t-map-file" accept="image/png,image/jpeg,image/webp,.dd2vtt,.uvtt,.df2vtt" hidden><p class="stage-hint" id="t-hint" role="status"></p></main>
     <section class="side-panel" aria-label="Registros da mesa"><div class="panel-tabs" role="tablist" id="t-tabs"></div><div class="panel-body" id="t-panel" role="tabpanel" tabindex="0"></div><form id="t-chat" class="chat-form" autocomplete="off"><div class="field-label"><label class="sr-only" for="t-message">Mensagem para a mesa</label>${helpButton("mesa.chat.comandos", "Conversa e dados")}</div><input id="t-message" name="content" maxlength="2000" placeholder="Escrever mensagem… (/r 1d20+3 para rolar)" required><button type="submit" class="primary icon-send" aria-label="Enviar">➤</button></form></section>
@@ -334,12 +338,13 @@ function mountTable(campaignId, sessionId, isMaster) {
     ].filter(Boolean).join('<span aria-hidden="true"> • </span>');
     if (live.campaign.isOneShot) $("#t-sub").insertAdjacentHTML("beforeend", `<span class="small"> · One-shot: se o mestre sair, a mesa espera ${play.recoveryMinutes || 10} min; expira ${esc(new Date(live.campaign.expiresAt).toLocaleString("pt-BR"))}</span>`);
     $("#t-online").hidden = !!s.endedAt;
-    // Interface Básica/Completa só para o mestre; encerrar fica separado das ações frequentes.
+    // Interface Básica/Completa só para o mestre; encerrar fica separado das ações frequentes e mantém o texto.
+    // Ações frequentes só com ícone (ADR-105): nome acessível e dica; o estado pausado fica no subtítulo e em destaque.
     const top = live.me.isMaster
-      ? `${button("⌕ Ações", "t-palette", "", "subtle")}${interfaceToggle("t-interface")}${button(play.paused ? "▶ Retomar partida" : "⏸ Pausar", "t-pause", "", "subtle")}<span class="top-separator" aria-hidden="true"></span>${button("↩ Sair da tela", "t-exit", "", "subtle")}${button(live.campaign.isOneShot ? "■ Encerrar e apagar" : "■ Encerrar sessão", "t-end", "", "danger")}`
-      : `${button("⌕ Ações", "t-palette", "", "subtle")}${button("▣ Minha ficha", "t-my-sheet", "", "subtle")}${button("Sair da mesa", "t-exit", "", "subtle")}`;
+      ? `${iconButton("search", "Busca de ações (Ctrl+K)", "t-palette")}${interfaceToggle("t-interface")}${iconButton(play.paused ? "play" : "pause", play.paused ? "Retomar partida" : "Pausar partida", "t-pause", "", play.paused ? "primary" : "subtle")}<span class="top-separator" aria-hidden="true"></span>${iconButton("leave", "Sair da tela (a sessão continua)", "t-exit")}${button(live.campaign.isOneShot ? "■ Encerrar e apagar" : "■ Encerrar sessão", "t-end", "", "danger")}`
+      : `${iconButton("search", "Busca de ações (Ctrl+K)", "t-palette")}${iconButton("sheet", "Minha ficha", "t-my-sheet")}${iconButton("leave", "Sair da mesa", "t-exit")}`;
     // Só redesenha quando muda: preserva o foco no controle de interface entre atualizações ao vivo.
-    if (top !== topHtml) { topHtml = top; $("#t-top").innerHTML = `<a class="button subtle" href="#campaign/${esc(campaignId)}/notes" target="_blank" rel="noopener">Meu caderno</a>` + top; }
+    if (top !== topHtml) { topHtml = top; $("#t-top").innerHTML = `<a class="button subtle tool-icon" href="#campaign/${esc(campaignId)}/notes" target="_blank" rel="noopener" aria-label="Meu caderno (abre em nova aba)" data-tip="Meu caderno (abre em nova aba)">${icon("notes")}</a>` + top; }
   }
 
   function renderParty(first) {
@@ -389,25 +394,37 @@ function mountTable(campaignId, sessionId, isMaster) {
     $("#t-chip").innerHTML = chip;
     // Motivo do bloqueio: a liberação do mestre (ADR-079) tem mensagem própria.
     const blocked = awaitingMoveGrant() && (live.play?.myTurn || !requiresTurn(live.play?.mode)) ? "Aguarde o mestre liberar o seu movimento." : "Aguarde sua vez e use um mapa com grade para mover o personagem.";
-    const tool = (icon, action, label, active = false, disabled = false) =>
-      `<button type="button" class="tool ${active ? "active" : ""}" data-action="${action}" aria-label="${label}" data-tip="${disabled ? blocked : label}" ${active ? 'aria-pressed="true"' : 'aria-pressed="false"'} ${disabled ? 'aria-disabled="true"' : ""}>${icon}</button>`;
     const sel = live.tokens.find((t) => t.id === selected);
-    // Mestre: rótulos visíveis. A Básica vem primeiro, sempre na mesma posição; a Completa acrescenta grupos depois dela.
-    const labeled = (icon, action, label, active = false, disabled = false, id = "") =>
-      `<button type="button" class="tool labeled ${active ? "active" : ""}" data-action="${action}" data-id="${esc(id)}" aria-pressed="${active}" ${disabled ? `aria-disabled="true" data-tip="${action === 't-token-settings' ? 'Selecione um marcador para ajustar luz e visão.' : 'Esta ferramenta exige um mapa com grade.'}"` : ""}><span aria-hidden="true">${icon}</span><span class="tool-label">${esc(label)}</span></button>`;
+    // Trilho no padrão dos editores (ADR-105): ferramenta só com ícone, nome acessível e dica; indisponível diz o motivo
+    // na dica e no leitor de tela. A Básica vem primeiro, sempre na mesma posição; a Completa acrescenta grupos depois dela
+    // e as ações do marcador selecionado ficam no fim, para nada mudar de lugar ao selecionar.
+    const railTool = (name, action, label, active = false, reason = "", id = "") =>
+      `<button type="button" class="ed-tool${active ? " active" : ""}" data-action="${action}" data-id="${esc(id)}" aria-label="${esc(label)}" aria-pressed="${active}" data-tip="${esc(reason ? `${label}: ${reason}` : label)}"${reason ? ' aria-disabled="true"' : ""}>${icon(name)}</button>`;
+    const group = (label, html) => (html ? `<div class="ed-tool-group" role="group" aria-label="${esc(label)}">${html}</div>` : "");
+    const needsGrid = tiles ? "" : "Esta ferramenta exige um mapa com grade.";
     const fogOn = !!live.fog?.active;
     const complete = ui === "complete";
     const selBubble = sel ? tokenBubbles(live).get(sel.id) : null;
     const gridMap = tiles && Number(live.map.gridPixels) >= 8 && String(live.map.key || "").startsWith("asset:") && !watched;
-    const basicTools = `${labeled("➤", "t-tool-select", "Selecionar e mover", mode === "none" && tiles && !watched, !tiles)}${labeled("⚑", "t-tool-place", "Adicionar personagem", mode === "place", !tiles)}${labeled("⇲", "t-gather", "Colocar o grupo", false, !tiles)}${fogOn ? labeled("☀", "t-fog-group", "Revelar área", mode === "fog" && fogGroup === "reveal", !tiles, "reveal") : ""}${labeled("👁", "t-view-as", watched ? "Voltar à visão do mestre" : "Ver como jogador", !!watched, !tiles)}${sel?.masterCharacterId ? labeled("▣", "t-token-sheet", "Ficha do elemento", false, false) : ""}${sel && !sel.characterId ? labeled("✎", "t-token-edit", "Editar marcador", false, false) : ""}${sel ? labeled("◐", "t-token-look", "Forma e tamanho", false, false) : ""}${sel && selBubble?.target ? labeled("♥", "t-token-bubble", `${selBubble.resource.label} do selecionado`, false, false) : ""}${sel && !sel.characterId ? labeled("✕", "t-tool-remove", "Remover marcador", false, false) : ""}${labeled("⇪", "t-map-upload", "Enviar mapa ou UVTT")}${gridMap ? labeled("▦", "t-map-grid", "Ajustar grade do mapa") : ""}`;
+    const basicTools = group("Ferramentas básicas", `${railTool("select", "t-tool-select", "Selecionar e mover", mode === "none" && tiles && !watched, needsGrid)}${railTool("flag", "t-tool-place", "Adicionar personagem", mode === "place", needsGrid)}${railTool("gather", "t-gather", "Colocar o grupo na entrada", false, needsGrid)}${fogOn ? railTool("sun", "t-fog-group", "Revelar área", mode === "fog" && fogGroup === "reveal", needsGrid, "reveal") : ""}${railTool(watched ? "eyeOff" : "eye", "t-view-as", watched ? "Voltar à visão do mestre" : "Ver como jogador", !!watched, needsGrid)}`)
+      + group("Mapa", `${railTool("upload", "t-map-upload", "Enviar mapa ou UVTT")}${gridMap ? railTool("grid", "t-map-grid", "Ajustar grade do mapa") : ""}`);
     const completeTools = complete
-      ? `<div class="tool-group" role="group" aria-label="Elementos"><span class="tool-group-title">Elementos</span>${labeled("✎", "t-token-settings", "Luz, visão e ocultação", false, !sel)}</div><div class="tool-group" role="group" aria-label="Paredes, luz e exploração">${labeled("▇", "t-fog-group", "Paredes e portas", mode === "fog" && fogGroup === "walls", !tiles, "walls")}${labeled("✹", "t-fog-group", "Luz e visão", mode === "fog" && fogGroup === "light", !tiles, "light")}${labeled("⚠", "t-fog-group", "Exploração", mode === "fog" && fogGroup === "explore", !tiles, "explore")}</div><div class="tool-group" role="group" aria-label="Grade e configuração">${labeled("▦", "t-tool-grid", "Mostrar grade", gridShown(), !tiles)}${labeled("♥", "t-tool-bubbles", "Vida e armadura nos marcadores", bubbles, !tiles)}${labeled("⚙", "t-table-settings", "Configuração da mesa")}</div>`
+      ? group("Elementos", railTool("light", "t-token-settings", "Luz, visão e ocultação do marcador", false, sel ? "" : "Selecione um marcador no mapa."))
+        + group("Paredes, luz e exploração", `${railTool("wall", "t-fog-group", "Paredes e portas", mode === "fog" && fogGroup === "walls", needsGrid, "walls")}${railTool("sun", "t-fog-group", "Luz e visão", mode === "fog" && fogGroup === "light", needsGrid, "light")}${railTool("compass", "t-fog-group", "Exploração e marcas", mode === "fog" && fogGroup === "explore", needsGrid, "explore")}`)
+        + group("Grade e configuração", `${railTool("grid", "t-tool-grid", "Mostrar grade", gridShown(), needsGrid)}${railTool("heart", "t-tool-bubbles", "Vida e armadura nos marcadores", bubbles, needsGrid)}${railTool("settings", "t-table-settings", "Configuração da mesa")}`)
+      : "";
+    const selectedTools = sel
+      ? group(`Selecionado: ${sel.label}`, `${sel.masterCharacterId ? railTool("sheet", "t-token-sheet", "Ficha do elemento") : ""}${!sel.characterId ? railTool("edit", "t-token-edit", "Editar marcador") : ""}${railTool("character", "t-token-look", "Forma e tamanho")}${selBubble?.target ? railTool("heart", "t-token-bubble", `${selBubble.resource.label} do selecionado`) : ""}${!sel.characterId ? railTool("trash", "t-tool-remove", "Remover marcador") : ""}`)
       : "";
     const hidden = live.me.isMaster && !complete ? hiddenCustomizations({ fog: live.fog, scene: live.play?.scene, tokens: live.tokens }) : [];
+    const hiddenTool = hidden.length
+      ? `<button type="button" class="ed-tool hidden-chip" data-action="t-hidden" aria-label="Ajustes avançados ativos (${hidden.length}): ver">${icon("settings")}<span class="tool-count" aria-hidden="true">${hidden.length}</span></button>`
+      : "";
     $("#t-tools").innerHTML = live.me.isMaster
-      ? `${basicTools}${completeTools}${hidden.length ? `<button type="button" class="hidden-chip" data-action="t-hidden">Ajustes avançados ativos (${hidden.length}) · ver</button>` : ""}`
-      : `${tool("➤", "t-move", "Mover meu personagem", mode === "move", !canMoveNow())}${tool("▦", "t-tool-grid", "Mostrar ou ocultar a grade", gridShown(), !tiles)}${tool("♥", "t-tool-bubbles", "Mostrar ou ocultar vida e armadura nos marcadores", bubbles, !tiles)}${tool("⌖", "t-focus-board", "Usar o mapa pelo teclado", false, !tiles)}`;
-    $("#t-tools").classList.toggle("labeled-tools", live.me.isMaster);
+      ? `${basicTools}${completeTools}${selectedTools}${hiddenTool ? group("Ajustes avançados", hiddenTool) : ""}`
+      : group("Mapa", `${railTool("move", "t-move", "Mover meu personagem", mode === "move", canMoveNow() ? "" : blocked)}${railTool("grid", "t-tool-grid", "Mostrar ou ocultar a grade", gridShown(), needsGrid)}${railTool("heart", "t-tool-bubbles", "Mostrar ou ocultar vida e armadura nos marcadores", bubbles, needsGrid)}${railTool("target", "t-focus-board", "Usar o mapa pelo teclado", false, needsGrid)}`);
+    $("#t-tools").classList.remove("labeled-tools");
+    $("#t-tools").classList.add("ed-tools", "table-rail");
     renderPending();
     renderFogPalette();
     const pick = FOG_PICKS.find((p) => p.id === fogTool);
@@ -440,12 +457,15 @@ function mountTable(campaignId, sessionId, isMaster) {
     // Rótulos visíveis e só as ferramentas do grupo escolhido; ações ao vivo, com aviso persistente.
     const group = FOG_GROUPS[fogGroup] || FOG_GROUPS.reveal;
     const all = [...FOG_TOOLS, ...FOG_PICKS];
-    const item = (id) => { const t = all.find((x) => x.id === id); return `<button type="button" class="tool labeled ${fogTool === id ? "active" : ""}" data-action="t-fog-tool" data-id="${id}" aria-pressed="${fogTool === id}"><span aria-hidden="true">${t.icon}</span><span class="tool-label">${esc(t.label)}</span></button>`; };
+    // Barra contextual no padrão dos editores (ADR-105): ferramentas só com ícone numa fila; o nome da escolhida fica visível ao lado.
+    const item = (id) => { const t = all.find((x) => x.id === id); return `<button type="button" class="ed-tool${fogTool === id ? " active" : ""}" data-action="t-fog-tool" data-id="${id}" aria-label="${esc(t.label)}" data-tip="${esc(t.label)}" aria-pressed="${fogTool === id}">${icon(FOG_ICONS[id] || "brush")}</button>`; };
+    const current = all.find((x) => x.id === fogTool && group.tools.includes(x.id));
+    const currentLabel = current ? `<span class="fog-current" aria-hidden="true">${esc(current.label)}</span>` : "";
     const state = fog.inherited ? "inherit" : fog.active ? "on" : "off";
     const fogState = fogGroup === "light" ? `<label class="fog-select"><span>Névoa neste mapa</span><select id="t-fog-state" data-fog-state><option value="inherit" ${state === "inherit" ? "selected" : ""}>Padrão da mesa</option><option value="on" ${state === "on" ? "selected" : ""}>Ligada aqui</option><option value="off" ${state === "off" ? "selected" : ""}>Desligada aqui</option></select></label>` : "";
     const reset = fogGroup === "explore" ? `<button type="button" class="text-button small" data-action="t-fog-reset">Recomeçar exploração…</button>` : "";
     const help = fogGroup === "reveal" || fogGroup === "explore" ? `<p class="fog-help">${esc(HELP.conceal)}</p>` : fogGroup === "walls" ? `<p class="fog-help">${esc(HELP.wall)}</p>` : `<p class="fog-help">${esc(HELP.light)}</p>`;
-    host.innerHTML = `<div class="fog-head"><strong>${esc(group.label)}</strong>${helpButton("mesa.nevoa.ferramentas", "Ferramentas de névoa")}<span class="live-note">Ao vivo: os jogadores veem as mudanças.</span><button type="button" class="text-button small" data-action="t-tool-select">Concluir</button></div><div class="fog-group" role="group" aria-label="${esc(group.label)}">${group.tools.map(item).join("")}${fogState}${reset}</div>${help}`;
+    host.innerHTML = `<div class="fog-head"><strong>${esc(group.label)}</strong>${helpButton("mesa.nevoa.ferramentas", "Ferramentas de névoa")}<span class="live-note">Ao vivo: os jogadores veem as mudanças.</span><button type="button" class="text-button small" data-action="t-tool-select">Concluir</button></div><div class="fog-group" role="group" aria-label="${esc(group.label)}">${group.tools.map(item).join("")}${currentLabel}${fogState}${reset}</div>${help}`;
     // Reserva o espaço da paleta: o mapa encolhe em vez de ficar coberto.
     requestAnimationFrame(() => { if (!host.hidden) stage.style.setProperty("--fog-h", `${host.offsetTop + host.offsetHeight + 6}px`); });
     const select = host.querySelector("[data-fog-state]");
@@ -613,26 +633,29 @@ function mountTable(campaignId, sessionId, isMaster) {
   function renderTabs() {
     const tabs = live.me.isMaster
       ? [
-          ["chat", "Chat"],
-          ["rolls", "Rolagens"],
-          ["scenes", "Cenas"],
-          ["history", "Histórico"],
-          ["notes", "Notas"],
-          ["soundtrack", "♪ Trilha"],
+          ["chat", "Chat", "chat"],
+          ["rolls", "Rolagens", "dice"],
+          ["scenes", "Cenas", "scenery"],
+          ["history", "Histórico", "history"],
+          ["notes", "Notas", "notes"],
+          ["soundtrack", "Trilha", "music"],
         ]
       : [
-          ["chat", "Chat"],
-          ["rolls", "Rolagens"],
-          ["sheet", "Sua ficha"],
-          ["soundtrack", "♪ Trilha"],
+          ["chat", "Chat", "chat"],
+          ["rolls", "Rolagens", "dice"],
+          ["sheet", "Sua ficha", "sheet"],
+          ["soundtrack", "Trilha", "music"],
         ];
     if (!tabs.some(([k]) => k === tab)) tab = "chat";
-    $("#t-tabs").innerHTML = tabs
+    // Contextos no padrão dos editores (ADR-105): ícone em todas as abas e o nome visível só na ativa, numa fila sem rolagem.
+    // O nome continua no leitor de tela (texto oculto) e na dica.
+    const html = tabs
       .map(
-        ([key, label]) =>
-          `<button type="button" role="tab" id="tab-${key}" aria-selected="${key === tab}" class="${key === tab ? "active" : ""}" data-action="t-tab" data-id="${key}">${label}</button>`,
+        ([key, label, name]) =>
+          `<button type="button" role="tab" id="tab-${key}" aria-selected="${key === tab}" class="ed-context${key === tab ? " active" : ""}" data-action="t-tab" data-id="${key}" data-tip="${esc(label)}">${icon(name)}<span>${esc(label)}</span></button>`,
       )
       .join("");
+    if ($("#t-tabs").innerHTML !== html) $("#t-tabs").innerHTML = html;
     $("#t-chat").hidden = tab !== "chat" || !!live.session.endedAt;
   }
 
@@ -800,7 +823,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     const off = !!live.session.endedAt || (!live.me.isMaster && !cmds.canRoll);
     const why = live.session.endedAt ? "A sessão foi encerrada." : "A partida está pausada.";
     const dis = off ? `aria-disabled="true" data-tip="${esc(why)}"` : "";
-    const html = `${QUICK_DICE.map((d) => `<button type="button" class="die" data-action="t-quick-roll" data-id="${d}" aria-label="Rolar 1d${d}" ${dis}>d${d}</button>`).join("")}<button type="button" class="die more" data-action="t-roll-builder" aria-label="Mais opções de rolagem" ${off ? dis : 'data-tip="Quantidade, modificador, fórmula e favoritas"'}>⬡</button>${live.me.isMaster ? `<button type="button" class="die privacy" data-action="t-quick-hidden" aria-pressed="${quickHidden}" aria-label="${quickHidden ? "Rolagens rápidas só para você" : "Rolagens rápidas visíveis à mesa"}" data-tip="${quickHidden ? "Rolagens rápidas só para você" : "Rolagens rápidas visíveis à mesa"}">${quickHidden ? "🔒" : "👁"}</button>` : ""}${helpButton("mesa.dados.bandeja", "Dados rápidos")}`;
+    const html = `${QUICK_DICE.map((d) => `<button type="button" class="die" data-action="t-quick-roll" data-id="${d}" aria-label="Rolar 1d${d}" ${dis}>d${d}</button>`).join("")}<button type="button" class="die more" data-action="t-roll-builder" aria-label="Mais opções de rolagem" ${off ? dis : 'data-tip="Quantidade, modificador, fórmula e favoritas"'}>${icon("dice")}</button>${live.me.isMaster ? `<button type="button" class="die privacy" data-action="t-quick-hidden" aria-pressed="${quickHidden}" aria-label="${quickHidden ? "Rolagens rápidas só para você" : "Rolagens rápidas visíveis à mesa"}" data-tip="${quickHidden ? "Rolagens rápidas só para você" : "Rolagens rápidas visíveis à mesa"}">${icon(quickHidden ? "lock" : "eye")}</button>` : ""}${helpButton("mesa.dados.bandeja", "Dados rápidos")}`;
     if (host.innerHTML !== html) host.innerHTML = html;
     $(".stage").classList.add("has-dice");
   }
@@ -951,10 +974,10 @@ function mountTable(campaignId, sessionId, isMaster) {
         ? button(play.moveGranted ? "⛔ Bloquear movimento" : "⇢ Liberar movimento", "t-move-grant", play.moveGranted ? "0" : "1", play.moveGranted ? "subtle" : "primary", `aria-pressed="${!!play.moveGranted}"`)
         : "";
       const turn = turnMode
-        ? `${button("◉ Ordem", "t-order", "", "subtle")}${button("⌛ Dar a vez", "t-set-turn", "", "subtle", people ? "" : 'aria-disabled="true" aria-describedby="t-master-why"')}${button("➤ Próxima vez", "t-next", "", "primary", (people || play.turnOrder?.length) && !s.endedAt ? "" : 'aria-disabled="true" aria-describedby="t-master-why"')}`
+        ? `${iconButton("order", "Ordem de turnos", "t-order")}${iconButton("hourglass", "Dar a vez", "t-set-turn", "", "subtle", people ? "" : 'aria-disabled="true" aria-describedby="t-master-why"')}${button("➤ Próxima vez", "t-next", "", "primary", (people || play.turnOrder?.length) && !s.endedAt ? "" : 'aria-disabled="true" aria-describedby="t-master-why"')}`
         : "";
       $("#t-turn").innerHTML =
-        `<div class="turn-who">${active ? `<img class="avatar" src="${esc(active.avatarUrl)}" alt="">` : '<span class="turn-crest" aria-hidden="true">♛</span>'}<div><strong>${turnMode ? (activeLabel ? "Vez de " + esc(activeLabel) : "Narrativa do mestre") : "Condução livre"}</strong><small>${esc(modeLabel(play.mode))}${turnMode ? ` · turno ${s.turnNumber || "—"}` : ""}${play.scene ? ` · cena: ${esc(play.scene.name)}` : ""}</small></div></div><div class="turn-actions">${helpButton("mesa.turnos.ordem", "Ordem e vez")}${button("▤ Cenas", "t-scenes", "", "subtle")}${button("✦ Pedir teste", "t-request", "", "subtle", people ? "" : 'aria-disabled="true" aria-describedby="t-master-why"')}${button("⬡ Rolar", "t-roll-builder", "", "subtle")}${button("✎ Nota", "t-note", "", "subtle")}${ui === "complete" ? button("♙ Ficha", "t-open-sheet", "", "subtle", people ? "" : 'aria-disabled="true" aria-describedby="t-master-why"') : ""}${turn}${grant}${play.moveNeedsGrant ? helpButton("mesa.turnos.liberar-movimento", "Liberar movimento") : ""}</div>${!people || s.endedAt ? `<p class="turn-why" id="t-master-why">${s.endedAt ? "A sessão foi encerrada." : "Aguarde um jogador conectado com ficha. Para avançar, também é possível preparar a ordem."}</p>` : ""}`;
+        `<div class="turn-who">${active ? `<img class="avatar" src="${esc(active.avatarUrl)}" alt="">` : '<span class="turn-crest" aria-hidden="true">♛</span>'}<div><strong>${turnMode ? (activeLabel ? "Vez de " + esc(activeLabel) : "Narrativa do mestre") : "Condução livre"}</strong><small>${esc(modeLabel(play.mode))}${turnMode ? ` · turno ${s.turnNumber || "—"}` : ""}${play.scene ? ` · cena: ${esc(play.scene.name)}` : ""}</small></div></div><div class="turn-actions">${helpButton("mesa.turnos.ordem", "Ordem e vez")}${iconButton("scenery", "Cenas", "t-scenes")}${iconButton("request", "Pedir teste", "t-request", "", "subtle", people ? "" : 'aria-disabled="true" aria-describedby="t-master-why"')}${iconButton("dice", "Rolar dados", "t-roll-builder")}${iconButton("edit", "Nota", "t-note")}${ui === "complete" ? iconButton("sheet", "Ficha de um jogador", "t-open-sheet", "", "subtle", people ? "" : 'aria-disabled="true" aria-describedby="t-master-why"') : ""}${turn}${grant}${play.moveNeedsGrant ? helpButton("mesa.turnos.liberar-movimento", "Liberar movimento") : ""}</div>${!people || s.endedAt ? `<p class="turn-why" id="t-master-why">${s.endedAt ? "A sessão foi encerrada." : "Aguarde um jogador conectado com ficha. Para avançar, também é possível preparar a ordem."}</p>` : ""}`;
       return;
     }
     const me = live.participants.find((p) => p.isMe);
@@ -964,7 +987,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     const fav = cmds.favorites.slice(0, 3).map((a) => `<button type="button" class="subtle" data-action="t-act-id" data-id="${esc(a.id)}" ${cmds.canAct ? "" : `aria-disabled="true" aria-describedby="t-why"`}>${esc(a.name)}</button>`).join("");
     const undo = lastUndoable();
     $("#t-turn").innerHTML =
-      `${requestCardsHtml()}<div class="turn-who"><img class="avatar" src="${esc(me?.avatarUrl || "/assets/avatar.svg")}" alt=""><div><strong>${esc(me?.characterName || "")}</strong><small>${status}</small></div>${turnMode ? `<span class="turn-chip ${mine ? "yours" : "waiting"}" data-tip="${mine ? "Você pode agir nesta vez." : "Aguarde o Mestre conceder a sua vez."}">${mine ? "⌛ Sua vez" : "◷ Aguardando"}</span>` : ""}</div><div class="turn-actions"><button type="button" class="primary" data-action="t-roll-builder" ${cmds.canRoll ? "" : 'aria-disabled="true" aria-describedby="t-why"'}>⬡ Rolar dados</button>${fav}${cmds.hasActions ? `<button type="button" class="subtle" data-action="t-actions" ${cmds.canAct ? "" : 'aria-disabled="true" aria-describedby="t-why"'}>✧ Ações</button>` : ""}${button("▣ Minha ficha", "t-my-sheet", "", "subtle")}${cmds.canMove ? `<button type="button" class="subtle ${mode === "move" ? "active" : ""}" data-action="t-move" ${canMoveNow() ? "" : `aria-disabled="true" data-tip="${awaitingMoveGrant() ? "Aguarde o mestre liberar o seu movimento." : "Você já moveu nesta vez ou não pode mover neste momento."}"`}>➤ Mover</button>` : ""}${cmds.canMove && mine && awaitingMoveGrant() ? `<span class="turn-chip waiting" role="status">◷ Movimento aguardando o mestre</span>` : ""}${undo ? button("↶ Desfazer", "t-undo", String(undo.id), "subtle", `data-tip="Desfazer a última mudança elegível"`) : ""}${cmds.showEndTurn ? button("✓ Encerrar a vez", "t-end-turn", "", "primary") : ""}</div>${cmds.reason ? `<p class="turn-why" id="t-why">${esc(cmds.reason)}</p>` : ""}`;
+      `${requestCardsHtml()}<div class="turn-who"><img class="avatar" src="${esc(me?.avatarUrl || "/assets/avatar.svg")}" alt=""><div><strong>${esc(me?.characterName || "")}</strong><small>${status}</small></div>${turnMode ? `<span class="turn-chip ${mine ? "yours" : "waiting"}" data-tip="${mine ? "Você pode agir nesta vez." : "Aguarde o Mestre conceder a sua vez."}">${mine ? "⌛ Sua vez" : "◷ Aguardando"}</span>` : ""}</div><div class="turn-actions"><button type="button" class="primary" data-action="t-roll-builder" ${cmds.canRoll ? "" : 'aria-disabled="true" aria-describedby="t-why"'}>⬡ Rolar dados</button>${fav}${cmds.hasActions ? `<button type="button" class="subtle" data-action="t-actions" ${cmds.canAct ? "" : 'aria-disabled="true" aria-describedby="t-why"'}>✧ Ações</button>` : ""}${iconButton("sheet", "Minha ficha", "t-my-sheet")}${cmds.canMove ? `<button type="button" class="subtle tool-icon ${mode === "move" ? "active" : ""}" data-action="t-move" aria-label="Mover meu personagem" aria-pressed="${mode === "move"}" ${canMoveNow() ? "" : `aria-disabled="true" data-tip="${awaitingMoveGrant() ? "Aguarde o mestre liberar o seu movimento." : "Você já moveu nesta vez ou não pode mover neste momento."}"`}>${icon("move")}</button>` : ""}${cmds.canMove && mine && awaitingMoveGrant() ? `<span class="turn-chip waiting" role="status">◷ Movimento aguardando o mestre</span>` : ""}${undo ? iconButton("undo", "Desfazer a última mudança elegível", "t-undo", String(undo.id)) : ""}${cmds.showEndTurn ? button("✓ Encerrar a vez", "t-end-turn", "", "primary") : ""}</div>${cmds.reason ? `<p class="turn-why" id="t-why">${esc(cmds.reason)}</p>` : ""}`;
     $("#t-turn").classList.toggle("my-turn", mine && turnMode);
   }
 

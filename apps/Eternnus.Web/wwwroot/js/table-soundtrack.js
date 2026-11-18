@@ -3,6 +3,7 @@
 // as chamadas HTTP em soundtrack-api.js; as regras em soundtrack-policy.js. O servidor revalida cada comando.
 import { esc, toast } from "./ui.js";
 import { helpButton } from "./help.js";
+import { icon } from "./icons.js";
 import { highlightIn } from "./data-table.js";
 import { createSessionAudio } from "./session-audio.js";
 import { searchCatalog, soundtrackCommand } from "./soundtrack-api.js";
@@ -85,17 +86,17 @@ export function mountSoundtrack({ sessionId, campaignId, chipHost, onOpen = () =
       </div>
       ${master
         ? `<div class="st-controls" role="group" aria-label="Controles da trilha para todos">
-            <button type="button" class="primary st-toggle" data-action="st-toggle">▶ Tocar</button>
-            <button type="button" class="subtle" data-action="st-back">↺ 10 s</button>
-            <button type="button" class="subtle" data-action="st-forward">10 s ↻</button>
-            <button type="button" class="subtle st-loop-button" data-action="st-loop" aria-pressed="false">⟳ Repetir</button>
-            <button type="button" class="subtle" data-action="st-stop">■ Parar</button>
+            <button type="button" class="primary tool-icon st-toggle" data-action="st-toggle" aria-label="Tocar para todos" data-tip="Tocar para todos">${icon("play")}</button>
+            <button type="button" class="subtle tool-icon" data-action="st-back" aria-label="Voltar 10 segundos">${icon("back10")}</button>
+            <button type="button" class="subtle tool-icon" data-action="st-forward" aria-label="Avançar 10 segundos">${icon("forward10")}</button>
+            <button type="button" class="subtle tool-icon st-loop-button" data-action="st-loop" aria-pressed="false" aria-label="Repetir a faixa">${icon("repeat")}</button>
+            <button type="button" class="subtle tool-icon" data-action="st-stop" aria-label="Parar a trilha para todos">${icon("stop")}</button>
           </div>
           <p class="form-help st-why" id="st-why" hidden></p>`
         : ""}
       <div class="st-personal" role="group" aria-labelledby="st-personal-title">
         <h3 id="st-personal-title">Seu áudio</h3>
-        <button type="button" class="subtle st-mute" data-action="st-mute" aria-pressed="false">🔇 Silenciar para mim</button>
+        <button type="button" class="subtle tool-icon st-mute" data-action="st-mute" aria-pressed="false" aria-label="Silenciar para mim" data-tip="Silenciar para mim">${icon("volume")}</button>
         <div class="st-volume field"><label for="st-volume">Seu volume</label><input id="st-volume" type="range" min="0" max="100" step="5" aria-describedby="st-volume-help"><output for="st-volume" aria-hidden="true"></output></div>
         <p class="form-help" id="st-volume-help">Só muda o som neste dispositivo; os demais continuam ouvindo normalmente.</p>
       </div>
@@ -151,7 +152,9 @@ export function mountSoundtrack({ sessionId, campaignId, chipHost, onOpen = () =
     renderProgress(snap);
     const mute = q(".st-mute");
     mute.setAttribute("aria-pressed", String(snap.muted));
-    setText(mute, snap.muted ? "🔊 Ouvir neste dispositivo" : "🔇 Silenciar para mim");
+    // Só ícone (ADR-105): o alto-falante cortado indica silenciado; o nome e a dica dizem o que o clique faz.
+    const muteLabel = snap.muted ? "Ouvir neste dispositivo" : "Silenciar para mim";
+    if (mute.getAttribute("aria-label") !== muteLabel) { mute.setAttribute("aria-label", muteLabel); mute.dataset.tip = muteLabel; mute.innerHTML = icon(snap.muted ? "mute" : "volume"); }
     const volume = q("#st-volume");
     volume.closest(".st-volume").hidden = !snap.volumeAvailable;
     if (document.activeElement !== volume) volume.value = String(Math.round(snap.volume * 100));
@@ -161,7 +164,9 @@ export function mountSoundtrack({ sessionId, campaignId, chipHost, onOpen = () =
     const has = !!music?.trackId;
     const blockedReason = ended() ? "A sessão foi encerrada." : !has ? "Escolha uma faixa do catálogo primeiro." : pending ? "Aguarde o comando anterior." : "";
     const toggle = q(".st-toggle");
-    setText(toggle, has && music.playing && !snap.ended ? "⏸ Pausar" : "▶ Tocar");
+    const playing = has && music.playing && !snap.ended;
+    const toggleLabel = playing ? "Pausar para todos" : "Tocar para todos";
+    if (toggle.getAttribute("aria-label") !== toggleLabel) { toggle.setAttribute("aria-label", toggleLabel); toggle.dataset.tip = toggleLabel; toggle.innerHTML = icon(playing ? "pause" : "play"); }
     for (const element of panel.querySelectorAll(".st-controls button")) {
       element.disabled = !!blockedReason;
       if (blockedReason) element.setAttribute("aria-describedby", "st-why");
@@ -207,7 +212,7 @@ export function mountSoundtrack({ sessionId, campaignId, chipHost, onOpen = () =
     host.innerHTML = `<ul class="st-tracks">${list.items
       .map(
         (t) =>
-          `<li class="st-track-row${t.id === current ? " is-current" : ""}"><div><strong>${esc(t.title)}</strong><small>${esc(t.format)} · ${t.durationMs ? formatTime(t.durationMs) : "duração desconhecida"}${t.id === current ? ' · <span class="status-chip">Na mesa</span>' : ""}</small></div><button type="button" class="subtle small" data-action="st-select" data-id="${esc(t.id)}" aria-label="Tocar na mesa: ${esc(t.title)}"${pending || ended() ? " disabled" : ""}>▶ Tocar</button></li>`,
+          `<li class="st-track-row${t.id === current ? " is-current" : ""}"><div><strong>${esc(t.title)}</strong><small>${esc(t.format)} · ${t.durationMs ? formatTime(t.durationMs) : "duração desconhecida"}${t.id === current ? ' · <span class="status-chip">Na mesa</span>' : ""}</small></div><button type="button" class="subtle small tool-icon" data-action="st-select" data-id="${esc(t.id)}" aria-label="Tocar na mesa: ${esc(t.title)}"${pending || ended() ? " disabled" : ""}>${icon("play")}</button></li>`,
       )
       .join("")}</ul>${
       pages > 1

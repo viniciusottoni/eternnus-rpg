@@ -1,5 +1,6 @@
 import { esc, toast } from "./ui.js";
 import { helpButton } from "./help.js";
+import { icon } from "./icons.js";
 
 // O mesmo limite governa os painéis no CSS, inclusive celulares deitados > 900 px.
 export const COMPACT_TABLE = "(max-width: 900px), (max-width: 1200px) and (pointer: coarse)";
@@ -41,7 +42,9 @@ export function mountTableViewport(root, campaignId) {
     gate.hidden = !blocked;
     root.classList.toggle("table-needs-rotation", blocked);
     full.hidden = !compact.matches || !canFullscreen;
-    full.textContent = document.fullscreenElement ? "Sair da tela cheia" : "Tela cheia";
+    // Ícone com nome acessível e dica (ADR-105), como no topo dos editores.
+    const fullLabel = document.fullscreenElement ? "Sair da tela cheia" : "Tela cheia";
+    if (full.getAttribute("aria-label") !== fullLabel) { full.innerHTML = icon("fullscreen"); full.setAttribute("aria-label", fullLabel); full.dataset.tip = fullLabel; }
     full.setAttribute("aria-pressed", String(!!document.fullscreenElement));
     shell.querySelector("#t-tools").setAttribute("aria-orientation", compact.matches ? "horizontal" : "vertical");
     if (changed && blocked) {

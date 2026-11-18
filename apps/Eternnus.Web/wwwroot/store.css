@@ -3,10 +3,14 @@
    Colunas pela largura do próprio contêiner (container queries), não da janela. */
 
 /* ---------- Vitrine ---------- */
+/* Alinhada às bordas do conteúdo: mesma largura (até 1.500 px), centralização e recuo lateral do #main
+   (styles.css: 38 px; ≤ 1.200 px: 27 px; ≤ 760 px: 20 px). Mudou o recuo do #main? Mude --strip-gutter junto. */
 .store-strip {
+  --strip-gutter: 38px;
   container: store-strip / inline-size;
-  margin: 16px 38px 0;
-  max-width: calc(1500px - 76px);
+  box-sizing: border-box;
+  width: calc(min(100%, 1500px) - 2 * var(--strip-gutter));
+  margin: 16px auto 0;
   padding: 6px 12px 8px;
   border: 1px solid #b99a5733;
   border-radius: var(--radius);
@@ -309,6 +313,7 @@
   border-color: var(--gold);
 }
 .store-card-media {
+  position: relative;
   aspect-ratio: 1;
   display: grid;
   place-items: center;
@@ -316,6 +321,22 @@
   margin: 6px 6px 0;
   border-radius: 5px;
   overflow: hidden;
+}
+/* Desconto calculado dos dois preços conferidos (store-policy.discountPercent): canto da imagem, sem animação. */
+.store-discount {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #8e2a1e;
+  color: #fff4e6;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+  box-shadow: 0 1px 4px #0006;
 }
 .store-card-media img {
   width: 100%;
@@ -445,10 +466,12 @@
 .sa-table th {
   vertical-align: middle;
 }
+/* Ações de linha só com ícone (ui.rowAction): ficam numa fila, sem quebrar a coluna. */
 .sa-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
+  white-space: nowrap;
 }
 .sa-url-row {
   display: flex;
@@ -504,6 +527,11 @@
 }
 
 /* ---------- Celular e telas estreitas ---------- */
+@media (max-width: 1200px) {
+  .store-strip {
+    --strip-gutter: 27px;
+  }
+}
 @media (max-width: 1100px) {
   .store-layout {
     grid-template-columns: 210px minmax(0, 1fr);
@@ -511,7 +539,8 @@
 }
 @media (max-width: 760px) {
   .store-strip {
-    margin: 12px 20px 0;
+    --strip-gutter: 20px;
+    margin: 12px auto 0;
     padding: 8px 10px;
   }
   .store-strip-note {

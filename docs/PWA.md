@@ -183,3 +183,9 @@ PWA: o incremento v57 acrescenta `js/tile-map-editor.js` e `js/tile-map-policy.j
 `eternnus-public-shell-v80` (18/11/2026, ADR-103) atualiza `help/conta.js`: o texto de armazenamento lista os novos tipos contados e o bloqueio de versões nomeadas. Sem arquivo novo na lista pública; continua sem cachear API, `/auth/me`, limites ou dados autenticados; sem `skipWaiting` forçado.
 
 `eternnus-public-shell-v82` (18/11/2026, ADR-102) atualiza `styles.css`: os limites do plano em "Minha conta" ficam em três colunas (rótulo acima do valor) e em linhas no celular. Sem arquivo novo na lista pública; sem `skipWaiting` forçado.
+
+`eternnus-public-shell-v83` (18/11/2026, ADR-105) acrescenta à lista pública explícita `table-shell.css` (mesa no padrão visual dos editores) e atualiza `index.html`, `table.js`, `table-map.js`, `table-soundtrack.js`, `table-viewport.js`, `icons.js` e `pwa-policy.js`. Só estilos e marcação estática; continua sem cachear API, estado da mesa ou dados autenticados; sem `skipWaiting` forçado.
+
+`eternnus-public-shell-v84` (18/11/2026, ADR-106) atualiza `ui.js`, `icons.js`, `admin.js`, `admin-store.js`, `admin-music.js`, `store.js`, `store-policy.js`, `store-recommendations.js`, `help/admin.js`, `campaigns.js`, `one-shots.js`, `styles.css`, `admin.css`, `store.css` e `sessions.css` (ações de linha só com ícone, selo de desconto, botão “Comprar”, vitrine alinhada ao conteúdo e ⓘ na linha do rótulo). Lista pública sem mudança; continua sem cachear API ou dados autenticados; sem `skipWaiting` forçado.
+
+`eternnus-public-shell-v85` (18/11/2026, ADR-105) atualiza `help.js`: a dica de um botão some ao clicar com o ponteiro e só volta depois que o ponteiro sai dele, para o Esc seguinte fechar o diálogo aberto pelo botão (e não a dica). Sem arquivo novo na lista pública; sem `skipWaiting` forçado.

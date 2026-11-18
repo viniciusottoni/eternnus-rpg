@@ -111,6 +111,12 @@ try {
     await go(m,'campaigns','[data-action=campaign-create]');
     await aligned(m,`campanhas-${suffix}`);
     await help(m,'campanhas.lista.papeis',`campanhas-${suffix}`,true);
+    // ⓘ das caixas de seleção ficam na linha do rótulo (ex.: aventura de exemplo no modal de criação).
+    await m.locator('[data-action=campaign-create]').first().click();
+    await m.locator('#modal input[name="starter"]').waitFor();
+    await aligned(m,`nova-campanha-${suffix}`);
+    await m.locator('#modal [data-action=modal-close]').first().click();
+    await m.locator('#modal input[name="starter"]').waitFor({ state: 'hidden' });
     const tip = m.locator('.level-chip');
     if (mobile) await m.locator('[data-action=nav-more]').click();
     await tip.focus();

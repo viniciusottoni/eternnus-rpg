@@ -1,0 +1,197 @@
+/* Mesa ao vivo no padrão visual dos editores (ADR-105).
+   Textos só para leitor de tela (nomes de abas, motivos, instruções) ficam presos em top/left 0: sem isso, dentro das
+   faixas roláveis eles ficariam na posição natural, além da borda, e alargariam a página no celular.
+   Reaproveita os tokens e componentes do núcleo (editor.css: .ed-tools, .ed-tool, .ed-tool-group, .ed-context):
+   topo em faixa única, painéis planos separados por linhas, trilho de ferramentas só com ícone à esquerda do mapa,
+   barra contextual (névoa/paredes/luz) acima do mapa, bandeja de dados em coluna própria e barra de turno como barra de estado.
+   Ornamentos reduzidos para dar espaço ao mapa; identidade (fundo escuro e dourado envelhecido) mantida.
+   Regras de distribuição só valem fora do layout compacto (COMPACT_TABLE, table-viewport.js); o celular deitado
+   continua com as áreas da ADR-056 (sessions.css), recebendo apenas o acabamento visual. */
+
+.table-shell {
+  --ed-line: #3a3f31; --ed-bg: #12140f; --ed-raised: #1b1e17; --ed-hover: #262a20;
+  --rail-width: 56px; --dice-width: 54px;
+  background: var(--ed-bg);
+}
+
+/* ---------- Topo ---------- */
+.table-shell .table-top {
+  border-bottom: 1px solid var(--ed-line);
+  background: linear-gradient(#1d2018, #15170f);
+}
+.table-shell .table-title h1 { font-size: 19px; }
+.table-shell .top-separator { align-self: stretch; width: 1px; margin: 6px 2px; background: var(--ed-line); }
+
+/* Botões só com ícone (ui.iconButton) na mesa: sem moldura até o hover, como os ícones do topo dos editores. */
+.table-shell :is(button, a.button).tool-icon.subtle {
+  border-color: transparent; background: transparent; box-shadow: none; color: #d8d4c4;
+}
+.table-shell :is(button, a.button).tool-icon.subtle:hover:not([aria-disabled="true"]):not(:disabled) {
+  border-color: var(--ed-line); background: var(--ed-hover); color: var(--bright, #e6cf98);
+}
+.table-shell :is(button, a.button).tool-icon:is([aria-pressed="true"], .active) {
+  color: var(--bright, #e6cf98); border-color: #6d5a33; background: #2a2416;
+}
+.table-shell a.button.tool-icon { width: 44px; min-width: 44px; min-height: 44px; padding: 0; }
+/* Sem o recuo dos botões de texto das barras compactas (sessions.css): o ícone fica centrado no alvo. */
+.table-shell .table-top-scroll :is(button, a.button).tool-icon, .table-shell .turn-actions button.tool-icon { padding: 0; }
+.table-shell a.button.tool-icon .ed-icon { width: 20px; height: 20px; pointer-events: none; }
+/* Motivo de indisponível de botões só com ícone: continua no leitor de tela e na dica, sem quebrar a fila. */
+.table-shell :is(.table-rail, .fog-group, .turn-actions, .st-controls, .dice-tray, .table-top-scroll) .help-disabled-reason {
+  position: absolute; top: 0; left: 0; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Câmera do mapa (table-map.js) no topo: grupo compacto de ícones; a instrução segue ligada ao "Arrastar mapa"
+   (aria-describedby) e o nome de cada botão aparece na dica. */
+.table-shell .map-camera-controls { gap: 2px; padding: 2px 4px; border: 1px solid var(--ed-line); border-radius: 8px; background: #11130e; }
+.table-shell .map-camera-controls button.tool-icon:disabled { opacity: .38; }
+.table-shell .map-camera-controls > span[id], .table-shell .map-camera-controls .camera-help-label {
+  position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+.table-shell .map-camera-controls .camera-help { padding: 0 6px 0 2px; }
+
+/* ---------- Painéis laterais: planos, com títulos de painel do editor ---------- */
+.table-shell :is(.party, .side-panel, #main.stage) { border: 0; border-radius: 0; box-shadow: none; }
+.table-shell :is(.party, .side-panel) { background: var(--ed-raised); }
+.table-shell .party h2 {
+  display: flex; align-items: center; gap: 6px; margin: 0; padding: 8px 10px; border: 0; border-bottom: 1px solid var(--ed-line); border-radius: 0;
+  background: #171a13; backdrop-filter: none; color: var(--gold, #c6a463);
+  font: 600 .78rem/1.2 system-ui, "Segoe UI", sans-serif; letter-spacing: .06em; text-transform: uppercase;
+}
+.table-shell .party h2 .count-chip { margin-left: auto; text-transform: none; letter-spacing: 0; }
+.table-shell .npc-dock { border-top: 1px solid var(--ed-line); }
+.table-shell .npc-dock > summary {
+  min-height: 36px; padding: 8px 10px; background: #171a13; color: var(--gold, #c6a463); cursor: pointer;
+  font: 600 .78rem/1.2 system-ui, "Segoe UI", sans-serif; letter-spacing: .06em; text-transform: uppercase;
+}
+
+/* Abas do painel como contextos do editor: ícone em todas, nome visível só na ativa (o nome segue no leitor e na dica). */
+.table-shell .panel-tabs {
+  gap: 2px; margin: 6px 8px 0; padding: 2px; border: 1px solid var(--ed-line); border-radius: 8px; background: #11130e;
+  overflow-x: auto; scrollbar-width: none;
+}
+.table-shell .panel-tabs .ed-context {
+  flex: 0 0 auto; justify-content: center; min-width: 40px; min-height: 36px; padding: 3px 9px; border-radius: 6px;
+  background: transparent; box-shadow: none; color: #cfc9b6; font: inherit; font-size: .82rem;
+}
+.table-shell .panel-tabs .ed-context:hover { background: var(--ed-hover); border-color: var(--ed-line); }
+.table-shell .panel-tabs .ed-context.active {
+  flex: 1 0 auto; color: var(--bright, #e6cf98); border-color: #8a6f3a; background: #2a2416; box-shadow: inset 0 -2px 0 #c6a463;
+}
+.table-shell .panel-tabs .ed-context:not(.active) > span {
+  position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+.table-shell .chat-form { border-top: 1px solid var(--ed-line); }
+
+/* ---------- Palco ---------- */
+.table-shell #main.stage { background: #090a08 repeating-conic-gradient(#11130f 0 25%, #0b0c0a 0 50%) 0 0 / 24px 24px; }
+.table-shell .stage-chip {
+  padding: 4px 10px; border: 1px solid var(--ed-line); border-radius: 6px; background: #12140fe6; backdrop-filter: none;
+  color: #e6d3a8; font: 12px/1.3 system-ui, "Segoe UI", sans-serif;
+}
+.table-shell .stage-hint, .table-shell .play-banner {
+  border: 1px solid #6d5a33; border-radius: 8px; background: #15170fe6; backdrop-filter: none;
+}
+
+/* Trilho de ferramentas (mestre e jogador): componente .ed-tools do núcleo. */
+.table-shell .table-rail { z-index: 3; gap: 6px; scrollbar-width: thin; }
+.table-shell .table-rail .ed-tool-group:empty { display: none; }
+.table-shell .table-rail .hidden-chip { position: relative; }
+.table-shell .table-rail .tool-count {
+  position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+  background: var(--gold, #c6a463); color: #1b160b; font: 700 10px/16px system-ui, sans-serif; text-align: center;
+}
+
+/* Barra contextual de névoa, paredes e luz (como .ed-contextbar): faixa acima do mapa, nunca sobre ele. */
+.table-shell .fog-palette {
+  align-items: center; gap: 4px 10px; border: 0; border-bottom: 1px solid var(--ed-line); border-radius: 0;
+  background: #16180f; backdrop-filter: none; font-size: .8rem;
+}
+.table-shell .fog-palette .fog-head { width: auto; flex: 0 1 auto; gap: 6px 10px; }
+.table-shell .fog-palette .fog-head strong { color: var(--bright, #e6cf98); font-weight: 600; white-space: nowrap; }
+.table-shell .fog-palette .live-note { color: #f2a28f; font-size: .76rem; }
+.table-shell .fog-palette .fog-group { flex: 0 1 auto; flex-wrap: nowrap; gap: 2px; padding-left: 10px; border-left: 1px solid var(--ed-line); }
+.table-shell .fog-palette .ed-tool { width: 38px; height: 38px; }
+.table-shell .fog-current { padding: 0 6px; color: var(--bright, #e6cf98); white-space: nowrap; }
+.table-shell .fog-palette .fog-help { flex: 1 1 100%; font-size: .76rem; }
+.table-shell .fog-palette .fog-select select { min-height: 34px; }
+
+/* Bandeja de dados: coluna própria à direita, no mesmo acabamento do trilho. */
+.table-shell .dice-tray { border-color: var(--ed-line); background: var(--ed-raised); backdrop-filter: none; }
+.table-shell .dice-tray .die {
+  border-color: transparent; background: transparent; color: #d8d4c4; font: 600 13px system-ui, "Segoe UI", sans-serif;
+}
+.table-shell .dice-tray .die:hover:not([aria-disabled="true"]) { border-color: var(--ed-line); background: var(--ed-hover); color: var(--bright, #e6cf98); }
+.table-shell .dice-tray .die .ed-icon { width: 18px; height: 18px; pointer-events: none; }
+.table-shell .dice-tray .die.privacy[aria-pressed="true"] { border-color: #8f3b2f; color: #f2a28f; }
+
+/* ---------- Barra de turno como barra de estado do editor ---------- */
+.table-shell .turn-bar { border: 0; border-top: 1px solid var(--ed-line); border-radius: 0; background: #15170f; }
+.table-shell .turn-actions { gap: 4px; }
+
+/* ---------- Trilha: controles numa fila, como a barra de ferramentas das camadas ---------- */
+.table-shell .soundtrack .st-controls {
+  display: inline-flex; flex-wrap: nowrap; gap: 2px; padding: 3px; border: 1px solid var(--ed-line); border-radius: 8px; background: #11130e;
+}
+.table-shell .st-loop-button[aria-pressed="true"]::after { content: none; }
+.table-shell .st-personal { flex-wrap: wrap; gap: 6px 8px; }
+.table-shell .st-personal .st-mute { flex: none; }
+.table-shell .st-personal .st-volume { flex: 1 1 140px; }
+.table-shell .st-track-row { padding: 6px 6px 6px 10px; border-color: var(--ed-line); background: #14160f; }
+.table-shell .st-track-row.is-current { border-color: #8a6f3a; background: #241f13; }
+.table-shell .st-now { border-color: var(--ed-line); }
+
+/* ---------- Distribuição no desktop (fora de COMPACT_TABLE) ---------- */
+@media (min-width: 1201px), (min-width: 901px) and (pointer: fine) {
+  .table-shell {
+    gap: 0; padding: 0 0 env(safe-area-inset-bottom, 0px);
+    grid-template-columns: 248px minmax(0, 1fr) 340px;
+  }
+  .table-shell .table-top { min-height: 52px; gap: 14px; padding: 4px 12px; }
+  .table-shell .table-brand img { width: 96px; }
+  /* O título cede espaço (reticências) e as ações ficam com a largura natural: nada é cortado na borda direita. */
+  .table-shell .table-title { flex: 1 1 0; min-width: 160px; }
+  .table-shell .table-top-scroll { flex: 0 1 auto; gap: 6px; }
+  .table-shell .table-top-scroll :is(button, a.button):not(.help-button):not(.tool-icon) { min-height: 36px; padding: 6px 12px; }
+  .table-shell :is(.table-top-scroll, .turn-actions, .st-controls, .st-personal, .st-track-row) :is(button, a.button).tool-icon { width: 36px; min-width: 36px; min-height: 36px; }
+  .table-shell .map-camera-controls button.tool-icon { width: 32px; min-width: 32px; min-height: 32px; }
+  .table-shell .party { padding: 0 0 10px; border-right: 1px solid var(--ed-line); }
+  .table-shell .party > :not(h2) { margin-inline: 10px; }
+  .table-shell .party > .party-view-button { margin-top: 10px; }
+  .table-shell .party > .npc-dock { margin-inline: 0; }
+  .table-shell .party > .npc-dock > :not(summary) { margin-inline: 10px; }
+  .table-shell .side-panel { border-left: 1px solid var(--ed-line); }
+
+  /* Trilho: coluna fixa à esquerda do mapa, de cima a baixo. */
+  .table-shell .table-rail { top: 0; left: 0; bottom: 0; width: var(--rail-width); max-height: none; padding: 8px 6px; }
+  .table-shell .stage:has(.table-rail) .board { left: var(--rail-width); }
+  .table-shell .stage:has(.table-rail) .stage-chip { left: calc(var(--rail-width) + 8px); top: 8px; }
+  .table-shell .stage:has(.table-rail) .fog-palette { top: 0; left: var(--rail-width); right: 0; max-width: none; padding: 4px 10px; }
+  .table-shell .stage.has-dice:has(.table-rail) .fog-palette { right: var(--dice-width); }
+  .table-shell .stage.fog-open .stage-chip { display: none; }
+
+  /* Dados: coluna fixa à direita do mapa. */
+  .table-shell .dice-tray {
+    top: 0; bottom: 0; right: 0; transform: none; width: var(--dice-width); justify-content: center; overflow-y: auto;
+    padding: 8px 4px; border: 0; border-left: 1px solid var(--ed-line); border-radius: 0;
+  }
+  .table-shell .dice-tray .die { width: 44px; min-width: 44px; min-height: 36px; padding: 0; }
+  .table-shell .stage.has-dice .board { right: var(--dice-width); }
+
+  .table-shell .turn-bar { padding: 6px 12px; gap: 12px; }
+  .table-shell .turn-actions :is(button, .button):not(.help-button):not(.tool-icon) { min-height: 36px; padding: 6px 14px; }
+  .table-shell .turn-bar .turn-why { margin: 0; }
+}
+
+/* Celular deitado e tablets (ADR-056): mantém as áreas e os alvos de 44 px; trilho e paleta em faixa no topo do mapa. */
+@media (max-width: 900px), (max-width: 1200px) and (pointer: coarse) {
+  .table-shell .table-rail { top: 0; left: 0; right: 0; padding: 4px; border-bottom: 1px solid var(--ed-line); }
+  .table-shell .stage .board { top: 53px; }
+  .table-shell .stage .fog-palette { top: 53px; left: 0; right: 0; padding: 4px 6px; }
+  .table-shell .stage.has-dice .fog-palette { right: 0; }
+  .table-shell .fog-palette .ed-tool { width: 44px; height: 44px; }
+  .table-shell .panel-tabs .ed-context { min-height: 44px; min-width: 44px; }
+  .table-shell .panel-tabs .ed-context.active > span {
+    position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+}

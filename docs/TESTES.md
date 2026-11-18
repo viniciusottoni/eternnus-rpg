@@ -695,3 +695,17 @@ Ambiente: PostgreSQL 17 do `compose.yaml` no Docker Desktop, com banco descartá
 | `table-viewport.mjs` | Falha intermitente "pinça não amplia o diálogo"/"página mantém escala". A falha muda de ponto entre execuções, persiste com a Busca de ações desligada no editor e o ADR-100 não altera toque, zoom ou `touch-action`. Causa não identificada; suspeita no toque sintético (CDP) do Chrome do sistema |
 
 Correções feitas a partir desta validação: `maps` do `start-context` como lista (o modal de início falhava com `items.filter is not a function`), `UploadLimits.LayerRequestBytes` (512 KiB, antes ~530 paredes) e recarga da lista de NPCs. Os testes .NET afetados (`SessionServiceTests`, `UploadLimitsTests`, `TableSimplificationTests`, `StarterAdventureTests`) passaram.
+
+## ADR-105 — mesa no padrão visual dos editores (18/11/2026)
+
+Ambiente: PostgreSQL 17 no Docker Desktop (banco descartável por suíte) e Chrome do sistema headless via `artifacts/qa-runtime`. Comparação com o código anterior feita num worktree do `HEAD`, com as mesmas suítes. Outra sessão de trabalho rodava testes em paralelo na mesma máquina, o que explica as falhas de tempo isoladas.
+
+| Comando | Resultado |
+|---|---|
+| `node --test tests/*.test.mjs` | 395 passaram, 0 falharam |
+| `table-viewport.mjs` | Passou. A primeira execução acusou regressão real: textos só para leitor de tela (nomes das abas, motivos, instrução da câmera) alargavam a página no celular e o navegador reduzia o zoom (`innerHeight` 502 em 844 × 390). Corrigido em `table-shell.css` (`top/left: 0`). Em outra execução, falha intermitente da pinça já registrada acima |
+| `modals-ui.mjs`, `token-edit.mjs`, `help-interactions.mjs` | Passaram (`help-interactions` de novo depois da mudança em `help.js`) |
+| `simplicity.mjs` | Acusou regressão real: depois de clicar em "Busca de ações" (agora só ícone), a dica reabria pelo foco e o Esc fechava a dica em vez da paleta. Corrigido em `help.js`; roteiro direto confirma paleta fechada após Esc, dica no hover e "Personagens do mestre" clicável. A suíte inteira não chegou ao fim aqui: em execuções seguintes parou antes (modal de início não abriu em 8 s); no código anterior para ainda antes (opção da Busca de ações) |
+| `table-vtt-ui.mjs` | Uma execução falhou em "jogador ajusta a própria vida pela bolha" (espera fixa de 1,2 s sob carga); o passo isolado passa (POST 200, vida 7). Segue a falha anterior "porta do UVTT na casa certa", igual no código anterior |
+| `token-look.mjs`, `soundtrack-ui.mjs`, `free-movement.mjs`, `help-ui.mjs` | Falham igual no código anterior: "alça reduziu o dragão", alinhamento do áudio após reconectar (linha 239), `[data-action=ca-upload]` e `[data-ed-tool=scenery]` |
+| Capturas (roteiro próprio) | Mestre e jogador em 1.440 × 900, mestre em 2.560 × 1.280 e ambos em 844 × 390 (deitado): topo sem corte, trilho, barra contextual de paredes, abas, Trilha e barra de turno em uma fila |

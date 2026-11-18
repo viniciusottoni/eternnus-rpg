@@ -116,6 +116,19 @@ try {
   ok((await offer.getAttribute("href")).startsWith("https://"), "link https da loja");
   ok(await keyboardReach(desk, ".store-strip-offer"), "oferta alcançável pelo teclado");
   await desk.screenshot({ path: `${dir}/inicio-desktop.png` });
+  // Vitrine alinhada às bordas do conteúdo (título e cartões) em qualquer largura, inclusive tela larga com o conteúdo centralizado.
+  const stripEdges = () => desk.evaluate(() => {
+    const strip = document.querySelector("#store-strip").getBoundingClientRect();
+    const heading = document.querySelector("#main .page-heading").getBoundingClientRect();
+    return { left: Math.round(strip.left - heading.left), right: Math.round(strip.right - heading.right) };
+  });
+  for (const [width, height] of [[1440, 900], [1180, 900], [2560, 1280]]) {
+    await desk.setViewportSize({ width, height });
+    const edges = await stripEdges();
+    ok(Math.abs(edges.left) <= 1 && Math.abs(edges.right) <= 1, `vitrine alinhada ao conteúdo em ${width}px (${JSON.stringify(edges)})`);
+  }
+  await desk.screenshot({ path: `${dir}/inicio-largo.png` });
+  await desk.setViewportSize({ width: 1440, height: 900 });
 
   // Largura do contêiner decide as colunas.
   await desk.setViewportSize({ width: 960, height: 900 });
@@ -147,7 +160,8 @@ try {
   await desk.locator("#store-q").fill("metálicos");
   await desk.locator("#store-search button[type=submit]").click();
   await desk.waitForFunction(() => document.querySelectorAll(".store-card").length === 1, null, { timeout: 10000 });
-  ok(await desk.locator(".store-sale").first().isVisible(), "selo de oferta com preços conferidos");
+  ok(await desk.locator(".store-discount").first().isVisible() && /^−\d+%$/.test((await desk.locator(".store-discount").first().textContent()).trim()), "selo de desconto −N% com preços conferidos");
+  ok(/^Comprar (na|no) /.test((await desk.locator(".store-card .store-offer").first().textContent()).trim()), "botão Comprar na/no loja");
   ok(await keyboardReach(desk, ".store-card-title"), "título do cartão alcançável pelo teclado");
   await desk.keyboard.press("Enter");
   await desk.locator("#modal .store-detail").waitFor({ timeout: 10000 });
@@ -188,6 +202,8 @@ try {
   const board = await pageFor(admin);
   await go(board, "admin/store", ".sa-table tbody tr");
   check(await board.locator(".sa-table tbody tr").count(), 5, "produtos no painel (inclui rascunho)");
+  ok(await board.evaluate(() => [...document.querySelectorAll(".sa-actions")].every((cell) => [...cell.children].every((b) => b.classList.contains("tool-icon") && b.dataset.tip && b.getAttribute("aria-label")) && new Set([...cell.children].map((b) => Math.round(b.getBoundingClientRect().top))).size === 1)), "ações de linha só com ícone, dica e uma fila");
+  await board.screenshot({ path: `${dir}/admin-loja-produtos.png` });
   await board.locator('[data-action="sa-new"]').first().click();
   await board.locator("#sa-url").fill("https://www.amazon.com.br/dp/B000TEST06?tag=eternnus-20");
   await board.locator('[data-action="sa-preview"]').click();

@@ -40,6 +40,20 @@ test("prices show only when verified and current; offers never estimate discount
   assert.equal(policy.offerBadge({ onSale: false, priceStatus: "current", priceCents: 100, previousPriceCents: 150 }), false);
 });
 
+test("discount percent comes only from two verified prices and never rounds up", () => {
+  assert.equal(policy.discountPercent({ onSale: true, priceStatus: "current", priceCents: 31590, previousPriceCents: 41990 }), 24);
+  assert.equal(policy.discountPercent({ onSale: true, priceStatus: "current", priceCents: 45171, previousPriceCents: 79990 }), 43);
+  assert.equal(policy.discountPercent({ onSale: true, priceStatus: "current", priceCents: 9950, previousPriceCents: 10000 }), null);
+  assert.equal(policy.discountPercent({ onSale: true, priceStatus: "stale", priceCents: 100, previousPriceCents: 150 }), null);
+  assert.equal(policy.discountPercent({ onSale: false, priceStatus: "current", priceCents: 100, previousPriceCents: 150 }), null);
+});
+
+test("buy button names the store with the right preposition", () => {
+  assert.equal(policy.buyLabel("amazon"), "Comprar na Amazon");
+  assert.equal(policy.buyLabel("shopee"), "Comprar na Shopee");
+  assert.equal(policy.buyLabel("mercadolivre"), "Comprar no Mercado Livre");
+});
+
 test("reais parse to integer cents and back", () => {
   assert.equal(policy.toCents("49,90"), 4990);
   assert.equal(policy.toCents("1.299,90"), 129990);

@@ -19,6 +19,9 @@ export function helpButton(key, label) {
 
 let installed = false, popup, tooltip, trigger, tipTrigger, hoverTarget, focusedTarget;
 let showTimer, hideTimer, request = 0, dismissed = false;
+// Alvo clicado com o ponteiro: a dica some no clique e só volta depois que o ponteiro sai dele (o foco do clique não a reabre).
+// Sem isso, o Esc seguinte fecharia a dica em vez do diálogo aberto pelo botão (ex.: Busca de ações em botão só com ícone).
+let clickedTip = null;
 let reasonId = 0;
 let descriptionId = 0;
 let touchInput = false;
@@ -258,10 +261,15 @@ export function installHelp() {
     const button = event.target.closest('[data-help]');
     if (button) { event.preventDefault(); event.stopPropagation(); openHelp(button); }
   }, true);
+  document.addEventListener('pointerdown', (event) => {
+    const target = event.target.closest?.('[data-tip], [data-tip-full]');
+    if (!target) return;
+    clickedTip = target; clearTimeout(showTimer); hideTip();
+  }, true);
   document.addEventListener('pointerover', (event) => {
     if (event.pointerType === 'touch') return;
     const target = event.target.closest('[data-tip], [data-tip-full], #help-tooltip');
-    if (!target || target.contains(event.relatedTarget)) return;
+    if (!target || target.contains(event.relatedTarget) || target === clickedTip) return;
     hoverTarget = target; clearTimeout(hideTimer);
     if (target === tooltip) return;
     dismissed = false; clearTimeout(showTimer);
@@ -270,13 +278,14 @@ export function installHelp() {
   document.addEventListener('pointerout', (event) => {
     const target = event.target.closest('[data-tip], [data-tip-full], #help-tooltip');
     if (!target || target.contains(event.relatedTarget)) return;
+    if (target === clickedTip) clickedTip = null;
     hoverTarget = event.relatedTarget?.closest?.('[data-tip], [data-tip-full], #help-tooltip') || null;
     scheduleHideTip();
   });
   document.addEventListener('focusin', (event) => {
     const target = event.target.closest('[data-tip]');
     focusedTarget = target;
-    if (target && !touchInput) { dismissed = false; showTip(target); }
+    if (target && !touchInput && target !== clickedTip) { dismissed = false; showTip(target); }
   });
   document.addEventListener('focusout', (event) => {
     if (!event.target.closest('[data-tip]')) return;

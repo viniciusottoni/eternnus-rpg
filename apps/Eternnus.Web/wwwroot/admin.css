@@ -136,7 +136,7 @@ a.stat-tile.admin-tile-link:focus-visible {
   color: var(--bright);
 }
 .admin-open.button.small,
-.admin-row-actions .small {
+.admin-row-actions .small:not(.tool-icon) {
   min-height: 34px;
   padding: 6px 12px;
   font-size: 11px;
@@ -318,7 +318,7 @@ a.stat-tile.admin-tile-link:focus-visible {
     padding: 9px 10px;
   }
   .admin-open.button.small,
-  .admin-row-actions .small,
+  .admin-row-actions .small:not(.tool-icon),
   .admin-data summary,
   .admin-page .pagination button,
   .admin-page .text-button {

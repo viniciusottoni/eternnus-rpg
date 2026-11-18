@@ -5,6 +5,7 @@ import { drawTile, dominantGround, affectedCells } from "./tile-art.js";
 import { initials } from "./session-policy.js";
 import { decodeBits, MARK_KINDS, WALL_UNIT, lightReach, wallKind } from "./fog-policy.js";
 import { helpButton } from "./help.js";
+import { icon } from "./icons.js";
 import { mountMapGestures } from "./map-gestures.js";
 import { safeImageUrl } from "./play-policy.js";
 import { finePoint, isFreeMap, tokenCenter } from "./free-move-policy.js";
@@ -767,7 +768,8 @@ export function createBoard(host, handlers = {}) {
   if (camera) {
     host.classList.add("board-viewport");
     camera.className = "map-camera-controls";
-    camera.innerHTML = `<button type="button" class="subtle" data-camera="out" aria-label="Afastar mapa">−</button><button type="button" class="subtle" data-camera="in" aria-label="Aproximar mapa">+</button><button type="button" class="subtle" data-camera="size">Mapa inteiro</button><button type="button" class="subtle" data-camera="pan" aria-pressed="true" aria-describedby="${instructionId}">Arrastar mapa</button><span id="${instructionId}">Arraste para explorar</span><span class="camera-help">Visão${helpButton("mesa.mapa.camera", "Ampliar e percorrer o mapa")}</span>`;
+    // Só ícones (ADR-105): nome acessível e dica; a instrução continua ligada por aria-describedby.
+    camera.innerHTML = `<button type="button" class="subtle tool-icon" data-camera="out" aria-label="Afastar mapa">${icon("zoomOut")}</button><button type="button" class="subtle tool-icon" data-camera="in" aria-label="Aproximar mapa">${icon("zoomIn")}</button><button type="button" class="subtle tool-icon" data-camera="size" aria-label="Ampliar mapa">${icon("maximize")}</button><button type="button" class="subtle tool-icon" data-camera="pan" aria-pressed="true" aria-label="Arrastar mapa" aria-describedby="${instructionId}">${icon("hand")}</button><span id="${instructionId}">Arraste para explorar</span><span class="camera-help"><span class="camera-help-label">Visão</span>${helpButton("mesa.mapa.camera", "Ampliar e percorrer o mapa")}</span>`;
     if (handlers.camera) handlers.camera.append(camera);
     camera.addEventListener("click", (e) => {
       const action = e.target.closest("[data-camera]")?.dataset.camera;
@@ -779,7 +781,8 @@ export function createBoard(host, handlers = {}) {
   }
   function updateCamera() {
     if (!camera) return;
-    camera.querySelector('[data-camera="size"]').textContent = enlarged ? "Mapa inteiro" : "Ampliar mapa";
+    const sizeButton = camera.querySelector('[data-camera="size"]'), sizeLabel = enlarged ? "Mapa inteiro" : "Ampliar mapa";
+    if (sizeButton.getAttribute("aria-label") !== sizeLabel) { sizeButton.setAttribute("aria-label", sizeLabel); sizeButton.dataset.tip = sizeLabel; }
     camera.querySelector('[data-camera="size"]').setAttribute("aria-pressed", String(enlarged));
     camera.querySelector('[data-camera="pan"]').setAttribute("aria-pressed", String(panning));
     camera.querySelector(`#${instructionId}`).textContent = panning ? "Arraste ou use dois dedos" : "Toque para interagir · pinça para zoom";

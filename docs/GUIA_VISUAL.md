@@ -72,7 +72,7 @@ Texto funcional usa fontes do sistema. O produto não depende de serviço extern
 | Botão/link de ação | `ui.button`, `.button`, `.primary`, `.subtle`, `.danger` | Botões para comandos, links para navegação. Estado disabled deve impedir ação e ter motivo quando relevante. |
 | Campo `.field` | `ui.field` / `ui.passwordField` | Label permanente, autocomplete apropriado, limites e erro junto ao formulário. Nunca usar placeholder como único label. |
 | Tooltip `.tooltip` | `help.tip`, `help.installHelp` | Até 80 caracteres; hover de 400 ms, foco imediato, Esc e aria-describedby. Não abre por toque. |
-| Botão ⓘ `.help-button` | `help.helpButton` | 18 px visíveis, colado ao texto (dentro do título/legenda ou ao lado do label em `.field-label`); nome Ajuda: tema, expanded/controls/haspopup; área de toque por pseudo-elemento. |
+| Botão ⓘ `.help-button` | `help.helpButton` | 18 px visíveis, colado ao texto (dentro do título/legenda ou ao lado do label em `.field-label`); nunca sozinho numa linha: caixa de seleção ou texto auxiliar com ⓘ também vão dentro de `.field-label` (ADR-106); nome Ajuda: tema, expanded/controls/haspopup; área de toque por pseudo-elemento. |
 | Popup de ajuda `.help-popup` | `help.js` | Popover único não modal, sempre centralizado, fundo levemente escurecido, foco e retorno, fecha pelo X. Ver [AJUDA_CONTEXTUAL.md](AJUDA_CONTEXTUAL.md). |
 | Formulário | `ui.submitForm` | Impede submissão repetida, sinaliza `aria-busy`, preserva erro legível e restaura o botão. |
 | Modal | `ui.modal`, `#modal` | Fade de 160 ms na entrada e na saída (só CSS: `@starting-style` + transição discreta; o fechamento é imediato para a lógica). Classes de layout (`wide`, editor de cena) saem ao abrir o próximo modal, não no `close`. Cabeçalho fixo com título e X (sem tooltip e sem botão de texto “Fechar” duplicado); só o corpo rola, dentro da borda; formulários mantêm Cancelar. `fieldset` usa a moldura dourada discreta comum. Não abrir diálogos aninhados. |
@@ -86,7 +86,7 @@ Texto funcional usa fontes do sistema. O produto não depende de serviço extern
 | Escolha de mapa `.map-choice` | `campaign-page.js`, `table.js` | Rádio acessível em cartão com miniatura real (imagem ou tileset desenhado), tipo e descrição; seleção com borda e brilho. |
 | Editor de ficha `.sheet-form` / `.action-row` | `sheet.js` | Atributos em grade, ações com nome/tipo/dados/efeito, adicionar/remover. Fórmula validada também no servidor. |
 | Barra de vida `.hp-bar` | `sheet.js` | `role="meter"` com valores; tons saudável/ferido/crítico e texto "Vida: x/y". Largura aplicada via CSSOM (sem estilo inline, compatível com a CSP). |
-| Mesa `.table-shell` | `table.js` | Grid imersivo: topo, grupo, palco, painel e barra de turno. Ver comportamento móvel abaixo. |
+| Mesa `.table-shell` | `table.js`, `table-shell.css` | Grid imersivo no padrão dos editores (ADR-105): topo em faixa, grupo, palco, painel e barra de turno. Ver comportamento móvel abaixo. |
 | Cartão do grupo `.party-card` | `table.js` | Avatar, personagem, nível, vida e presença. Turno atual com borda dourada e selo ⌛. Mestre (ou o próprio jogador) abre a ficha pelo cartão. Avatar enviado que não puder ser exibido a outro participante cai no avatar padrão (`guardAvatars`). |
 | Tabuleiro `.board` | `table-map.js` | Canvas com foco visível; setas movem o cursor e Enter confirma; Esc cancela o modo. Marcadores: verde aliado, vermelho inimigo, aura dourada no turno atual. |
 | Bolhas do marcador | `table-map.js` | Barra de vida acima do marcador (verde, âmbar, vermelho, cinza ao zerar) com números a partir de 20 px por casa; escudo azul-aço com a armadura. Barra ajustável tem contorno dourado mais forte. |
@@ -205,7 +205,7 @@ Estados obrigatórios da ajuda: catálogo carregando, falha curta com nova tenta
 | Elemento | Regra visual |
 | --- | --- |
 | Controle "Interface: Básica \| Completa" | Grupo de opções com legenda visível e estado escolhido marcado com "✓" além da cor. Fica no topo do editor e no topo da mesa do mestre; nunca aparece para jogadores. Compacto: as descrições das opções ficam associadas ao controle e explicadas no ⓘ, sem ocupar o topo. |
-| Ferramentas do mestre | Ícone + rótulo visível (sem depender de dica). A Básica fica sempre no topo e na mesma posição; a Completa acrescenta grupos com título (Elementos, Paredes e portas, Luz e visão, Exploração, Grade e escala, Configuração). |
+| Ferramentas do mestre | Editores e mesa (ADR-081/105): só ícone, com nome acessível e dica; indisponível diz o motivo na dica. A Básica fica sempre no topo e na mesma posição; a Completa acrescenta grupos com título (Elementos, Paredes e portas, Luz e visão, Exploração, Grade e escala, Configuração). |
 | Estado da preparação | Chips de texto: "Prévia privada — somente você vê.", "Em apresentação — os jogadores estão vendo esta cena.", "Alterações não salvas", "Alterações não aplicadas à mesa.". |
 | Paleta ao vivo | Título do grupo, "Ao vivo: os jogadores veem as mudanças." e "Concluir". Ajuda curta e honesta sobre "Cobrir área". |
 | Ações destrutivas | "Reiniciar cena…", "Remover da cena" e "Excluir cena" ficam em "Mais opções" ou no fim do painel, como links de texto; "Encerrar sessão" fica isolado no topo. |
@@ -219,12 +219,12 @@ Cartões de cena (campanha e mesa) usam miniaturas reais de `mapThumbnail` e o e
 | Componente | Fonte | Contrato |
 | --- | --- | --- |
 | Selo `.session-audio` | `table-soundtrack.js` | No topo da mesa só com faixa selecionada: nota, título, estado anunciado (`aria-live`), silenciar pessoal e **Ativar áudio da sessão** quando bloqueado; abre a aba ♪ Trilha. A trilha global fica suspensa e oculta nesse intervalo. |
-| Painel `.soundtrack` | `table-soundtrack.js` | Aba ♪ Trilha: faixa, estado, progresso (mestre: controle de posição; jogador: `role=progressbar`), duração e repetição. Mestre: tocar/pausar, ±10 s, repetir (`aria-pressed` e "✓"), parar e busca por nome no catálogo do servidor, sem envio. Todos: silenciar e volume pessoal, com aviso de que só mudam o próprio dispositivo. |
+| Painel `.soundtrack` | `table-soundtrack.js` | Aba ♪ Trilha: faixa, estado, progresso (mestre: controle de posição; jogador: `role=progressbar`), duração e repetição. Mestre: tocar/pausar, ±10 s, repetir (`aria-pressed`, preenchido em dourado), parar — numa fila só de ícones (ADR-105) e busca por nome no catálogo do servidor, sem envio. Todos: silenciar e volume pessoal, com aviso de que só mudam o próprio dispositivo. |
 | Painel admin → Músicas (`.ml-*`) | `admin-music.js` | Aviso de direitos, uso da quota do catálogo, busca, linhas com formato/duração/tamanho, prévia, renomear, excluir e envio. Faixa tocando em sessão: exclusão bloqueada com motivo visível. |
 
 Estados obrigatórios: sem trilha, carregando, tocando, pausada, terminou, bloqueado pelo navegador, faixa indisponível, catálogo vazio (a mesa explica que as faixas vêm da administração), busca sem resultado, erro com nova tentativa, faixa em uso e comandos indisponíveis com motivo (`#st-why`). Não prometer sincronização perfeita nem reprodução automática.
 
-Celular (≤ 900 px): o selo ocupa linha própria no topo; alvos de 44 px no selo, nos controles e na lista; as abas do painel não quebram rótulo e rolam na horizontal. Movimento: pulso da nota e transição da barra removidos com `prefers-reduced-motion` e pausados em aba oculta.
+Celular (≤ 900 px): o selo ocupa linha própria no topo; alvos de 44 px no selo, nos controles e na lista; as abas do painel são só ícones (nome no leitor de tela) e cabem numa fila. Movimento: pulso da nota e transição da barra removidos com `prefers-reduced-motion` e pausados em aba oculta.
 
 ## Formulários: alinhamento e foco (revisão de 9 nov. 2026)
 
@@ -233,6 +233,7 @@ Celular (≤ 900 px): o selo ocupa linha própria no topo; alvos de 44 px no sel
 - **Barras de filtro:** levam `role="search"`, alinham pela base e não recebem dicas automáticas. Os botões descem juntos quando não cabem.
 - **Quatro ou mais ações:** usar `actionBar(tools, main)` de `js/ui.js`. Ferramentas à esquerda; perigo e primária à direita, primária por último. Sem espaço, cada grupo vai para sua linha (nunca um botão órfão). Em modal, a barra fica fixa no rodapé da rolagem (ADR-071).
 - **Uma fila no desktop (ADR-101):** ferramentas secundárias usam `iconButton(ícone, rótulo, …)` de `js/ui.js` (ícones em `js/icons.js`): botão quadrado de 44 px, nome acessível e tooltip com o rótulo. Primária, alternância de modo e confirmação destrutiva continuam com texto. `buttonRowIssues` nos QAs de páginas e modais acusa barra com quatro ou mais botões em duas filas.
+- **Ações de linha em listas e tabelas (ADR-106):** sempre só ícone, via `rowAction(ícone, verbo, item, …)` de `js/ui.js`: dica curta com o verbo, nome acessível com o item (“Excluir: Nome”), uma fila sem quebra. Exclusão usa a classe `danger`; indisponível usa `aria-disabled` e diz o motivo na dica. O botão de texto fica para a ação primária da página e para a confirmação dentro do modal.
 - **Dicas automáticas:** só em campos obrigatórios, com mínimo, faixa numérica ou texto longo. Campo curto opcional não mostra “Até N caracteres”.
 - **Foco em campos de texto:** fica por dentro (borda clara + anel interno de 1 px). Nunca vaza nem é cortado.
 - **Foco em botões, links, caixas e opções:** contorno de 2 px colado (deslocamento de 2 px).
@@ -272,10 +273,20 @@ Editor no modal compartilhado: metadados e ferramentas acima, catálogo por grup
 - **Celular/tablet**: ferramentas em faixa horizontal rolável, painéis como gaveta sobre o palco, janela de propriedades ancorada embaixo; áreas seguras respeitadas.
 - Estilos: `prep.css`, `editor.css` (núcleo), `editor-tiles.css`, `editor-image.css`, `editor-scene.css`.
 
+## Mesa no padrão dos editores (ADR-105)
+
+- **Estrutura:** topo em faixa única (gradiente do editor, título com reticências, ações com largura natural), painéis planos separados por linhas de 1 px, títulos de painel em caixa alta dourada, palco com fundo quadriculado neutro e barra de turno como barra de estado. Estilos em `table-shell.css`, sobre os componentes de `editor.css`.
+- **Trilho:** coluna de 56 px à esquerda do mapa com `.ed-tool` de 44 px (ativo em dourado) e grupos separados por linha: Básica no topo, grupos da Completa depois e ações do marcador selecionado no fim. Jogador usa o mesmo trilho.
+- **Barra contextual:** névoa, paredes, luz e exploração numa faixa acima do mapa (título, aviso "Ao vivo", Concluir, ferramentas só com ícone e o nome da escolhida); o mapa encolhe, nada o cobre.
+- **Dados:** bandeja em coluna de 54 px à direita do mapa.
+- **Abas do painel:** `.ed-context` com ícone; o nome aparece só na ativa (desktop) e fica para o leitor de tela e a dica nas demais.
+- **Ícone x texto:** ícone quando o símbolo basta (caderno, busca, pausar, sair, tela cheia, câmera, cenas, pedir teste, rolar, nota, ficha, ordem, dar a vez, mover, desfazer, trilha). Texto em "Encerrar sessão", "Próxima vez", "Rolar dados", "Encerrar a vez", "Ações" do jogador, favoritas e liberar/bloquear movimento.
+- **Compacto (ADR-056):** mesmas áreas; trilho e barra contextual em faixa no topo do mapa; alvos de 44 px.
+
 ## Loja do Aventureiro e vitrine (ADR-104)
 
-- **Vitrine:** faixa entre a barra superior e o título, na largura útil do conteúdo (mesmas margens do `#main`). Fundo escuro translúcido, borda dourada a 20% e raio padrão; cerca de 100 px de altura no desktop. Cabeçalho em uma linha: “✦ Selecionados para sua aventura” (serifa dourada, 12 px), “Links de afiliado · preços podem variar”, “Ver mais na loja” e × para ocultar.
-- **Itens:** miniatura de 52 px sobre fundo claro (`object-fit: contain`), título em até duas linhas, preço ou “Consultar preço na loja”, selo textual da loja (pílula neutra, sem logotipo de terceiros) e “Ver oferta ↗” discreto. Hover só muda a borda; sem animação automática, carrossel ou slider.
+- **Vitrine:** faixa entre a barra superior e o título, na largura útil do conteúdo (mesma largura máxima, centralização e recuo lateral do `#main`; bordas alinhadas às do título em qualquer largura). Fundo escuro translúcido, borda dourada a 20% e raio padrão; cerca de 100 px de altura no desktop. Cabeçalho em uma linha: “✦ Selecionados para sua aventura” (serifa dourada, 12 px), “Links de afiliado · preços podem variar”, “Ver mais na loja” e × para ocultar.
+- **Itens:** miniatura de 52 px sobre fundo claro (`object-fit: contain`), título em até duas linhas, preço ou “Consultar preço na loja”, selo textual da loja (pílula neutra, sem logotipo de terceiros) e “Comprar ↗” discreto. Hover só muda a borda; sem animação automática, carrossel ou slider.
 - **Colunas:** por container query da própria faixa — ≥ 860 px até 3, ≥ 520 px até 2, abaixo 1 —, limitadas pela configuração. No celular, alvos de 44 px.
-- **Página da loja:** cabeçalho padrão (`page-heading`), aviso de afiliado em texto auxiliar, busca com sugestões e ordenação, filtros laterais em painel `metal` (recolhível com `<details>` no celular) e grade de cartões `metal` com imagem quadrada, selo da loja, “Oferta” só com preços conferidos, sistemas e botão primário de oferta.
-- **Não fazer:** cores de marketplace, logotipos de terceiros, banners animados, contadores de urgência, percentuais de desconto estimados ou qualquer conteúdo comercial na mesa, nos editores e nas fichas.
+- **Página da loja:** cabeçalho padrão (`page-heading`), aviso de afiliado em texto auxiliar, busca com sugestões e ordenação, filtros laterais em painel `metal` (recolhível com `<details>` no celular) e grade de cartões `metal` com imagem quadrada, selo da loja, sistemas e botão primário “Comprar na/no {loja}”. Com dois preços conferidos e anterior maior, selo de desconto “−N%” no canto superior direito da imagem (vermelho escuro sólido, texto claro, sem animação; N arredondado para baixo); abaixo de 1%, só a pílula “Oferta”. No detalhe, o mesmo “−N%” fica na pílula ao lado da loja.
+- **Não fazer:** cores de marketplace, logotipos de terceiros, banners animados, contadores de urgência, percentuais de desconto estimados (o “−N%” vem só dos dois preços conferidos) ou qualquer conteúdo comercial na mesa, nos editores e nas fichas.

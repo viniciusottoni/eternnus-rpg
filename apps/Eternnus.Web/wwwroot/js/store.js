@@ -7,7 +7,7 @@ import { storeProducts, storeProduct, storeSuggestions, storeFilters, storePrefe
 import { invalidateShowcase } from "./store-recommendations.js";
 import {
   SORTS, AVAILABILITY, emptyFilters, catalogQuery, hasExplicitFilters, parseReais, safeOfferUrl, safeImageUrl,
-  priceLabel, offerBadge, formatPrice, truncate, marketplaceName, atMarketplace, PRICE_UNKNOWN,
+  priceLabel, offerBadge, discountPercent, formatPrice, truncate, marketplaceName, atMarketplace, buyLabel, PRICE_UNKNOWN,
 } from "./store-policy.js";
 
 const META_MS = 5 * 60 * 1000;
@@ -26,17 +26,22 @@ function offerLink(card, surface, classes = "button primary store-offer") {
   const href = safeOfferUrl(card.url);
   if (!href) return '<span class="form-help">Oferta indisponível no momento.</span>';
   const store = atMarketplace(card.marketplace);
-  return `<a class="${classes}" href="${esc(href)}" target="_blank" rel="sponsored noopener noreferrer" data-store-product="${esc(card.id)}" data-surface="${surface}" aria-label="Ver oferta de ${esc(card.title)} ${esc(store)} (abre em nova aba; link de afiliado)">Ver oferta ${esc(store)} <span aria-hidden="true">↗</span></a>`;
+  return `<a class="${classes}" href="${esc(href)}" target="_blank" rel="sponsored noopener noreferrer" data-store-product="${esc(card.id)}" data-surface="${surface}" aria-label="Comprar ${esc(card.title)} ${esc(store)} (abre em nova aba; link de afiliado)">${esc(buyLabel(card.marketplace))} <span aria-hidden="true">↗</span></a>`;
 }
 function priceHtml(card) {
   const sale = offerBadge(card);
   return `<p class="store-card-price"><strong>${esc(priceLabel(card))}</strong>${sale ? ` <s aria-label="Preço anterior">${esc(formatPrice(card.previousPriceCents, card.currency))}</s>` : ""}</p>`;
 }
+/** Selo de desconto: no canto da imagem do cartão e como pílula no detalhe. Sem desconto válido, só "Oferta" (ou nada). */
+function discountTag(card, cls) {
+  const pct = discountPercent(card);
+  return pct ? `<span class="${cls}" aria-label="${pct}% de desconto">−${pct}%</span>` : "";
+}
 const systemsText = (card) => (card.generic ? "Qualquer sistema" : (card.systems || []).map((s) => s.name).join(" · "));
 
 function cardHtml(card) {
   const image = safeImageUrl(card.imageUrl);
-  return `<article class="store-card metal"><div class="store-card-media">${image ? `<img src="${esc(image)}" alt="" width="240" height="240" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : '<span class="store-card-placeholder" aria-hidden="true">✦</span>'}</div><div class="store-card-body"><div class="store-card-tags"><span class="store-badge" data-store="${esc(card.marketplace)}">${esc(marketplaceName(card.marketplace))}</span>${offerBadge(card) ? '<span class="store-sale">Oferta</span>' : ""}</div><h3><button type="button" class="store-card-title" data-action="store-detail" data-id="${esc(card.id)}"${String(card.title).length > 110 ? ` data-tip-full="${esc(String(card.title).slice(0, 1000))}"` : ""}>${esc(truncate(card.title, 110))}</button></h3><p class="store-card-systems">${esc(systemsText(card))}${card.category ? ` · ${esc(card.category.name)}` : ""}</p>${priceHtml(card)}${offerLink(card, "store")}</div></article>`;
+  return `<article class="store-card metal"><div class="store-card-media">${discountTag(card, "store-discount")}${image ? `<img src="${esc(image)}" alt="" width="240" height="240" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : '<span class="store-card-placeholder" aria-hidden="true">✦</span>'}</div><div class="store-card-body"><div class="store-card-tags"><span class="store-badge" data-store="${esc(card.marketplace)}">${esc(marketplaceName(card.marketplace))}</span>${offerBadge(card) && !discountPercent(card) ? '<span class="store-sale">Oferta</span>' : ""}</div><h3><button type="button" class="store-card-title" data-action="store-detail" data-id="${esc(card.id)}"${String(card.title).length > 110 ? ` data-tip-full="${esc(String(card.title).slice(0, 1000))}"` : ""}>${esc(truncate(card.title, 110))}</button></h3><p class="store-card-systems">${esc(systemsText(card))}${card.category ? ` · ${esc(card.category.name)}` : ""}</p>${priceHtml(card)}${offerLink(card, "store")}</div></article>`;
 }
 
 function check(name, value, label, checked, count) {
@@ -259,7 +264,7 @@ async function openDetail(id) {
   const image = safeImageUrl(card.imageUrl);
   const checked = card.priceStatus === "current" && card.priceCheckedAt ? `Preço conferido em ${when(card.priceCheckedAt)}.` : "";
   const availability = card.availability && card.availability !== "unknown" ? `<p><strong>Disponibilidade:</strong> ${esc(AVAILABILITY[card.availability] || "")} (na última conferência)</p>` : "";
-  modal(card.title, `<div class="store-detail">${image ? `<img class="store-detail-image" src="${esc(image)}" alt="Imagem do produto" width="280" height="280" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ""}<div class="store-detail-body"><div class="store-card-tags"><span class="store-badge" data-store="${esc(card.marketplace)}">${esc(marketplaceName(card.marketplace))}</span>${offerBadge(card) ? '<span class="store-sale">Oferta</span>' : ""}</div>${card.brand ? `<p class="form-help">${esc(card.brand)}</p>` : ""}${priceHtml(card)}<p class="form-help">${esc(checked || (card.priceStatus === "stale" ? "O preço conhecido está desatualizado: confira na loja." : PRICE_UNKNOWN + "."))} Preços e disponibilidade podem variar.</p>${availability}<p><strong>Sistemas:</strong> ${esc(systemsText(card))}</p>${card.category ? `<p><strong>Categoria:</strong> ${esc(card.category.name)}</p>` : ""}${card.description ? `<p class="store-detail-description">${esc(card.description)}</p>` : ""}${card.tags?.length ? `<ul class="store-tags" aria-label="Palavras-chave">${card.tags.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}<p class="form-help">${esc(DISCLOSURE)}</p><div class="form-actions">${button("Fechar", "modal-close", "", "subtle")}${offerLink(card, "detail")}</div></div></div>`);
+  modal(card.title, `<div class="store-detail">${image ? `<img class="store-detail-image" src="${esc(image)}" alt="Imagem do produto" width="280" height="280" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ""}<div class="store-detail-body"><div class="store-card-tags"><span class="store-badge" data-store="${esc(card.marketplace)}">${esc(marketplaceName(card.marketplace))}</span>${offerBadge(card) ? discountTag(card, "store-sale") || '<span class="store-sale">Oferta</span>' : ""}</div>${card.brand ? `<p class="form-help">${esc(card.brand)}</p>` : ""}${priceHtml(card)}<p class="form-help">${esc(checked || (card.priceStatus === "stale" ? "O preço conhecido está desatualizado: confira na loja." : PRICE_UNKNOWN + "."))} Preços e disponibilidade podem variar.</p>${availability}<p><strong>Sistemas:</strong> ${esc(systemsText(card))}</p>${card.category ? `<p><strong>Categoria:</strong> ${esc(card.category.name)}</p>` : ""}${card.description ? `<p class="store-detail-description">${esc(card.description)}</p>` : ""}${card.tags?.length ? `<ul class="store-tags" aria-label="Palavras-chave">${card.tags.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}<p class="form-help">${esc(DISCLOSURE)}</p><div class="form-actions">${button("Fechar", "modal-close", "", "subtle")}${offerLink(card, "detail")}</div></div></div>`);
   $("#modal").classList.add("wide");
 }
 
