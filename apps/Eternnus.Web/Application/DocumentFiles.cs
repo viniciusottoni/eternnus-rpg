@@ -25,10 +25,14 @@ public sealed record UploadedDocument(byte[] Content, string ContentType, string
 /// o visualizador usa pdf.js sem scripting e downloads saem como anexo com CSP sandbox.</summary>
 public sealed class DocumentFiles(IDocumentScanner scanner)
 {
-    public async Task<UploadedDocument> ReadAsync(IFormFile? file, IReadOnlyCollection<string> allowed, CancellationToken ct)
+    /// <param name="maxBytes">Limite do plano de quem envia (ADR-102); nulo = limite fixo dos documentos da plataforma (biblioteca, fichas-modelo, 25 MB).
+    /// Imagens chegam aqui depois de o formulário já ter aplicado o limite do plano, por isso o teto é o maior plano.</param>
+    public async Task<UploadedDocument> ReadAsync(IFormFile? file, IReadOnlyCollection<string> allowed, CancellationToken ct, long? maxBytes = null)
     {
         if (file is null || file.Length <= 0) throw new RuleException(400, "Escolha um arquivo.");
-        if (file.Length > UploadLimits.DocumentBytes) throw new RuleException(413, "O arquivo excede o limite de 25 MB.");
+        if (maxBytes is { } plan && file.Length > plan) throw AccountLimits.FileTooLarge(plan);
+        var images = allowed.All(t => t is DocumentKinds.Png or DocumentKinds.Jpeg);
+        if (file.Length > (maxBytes ?? (images ? AccountPlans.MaxFileCeiling : UploadLimits.DocumentBytes))) throw new RuleException(413, "O arquivo excede o limite de 25 MB.");
         var content = new byte[file.Length];
         await using (var stream = file.OpenReadStream())
         {

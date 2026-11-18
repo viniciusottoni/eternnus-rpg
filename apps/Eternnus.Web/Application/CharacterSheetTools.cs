@@ -18,6 +18,8 @@ public partial class CharacterSheetService
     public async Task<object> CopyAsync(Guid id, string user, CancellationToken ct)
     {
         var source = await db.Characters.AsNoTracking().SingleOrDefaultAsync(c => c.Id == id && c.OwnerId == user, ct) ?? throw NotFound();
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await AccountLimits.EnsureCharacterSlotAsync(db, user, ct);
         if (await db.Characters.CountAsync(c => c.OwnerId == user, ct) >= MaxOwnedCharacters)
             throw new RuleException(409, $"Você já tem {MaxOwnedCharacters} personagens. Apague algum antes de duplicar.");
         var name = CopyName(source.Name, 100);
@@ -48,6 +50,8 @@ public partial class CharacterSheetService
         db.Characters.Add(copy);
         if (source.PortraitVersion > 0 && await db.Set<CharacterPortrait>().AsNoTracking().SingleOrDefaultAsync(p => p.CharacterId == source.Id, ct) is { } portrait)
         {
+            // A imagem copiada ocupa espaço da conta (ADR-102).
+            await AccountLimits.EnsureStorageAsync(db, user, portrait.Size, ct);
             db.Set<CharacterPortrait>().Add(new CharacterPortrait
             {
                 CharacterId = copy.Id, Content = portrait.Content, ContentType = portrait.ContentType, Width = portrait.Width, Height = portrait.Height,
@@ -57,6 +61,7 @@ public partial class CharacterSheetService
         }
         Snapshot(db, copy, Now);
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return new { copy.Id, copy.Name };
     }
 

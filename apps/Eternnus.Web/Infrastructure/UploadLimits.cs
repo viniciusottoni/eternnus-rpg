@@ -8,6 +8,9 @@ public static class UploadLimits
     public const long DocumentBytes = 25L * 1024 * 1024;
     public const long DocumentRequestBytes = DocumentBytes + 256 * 1024;
 
+    /// <summary>Anexo de página (até o maior plano, ADR-102) + margem para multipart. O endpoint aplica o limite do plano de quem envia.</summary>
+    public const long AttachmentRequestBytes = AccountPlans.MaxFileCeiling + 256 * 1024;
+
     /// <summary>Imagem importada por link para anexo de página: o corpo da requisição é JSON pequeno; o limite vale para o download.</summary>
     public const int LinkedImageBytes = 10 * 1024 * 1024;
 
@@ -32,7 +35,7 @@ public static class UploadLimits
         var mapParts = path.Split('/');
         if (HttpMethods.IsPost(request.Method) && mapParts.Length == 6 && mapParts[1] == "api" && mapParts[2] == "campaigns"
             && Guid.TryParse(mapParts[3], out _) && mapParts[4] == "assets" && mapParts[5] == "maps") return CampaignAssetsService.MaxImageRequestBytes;
-        if (HttpMethods.IsPost(request.Method) && mapParts.Length == 8 && mapParts[1] == "api" && mapParts[2] == "campaigns" && Guid.TryParse(mapParts[3], out _) && mapParts[4] == "workspace" && mapParts[5] == "pages" && Guid.TryParse(mapParts[6], out _) && mapParts[7] == "attachments") return DocumentRequestBytes;
+        if (HttpMethods.IsPost(request.Method) && mapParts.Length == 8 && mapParts[1] == "api" && mapParts[2] == "campaigns" && Guid.TryParse(mapParts[3], out _) && mapParts[4] == "workspace" && mapParts[5] == "pages" && Guid.TryParse(mapParts[6], out _) && mapParts[7] == "attachments") return AttachmentRequestBytes;
         if (HttpMethods.IsPost(request.Method) && path == "/api/admin/music") return MusicLimits.MaxRequestBytes;
         if (HttpMethods.IsPost(request.Method) && mapParts.Length == 5 && mapParts[1] == "api" && mapParts[2] == "characters" && Guid.TryParse(mapParts[3], out _) && mapParts[4] == "portrait") return CampaignAssetsService.MaxImageRequestBytes;
         if (HttpMethods.IsPost(request.Method) && mapParts.Length == 5 && mapParts[1] == "api" && mapParts[2] == "campaigns" && Guid.TryParse(mapParts[3], out _) && mapParts[4] == "session-import") return SessionImportRequestBytes;

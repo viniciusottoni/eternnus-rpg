@@ -37,6 +37,18 @@ public sealed class AdminTests : IAsyncLifetime
         systems = new RpgSystemService(db, audit);
         campaigns = new CampaignService(db, new ProgressionService(db, audit), audit);
     }
+    [Fact]
+    public async Task Plan_change_is_audited_validated_and_staff_stays_max()
+    {
+        await admin.SetPlanAsync(Common, new(AccountPlans.Pro, "Assinatura confirmada"), Root, default);
+        Assert.Equal(AccountPlans.Pro, (await db.Users.AsNoTracking().SingleAsync(u => u.Id == Common)).Plan);
+        Assert.True(await db.Audit.AnyAsync(a => a.Action == "user.plan" && a.TargetId == Common && a.ActorId == Root));
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => admin.SetPlanAsync(Common, new("gold", "Motivo válido"), Root, default))).Status);
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => admin.SetPlanAsync(Common, new(AccountPlans.Max, ""), Root, default))).Status);
+        // Embaixador com plano gravado Basic continua com os limites do Max.
+        await admin.SetPlanAsync(Ambassador, new(AccountPlans.Basic, "Registro do plano"), Root, default);
+        Assert.Equal(AccountPlans.Max, AccountLimits.PlanOf(await db.Users.AsNoTracking().SingleAsync(u => u.Id == Ambassador)).Key);
+    }
     void AddUser(string id, string role, bool confirmed = true) =>
         db.Users.Add(new AppUser { Id = id, UserName = id, Email = id + "@example.test", NormalizedEmail = (id + "@example.test").ToUpperInvariant(), DisplayName = id, Role = role, EmailConfirmed = confirmed, SecurityStamp = Guid.NewGuid().ToString() });
     public async Task DisposeAsync() { await db.DisposeAsync(); await connection.DisposeAsync(); }

@@ -376,7 +376,7 @@ public sealed class TablePlayServiceTests : IAsyncLifetime
         var oneShot = created.GetProperty("campaignId").GetGuid();
         db.AddRange(new Member { CampaignId = oneShot, UserId = Player }, new Member { CampaignId = oneShot, UserId = Other });
         // "Other" já está no limite de campanhas persistentes.
-        for (var i = 0; i < AccountLimits.Campaigns - 1; i++)
+        for (var i = 0; i < AccountPlans.BasicLimits.Campaigns!.Value - 1; i++)
         {
             var c = new Campaign { OwnerId = Outsider, Name = "Cheia " + i };
             db.AddRange(c, new Member { CampaignId = c.Id, UserId = Other });

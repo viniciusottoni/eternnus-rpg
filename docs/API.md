@@ -20,8 +20,8 @@ No shell móvel, a identificação da conta e “Sair da conta” são apresenta
 | --- | --- | --- |
 | `GET /auth/csrf` | — | `200 { token }`. |
 | `GET /auth/providers` | — | `200 { google, discord }`; indica disponibilidade configurada, não garante disponibilidade externa. |
-| `GET /auth/me` | Sessão | `200 { id, email, name, avatarUrl, verified }`; `401` sem sessão válida. |
-| `GET /auth/limits` | Sessão | `200 { unlimited, activeCampaigns, campaignLimit, oneShotParticipations, oneShotLimit, storage:{campaigns, capacity, perCampaign, images, attachments, versions, texts, portraits, used} }`. Limites `null` = sem limite (equipe). `storage` em bytes, somente das campanhas/one-shots mestrados: `images` = mapas, retratos e camadas (único tipo limitado, `perCampaign` = 250 MiB por campanha); `attachments` = anexos de páginas + atlas publicados; `versions` = versões de documentos e páginas; `texts` = caracteres de páginas, recursos, textos do acervo e sessões anteriores (estimativa); `portraits` = imagens das fichas da própria pessoa (ADR-097), fora da capacidade das campanhas. `capacity` = `campaigns × perCampaign`, apenas orientação (ADR-096). Somente leitura. |
+| `GET /auth/me` | Sessão | `200 { id, email, name, avatarUrl, verified, …, plan, planLabel, maxFileBytes }`; `plan` é o plano efetivo (equipe = `max`) e `maxFileBytes` o maior arquivo aceito, usado pelo cliente para avisar antes de enviar (o servidor revalida). `401` sem sessão válida. |
+| `GET /auth/limits` | Sessão | `200 { plan, planLabel, unlimited, activeCampaigns, campaignLimit, oneShotParticipations, oneShotLimit, characters, characterLimit, campaignPlayerLimit, oneShotPlayerLimit, maxFileBytes, storage:{campaigns, capacity, images, attachments, versions, texts, portraits, used} }` (ADR-102). Limites `null` = sem limite (plano Max e equipe). `storage` em bytes: conteúdo das campanhas/one-shots mestrados mais `portraits` (imagens das fichas da própria pessoa). `images` = mapas, retratos e camadas, mais os dados de composição, tiles, camadas de névoa/paredes e composição/camadas das cenas (ADR-103); `attachments` = anexos de páginas + atlas publicados; `versions` = versões de documentos e páginas; `texts` = caracteres de páginas, recursos, textos do acervo, sessões anteriores e suas cenas, descrição e ajustes da campanha, textos das cenas, personagens do mestre, capítulos, linha do tempo e chat/log da mesa (estimativa). `capacity` = espaço total do plano. Somente leitura. As listas de campanhas/one-shots trazem `limits` sem fichas, arquivo e armazenamento. |
 | `POST /auth/register` | `{ name, email, password, confirmPassword }` | `200` com perfil e sessão pendente; confirmação enfileirada. |
 | `POST /auth/login` | `{ email, password, rememberMe? }` | `200` com cookie ou `{ requiresTwoFactor, setupRequired }`; `rememberMe` booleano, padrão `false`. Conta pode estar pendente. Consultar `/me` após concluir MFA. |
 | `POST /auth/logout` | Sessão | `204`; limpa sessão. |
@@ -198,7 +198,7 @@ Ver [PLATAFORMA.md](PLATAFORMA.md) para regras de acesso, versão de fichas, ope
 | Grupo | Contratos principais |
 | --- | --- |
 | `/api/rpg-systems` | GET: sistemas ativos para escolha na campanha. Criação/edição de campanha aceita rpgSystemId; system textual continua por compatibilidade. |
-| `/api/admin` | GET overview, users, users/{id}, campaigns, campaigns/{id}, audit, rpg-systems. Admin altera papel via PUT users/{id}/role; suspende/reativa por POST suspend/unsuspend com motivo; gerencia sistemas com POST/PUT/DELETE rpg-systems; exclui campanha pela rota administrativa com motivo. |
+| `/api/admin` | GET overview, users, users/{id}, campaigns, campaigns/{id}, audit, rpg-systems. Admin altera papel via PUT users/{id}/role e plano via PUT users/{id}/plan `{plan: basic|plus|pro|max, reason}` (204, auditado `user.plan`; 400 plano/motivo inválido; reduzir não apaga nada); `users` e `users/{id}` trazem `plan` gravado e, no detalhe, `effectivePlan` e `stats.storageBytes`; suspende/reativa por POST suspend/unsuspend com motivo; gerencia sistemas com POST/PUT/DELETE rpg-systems; exclui campanha pela rota administrativa com motivo. |
 | `/api/support` | GET lista própria e /{id}; POST cria; POST /{id}/messages responde; POST close/reopen altera o estado dentro das regras de prazo. |
 | `/api/admin/tickets` | Admin: GET fila/detalhe/assignees, POST /{id}/messages (resposta pública ou nota interna), PUT /{id} (status, prioridade, responsável, revisão). |
 | `/api/library` | GET lista/detalhe/arquivo; GET `/{id}/thumbnail` devolve a capa JPEG reduzida (cabe em 720×480 sem distorcer, `private, no-store`, `nosniff`; `404` para PDF, WebP ou imagem que não pôde ser reduzida; mesmo acesso do arquivo, excluídos só para a equipe); POST /{id}/downloaded registra download. Staff: POST multipart para publicar, PUT metadados ou /{id}/file para substituir, DELETE para retirada. Admin pode restaurar/reverter versões. Formato permitido: PDF, PNG, JPEG, WebP; até 25 MiB; antivírus em melhor esforço (ADR-058). |
@@ -248,6 +248,24 @@ Os contratos abaixo complementam e substituem as permissões anteriores nas rota
 - [Imagens temporárias](IMAGENS_TEMPORARIAS.md): comandos transacionais de apresentação e WebSocket de sinalização; bytes exclusivamente entre navegadores.
 
 POST /api/campaigns/{id}/assets/maps é a nova exceção enumerada em UploadLimits: até 10 MiB de imagem e 64 KiB de margem multipart. Demais limites e proteções mantêm seus contratos.
+
+### Planos de conta (ADR-102)
+
+| Limite | Basic | Plus | Pro | Max / Embaixador / Admin |
+|---|---|---|---|---|
+| Campanhas ativas (mestre ou jogador) | 3 | 5 | 10 | sem limite |
+| Participações vitalícias em one-shots | 10 | 15 | 30 | sem limite |
+| Jogadores por campanha (plano de quem mestra) | 5 | 8 | 15 | sem limite |
+| Jogadores por one-shot (plano de quem mestra) | 8 | 8 | 15 | sem limite |
+| Fichas de personagem | 5 | 10 | 20 | sem limite |
+| Espaço total | 500 MiB | 2 GiB | 4 GiB | 20 GiB |
+| Maior arquivo | 20 MiB | 30 MiB | 60 MiB | 100 MiB |
+
+- O plano fica em `AspNetUsers.Plan` (padrão `basic`) e só muda por `PUT /api/admin/users/{id}/plan`. Embaixadores e admins usam o Max qualquer que seja o valor gravado.
+- Erros: `409` ao passar de campanhas, one-shots, jogadores da mesa (`POST /campaigns/join`, conversão de one-shot), fichas (`POST /characters`, `POST /characters/{id}/copy`) ou espaço total; `413` quando o arquivo passa do limite do plano de quem envia.
+- **Espaço total** substitui os antigos 250 MB por campanha (imagens) e 250 MB por campanha (anexos): mapas, imagens-fonte, camadas, cópias de cenas/mapas, anexos de páginas e retratos de fichas conferem o espaço da conta de quem mestra a campanha (ou do dono da ficha). Conta só a diferença líquida; trocar por arquivo menor sempre passa. Textos e versões entram no uso, mas não bloqueiam edições.
+- **Maior arquivo** substitui os antigos 10 MB de imagem e 25 MB de anexo nas rotas de imagens da campanha, retratos de fichas e anexos de páginas (as menções a 10 MB/25 MB/250 MB nessas rotas abaixo valem como histórico). O teto técnico das requisições é 100 MiB + margem (`UploadLimits`); as imagens continuam limitadas a 4.096 px por lado e 8 MP. Importação por link de anexo segue em até 10 MiB. Biblioteca, PDFs de fichas-modelo, músicas e avatar mantêm os limites próprios.
+- Reduzir o plano não apaga nada: o que passar do novo limite continua acessível; só novas criações, entradas e envios são recusados.
 
 Camada de névoa e paredes (ADR-100): PUT `/api/campaigns/{id}/assets/layers` e POST `/api/sessions/{id}/fog/walls` aceitam corpo JSON até 512 KiB (`UploadLimits.LayerRequestBytes`), para alcançar o limite de 2.000 paredes do domínio. Quantidade, coordenadas, luzes e marcas continuam validadas no servidor (2.001ª parede → `409`).
 
@@ -530,7 +548,7 @@ Todas exigem `Verified`; só o mestre (403 jogador, 404 sem vínculo); escritas 
 | --- | --- |
 | GET `?kind=tilemap\|imagemap\|scene&document={docId}` | `{items:[{id,label,auto,revision,createdAt,size}], maxAuto:20, maxNamed:20}`, mais recentes primeiro (até 40), sem conteúdo. 400 tipo inválido. |
 | GET `/{vid}` | `{id,kind,documentId,label,auto,revision,createdAt,payload}`. `payload`: tiles `{name,summary,scaleMeters,rows,layers}`; imagem `{name,summary,gridPixels,scaleMeters,hasGrid,gridOffsetX,gridOffsetY,freeMovement,composition}`; cena `{name,description,kind,mapKey,sharedText,privateNotes,visionMode,layerMode,order,prepared,layers}`. 404 versão de outra campanha. |
-| POST | `{kind,documentId,label}` (rótulo 1–80): guarda o documento **salvo** atual como versão nomeada (se igual a uma automática, ela vira nomeada). 404 documento; 400 tipo incompatível; 409 já há 20 nomeadas, documento acima de 2 MiB ou mapa de imagem antigo sem composição salva. → `{id,label,auto,revision,createdAt,size}`. |
+| POST | `{kind,documentId,label}` (rótulo 1–80): guarda o documento **salvo** atual como versão nomeada (se igual a uma automática, ela vira nomeada). 404 documento; 400 tipo incompatível; 409 já há 20 nomeadas, documento acima de 2 MiB, espaço do plano do mestre esgotado (ADR-103) ou mapa de imagem antigo sem composição salva. → `{id,label,auto,revision,createdAt,size}`. |
 | PUT `/{vid}` | `{label}` renomeia e torna nomeada. 409 limite de nomeadas. |
 | DELETE `/{vid}` | 204. Imagens-fonte usadas só por ela saem no próximo salvamento do mapa. |
 
@@ -577,3 +595,25 @@ Regra única de posicionamento (apresentar, aplicar com marcadores, entrar na me
 | GET `/api/campaigns/{id}/sessions/start-context` | Mestre (jogador `403`) | Somente leitura → `{ context: { nextNumber, maps:[{key, kind, name, description, imageUrl, rows}], scenes:[{id, name, kind, mapKey, hasText, updatedAt}], hasSessions, lastChapterId }, chapters }`. Substitui as cinco consultas do modal de início. |
 | POST `/api/sessions/{id}/tokens/{tokenId}/settings` | Mestre | Acrescenta `unlinkSheet` (bool): a criatura deixa de apontar para a ficha (que continua em Preparação › Personagens). Com `templateId` junto, troca a ficha. Personagem de jogador `409`. |
 | Eventos | — | `map` de revelar/cobrir passa a ser privado do mestre com `{tool, cells, mapKey, layerKey, undoable}` (faixas compactas "a-b,c"; pinceladas que não cabem em 3.200 caracteres ficam sem desfazer). Pintura sem mudança não gera evento. Remoção de marcador: o evento privado do mestre guarda o retrato para desfazer; se o marcador era visível ao grupo, os jogadores recebem uma cópia sem dados (`IsRecipientCopy`). |
+
+## Loja do Aventureiro (ADR-104)
+
+Contrato completo, formatos (`Card`, `Preferences`, `ProductInput`, `Settings`) e regras em [LOJA_AFILIADOS.md §9](LOJA_AFILIADOS.md#9-contrato-http). Todas as rotas exigem `Verified`; `/api/admin/store/**` também exige `Admin`. Escritas usam o antiforgery comum.
+
+| Rota | Resumo |
+| --- | --- |
+| `GET /store/products` | Catálogo paginado (24) e filtrado no servidor: `q`, `system` (GUID ou `generic`, repetível), `category`, `marketplace`, `minPrice`, `maxPrice`, `available`, `onSale`, `sort`, `page`, `campaignId`. Sem busca e com `sort=relevance`, ordem personalizada (`personalized: true`). |
+| `GET /store/products/{id}` | Produto ativo com descrição completa; inativo/excluído 404. |
+| `GET /store/suggestions?q=` | Até 8 títulos para o campo de busca. |
+| `GET /store/categories` | Categorias, sistemas e lojas com contagem de produtos ativos, `genericCount`, `popularity`, `priceStaleHours`. |
+| `GET /store/recommendations?page=&campaignId=` | Vitrine (até 3). `show=false` com `reason` `disabled`, `page`, `hidden` ou `empty`. `campaignId` só vale para quem é mestre ou integrante. |
+| `GET`/`PUT /store/preferences` | Mostrar vitrine, usar sistemas das campanhas, consentimento para análise de mensagens (opt-in) e sistema de interesse; inclui os termos inferidos do próprio usuário. |
+| `DELETE /store/interests` | Apaga os interesses inferidos (204). |
+| `POST /store/interactions` | `{ productId, surface }` (`showcase`, `store`, `detail`), 204; limite `store` (30/min). |
+| `/admin/store/products` (`GET`, `POST`), `/{id}` (`GET`, `PUT`, `DELETE` lógico), `/{id}/status` (`POST`) | Gestão com revisão (409 em conflito) e auditoria sem a URL afiliada. |
+| `POST /admin/store/preview-link` | `{ url }` → loja, identificador, metadados públicos quando permitidos, `notes`, `duplicateOf`; limite `store-preview` (20/5 min). |
+| `/admin/store/categories` (`GET`, `POST`, `PUT /{id}`, `DELETE /{id}`) | Taxonomia; excluir categoria com produtos: 409. |
+| `GET`/`PUT /admin/store/settings` | Vitrine e recomendação (revisão). |
+| `GET /admin/store/metrics?days=` | Agregados de cliques (7–365 dias); `impressionsTracked: false`. |
+
+Excluir um sistema de RPG associado a produtos devolve 409 (`DELETE /admin/rpg-systems/{id}`).

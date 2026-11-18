@@ -28,6 +28,7 @@ export const PLATFORM_ROUTES = Object.freeze({
   guild: ["./guild.js", "renderGuild"],
   progress: ["./progress.js", "renderProgress"],
   "one-shot": ["./one-shots.js", "renderOneShots"],
+  store: ["./store.js", "renderStore"],
 });
 export const isSafeSegment = (value) => /^[A-Za-z0-9_-]{1,64}$/.test(String(value));
 // Somente destinos internos sem query, token, URL ou segmento livre de usuário.

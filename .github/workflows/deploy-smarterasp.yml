@@ -97,6 +97,10 @@ jobs:
           if ((Get-Content (Join-Path $env:PUBLISH_DIR 'web.config') -Raw) -notmatch 'hostingModel="OutOfProcess"') {
             throw 'web.config must use hostingModel="OutOfProcess" for the shared IIS Application Pool'
           }
+          # Account plans (ADR-102) accept files up to 100 MiB; IIS default (~28.6 MB) would reject them before the app.
+          if ((Get-Content (Join-Path $env:PUBLISH_DIR 'web.config') -Raw) -notmatch 'maxAllowedContentLength="106954752"') {
+            throw 'web.config must raise IIS requestLimits to 106954752 bytes for plan uploads'
+          }
 
       - name: Smoke test the real published package
         shell: pwsh

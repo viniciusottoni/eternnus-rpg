@@ -93,3 +93,27 @@ export function focusClipIssues(rootSelector = 'body') {
   before?.focus?.({ preventScroll: true });
   return [...new Set(issues)];
 }
+
+// Barras de ação que quebram em duas filas no desktop (ADR-101): contêiner flex com quatro ou mais botões
+// cujos filhos diretos visíveis ocupam mais de uma faixa vertical. Ferramentas viram ícones com tooltip.
+export function buttonRowIssues(rootSelector = 'body') {
+  const root = document.querySelector(rootSelector) || document.body;
+  const visible = (e) => e.checkVisibility() && e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0;
+  const isAction = (e) => e.matches('button:not(.help-button), a.button, [role=button]');
+  const describe = (e) => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${[...e.classList].slice(0, 2).map((c) => '.' + c).join('')}`;
+  const issues = [];
+  for (const box of root.querySelectorAll('*')) {
+    const style = getComputedStyle(box);
+    if (!/flex/.test(style.display) || style.flexDirection.startsWith('column') || style.flexWrap === 'nowrap' || !visible(box)) continue;
+    if (box.closest('nav, [role=tablist], table, ul, ol, .chips, .ed-shell, .fx-grid')) continue;
+    const kids = [...box.children].filter(visible);
+    const actions = kids.flatMap((k) => (isAction(k) ? [k] : [...k.querySelectorAll('button:not(.help-button), a.button')].filter(visible)));
+    if (actions.length < 4 || kids.filter((k) => isAction(k) || k.querySelector('button')).length < kids.length * 0.6) continue;
+    // Mesma fila = faixas verticais sobrepostas (grupos de alturas diferentes ficam centralizados).
+    const boxes = kids.filter((k) => !k.matches('.help-button') && (isAction(k) || k.querySelector('button:not(.help-button), a.button'))).map((k) => k.getBoundingClientRect()).sort((x, y) => x.top - y.top);
+    let rows = 0, bottom = -Infinity;
+    for (const r of boxes) { if (r.top >= bottom - 4) { rows++; bottom = r.bottom; } else bottom = Math.max(bottom, r.bottom); }
+    if (rows > 1) issues.push(`botões em ${rows} filas: ${describe(box)} (${actions.length} botões)`);
+  }
+  return issues;
+}

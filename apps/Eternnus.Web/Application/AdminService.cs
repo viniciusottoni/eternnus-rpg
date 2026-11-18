@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
 
 public record RoleInput(string Role, string Reason);
+public record PlanInput(string Plan, string Reason);
 public record SuspendInput(DateTime? Until, string Reason);
 public record ReasonInput(string? Reason);
 
@@ -129,6 +130,7 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
                 u.Email,
                 u.AvatarUrl,
                 u.Role,
+                u.Plan,
                 u.Level,
                 u.Xp,
                 verified = u.EmailConfirmed,
@@ -149,6 +151,7 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
             u.Email,
             u.AvatarUrl,
             u.Role,
+            u.Plan,
             u.Level,
             u.Xp,
             verified = u.EmailConfirmed,
@@ -161,6 +164,7 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
             campaignsAsMaster = await db.Campaigns.CountAsync(c => c.OwnerId == id, ct),
             campaignsAsMember = await db.Members.CountAsync(m => m.UserId == id, ct),
             characters = await db.Characters.CountAsync(c => c.OwnerId == id, ct),
+            storageBytes = (await AccountLimits.StorageAsync(db, id, ct)).Used,
         };
         var auditEntries = await AuditQuery(db.Audit.AsNoTracking().Where(a => a.TargetType == "user" && a.TargetId == id)).Take(20).ToListAsync(ct);
         return new
@@ -170,6 +174,9 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
             user.Email,
             user.AvatarUrl,
             user.Role,
+            user.Plan,
+            // Plano que vale de fato: equipe usa Max, qualquer que seja o gravado (ADR-102).
+            effectivePlan = AccountPlans.For(user.Plan, user.Role).Key,
             user.Level,
             user.Xp,
             user.verified,
@@ -208,6 +215,27 @@ public class AdminService(GameDb db, AuditService audit, UserManager<AppUser> us
         user.Role = role!;
         audit.Record(actor, "user.role", "user", id, $"Papel de {user.DisplayName}: {RoleLabel(before)} → {RoleLabel(role!)}. Motivo: {reason}",
             new { reason, before = new { role = before }, after = new { role } });
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateConcurrencyException) { throw new RuleException(409, "A conta mudou em outra sessão. Atualize e tente novamente."); }
+        await tx.CommitAsync(ct);
+    }
+
+    /// <summary>
+    /// Troca o plano da conta (ADR-102), auditado na mesma transação. Reduzir o plano não apaga nada: o que passar do novo limite
+    /// continua acessível, só novas criações e envios ficam bloqueados. Para a equipe o valor fica gravado, mas vale Max enquanto tiver o papel.
+    /// </summary>
+    public async Task SetPlanAsync(string id, PlanInput x, string actor, CancellationToken ct)
+    {
+        var plan = x.Plan?.Trim();
+        if (!AccountPlans.IsValid(plan)) throw new RuleException(400, "Plano inválido. Use Basic, Plus, Pro ou Max.");
+        var reason = Reason(x.Reason);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var user = await AccountLimits.LockUserAsync(db, id, ct);
+        if (user.Plan == plan) { await tx.CommitAsync(ct); return; }
+        var before = user.Plan;
+        user.Plan = plan!;
+        audit.Record(actor, "user.plan", "user", id, $"Plano de {user.DisplayName}: {AccountPlans.Label(before)} → {AccountPlans.Label(plan)}. Motivo: {reason}",
+            new { reason, before = new { plan = before }, after = new { plan } });
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateConcurrencyException) { throw new RuleException(409, "A conta mudou em outra sessão. Atualize e tente novamente."); }
         await tx.CommitAsync(ct);

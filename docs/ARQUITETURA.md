@@ -204,3 +204,15 @@ Câmera compartilhada (ADR-057): table-map.js recebe um host de controles via ha
 Backend: `Application/PrepWorkspaceService.cs` + `Features/Campaigns/PrepEndpoints.cs` (`/api/campaigns/{id}/prep/*`: explorador, pastas por categoria, mover, copiar, renomear) sob o bloqueio comum da campanha; `Domain/MapComposition.cs` valida camadas de tiles (fusão em `TileData`) e a composição de mapas de imagem; `CampaignAssetsService` ganha composição e imagens-fonte (`Purpose = layer`). Ver [PREPARACAO_EDITOR.md](PREPARACAO_EDITOR.md).
 
 Frontend (sob demanda): `js/prep-explorer.js` (gerenciador) com regras puras em `js/prep-explorer-policy.js` e fluxos de criação em `js/prep-create.js`; `js/editor-core.js` (janela, menus, ferramentas, painéis, menu de contexto, propriedades, atalhos) com regras puras em `js/editor-policy.js` (histórico, camadas, atalhos, câmera); editores `js/tile-map-editor.js`, `js/image-map-editor.js` (superfície `js/composition-canvas.js`, geometria pura `js/composition-policy.js`) e `js/scene-editor.js`. Tiles e cenas usam `createBoard` com a opção `editor`. Nenhum editor guarda estado autoritativo: salvar passa pelos endpoints, e apresentar/aplicar continuam ações explícitas da mesa.
+
+## Loja do Aventureiro (ADR-104)
+
+Módulo comercial complementar dentro do monólito, documentado em `docs/LOJA_AFILIADOS.md`.
+
+- **Domain:** `Store.cs` (produtos, vínculo N:N com `RpgSystem`, tags, categorias, configuração, cliques, preferências e interesses; listas fechadas de hosts) e `StoreRanking.cs` (regras puras: palavras-chave, vocabulário, grupos, pontuação, rotação e diversidade).
+- **Application:** `StoreCatalogService` (catálogo público e administração), `StoreRecommendationService` (contexto pelas campanhas, vitrine, consentimento, cálculo de interesses e `StoreMaintenanceWorker`), `StoreAffiliateService` (validação e prévia de links), `StoreAnalyticsService` (cliques e métricas agregadas) e `StoreQueries` (projeções compartilhadas).
+- **Infrastructure:** `StoreLinkReader` (leitura de página pública com defesas de SSRF); `StoreModel.Configure` no `GameDb`; migração `AffiliateStore`.
+- **Features:** `Store/StoreEndpoints.cs` (`/api/store`, `/api/admin/store`).
+- **Frontend:** `store.js` (`#store`), `store-recommendations.js` (vitrine única no slot `#store-strip` do `shell`, importada sob demanda), `admin-store.js` (aba do painel), `store-api.js` (HTTP), `store-policy.js` (regras puras) e `store.css`.
+
+Nenhuma chamada da loja participa da abertura de 3.000 ms, das campanhas ou da mesa: a vitrine roda em segundo plano depois da moldura e é descartada ao trocar de rota.

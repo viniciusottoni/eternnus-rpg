@@ -5,7 +5,7 @@
 // Nada aqui apresenta a cena aos jogadores: "Aplicar à cena atual" e "Reiniciar cena" são ações explícitas.
 import { helpButton, dismissHelp } from "./help.js";
 import { api } from "./api.js";
-import { esc, button } from "./ui.js";
+import { esc, button, iconButton } from "./ui.js";
 import { createBoard } from "./table-map.js";
 import { FOG_TOOLS, MARK_KINDS, WALL_KINDS, WALL_UNIT, paintLocal, toggleDoorLocal, sharedPreview } from "./fog-policy.js";
 import { layerDiff, diffSummary, snapPoint, constrainAngle, hitWall, polylineWalls, addWalls, moveVertex, splitWall, removeVertex, joinCollinear, translateWalls, copyWalls, wallsInBox, patchWalls, cellsToWalls, diagnose, diagnosticLayers } from "./wall-policy.js";
@@ -698,7 +698,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       <label class="check"><input type="checkbox" data-wall-patch="hidden" ${sel.every((w) => w.hidden) ? "checked" : ""}> Não mostrar aos jogadores</label>
       ${doors.length ? `<label class="check"><input type="checkbox" data-wall-patch="open" ${doors.every((w) => w.open) ? "checked" : ""}> Porta começa aberta</label>` : ""}
       ${coords}
-      <div class="form-actions">${one ? button("Dividir no meio", "se-wall", "split", "subtle") : ""}${one ? button("Remover vértice final", "se-wall", "vertex", "subtle") : ""}${sel.length > 1 ? button("Unir", "se-wall", "join", "subtle") : ""}${button("Duplicar", "se-wall", "duplicate", "subtle")}${button("Excluir", "se-wall", "delete", "text-button")}</div>${common}</div>`;
+      <div class="form-actions se-icon-row" role="group" aria-label="Ações da parede">${one ? iconButton("split", "Dividir no meio", "se-wall", "split") : ""}${one ? iconButton("vertex", "Remover vértice final", "se-wall", "vertex") : ""}${sel.length > 1 ? iconButton("join", "Unir paredes", "se-wall", "join") : ""}${iconButton("copy", "Duplicar", "se-wall", "duplicate")}${iconButton("trash", "Excluir", "se-wall", "delete", "subtle danger-text")}</div>${common}</div>`;
   }
   /** Barra contextual (ADR-086) para paredes selecionadas: tipo, visibilidade, porta aberta e ações rápidas, sem modal. */
   function syncWallBar() {
@@ -1258,7 +1258,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       <label class="check"><input type="checkbox" data-comp-flag="locked" ${els.every((x) => x.locked) ? "checked" : ""}> Bloquear</label>
       <div class="se-comp-actions" role="group" aria-label="Tamanho e posição">${button("Ajustar à área", "se-comp", "fit", "subtle small")}${button("Preencher a área", "se-comp", "fill", "subtle small")}${button("Tamanho original", "se-comp", "original", "subtle small")}${button("Centralizar", "se-comp", "center", "subtle small")}</div>
       <p class="form-help"><strong>Ajustar</strong> mostra a imagem inteira dentro do mapa; <strong>Preencher</strong> cobre o mapa todo e pode recortar; <strong>Tamanho original</strong> usa os pixels da imagem.</p>
-      <div class="se-comp-actions" role="group" aria-label="Transformar">${button("Espelhar ↔", "se-comp", "flipX", "subtle small")}${button("Espelhar ↕", "se-comp", "flipY", "subtle small")}${button("Girar 90°", "se-comp", "rotR", "subtle small")}${button("Duplicar", "se-comp", "duplicate", "subtle small")}${button("Frente", "se-comp", "front", "subtle small")}${button("Trás", "se-comp", "back", "subtle small")}</div>
+      <div class="se-comp-actions" role="group" aria-label="Transformar">${iconButton("flipX", "Espelhar na horizontal", "se-comp", "flipX", "subtle small")}${iconButton("flipY", "Espelhar na vertical", "se-comp", "flipY", "subtle small")}${iconButton("rotate", "Girar 90°", "se-comp", "rotR", "subtle small")}${iconButton("copy", "Duplicar", "se-comp", "duplicate", "subtle small")}${iconButton("front", "Trazer para frente", "se-comp", "front", "subtle small")}${iconButton("back", "Enviar para trás", "se-comp", "back", "subtle small")}</div>
       <div class="form-actions se-danger-zone">${button("Excluir", "se-comp", "delete", "text-button")}</div></div>`;
   }
   function renderCompLayers(host) {

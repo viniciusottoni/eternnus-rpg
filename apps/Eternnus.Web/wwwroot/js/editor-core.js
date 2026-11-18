@@ -14,66 +14,9 @@ let shellSequence = 0;
 /** Descrição curta das dicas (o componente de ajuda aceita até 240 caracteres). */
 const tipDetail = (text) => { const s = String(text || "").trim(); return s.length > 240 ? `${s.slice(0, 237).trimEnd()}…` : s; };
 
-// ---------- Ícones (SVG estático, sem dados do usuário) ----------
-const P = {
-  select: '<path d="M5 3l13 8-6 1.5L9 19z"/>',
-  move: '<path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/>',
-  hand: '<path d="M8 13V5a1.5 1.5 0 013 0v6M11 11V4a1.5 1.5 0 013 0v7M14 11V5.5a1.5 1.5 0 013 0V14c0 4-2.5 7-6.5 7S5 18 4 15l-1.5-3.5a1.4 1.4 0 012.4-1.4L8 13"/>',
-  brush: '<path d="M19 3l2 2-9 9-3-3zM9 11l-4 4c-1.5 1.5-1 4-3 5 3 1 6 0 7-1l3-3"/>',
-  eraser: '<path d="M16 3l5 5-11 11H5l-3-3zM9 8l7 7M5 19h15"/>',
-  fill: '<path d="M4 11l7-7 8 8-7 7zM4 11h15M20 15s2 3 2 4.5a2 2 0 01-4 0c0-1.5 2-4.5 2-4.5z"/>',
-  rect: '<rect x="4" y="6" width="16" height="12" rx="1"/>',
-  ellipse: '<ellipse cx="12" cy="12" rx="9" ry="6.5"/>',
-  marquee: '<path d="M4 7V4h3M10 4h4M17 4h3v3M20 10v4M20 17v3h-3M14 20h-4M7 20H4v-3M4 14v-4"/>',
-  text: '<path d="M5 5h14M12 5v15M9 20h6"/>',
-  image: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><circle cx="9" cy="10" r="2"/><path d="M3 18l6-5 4 3 3-2 5 4"/>',
-  object: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
-  character: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4.5 4-7 8-7s7 2.5 8 7"/>',
-  grid: '<path d="M3 3h18v18H3zM9 3v18M15 3v18M3 9h18M3 15h18"/>',
-  wall: '<path d="M3 6h18v12H3zM3 12h18M9 6v6M15 12v6M7 12v6M17 6v6"/>',
-  door: '<path d="M6 21V4l10-1v18zM16 21h3M13 12h.01"/>',
-  light: '<path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0012 3z"/>',
-  fog: '<path d="M4 9h12M2 13h16M6 17h14M8 5h8"/>',
-  reveal: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
-  conceal: '<path d="M3 3l18 18M10.6 5.1A10 10 0 0112 5c6.5 0 10 7 10 7a17 17 0 01-3 3.9M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.4 4.5-1.1"/>',
-  measure: '<path d="M3 17L17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2"/>',
-  zoom: '<circle cx="10" cy="10" r="6.5"/><path d="M15 15l6 6M7 10h6M10 7v6"/>',
-  pick: '<path d="M20 4l-2-2-4 4-2-2-2 2 8 8 2-2-2-2zM12 8l-8 8v4h4l8-8"/>',
-  mark: '<path d="M12 21s-7-6.2-7-11.5A7 7 0 0112 3a7 7 0 017 6.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
-  layers: '<path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/>',
-  scenery: '<path d="M3 20l6-10 4 6 3-4 5 8z"/><circle cx="17" cy="6" r="2"/>',
-  notes: '<path d="M5 3h10l4 4v14H5zM14 3v5h5M8 12h8M8 16h6"/>',
-  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
-  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
-  eyeOff: '<path d="M3 3l18 18M10.6 5.1A10 10 0 0112 5c6.5 0 10 7 10 7a17 17 0 01-3 3.9M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.4 4.5-1.1"/>',
-  lock: '<rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V7a4 4 0 018 0v4"/>',
-  unlock: '<rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V7a4 4 0 017.5-2"/>',
-  plus: '<path d="M12 5v14M5 12h14"/>',
-  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3"/>',
-  up: '<path d="M12 19V5M5 12l7-7 7 7"/>',
-  down: '<path d="M12 5v14M5 12l7 7 7-7"/>',
-  copy: '<rect x="8" y="8" width="13" height="13" rx="1.5"/><path d="M16 8V4H3v13h5"/>',
-  fullscreen: '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>',
-  panels: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M15 4v16"/>',
-  close: '<path d="M6 6l12 12M18 6L6 18"/>',
-  door2: '<path d="M6 21V4h12v17M10 12h.01"/>',
-  wand: '<path d="M4 20L16 8M14 4v3M18 8h3M17 3l-1.5 1.5M20 11l-1.5-1.5"/>',
-  maximize: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M8 9l-2-2M16 9l2-2M8 15l-2 2M16 15l2 2"/>',
-  dots: '<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>',
-  group: '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/><path d="M2 2h20v20H2z" stroke-dasharray="3 2"/>',
-  alignLeft: '<path d="M4 3v18M8 7h10v4H8zM8 14h6v4H8z"/>',
-  alignCenter: '<path d="M12 3v18M6 7h12v4H6zM9 14h6v4H9z"/>',
-  alignRight: '<path d="M20 3v18M6 7h10v4H6zM10 14h6v4h-6z"/>',
-  alignTop: '<path d="M3 4h18M7 8h4v10H7zM14 8h4v6h-4z"/>',
-  alignMiddle: '<path d="M3 12h18M7 6h4v12H7zM14 9h4v6h-4z"/>',
-  alignBottom: '<path d="M3 20h18M7 6h4v10H7zM14 10h4v6h-4z"/>',
-  distributeX: '<path d="M3 3v18M21 3v18M9 8h6v8H9z"/>',
-  distributeY: '<path d="M3 3h18M3 21h18M8 9h8v6H8z"/>',
-};
-export function icon(name, label = "") {
-  const path = P[name] || P.object;
-  return `<svg class="ed-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" ${label ? `role="img" aria-label="${esc(label)}"` : 'aria-hidden="true" focusable="false"'}>${path}</svg>`;
-}
+// ---------- Ícones: conjunto compartilhado em icons.js (ADR-101) ----------
+export { icon } from "./icons.js";
+import { icon } from "./icons.js";
 
 /** Contêiner para camadas flutuantes: o <dialog> aberto (camada superior) ou o documento. */
 const floatingHost = () => document.querySelector("dialog[open]") || document.body;

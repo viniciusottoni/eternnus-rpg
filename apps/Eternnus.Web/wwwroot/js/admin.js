@@ -9,6 +9,7 @@ import { $, esc, button, field, formError, submitForm, modal, toast, navigate } 
 import { isAdmin } from "./policy.js";
 import { guardAvatars } from "./sheet.js";
 import { highlightIn, TABLE_PAGE_SIZE } from "./data-table.js";
+import { formatBytes } from "./account-usage-policy.js";
 
 // ---------- Regras puras (testadas em tests/frontend.test.mjs) ----------
 export const ADMIN_TABS = Object.freeze([
@@ -18,6 +19,7 @@ export const ADMIN_TABS = Object.freeze([
   ["systems", "Sistemas"],
   ["templates", "Fichas-modelo"],
   ["music", "Músicas"],
+  ["store", "Loja"],
   ["tickets", "Tickets"],
   ["audit", "Auditoria"],
 ]);
@@ -25,6 +27,15 @@ const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isAdminGuid = (value) => GUID.test(String(value ?? ""));
 export const ROLE_LABELS = Object.freeze({ common: "Comum", ambassador: "Embaixador", admin: "Admin" });
 export const roleLabel = (role) => ROLE_LABELS[role] || "Comum";
+/** Planos de conta (ADR-102). A equipe usa Max enquanto tiver o papel, qualquer que seja o plano gravado. */
+export const PLAN_LABELS = Object.freeze({ basic: "Basic", plus: "Plus", pro: "Pro", max: "Max" });
+export const planLabel = (plan) => PLAN_LABELS[plan] || "Basic";
+const PLAN_SUMMARIES = Object.freeze({
+  basic: "3 campanhas, 10 one-shots, 5 fichas. Mesas: 5 jogadores em campanhas, 8 em one-shots. 500 MB; arquivo até 20 MB.",
+  plus: "5 campanhas, 15 one-shots, 10 fichas. Mesas de até 8 jogadores. 2 GB; arquivo até 30 MB.",
+  pro: "10 campanhas, 30 one-shots, 20 fichas. Mesas de até 15 jogadores. 4 GB; arquivo até 60 MB.",
+  max: "Campanhas, one-shots, fichas e jogadores sem limite. 20 GB; arquivo até 100 MB.",
+});
 export const TARGET_LABELS = Object.freeze({
   user: "Usuário",
   campaign: "Campanha",
@@ -33,6 +44,7 @@ export const TARGET_LABELS = Object.freeze({
   template: "Ficha-modelo",
   guild: "Guilda",
   ticket: "Ticket",
+  store: "Loja",
 });
 
 /** Rota (#hash sem #) da tela que mostra o alvo de uma entrada de auditoria; nulo quando não há tela segura. */
@@ -44,6 +56,7 @@ export function auditLink(targetType, targetId) {
   if (type === "user") return guid ? `admin/users/${targetId}` : null;
   if (type === "campaign") return guid ? `admin/campaigns/${targetId}` : null;
   if (type === "system") return "admin/systems";
+  if (type === "store") return "admin/store";
   if (type === "ticket") return guid ? `admin/tickets/${targetId}` : "admin/tickets";
   if (type === "guild" || type.startsWith("guild.")) return "guild";
   return null;
@@ -111,6 +124,9 @@ function failure(error, retry = "admin-retry") {
 function blank(title, text) {
   return `<div class="empty admin-state"><span class="empty-sigil" aria-hidden="true">✧</span><h3>${esc(title)}</h3><p>${esc(text)}</p></div>`;
 }
+function planChip(plan) {
+  return `<span class="status-chip quiet" data-tip="Plano da conta: define limites de campanhas, fichas, jogadores e espaço">${esc(planLabel(plan))}</span>`;
+}
 function roleChip(role) {
   const tone = role === "admin" ? "warn" : role === "ambassador" ? "good" : "quiet";
   return `<span class="status-chip ${tone}" data-tip="Papel global da conta na plataforma">${esc(roleLabel(role))}</span>`;
@@ -169,6 +185,12 @@ export async function renderAdmin(segments = []) {
     const { renderMusicCatalog } = await import("./admin-music.js");
     if (!alive()) return;
     return renderMusicCatalog(view);
+  }
+  // Loja de afiliados (ADR-104): produtos, categorias, configurações e métricas em módulo próprio sob demanda.
+  if (tab === "store") {
+    const { renderStoreAdmin } = await import("./admin-store.js");
+    if (!alive()) return;
+    return renderStoreAdmin(view, segments.slice(1));
   }
   const ctx = { view, alive, segments, rerender: () => renderAdmin(segments) };
   view.addEventListener("click", (event) => handleClick(event, ctx));
@@ -241,10 +263,10 @@ async function listUsers(ctx) {
     target.innerHTML = `<p class="list-summary" role="status">${number(r.total)} ${r.total === 1 ? "pessoa encontrada" : "pessoas encontradas"}</p>${
       r.items.length
         ? table(
-            ["Pessoa", "E-mail", "Papel", "Nível", "Situação", "Último acesso", "Cadastro", '<span class="sr-only">Ações</span>'],
+            ["Pessoa", "E-mail", "Papel", "Plano", "Nível", "Situação", "Último acesso", "Cadastro", '<span class="sr-only">Ações</span>'],
             r.items.map(
               (u) =>
-                `<tr><td><span class="admin-person">${avatar(u.avatarUrl, "")}<strong>${esc(u.name)}</strong></span></td><td class="admin-email">${esc(u.email)}</td><td>${roleChip(u.role)}</td><td class="num">${number(u.level)}</td><td>${userStatusChip(u)}</td><td>${esc(when(u.lastSeenAt, "nunca"))}</td><td>${esc(when(u.createdAt))}</td><td>${openLink(isAdminGuid(u.id) ? "admin/users/" + u.id : "", "Gerenciar")}</td></tr>`,
+                `<tr><td><span class="admin-person">${avatar(u.avatarUrl, "")}<strong>${esc(u.name)}</strong></span></td><td class="admin-email">${esc(u.email)}</td><td>${roleChip(u.role)}</td><td>${planChip(u.role === "common" ? u.plan : "max")}</td><td class="num">${number(u.level)}</td><td>${userStatusChip(u)}</td><td>${esc(when(u.lastSeenAt, "nunca"))}</td><td>${esc(when(u.createdAt))}</td><td>${openLink(isAdminGuid(u.id) ? "admin/users/" + u.id : "", "Gerenciar")}</td></tr>`,
             ),
             "Usuários da plataforma",
           )
@@ -261,9 +283,9 @@ async function renderUser(ctx) {
     ctx.user = u;
     const suspended = !!u.suspendedUntil;
     const canSuspend = !u.isSelf && u.role !== "admin";
-    ctx.view.innerHTML = `<a class="back-link" href="#admin/users">← Usuários</a><section class="metal admin-profile"><div class="admin-profile-id">${avatar(u.avatarUrl, u.name)}<div><h2>${esc(u.name)}${u.isSelf ? ' <span class="badge">VOCÊ</span>' : ""}</h2><p class="admin-email">${esc(u.email)}</p><p>${roleChip(u.role)} ${userStatusChip(u)}${suspended ? ` <span class="muted small">Suspenso ${esc(suspendedText(u.suspendedUntil))}</span>` : ""}</p></div></div><div class="admin-actions">${button("♛ Alterar papel", "admin-role", u.id, "subtle", u.isSelf ? 'disabled aria-describedby="self-note"' : "")}${suspended ? button("↺ Reativar conta", "admin-unsuspend", u.id, "primary") : button("⛔ Suspender", "admin-suspend", u.id, "danger", canSuspend ? "" : 'disabled aria-describedby="suspend-note"')}<small id="self-note" class="muted small">${u.isSelf ? "Você não altera o próprio papel nem se suspende. Peça a outro admin." : ""}</small><small id="suspend-note" class="muted small">${!u.isSelf && u.role === "admin" ? "Admins não podem ser suspensos: rebaixe o papel primeiro." : ""}</small></div></section>
+    ctx.view.innerHTML = `<a class="back-link" href="#admin/users">← Usuários</a><section class="metal admin-profile"><div class="admin-profile-id">${avatar(u.avatarUrl, u.name)}<div><h2>${esc(u.name)}${u.isSelf ? ' <span class="badge">VOCÊ</span>' : ""}</h2><p class="admin-email">${esc(u.email)}</p><p>${roleChip(u.role)} ${planChip(u.effectivePlan)} ${userStatusChip(u)}${suspended ? ` <span class="muted small">Suspenso ${esc(suspendedText(u.suspendedUntil))}</span>` : ""}</p></div></div><div class="admin-actions">${button("♛ Alterar papel", "admin-role", u.id, "subtle", u.isSelf ? 'disabled aria-describedby="self-note"' : "")}${button("◈ Alterar plano", "admin-plan", u.id, "subtle")}${suspended ? button("↺ Reativar conta", "admin-unsuspend", u.id, "primary") : button("⛔ Suspender", "admin-suspend", u.id, "danger", canSuspend ? "" : 'disabled aria-describedby="suspend-note"')}<small id="self-note" class="muted small">${u.isSelf ? "Você não altera o próprio papel nem se suspende. Peça a outro admin." : ""}</small><small id="suspend-note" class="muted small">${!u.isSelf && u.role === "admin" ? "Admins não podem ser suspensos: rebaixe o papel primeiro." : ""}</small></div></section>
 <div class="stat-grid admin-user-stats">${tile(u.level, "nível", `${number(u.xp)} XP`)}${tile(u.stats.campaignsAsMaster, "campanhas como mestre")}${tile(u.stats.campaignsAsMember, "campanhas como jogador")}${tile(u.stats.characters, "personagens")}</div>
-<dl class="admin-facts metal"><div><dt>Cadastro</dt><dd>${esc(when(u.createdAt))}</dd></div><div><dt>Último acesso</dt><dd>${esc(when(u.lastSeenAt, "nunca"))}</dd></div><div><dt>E-mail</dt><dd>${u.verified ? "Confirmado" : "Aguardando confirmação"}</dd></div><div><dt>Suspensão</dt><dd>${suspended ? esc(suspendedText(u.suspendedUntil)) : "Nenhuma"}</dd></div></dl>
+<dl class="admin-facts metal"><div><dt>Cadastro</dt><dd>${esc(when(u.createdAt))}</dd></div><div><dt>Último acesso</dt><dd>${esc(when(u.lastSeenAt, "nunca"))}</dd></div><div><dt>E-mail</dt><dd>${u.verified ? "Confirmado" : "Aguardando confirmação"}</dd></div><div><dt>Suspensão</dt><dd>${suspended ? esc(suspendedText(u.suspendedUntil)) : "Nenhuma"}</dd></div><div><dt>Plano</dt><dd>${esc(planLabel(u.effectivePlan))}${u.effectivePlan !== u.plan ? ` (equipe; gravado: ${esc(planLabel(u.plan))})` : ""}</dd></div><div><dt>Armazenamento usado</dt><dd>${esc(formatBytes(u.stats.storageBytes))}</dd></div></dl>
 <div class="section-title"><h2>Histórico administrativo${helpButton("admin.acoes.auditoria", "Motivo e auditoria")}</h2>${button("Ver na auditoria →", "admin-user-audit", u.id, "text-button")}</div>${u.audit.length ? auditTable(u.audit, "Ações administrativas sobre esta conta") : blank("Nenhuma ação registrada.", "Mudanças de papel e suspensões desta conta aparecerão aqui.")}`;
     fillAuditData(ctx.view, u.audit);
   });
@@ -282,6 +304,25 @@ function roleModal(ctx) {
       await api(`/admin/users/${u.id}/role`, "PUT", { role: data.role, reason: data.reason.trim() });
       $("#modal").close();
       toast("Papel atualizado e registrado na auditoria.");
+      await ctx.rerender();
+    });
+  };
+}
+function planModal(ctx) {
+  const u = ctx.user;
+  const staff = u.role !== "common";
+  modal(
+    "Alterar plano",
+    `<p class="modal-lead">${esc(u.name)} hoje tem o plano <strong>${esc(planLabel(u.plan))}</strong>.${staff ? " Enquanto for da equipe, a conta usa os limites do Max." : ""}</p><form id="admin-plan-form"><fieldset class="admin-choice"><legend>Novo plano${helpButton("admin.usuarios.planos", "Planos de conta")}</legend>${Object.entries(PLAN_LABELS)
+      .map(([key, label]) => `<label><input type="radio" name="plan" value="${key}" ${key === u.plan ? "checked" : ""} required> <span><strong>${label}</strong><small>${PLAN_SUMMARIES[key]}</small></span></label>`)
+      .join("")}</fieldset><p class="form-help">Reduzir o plano não apaga nada: o que passar do novo limite continua acessível, só novas criações e envios ficam bloqueados.</p>${reasonField()}${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">Salvar plano</button></div></form>`,
+  );
+  $("#admin-plan-form").onsubmit = (event) => {
+    event.preventDefault();
+    submitForm(event.currentTarget, async (data) => {
+      await api(`/admin/users/${u.id}/plan`, "PUT", { plan: data.plan, reason: data.reason.trim() });
+      $("#modal").close();
+      toast("Plano atualizado e registrado na auditoria.");
       await ctx.rerender();
     });
   };
@@ -546,7 +587,7 @@ function fillAuditData(root, items) {
 }
 async function renderAudit(ctx) {
   const f = filters.audit;
-  ctx.view.innerHTML = `<form id="admin-audit-filter" class="admin-filters admin-filters-wide" role="search"><div class="field"><label for="f-action">Ação (prefixo)</label><input id="f-action" name="action" maxlength="60" value="${esc(f.action)}" list="audit-actions" placeholder="ex.: user." autocapitalize="off" spellcheck="false"><datalist id="audit-actions">${["user.", "user.role", "user.suspend", "campaign.", "system.", "library.", "template.", "guild.", "ticket."].map((a) => `<option value="${a}"></option>`).join("")}</datalist></div><div class="field"><label for="f-actor">Ator (nome ou id)</label><input id="f-actor" name="actor" maxlength="100" value="${esc(f.actor)}"></div><div class="field"><label for="f-target-type">Tipo de alvo</label><select id="f-target-type" name="targetType"><option value="">Todos</option>${Object.entries(TARGET_LABELS).map(([key, label]) => `<option value="${key}" ${f.targetType === key ? "selected" : ""}>${label}</option>`).join("")}</select></div><div class="field"><label for="f-target-id">Id do alvo</label><input id="f-target-id" name="targetId" maxlength="80" value="${esc(f.targetId)}" autocapitalize="off" spellcheck="false"></div><div class="field"><label for="f-from">De</label><input id="f-from" name="from" type="date" value="${esc(f.from)}"></div><div class="field"><label for="f-to">Até</label><input id="f-to" name="to" type="date" value="${esc(f.to)}"></div><div class="admin-filter-buttons"><button type="submit" class="subtle">Buscar</button></div></form><div id="admin-list"></div>`;
+  ctx.view.innerHTML = `<form id="admin-audit-filter" class="admin-filters admin-filters-wide" role="search"><div class="field"><label for="f-action">Ação (prefixo)</label><input id="f-action" name="action" maxlength="60" value="${esc(f.action)}" list="audit-actions" placeholder="ex.: user." autocapitalize="off" spellcheck="false"><datalist id="audit-actions">${["user.", "user.role", "user.plan", "user.suspend", "campaign.", "system.", "library.", "template.", "guild.", "ticket."].map((a) => `<option value="${a}"></option>`).join("")}</datalist></div><div class="field"><label for="f-actor">Ator (nome ou id)</label><input id="f-actor" name="actor" maxlength="100" value="${esc(f.actor)}"></div><div class="field"><label for="f-target-type">Tipo de alvo</label><select id="f-target-type" name="targetType"><option value="">Todos</option>${Object.entries(TARGET_LABELS).map(([key, label]) => `<option value="${key}" ${f.targetType === key ? "selected" : ""}>${label}</option>`).join("")}</select></div><div class="field"><label for="f-target-id">Id do alvo</label><input id="f-target-id" name="targetId" maxlength="80" value="${esc(f.targetId)}" autocapitalize="off" spellcheck="false"></div><div class="field"><label for="f-from">De</label><input id="f-from" name="from" type="date" value="${esc(f.from)}"></div><div class="field"><label for="f-to">Até</label><input id="f-to" name="to" type="date" value="${esc(f.to)}"></div><div class="admin-filter-buttons"><button type="submit" class="subtle">Buscar</button></div></form><div id="admin-list"></div>`;
   $("#admin-audit-filter").onsubmit = (event) => {
     event.preventDefault();
     Object.assign(f, Object.fromEntries(new FormData(event.currentTarget)), { page: 1 });
@@ -598,6 +639,7 @@ async function handleClick(event, ctx) {
       await listAudit(ctx);
     }
     if (action === "admin-role" && ctx.user) roleModal(ctx);
+    if (action === "admin-plan" && ctx.user) planModal(ctx);
     if (action === "admin-suspend" && ctx.user) suspendModal(ctx);
     if (action === "admin-unsuspend" && ctx.user) unsuspendModal(ctx);
     if (action === "admin-user-audit" && isAdminGuid(id)) showAuditFor("user", id);

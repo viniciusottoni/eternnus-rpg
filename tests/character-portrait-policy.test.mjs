@@ -26,7 +26,10 @@ test("valida tipo e tamanho antes do envio", () => {
   assert.equal(portraitFileError({ type: "image/png", size: 10 }), "");
   assert.equal(portraitFileError({ type: "image/jpeg", size: PORTRAIT_MAX_BYTES }), "");
   assert.match(portraitFileError({ type: "image/webp", size: 10 }), /PNG ou JPEG/);
-  assert.match(portraitFileError({ type: "image/png", size: PORTRAIT_MAX_BYTES + 1 }), /10 MB/);
+  assert.match(portraitFileError({ type: "image/png", size: PORTRAIT_MAX_BYTES + 1 }), /20 MB/);
+  // Limite do plano informado pelo chamador (ADR-102).
+  assert.equal(portraitFileError({ type: "image/png", size: PORTRAIT_MAX_BYTES + 1 }, 60 * 1024 * 1024), "");
+  assert.match(portraitFileError({ type: "image/png", size: 61 * 1024 * 1024 }, 60 * 1024 * 1024), /60 MB/);
   assert.match(portraitFileError(null), /Escolha/);
 });
 

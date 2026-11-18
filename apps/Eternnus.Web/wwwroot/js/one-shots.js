@@ -4,7 +4,7 @@ import { helpButton } from "./help.js";
 import { api } from "./api.js";
 import { newsSlot } from "./notices.js";
 import { shell } from "./layout.js";
-import { $, esc, button, field, formError, submitForm, modal, toast, empty, formatDate, navigate, liveBadge } from "./ui.js";
+import { $, esc, button, iconButton, field, formError, submitForm, modal, toast, empty, formatDate, navigate, liveBadge } from "./ui.js";
 import { loadSystems, limitText, starterField } from "./campaigns.js";
 import { isGuid } from "./session-policy.js";
 
@@ -19,12 +19,12 @@ function row(c) {
   const enter = online
     ? `<a class="button primary enter-table" href="#table/${esc(c.id)}">▶ ${c.isMaster ? "Voltar à mesa" : "Entrar na mesa"}</a>`
     : "";
-  const prepare = c.isMaster ? `<a class="button subtle" href="#campaign/${esc(c.id)}">Preparar →</a>${button("Converter em campanha", "os-convert", c.id, "subtle")}` : "";
+  const prepare = c.isMaster ? `<a class="button subtle" href="#campaign/${esc(c.id)}">Preparar →</a>${iconButton("promote", "Converter em campanha", "os-convert", c.id)}` : "";
   const close = c.isMaster
     ? online
       ? button("Encerrar", "os-end", c.id, "danger")
-      : button("Excluir", "os-delete", c.id, "danger")
-    : button("Sair", "os-leave", c.id, "subtle");
+      : iconButton("trash", "Excluir one-shot", "os-delete", c.id, "danger")
+    : iconButton("leave", "Sair da one-shot", "os-leave", c.id);
   return `<article class="campaign-row metal ${online && !c.activeSessionPaused ? "is-online" : ""}"><div class="campaign-cover" aria-hidden="true"><span>${c.isMaster ? "⬡" : "⚔"}</span></div><div class="campaign-info"><div class="campaign-name"><h2>${esc(c.name)}</h2>${newsSlot(`campaign:${c.id}`, c.name)}<span class="badge ${c.isMaster ? "" : "participant"}" data-tip="${c.isMaster ? "Você conduz e administra esta campanha." : "Você participa como Jogador nesta campanha."}">${c.isMaster ? "♛ Mestre" : "♟ Participante"}</span>${liveBadge(online, c.activeSessionPaused, "Fechada")}</div><div class="campaign-meta"><span>▤ ${esc(c.system)}</span><span>♧ ${c.playerCount} ${c.playerCount === 1 ? "jogador" : "jogadores"}</span><span>◷ Expira em ${formatDate(c.expiresAt)}</span></div><p>${esc(c.description || "Uma noite, uma história.")}</p></div><div class="campaign-row-actions">${enter}${prepare}${close}</div></article>`;
 }
 

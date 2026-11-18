@@ -556,6 +556,9 @@ public partial class CharacterSheetService(GameDb db, SessionService sessions, P
     public async Task<Character> CreateAsync(CharacterInput x, string user, CancellationToken ct)
     {
         var modern = x.TemplateId != null || x.CampaignId != null || x.Values != null;
+        // Limite de fichas do plano (ADR-102): a conta fica bloqueada até o commit, então criações concorrentes não passam do teto.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await AccountLimits.EnsureCharacterSlotAsync(db, user, ct);
         var c = new Character { OwnerId = user, UpdatedAt = Now, Private = x.Private ?? false };
         SheetTemplate template; SheetTemplateVersion version; Campaign? campaign = null; var member = false;
         if (x.CampaignId is { } cid)
@@ -611,6 +614,7 @@ public partial class CharacterSheetService(GameDb db, SessionService sessions, P
         if (campaign != null && member) db.CampaignCharacters.Add(new() { CampaignId = campaign.Id, CharacterId = c.Id });
         await progression.AwardAsync(c.OwnerId, XpReasons.CharacterCreated, $"{XpReasons.CharacterCreated}:{c.Id}", ct);
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return c;
     }
 

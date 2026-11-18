@@ -101,12 +101,12 @@ public sealed class StarterAdventureTests : IAsyncLifetime
     [Fact]
     public async Task Campaign_quota_rejects_before_seeding_anything()
     {
-        for (var i = 0; i < AccountLimits.Campaigns; i++) await Create(false);
+        for (var i = 0; i < AccountPlans.BasicLimits.Campaigns!.Value; i++) await Create(false);
         db.ChangeTracker.Clear();
         Assert.Equal(409, await Status(() => Create(true)));
         db.ChangeTracker.Clear();
         Assert.Equal((0, 0, 0, 0), await Totals());
-        Assert.Equal(AccountLimits.Campaigns, await db.Campaigns.CountAsync());
+        Assert.Equal(AccountPlans.BasicLimits.Campaigns!.Value, await db.Campaigns.CountAsync());
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public sealed class StarterAdventureTests : IAsyncLifetime
     public async Task One_shot_quota_rejects_before_seeding_anything()
     {
         var user = await db.Users.SingleAsync(u => u.Id == Master);
-        user.OneShotParticipations = AccountLimits.OneShots;
+        user.OneShotParticipations = AccountPlans.BasicLimits.OneShots!.Value;
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         Assert.Equal(409, await Status(() => sessions.CreateOneShotAsync(new("Noite na cripta", "", RpgSystem.FreeSystemId, Starter: true), Master, default)));

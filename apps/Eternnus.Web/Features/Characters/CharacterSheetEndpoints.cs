@@ -38,14 +38,16 @@ public static class CharacterSheetEndpoints
             http.Response.Headers["X-Content-Type-Options"] = "nosniff";
             return Results.File(portrait.Content, portrait.ContentType, enableRangeProcessing: false);
         });
-        api.MapPost("/characters/{id:guid}/portrait", async (Guid id, HttpRequest request, DocumentFiles files, CharacterPortraitService s, ClaimsPrincipal u, CancellationToken ct) =>
+        api.MapPost("/characters/{id:guid}/portrait", async (Guid id, HttpRequest request, DocumentFiles files, GameDb db, CharacterPortraitService s, ClaimsPrincipal u, CancellationToken ct) =>
         {
             if (!request.HasFormContentType) throw new RuleException(400, "Envie a imagem pelo formulário.");
+            // Limite do plano de quem envia (ADR-102).
+            var maxBytes = await AccountLimits.MaxFileBytesAsync(db, Me(u), ct);
             IFormCollection form;
-            try { form = await request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = CampaignAssetsService.MaxImageBytes, ValueCountLimit = 4, KeyLengthLimit = 16, MultipartHeadersLengthLimit = 4096, MultipartHeadersCountLimit = 8 }, ct); }
-            catch (InvalidDataException) { throw new RuleException(413, "Formulário inválido ou imagem acima de 10 MB."); }
+            try { form = await request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = maxBytes, ValueCountLimit = 4, KeyLengthLimit = 16, MultipartHeadersLengthLimit = 4096, MultipartHeadersCountLimit = 8 }, ct); }
+            catch (InvalidDataException) { throw new RuleException(413, $"Formulário inválido ou imagem acima de {AccountPlans.Size(maxBytes)}, o limite do seu plano."); }
             if (form.Files.Count != 1 || form.Files[0].Name != "file" || form.Keys.Count > 0) throw new RuleException(400, "Envie uma única imagem.");
-            if (form.Files[0].Length > CampaignAssetsService.MaxImageBytes) throw new RuleException(413, "Envie uma imagem de até 10 MB.");
+            if (form.Files[0].Length > maxBytes) throw AccountLimits.FileTooLarge(maxBytes);
             var image = await files.ReadAsync(form.Files[0], new[] { DocumentKinds.Png, DocumentKinds.Jpeg }, ct);
             return Results.Ok(await s.SaveAsync(id, Me(u), image, ct));
         }).RequireRateLimiting("upload");

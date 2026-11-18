@@ -8,6 +8,7 @@ import {
   $,
   esc,
   button,
+  iconButton,
   field,
   formError,
   submitForm,
@@ -35,7 +36,7 @@ function row(c) {
     online && c.isMaster
       ? `<a class="button primary enter-table" href="#table/${esc(c.id)}">▶ Mesa ao vivo</a>`
       : "";
-  return `<article class="campaign-row metal ${online && !c.activeSessionPaused ? "is-online" : ""}"><div class="campaign-cover" aria-hidden="true"><span>${c.isMaster ? "⚑" : "⚔"}</span></div><div class="campaign-info"><div class="campaign-name"><h2>${esc(c.name)}</h2>${newsSlot(`campaign:${c.id}`, c.name)}<span class="badge ${c.isMaster ? "" : "participant"}" data-tip="${c.isMaster ? "Você conduz e administra esta campanha." : "Você participa como Jogador nesta campanha."}">${c.isMaster ? "♛ Mestre" : "♟ Participante"}</span>${c.isOneShot ? '<span class="badge" data-tip="Mesa temporária com uma única sessão.">One-shot</span>' : ""}${c.archivedAt ? '<span class="badge archived" data-tip="Conteúdo preservado; novas partidas estão bloqueadas.">Arquivada</span>' : ""}${liveBadge(online, c.activeSessionPaused)}</div><div class="campaign-meta"><span>▤ ${esc(c.system)}</span><span>♧ ${c.playerCount} ${c.playerCount === 1 ? "jogador" : "jogadores"}</span><span>◷ Atualizada em ${formatDate(c.lastActivityAt)}</span></div><p>${esc(c.description || "Uma nova história aguarda seu primeiro capítulo.")}</p>${c.isOneShot ? `<p class="form-help">Dados temporários até ${formatDate(c.expiresAt)}. Se o mestre se desconectar, a mesa espera alguns minutos; ao encerrar, tudo da mesa é removido.</p>` : ""}</div><div class="campaign-row-actions">${live}${open}${actions.edit ? button("Editar", "campaign-edit", c.id, "subtle") : ""}${actions.edit ? button("Excluir", "campaign-delete", c.id, "danger", actions.delete ? "" : 'aria-disabled="true" data-tip="Não disponível com jogadores vinculados"') : button("Sair", "campaign-leave", c.id, "subtle")}<small>${actions.edit && !actions.delete ? "Exclusão bloqueada: há jogadores vinculados." : online && !c.isMaster ? (c.activeSessionPaused ? "Sessão pausada: entre na mesa e aguarde o mestre retomar." : "Sessão em andamento: entre direto na mesa.") : ""}</small></div></article>`;
+  return `<article class="campaign-row metal ${online && !c.activeSessionPaused ? "is-online" : ""}"><div class="campaign-cover" aria-hidden="true"><span>${c.isMaster ? "⚑" : "⚔"}</span></div><div class="campaign-info"><div class="campaign-name"><h2>${esc(c.name)}</h2>${newsSlot(`campaign:${c.id}`, c.name)}<span class="badge ${c.isMaster ? "" : "participant"}" data-tip="${c.isMaster ? "Você conduz e administra esta campanha." : "Você participa como Jogador nesta campanha."}">${c.isMaster ? "♛ Mestre" : "♟ Participante"}</span>${c.isOneShot ? '<span class="badge" data-tip="Mesa temporária com uma única sessão.">One-shot</span>' : ""}${c.archivedAt ? '<span class="badge archived" data-tip="Conteúdo preservado; novas partidas estão bloqueadas.">Arquivada</span>' : ""}${liveBadge(online, c.activeSessionPaused)}</div><div class="campaign-meta"><span>▤ ${esc(c.system)}</span><span>♧ ${c.playerCount} ${c.playerCount === 1 ? "jogador" : "jogadores"}</span><span>◷ Atualizada em ${formatDate(c.lastActivityAt)}</span></div><p>${esc(c.description || "Uma nova história aguarda seu primeiro capítulo.")}</p>${c.isOneShot ? `<p class="form-help">Dados temporários até ${formatDate(c.expiresAt)}. Se o mestre se desconectar, a mesa espera alguns minutos; ao encerrar, tudo da mesa é removido.</p>` : ""}</div><div class="campaign-row-actions">${live}${open}${actions.edit ? iconButton("edit", "Editar campanha", "campaign-edit", c.id) : ""}${actions.edit ? iconButton("trash", "Excluir campanha", "campaign-delete", c.id, "danger", actions.delete ? "" : `aria-disabled="true" data-tip="Excluir: indisponível com jogadores vinculados" aria-describedby="cr-note-${esc(c.id)}"`) : iconButton("leave", "Sair da campanha", "campaign-leave", c.id)}<small id="cr-note-${esc(c.id)}">${actions.edit && !actions.delete ? "Exclusão bloqueada: há jogadores vinculados." : online && !c.isMaster ? (c.activeSessionPaused ? "Sessão pausada: entre na mesa e aguarde o mestre retomar." : "Sessão em andamento: entre direto na mesa.") : ""}</small></div></article>`;
 }
 export async function renderCampaigns() {
   shell("campaigns");
@@ -54,10 +55,14 @@ export async function renderCampaigns() {
   };
   await load();
 }
+/** Resumo do plano nas listas de campanhas e one-shots (ADR-102). Limite nulo = sem limite. */
 export function limitText(limits) {
-  return limits.unlimited
-    ? `${limits.activeCampaigns} campanhas ativas. Sua conta de equipe não tem limites de campanhas ou one-shots.`
-    : `${limits.activeCampaigns}/3 campanhas ativas (mestrando + participando). ${limits.oneShotParticipations}/10 participações vitalícias em one-shots. Níveis não ampliam estes limites; embaixadores não têm limite.`;
+  const plan = `Plano ${limits.planLabel || "Basic"}`;
+  const players = (value) => (value == null ? "sem limite" : `até ${value}`);
+  const tables = `Mesas que você mestra: ${players(limits.campaignPlayerLimit)} jogadores em campanhas e ${players(limits.oneShotPlayerLimit)} em one-shots.`;
+  return limits.campaignLimit == null
+    ? `${plan}: ${limits.activeCampaigns} campanhas ativas e ${limits.oneShotParticipations} participações em one-shots, sem limite. ${tables} Detalhes em Minha conta.`
+    : `${plan}: ${limits.activeCampaigns}/${limits.campaignLimit} campanhas ativas (mestrando + participando). ${limits.oneShotParticipations}/${limits.oneShotLimit} participações vitalícias em one-shots. ${tables} Níveis não ampliam estes limites; detalhes em Minha conta.`;
 }
 async function load() {
   const request = ++generation;

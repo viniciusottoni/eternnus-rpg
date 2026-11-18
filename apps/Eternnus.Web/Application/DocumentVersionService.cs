@@ -93,6 +93,8 @@ public sealed class DocumentVersionService(GameDb db, TimeProvider clock)
         if (row != null) { row.Auto = false; row.Label = label; }
         else
         {
+            // Versão nomeada é um pedido explícito: confere o espaço da conta do mestre (as automáticas giram e só contam no uso).
+            await AccountLimits.EnsureCampaignStorageAsync(db, campaign, payload.Length, ct);
             row = new DocumentVersion
             {
                 CampaignId = campaign, Kind = kind, DocumentId = x.DocumentId, Label = label, Auto = false, Revision = revision, CreatedAt = Now,

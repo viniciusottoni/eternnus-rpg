@@ -70,8 +70,7 @@ public sealed partial class CampaignAssetsService
         var owned = await Maps.Where(m => m.CampaignId == campaign && m.OwnerSceneId == sceneId && m.Purpose == CampaignAssetPurposes.Layer).Select(m => m.Id).ToListAsync(ct);
         if (owned.Count(o => o != scene.OverlayId && !live.Contains(o)) >= MapComposition.MaxSources)
             throw new RuleException(409, $"Limite de {MapComposition.MaxSources} imagens-fonte por cena.");
-        if (await Maps.Where(m => m.CampaignId == campaign).SumAsync(m => (long)m.Content.Length, ct) + n.Bytes.Length > MaxStorage)
-            throw new RuleException(409, "Os mapas desta campanha excedem 250 MB.");
+        await AccountLimits.EnsureCampaignStorageAsync(db, campaign, n.Bytes.Length, ct);
         var source = new CampaignMap
         {
             CampaignId = campaign, OwnerSceneId = sceneId, Purpose = CampaignAssetPurposes.Layer, Name = label, HasGrid = false,
@@ -117,8 +116,7 @@ public sealed partial class CampaignAssetsService
             throw new RuleException(400, "Composição inválida: há imagem que não pertence a esta cena nem ao acervo da campanha.");
         // Saem as fontes sem uso e a camada anterior, exceto a camada que uma sessão ativa ainda mostra (sai quando a mesa trocar).
         var removed = owned.Where(o => !sources.Contains(o.Id) && !live.Contains(o.Id)).ToList();
-        var stored = await Maps.Where(m => m.CampaignId == campaign).SumAsync(m => (long)m.Content.Length, ct);
-        if (stored - removed.Sum(o => (long)o.Size) + (flat?.Bytes.Length ?? 0) > MaxStorage) throw new RuleException(409, "Os mapas desta campanha excedem 250 MB.");
+        await AccountLimits.EnsureCampaignStorageAsync(db, campaign, (flat?.Bytes.Length ?? 0) - removed.Sum(o => (long)o.Size), ct);
         if (removed.Count > 0)
         {
             var ids = removed.Select(o => o.Id).ToList();

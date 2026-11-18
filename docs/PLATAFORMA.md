@@ -47,6 +47,8 @@ O PDF preenchido usa os últimos valores salvos. A exportação renderiza fundo 
 | `#library` | Acervo e visualizador |
 | `#templates` e detalhe/versão | Gestão e editor de modelos para embaixadores; para admin redireciona a `#admin/templates` |
 | `#guild` | Categorias, tópicos, perfil e moderação |
+| `#store` | Loja do Aventureiro: catálogo de afiliados, filtros e personalização (ADR-104) |
+| `#admin/store` e `products`/`categories`/`settings`/`metrics` | Produtos afiliados, categorias, vitrine e indicadores |
 | `#progress` | Jornada, conquistas e ranking |
 | `#character/new` | Criar com modelo publicado |
 | `#character/new/{campaignId}` | Criar com o modelo da campanha |

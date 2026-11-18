@@ -1,4 +1,4 @@
-// Regras puras dos medidores de "Minha conta" (ADR-096): contadores com ou sem limite e armazenamento por tipo.
+// Regras puras dos medidores de "Minha conta" (ADR-096/102): plano, contadores com ou sem limite e armazenamento por tipo.
 
 /** Tipos de armazenamento, na ordem da barra. `tone` vira classe CSS fixa (nunca vem do servidor). */
 export const STORAGE_PARTS = Object.freeze([
@@ -44,7 +44,25 @@ export function countMeter(label, used, limit) {
   };
 }
 
-/** Armazenamento das campanhas mestradas, segmentado por tipo. Capacidade = soma das cotas de imagens por campanha. */
+/** Menor limite de arquivo entre os planos (Basic): vale enquanto a conta não carregou (ADR-102). */
+export const BASIC_FILE_BYTES = 20 * 1024 * 1024;
+
+/** Maior arquivo que a conta pode enviar (`maxFileBytes` de /auth/me). O servidor revalida pelo plano gravado. */
+export function uploadLimit(user) {
+  return count(user?.maxFileBytes) || BASIC_FILE_BYTES;
+}
+
+/** Regras do plano que não são contadores: jogadores por mesa e maior arquivo. Limite nulo = sem limite. */
+export function planFacts(limits = {}) {
+  const players = (value) => (value == null ? "Sem limite" : `Até ${count(value)}`);
+  return [
+    { label: "Jogadores por campanha", value: players(limits.campaignPlayerLimit) },
+    { label: "Jogadores por one-shot", value: players(limits.oneShotPlayerLimit) },
+    { label: "Maior arquivo", value: formatBytes(uploadLimit(limits)) },
+  ];
+}
+
+/** Armazenamento das campanhas mestradas e dos retratos das fichas, segmentado por tipo. Capacidade = espaço total do plano. */
 export function storageMeter(storage = {}) {
   const parts = STORAGE_PARTS.map((part) => ({ ...part, bytes: count(storage[part.key]) }));
   const used = parts.reduce((sum, part) => sum + part.bytes, 0);
@@ -54,13 +72,12 @@ export function storageMeter(storage = {}) {
     used,
     capacity,
     campaigns: count(storage.campaigns),
-    perCampaign: count(storage.perCampaign),
     ratio: ratio(used, capacity),
     level: level(used, capacity),
     display: capacity ? `${formatBytes(used)} / ${formatBytes(capacity)}` : formatBytes(used),
     spoken: capacity
       ? `Armazenamento: ${formatBytes(used)} de ${formatBytes(capacity)}`
-      : `Armazenamento: ${formatBytes(used)}, nenhuma campanha mestrada`,
+      : `Armazenamento: ${formatBytes(used)}`,
     parts: parts.map((part) => ({ ...part, share: scale ? part.bytes / scale : 0, text: formatBytes(part.bytes) })),
   };
 }

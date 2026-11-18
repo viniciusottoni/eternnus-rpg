@@ -20,6 +20,7 @@ public static class AdminEndpoints
         admin.MapGet("/users", (string? q, string? role, string? status, int? page, AdminService service, CancellationToken ct) => service.UsersAsync(q, role, status, page ?? 1, ct));
         admin.MapGet("/users/{id}", (string id, AdminService service, ClaimsPrincipal u, CancellationToken ct) => service.UserAsync(UserId(id), Me(u), ct));
         admin.MapPut("/users/{id}/role", async (string id, RoleInput x, AdminService service, ClaimsPrincipal u, CancellationToken ct) => { await service.SetRoleAsync(UserId(id), x, Me(u), ct); return Results.NoContent(); });
+        admin.MapPut("/users/{id}/plan", async (string id, PlanInput x, AdminService service, ClaimsPrincipal u, CancellationToken ct) => { await service.SetPlanAsync(UserId(id), x, Me(u), ct); return Results.NoContent(); });
         admin.MapPost("/users/{id}/suspend", async (string id, SuspendInput x, AdminService service, ClaimsPrincipal u, CancellationToken ct) => { await service.SuspendAsync(UserId(id), x, Me(u), ct); return Results.NoContent(); });
         admin.MapPost("/users/{id}/unsuspend", async (string id, [FromBody] ReasonInput? x, AdminService service, ClaimsPrincipal u, CancellationToken ct) => { await service.UnsuspendAsync(UserId(id), x?.Reason, Me(u), ct); return Results.NoContent(); });
 

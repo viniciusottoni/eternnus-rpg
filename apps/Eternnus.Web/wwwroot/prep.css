@@ -48,6 +48,9 @@
 }
 .px-tb.icon-only { justify-content: center; padding: 4px; }
 .px-tb.icon-only .px-tb-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.px-tb { position: relative; }
+/* Quantidade de filtros ativos sobre o ícone (o número também está no nome acessível). */
+.px-tb-count { position: absolute; top: 1px; right: 1px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px; background: var(--gold, #c6a463); color: #17140d; font-size: 10px; font-weight: 700; line-height: 15px; text-align: center; pointer-events: none; }
 .px-tb:hover { background: #ffffff0d; border-color: var(--px-line); transform: none; }
 .px-tb.primary { background: linear-gradient(#c6a463, #9d7d42); color: #17140d; font-weight: 600; }
 .px-tb.primary:hover { background: linear-gradient(#d6b673, #ad8d52); }
@@ -347,7 +350,8 @@ span.px-colhead { cursor: default; }
 
 /* ---------- Celular: árvore em gaveta, barra rolável, detalhes abaixo, alvos de 44 px ---------- */
 @media (max-width: 760px) {
-  .px-toolbar { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+  /* position: relative: rótulos sr-only e motivos absolutos ficam presos à rolagem, sem alargar a página. */
+  .px-toolbar { position: relative; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
   .px-tb-group { flex: none; }
   .px-tb-group:last-child { margin-left: 0; }
   .px-tb, .px-sort, .px-crumb, .px-search input[type="search"] { min-height: 44px; min-width: 44px; }

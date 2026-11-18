@@ -38,11 +38,12 @@ const entries = {
   },
   "conta.uso.limites": {
     "title": "Uso da conta",
-    "summary": "Quotas, contadores e espaço das campanhas que você mestra.",
+    "summary": "Plano, quotas, contadores e espaço total da conta.",
     "body": [
-      "Campanhas ativas somam as que você mestra e as de que participa; arquivadas continuam contando. Participações em one-shots são vitalícias. Sem limite (Administradores e Embaixadores), o número aparece com ∞ e continua sendo contado.",
-      "Armazenamento soma o que está guardado nas campanhas e one-shots que você mestra, separado por cor: imagens e mapas, anexos e atlas, versões salvas e textos, mais as imagens das suas fichas de personagem. Textos são uma estimativa por caracteres.",
-      "Só imagens e mapas têm limite: até 250 MB por campanha. A capacidade mostrada é a soma desse limite das campanhas que você mestra; os demais tipos aparecem para orientação."
+      "Seu plano (Basic, Plus, Pro ou Max) define quantas campanhas, participações em one-shots e fichas você pode ter, quantos jogadores cabem nas mesas que você mestra, o espaço total e o maior arquivo aceito. Administradores e Embaixadores usam o Max.",
+      "Campanhas ativas somam as que você mestra e as de que participa; arquivadas continuam contando. Participações em one-shots são vitalícias. Sem limite, o número aparece com ∞ e continua sendo contado.",
+      "Armazenamento soma o que está guardado nas campanhas e one-shots que você mestra, separado por cor: imagens e mapas (com a composição das cenas e as camadas de névoa e paredes), anexos e atlas, versões salvas e textos (páginas, cenas, personagens, capítulos, linha do tempo, sessões e o chat da mesa), mais as imagens das suas fichas de personagem. Textos são uma estimativa por caracteres.",
+      "Ao chegar ao espaço total do plano, novos envios, cópias de imagens e versões nomeadas ficam bloqueados até você apagar algo. Textos e o chat continuam editáveis. Nada é apagado automaticamente, nem quando o plano é reduzido."
     ],
     "audience": "all"
   },

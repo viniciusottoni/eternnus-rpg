@@ -191,6 +191,37 @@ button[aria-disabled="true"] {
   font-size: 25px;
   color: var(--muted);
 }
+/* Ferramenta só com ícone (ui.iconButton, ADR-101): quadrada, 44 px, nome no tooltip e no leitor de tela. */
+button.tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+}
+button.tool-icon.small {
+  width: 36px;
+  min-width: 36px;
+  min-height: 36px;
+}
+button.tool-icon.danger-text {
+  color: var(--danger);
+}
+button.tool-icon .ed-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  pointer-events: none;
+}
+@media (max-width: 760px), (pointer: coarse) {
+  button.tool-icon.small {
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
 .muted {
   color: var(--muted);
 }
@@ -1527,6 +1558,26 @@ textarea::placeholder {
 .campaign-row-actions small:empty {
   display: none;
 }
+/* Abrir/entrar com texto; editar, excluir e sair em ícone na mesma fila (ADR-101). */
+.campaign-row-actions {
+  flex: 0 0 auto;
+  min-width: 222px;
+  max-width: 320px;
+  align-items: center;
+}
+.campaign-row-actions .tool-icon {
+  width: 35px;
+  min-width: 35px;
+  min-height: 35px;
+  padding: 0;
+}
+@media (pointer: coarse) {
+  .campaign-row-actions .tool-icon {
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
 .pagination {
   display: flex;
   align-items: center;
@@ -1623,6 +1674,17 @@ mark.search-hit {
 .usage-legend i { flex: none; width: 10px; height: 10px; border-radius: 2px; }
 .usage-legend b { margin-left: auto; color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
 .usage-note { margin: 6px 0 0; font-size: 12px; color: var(--quiet); }
+/* Plano da conta (ADR-102): nome e regras que não são contadores. */
+.usage-plan { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #0c0c0b; }
+.usage-plan .usage-row strong { color: var(--gold); }
+.usage-facts { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 16px; font-size: 12px; }
+.usage-facts div { display: flex; flex-direction: column; gap: 2px; }
+.usage-facts dt { color: var(--muted); }
+.usage-facts dd { margin: 0; color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 480px) {
+  .usage-facts { grid-template-columns: 1fr; }
+  .usage-facts div { flex-direction: row; justify-content: space-between; gap: 8px; }
+}
 @media (prefers-reduced-motion: reduce) { .usage-bar > span { transition: none; } }
 .invite-code {
   display: flex;
@@ -2887,6 +2949,7 @@ legend { padding: 0 6px; color: var(--gold); font-size: 12px; font-weight: 600; 
 @media (max-width: 560px) {
   .action-group { flex: 1 1 100%; }
   .action-group > :is(button, .button) { flex: 1 1 auto; min-height: 44px; }
+  .action-group > .tool-icon { flex: 0 0 44px; }
 }
 
 /* Modelo simples da campanha: seção = cartão; campo = linha nome/tipo/remover + opções abaixo. */

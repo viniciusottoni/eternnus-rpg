@@ -9,6 +9,8 @@ import { mapThumbnail } from "./table-map.js";
 import { blankTiles } from "./tile-map-policy.js";
 import { gridFor } from "./scene-policy.js";
 import * as P from "./prep-explorer-policy.js";
+import { state } from "./state.js";
+import { uploadLimit, formatBytes } from "./account-usage-policy.js";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_PIXELS = 8_000_000;
@@ -100,7 +102,7 @@ export function openNewMap(ctx) {
 }
 
 function scratchStep(ctx) {
-  modal("Novo mapa › Criar do zero", `<div class="pc-flow"><p class="pc-lead">Escolha a origem do mapa.${helpButton("campanhas.mapas.novo", "Novo mapa")}</p><div class="pc-choices">${choice("file", "Enviar imagem do dispositivo", "PNG ou JPEG até 10 MB. Apenas imagem, com grade ou com movimentação livre.")}${choice("link", "Importar por URL", "O Eternnus baixa uma cópia de um link https; os jogadores não acessam o site de origem.")}${choice("vtt", "Arquivo VTT", "Universal VTT (.dd2vtt, .uvtt, .df2vtt): imagem, grade, paredes, portas e luzes.")}${choice("tiles", "Mapa vazio com tiles", "Grade de 8 a 64 casas por lado pintada com o catálogo de tiles.")}${choice("blank", "Área em branco", "Imagem lisa do tamanho escolhido para compor no editor de mapas.")}</div><div class="form-actions">${back("back")}${button("Cancelar", "modal-close", "", "subtle")}</div></div>`);
+  modal("Novo mapa › Criar do zero", `<div class="pc-flow"><p class="pc-lead">Escolha a origem do mapa.${helpButton("campanhas.mapas.novo", "Novo mapa")}</p><div class="pc-choices">${choice("file", "Enviar imagem do dispositivo", `PNG ou JPEG até ${formatBytes(uploadLimit(state.user))}. Apenas imagem, com grade ou com movimentação livre.`)}${choice("link", "Importar por URL", "O Eternnus baixa uma cópia de um link https; os jogadores não acessam o site de origem.")}${choice("vtt", "Arquivo VTT", "Universal VTT (.dd2vtt, .uvtt, .df2vtt): imagem, grade, paredes, portas e luzes.")}${choice("tiles", "Mapa vazio com tiles", "Grade de 8 a 64 casas por lado pintada com o catálogo de tiles.")}${choice("blank", "Área em branco", "Imagem lisa do tamanho escolhido para compor no editor de mapas.")}</div><div class="form-actions">${back("back")}${button("Cancelar", "modal-close", "", "subtle")}</div></div>`);
   bindChoices({ back: () => openNewMap(ctx), file: () => uploadImage(ctx, "file"), link: () => uploadImage(ctx, "link"), vtt: () => importUvtt(ctx), tiles: () => tilesStep(ctx), blank: () => blankStep(ctx) });
 }
 

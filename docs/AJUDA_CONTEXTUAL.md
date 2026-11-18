@@ -55,6 +55,7 @@ Auditoria inicial: 59 conceitos e 202 linhas de controles/opções, antes de edi
 | Elemento | Arquivo | Nível | Chave | Texto proposto | Status |
 | --- | --- | --- | --- | --- | --- |
 | Papéis da plataforma | `admin.js` | ⓘ | `admin.usuarios.papeis` | Só Admin altera papéis pela gestão auditada. | Aplicado |
+| Planos de conta | `admin.js` | ⓘ | `admin.usuarios.planos` | Basic, Plus, Pro e Max definem os limites da conta. | Aplicado |
 | Identificador do sistema | `admin.js` | ⓘ | `admin.sistemas.identificador` | O identificador organiza a referência do sistema. | Aplicado |
 | Motivo e auditoria | `admin.js` | ⓘ | `admin.acoes.auditoria` | Ações administrativas registram ator e motivo. | Aplicado |
 | Arquivos da Biblioteca | `library.js` | ⓘ | `biblioteca.arquivos.verificacao` | A equipe publica materiais após validação no servidor. | Aplicado |
@@ -64,7 +65,7 @@ Auditoria inicial: 59 conceitos e 202 linhas de controles/opções, antes de edi
 | Catálogo de músicas | `admin-music.js` | ⓘ | `admin.musicas.catalogo` | Faixas do servidor que os Mestres buscam por nome e tocam na mesa. | Aplicado (Admin) |
 | Trilha sonora compartilhada | `table-soundtrack.js` | ⓘ | `mesa.trilha.compartilhada` | O Mestre escolhe no catálogo do servidor e controla a mesma música para toda a mesa. | Aplicado |
 | Ativar áudio da sessão | `table-soundtrack.js` | ⓘ | `mesa.trilha.ativar-audio` | Alguns navegadores só tocam som depois de um toque ou clique. | Aplicado |
-| Limites da conta | `one-shots.js` | ⓘ | `campanhas.conta.limites` | Campanhas e one-shots usam quotas diferentes. | Aplicado |
+| Limites da conta | `one-shots.js` | ⓘ | `campanhas.conta.limites` | O plano da conta define campanhas, one-shots e jogadores por mesa. | Aplicado |
 | Forma de jogar | `campaigns.js`; `table-settings.js` | ⓘ | `campanhas.config.forma-de-jogar` | Livre, Por turnos e Tática organizam as ações. | Aplicado |
 | Convite da campanha | `campaign-page.js` | ⓘ | `campanhas.convite.codigo` | Compartilhe o convite apenas com quem deseja convidar. | Aplicado |
 | Ficha-modelo da campanha | `campaign-page.js` | ⓘ | `campanhas.config.modelo` | A escolha orienta as novas fichas. | Aplicado |
@@ -94,7 +95,7 @@ Auditoria inicial: 59 conceitos e 202 linhas de controles/opções, antes de edi
 | Acesso com Google ou Discord | `auth.js` | ⓘ | `conta.acesso.social` | O provedor precisa informar um e-mail verificado. | Aplicado |
 | Autenticador | `auth.js` | ⓘ | `conta.acesso.autenticador` | Uma segunda etapa protege o acesso à conta. | Aplicado |
 | Aprovação do avatar | `profile.js` | ⓘ | `conta.perfil.avatar` | A imagem só aparece após a aprovação no servidor. | Aplicado |
-| Uso da conta | `profile.js` | ⓘ | `conta.uso.limites` | Quotas, contadores e espaço das campanhas que você mestra. | Aplicado |
+| Uso da conta | `profile.js` | ⓘ | `conta.uso.limites` | Plano, quotas, contadores e espaço total da conta. | Aplicado |
 | Instalar o Eternnus | `pwa.js` | ⓘ | `conta.app.instalacao` | Você pode adicionar o site à tela inicial. | Aplicado |
 | Ficha compartilhada ou privada | `character-sheet.js` | ⓘ | `fichas.visibilidade.privacidade` | Você escolhe a visibilidade da sua ficha. | Aplicado |
 | Imagem do personagem | `character-portrait.js` | ⓘ | `fichas.imagem.personagem` | Cada ficha pode ter uma imagem, mostrada ao lado da ficha. | Aplicado |
@@ -695,3 +696,29 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | Ferramenta "Colocar o grupo" | `table.js` | Rótulo visível; resultado em toast |
 | Busca de ações (Ctrl+K, "/" e botão "⌕ Ações") | `command-palette.js`, `table.js`, `editor-core.js` | Rótulo visível e instrução "↑ ↓ escolhem, Enter executa, Esc fecha." no próprio diálogo; motivo de indisponibilidade em cada item |
 | Selo "Cena pesada" no rodapé do editor | `scene-editor.js` | Texto visível com contagem e limite |
+
+## Classificação — ferramentas em ícone (ADR-101)
+
+| Elemento | Arquivo | Nível / chave |
+| --- | --- | --- |
+| Diminuir/aumentar zoom, Importar PDF preenchido, Baixar PDF preenchido, Histórico por campo e Duplicar ficha | `character-sheet.js` | Ícone sem texto: nome acessível + tooltip; ⓘ existentes `fichas.pdf.importacao`, `fichas.pdf.exportacao` (agora ao lado de Baixar) e `fichas.ficha.duplicar` |
+| Nova pasta, Importar mapa ou VTT e Filtros (com contador) | `prep-explorer.js` | Ícone sem texto: nome acessível + tooltip; quantidade de filtros no nome |
+| Editar/Excluir/Sair no card de campanha e Converter/Excluir/Sair no card de one-shot | `campaigns.js`, `one-shots.js` | Ícone sem texto: nome acessível + tooltip; Excluir bloqueado usa a nota visível do card como motivo (`aria-describedby`) |
+| Transformações da composição e ações de parede | `scene-editor.js` | Ícone sem texto: nome acessível + tooltip |
+| Anexos e imagens, Exportar texto, Versões e Mover para lixeira no caderno | `campaign-workspace.js` | Ícone sem texto: nome acessível + tooltip; Editar continua com texto |
+
+## Classificação — Loja do Aventureiro (ADR-104)
+
+| Elemento | Nível | Chave/texto |
+| --- | --- | --- |
+| Aviso de afiliado na loja | Auxiliar visível + ⓘ | `loja.pagina.afiliados` (catálogo `js/help/loja.js`, área nova `loja`) |
+| Personalização e privacidade | ⓘ no texto de abertura do modal + auxiliares visíveis por opção | `loja.pagina.personalizacao` |
+| Vitrine: × ocultar | Nome acessível “Ocultar recomendações” + tooltip | — |
+| Vitrine: “Ver oferta” | Nome acessível com loja, nova aba e link de afiliado | — |
+| Título truncado (vitrine e cartões) | Tooltip de texto completo (`data-tip-full`) | — |
+| Admin › Loja › Produtos / URL de afiliado | ⓘ no título e no campo | `admin.loja.link` |
+| Admin › Loja › Vitrine | ⓘ no título | `admin.loja.recomendacao` |
+| Admin › Loja › Indicadores | ⓘ no título + aviso visível sem CTR/receita | `admin.loja.metricas` |
+| Preço, conferência, prioridade, validade, sinônimos | Auxiliar visível ligado por `aria-describedby` | — |
+
+A área `loja` entra em `HELP_AREAS`, no índice `HELP_KEYS` e na lista pública do PWA.

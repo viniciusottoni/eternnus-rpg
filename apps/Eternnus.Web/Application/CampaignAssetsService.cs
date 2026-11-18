@@ -47,9 +47,10 @@ public record CampaignMapView(Guid Id, string Name, Guid? FolderId, int GridPixe
 /// <summary>Gestão prévia/durante sessão. Bytes privados pertencem à campanha e somem com ela.</summary>
 public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? signals = null)
 {
-    public const int MaxImageBytes = 10 * 1024 * 1024;
+    /// <summary>Teto técnico de uma imagem enviada (o maior plano, ADR-102). O plano de quem envia decide o limite real nos endpoints;
+    /// a decodificação continua limitada a 4.096 px por lado e 8 milhões de pixels.</summary>
+    public const int MaxImageBytes = (int)AccountPlans.MaxFileCeiling;
     public const int MaxImageRequestBytes = MaxImageBytes + 64 * 1024;
-    internal const long MaxStorage = 250L * 1024 * 1024;
     public const int PageSize = 20, MaxMaps = 50, MaxPortraits = PreparationService.MaxNpcs, MaxFolders = 100, MaxFolderDepth = 8;
     static readonly SemaphoreSlim Images = new(2);
     IQueryable<CampaignLibraryEntry> Texts => db.Set<CampaignLibraryEntry>();
@@ -132,7 +133,7 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
         var total = await query.CountAsync(ct);
         var items = await Views(query.OrderBy(x => x.Name).ThenBy(x => x.Id).Skip((page - 1) * PageSize).Take(PageSize), campaign).ToListAsync(ct);
         var portraits = await Maps.CountAsync(x => x.CampaignId == campaign && x.Purpose == CampaignAssetPurposes.Portrait, ct);
-        return new { folders, items, total, page, pageSize = PageSize, maxBytes = MaxImageBytes, purpose = category, portraits };
+        return new { folders, items, total, page, pageSize = PageSize, maxBytes = await AccountLimits.MaxFileBytesAsync(db, user, ct), purpose = category, portraits };
     }
     /// <summary>Mapas para cenas, mesa e atlas: retratos de NPC ficam de fora.</summary>
     public async Task<List<CampaignMapView>> MapChoicesAsync(Guid campaign, CancellationToken ct) =>
@@ -207,8 +208,7 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
         }
         if (normalized is { } n)
         {
-            var stored = await Maps.Where(m => m.CampaignId == campaign).SumAsync(m => (long)m.Content.Length, ct);
-            if (stored - map.Content.Length + n.Bytes.Length > MaxStorage) throw new RuleException(409, "Os mapas desta campanha excedem 250 MB.");
+            await AccountLimits.EnsureCampaignStorageAsync(db, campaign, n.Bytes.Length - map.Content.Length, ct);
             map.Content = n.Bytes; map.Width = n.Width; map.Height = n.Height;
         }
         if (x.HasGrid)
@@ -507,7 +507,7 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
     /// </summary>
     public static async Task<(byte[] Bytes, int Width, int Height)> Normalize(UploadedDocument image, CancellationToken ct, bool keepAlpha = false, int? maxSide = null)
     {
-        if (image.Content.Length is 0 or > MaxImageBytes) throw new RuleException(413, "Envie uma imagem de até 10 MB.");
+        if (image.Content.Length is 0 or > MaxImageBytes) throw new RuleException(413, $"Envie uma imagem de até {AccountPlans.Size(MaxImageBytes)}.");
         if (image.ContentType is not (DocumentKinds.Jpeg or DocumentKinds.Png)) throw new RuleException(415, "Use uma imagem PNG ou JPEG.");
         if (image.ContentType == DocumentKinds.Png)
             for (var offset = 8; offset + 12 <= image.Content.Length;)
@@ -533,7 +533,7 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
             var alpha = keepAlpha && decoded.HasAlpha && !decoded.IsOpaque;
             if (!alpha) { decoded.BackgroundColor = MagickColors.White; decoded.Alpha(AlphaAction.Remove); decoded.Quality = 88; }
             var bytes = decoded.ToByteArray(alpha ? MagickFormat.Png : MagickFormat.Jpeg);
-            if (bytes.Length > MaxImageBytes) throw new RuleException(413, "A imagem preparada excede 10 MB.");
+            if (bytes.Length > MaxImageBytes) throw new RuleException(413, $"A imagem preparada excede {AccountPlans.Size(MaxImageBytes)}.");
             return (bytes, (int)decoded.Width, (int)decoded.Height);
         }
         catch (MagickException) { throw new RuleException(400, "Imagem inválida, danificada ou acima dos limites permitidos."); }

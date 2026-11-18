@@ -16,6 +16,7 @@ const navigation = [
   ["one-shot", "⬡", "One-shot", false],
   ["library", "❖", "Biblioteca", false],
   ["progress", "✶", "Conquistas", false],
+  ["store", "⚖", "Loja", false],
   ["support", "✉", "Suporte", false, notAdmin],
   ["templates", "▤", "Fichas-modelo", false, ambassadorOnly],
   ["admin", "♛", "Painel admin", false, isAdmin],
@@ -82,14 +83,23 @@ function updateShell(view) {
   main.replaceWith(fresh);
   return true;
 }
+// Vitrine da loja (ADR-104): módulo carregado sob demanda depois da moldura; nunca atrasa nem bloqueia a tela.
+function syncStoreShowcase() {
+  const verified = !!state.user?.verified;
+  import("./store-recommendations.js").then((m) => m.syncShowcase({ verified })).catch(() => {});
+}
 export function shell(view) {
-  if (updateShell(view)) return;
+  if (updateShell(view)) {
+    syncStoreShowcase();
+    return;
+  }
   $("#app").className = "app-shell";
   $("#app").dataset.shell = shellKey();
   $("#app").innerHTML =
-    `<aside class="sidebar"><a class="brand" href="#overview"><img src="/assets/eternnus-logo.webp" alt="Eternnus RPG"><span>FORJE A SUA LENDA</span></a><div class="profile-block"><img class="avatar" src="${esc(state.user.avatarUrl)}" alt="Avatar de ${esc(state.user.name)}" referrerpolicy="no-referrer"><div><strong>${esc(state.user.name)}</strong><small class="${state.user.verified ? "verified" : "pending"}">● ${state.user.verified ? "Conta verificada" : "Confirmação pendente"}</small>${state.user.verified ? `<a class="level-chip" href="#progress" data-tip="Seu nível e conquistas">Nível ${Number(state.user.level) || 1}${isStaff(state.user) ? ` · ${state.user.role === "admin" ? "Admin" : "Embaixador"}` : ""}</a>` : ""}</div></div><span class="nav-caption">SEU UNIVERSO</span>${state.user.verified ? "" : '<p id="account-verify-help" class="form-help">Confirme seu e-mail para acessar os destinos de jogo.</p>'}<nav aria-label="Menu principal">${navLinks(view)}</nav><div id="nav-more-panel" class="nav-more-panel metal" hidden><span class="nav-caption">MAIS CAMINHOS</span>${moreItems(view)}</div><div class="sidebar-quote"><span>✧</span><p>Grandes histórias começam<br>com uma escolha.</p></div>${button("↪ Sair da conta", "auth-signout", "", "logout")}</aside><div class="workspace"><header class="topbar"><div class="breadcrumb">ETERNNUS <span>/</span> ${esc(navigation.find((n) => n[0] === routeOf(view))?.[2] || "Seu universo")}</div>${installButton()}<div class="topbar-end"><span class="world-status"><i></i> O próximo capítulo é seu</span><div class="music-dock"></div></div></header><main id="main" tabindex="-1"></main><footer><span>ETERNNUS RPG</span><span>Escreva histórias. Viva lendas.</span><span>✧</span></footer></div>`;
+    `<aside class="sidebar"><a class="brand" href="#overview"><img src="/assets/eternnus-logo.webp" alt="Eternnus RPG"><span>FORJE A SUA LENDA</span></a><div class="profile-block"><img class="avatar" src="${esc(state.user.avatarUrl)}" alt="Avatar de ${esc(state.user.name)}" referrerpolicy="no-referrer"><div><strong>${esc(state.user.name)}</strong><small class="${state.user.verified ? "verified" : "pending"}">● ${state.user.verified ? "Conta verificada" : "Confirmação pendente"}</small>${state.user.verified ? `<a class="level-chip" href="#progress" data-tip="Seu nível e conquistas">Nível ${Number(state.user.level) || 1}${isStaff(state.user) ? ` · ${state.user.role === "admin" ? "Admin" : "Embaixador"}` : ""}</a>` : ""}</div></div><span class="nav-caption">SEU UNIVERSO</span>${state.user.verified ? "" : '<p id="account-verify-help" class="form-help">Confirme seu e-mail para acessar os destinos de jogo.</p>'}<nav aria-label="Menu principal">${navLinks(view)}</nav><div id="nav-more-panel" class="nav-more-panel metal" hidden><span class="nav-caption">MAIS CAMINHOS</span>${moreItems(view)}</div><div class="sidebar-quote"><span>✧</span><p>Grandes histórias começam<br>com uma escolha.</p></div>${button("↪ Sair da conta", "auth-signout", "", "logout")}</aside><div class="workspace"><header class="topbar"><div class="breadcrumb">ETERNNUS <span>/</span> ${esc(navigation.find((n) => n[0] === routeOf(view))?.[2] || "Seu universo")}</div>${installButton()}<div class="topbar-end"><span class="world-status"><i></i> O próximo capítulo é seu</span><div class="music-dock"></div></div></header><aside id="store-strip" class="store-strip" hidden aria-label="Produtos recomendados"></aside><main id="main" tabindex="-1"></main><footer><span>ETERNNUS RPG</span><span>Escreva histórias. Viva lendas.</span><span>✧</span></footer></div>`;
   placeAccountControls();
   paintNav();
+  syncStoreShowcase();
 }
 export function renderHome() {
   shell("overview");

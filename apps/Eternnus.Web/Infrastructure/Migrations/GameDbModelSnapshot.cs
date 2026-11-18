@@ -99,6 +99,13 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Plan")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("basic");
+
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -2193,6 +2200,434 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.ToTable("SheetTemplateVersions");
                 });
 
+            modelBuilder.Entity("Eternnus.Web.StoreCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Keywords")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("StoreCategories", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000301"),
+                            Keywords = "livro basico, livro do jogador, regras, manual",
+                            Name = "Livros básicos de RPG",
+                            Order = 1,
+                            Slug = "livros-basicos"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000302"),
+                            Keywords = "suplemento, expansao, bestiario, guia",
+                            Name = "Suplementos e expansões",
+                            Order = 2,
+                            Slug = "suplementos"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000303"),
+                            Keywords = "aventura, campanha pronta, modulo, cenario",
+                            Name = "Aventuras e campanhas prontas",
+                            Order = 3,
+                            Slug = "aventuras"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000304"),
+                            Keywords = "dado, dados, d20, dados metalicos, rolagem",
+                            Name = "Dados e acessórios",
+                            Order = 4,
+                            Slug = "dados"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000305"),
+                            Keywords = "miniatura, miniaturas, figura, pintura",
+                            Name = "Miniaturas",
+                            Order = 5,
+                            Slug = "miniaturas"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000306"),
+                            Keywords = "escudo do mestre, escudo do narrador",
+                            Name = "Escudos do mestre",
+                            Order = 6,
+                            Slug = "escudos"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000307"),
+                            Keywords = "mapa, grid, battlemap, cenario fisico, terreno",
+                            Name = "Mapas e cenários físicos",
+                            Order = 7,
+                            Slug = "mapas"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000308"),
+                            Keywords = "organizador, bandeja de dados, torre de dados, caixa",
+                            Name = "Organizadores e acessórios de mesa",
+                            Order = 8,
+                            Slug = "organizadores"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000309"),
+                            Keywords = "carta, cartas, baralho, deck",
+                            Name = "Cartas e baralhos",
+                            Order = 9,
+                            Slug = "cartas"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000310"),
+                            Keywords = "mestre, narrador, gerador, tabelas",
+                            Name = "Materiais para mestres",
+                            Order = 10,
+                            Slug = "mestres"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000311"),
+                            Keywords = "colecionavel, edicao especial, estatueta",
+                            Name = "Produtos colecionáveis",
+                            Order = 11,
+                            Slug = "colecionaveis"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000312"),
+                            Keywords = "",
+                            Name = "Outros",
+                            Order = 99,
+                            Slug = "outros"
+                        });
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreInteraction", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Surface")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("ProductId", "CreatedAt");
+
+                    b.HasIndex("UserId", "ProductId", "CreatedAt");
+
+                    b.ToTable("StoreInteractions", (string)null);
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreProduct", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AffiliateUrl")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Availability")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Brand")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("CanonicalUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid?>("CategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Clicks")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("ExternalId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Marketplace")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int?>("PreviousPriceCents")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("PriceCents")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("PriceCheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("TargetUrl")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("PriceCents");
+
+                    b.HasIndex("Marketplace", "ExternalId");
+
+                    b.HasIndex("Marketplace", "Status");
+
+                    b.HasIndex("Status", "DeletedAt", "UpdatedAt");
+
+                    b.ToTable("StoreProducts", (string)null);
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreProductSystem", b =>
+                {
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RpgSystemId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ProductId", "RpgSystemId");
+
+                    b.HasIndex("RpgSystemId");
+
+                    b.ToTable("StoreProductSystems", (string)null);
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreProductTag", b =>
+                {
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Value")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.HasKey("ProductId", "Value");
+
+                    b.HasIndex("Value");
+
+                    b.ToTable("StoreProductTags", (string)null);
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("CategoryDiversity")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("MaxPerMarketplace")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MetadataRefreshHours")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Pages")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<int>("PriceStaleHours")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("RequireImage")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RotationHours")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ShowcaseMedium")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ShowcaseNarrow")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ShowcaseWide")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Synonyms")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("StoreSettings", (string)null);
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreUserInterest", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("Term")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double>("Weight")
+                        .HasColumnType("double precision");
+
+                    b.HasKey("UserId", "Term");
+
+                    b.ToTable("StoreUserInterests", (string)null);
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreUserPreferences", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<bool>("AnalyzeMessages")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("InterestSystemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("InterestsComputedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("InterestsResetAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("MessagesConsentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("ShowShowcase")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("UseCampaignSystems")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("InterestSystemId");
+
+                    b.HasIndex("AnalyzeMessages", "InterestsComputedAt");
+
+                    b.ToTable("StoreUserPreferences", (string)null);
+                });
+
             modelBuilder.Entity("Eternnus.Web.StoredFile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3705,6 +4140,76 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Navigation("Pages");
                 });
 
+            modelBuilder.Entity("Eternnus.Web.StoreInteraction", b =>
+                {
+                    b.HasOne("Eternnus.Web.StoreProduct", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Eternnus.Web.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreProduct", b =>
+                {
+                    b.HasOne("Eternnus.Web.StoreCategory", null)
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreProductSystem", b =>
+                {
+                    b.HasOne("Eternnus.Web.StoreProduct", null)
+                        .WithMany("Systems")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Eternnus.Web.RpgSystem", null)
+                        .WithMany()
+                        .HasForeignKey("RpgSystemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreProductTag", b =>
+                {
+                    b.HasOne("Eternnus.Web.StoreProduct", null)
+                        .WithMany("Tags")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreUserInterest", b =>
+                {
+                    b.HasOne("Eternnus.Web.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreUserPreferences", b =>
+                {
+                    b.HasOne("Eternnus.Web.RpgSystem", null)
+                        .WithMany()
+                        .HasForeignKey("InterestSystemId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Eternnus.Web.AppUser", null)
+                        .WithOne()
+                        .HasForeignKey("Eternnus.Web.StoreUserPreferences", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Eternnus.Web.StoryChapter", b =>
                 {
                     b.HasOne("Eternnus.Web.Campaign", null)
@@ -3879,6 +4384,13 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Eternnus.Web.StoreProduct", b =>
+                {
+                    b.Navigation("Systems");
+
+                    b.Navigation("Tags");
                 });
 #pragma warning restore 612, 618
         }

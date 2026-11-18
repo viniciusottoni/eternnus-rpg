@@ -1075,6 +1075,7 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 - **Campo de lista** é decidido no cliente (`item-notes-policy.js#isListField`), sem mudar modelos publicados: campos de texto/texto longo cujo nome tem um termo de lista (magia, feitiço, ritual, poder, habilidade, talento, vantagem, técnica, disciplina, perícia, item, equipamento, inventário, arma, ataque, golpe, ação, armadura, escudo…) e não começa nem termina com termo auxiliar (dano, custo, peso, descrição, bônus, especialização…). Conferido nos 12 modelos de `docs/fichas`; `field.notes` true/false força a escolha em modelos futuros. Descrição e Anotações continuam texto corrido, com quebra.
 - **Visual:** cada linha de um campo de lista é um item, sem quebra automática (`wrap="off"`). Fora da edição, uma camada de linhas mostra "…" no que não cabe e o tooltip padrão mostra o texto inteiro (`data-tip-full`, até 1.000 caracteres, caixa mais larga). Clicar numa linha edita o campo com o cursor nela. Campos de uma linha usam `text-overflow: ellipsis`.
 - **Linha a linha também nas colunas e no PDF:** texto longo com o mesmo começo de nome e as mesmas linhas de uma lista (mesma página e fonte, começando e terminando na mesma linha: `posses_custo` ao lado de `posses`, `cc_dano` ao lado de `cc_arma`) é desenhado como a lista, uma linha por item com "…", mas sem descrição própria (`lineFieldNames`, opção `isLines` do `renderSheet`, também no "Testar ficha"). Listas e colunas usam altura de linha 1,2 × fonte e a 1ª linha 1 pt abaixo do topo, igual ao PDF exportado, para cada item cair na linha impressa ao preencher, ler e exportar. O PDF exportado (`filled-pdf.js`) não quebra listas nem colunas: cada linha é cortada com "…" (`fitLine`). Modelos com lista fora do padrão de nomes ganham nova versão com nome reconhecível (ex.: cyberware do Cyberpunk RED).
+- **Uma caixa por linha no preenchimento (18/11/2026):** uma lista de texto longo (e as colunas dela) aparecia como uma caixa só, parecendo texto corrido ao lado das magias, que têm um campo por linha. No preenchimento, o campo passa a mostrar uma caixa de texto por linha impressa (altura ÷ 1,2 × fonte), todas gravando no mesmo campo, uma linha por caixa: não gasta campos do limite de 300 e mantém a descrição por item. Enter/↓ e ↑ andam entre as linhas, Backspace numa linha vazia volta à anterior e colar várias linhas distribui pelas caixas (o que passar da última vai junto nela, separado por " · "). Se o valor já tiver mais linhas que o campo (dado antigo), fica o texto longo com a camada de linhas. Leitura e PDF exportado não mudam. Todo texto longo, inclusive o corrido, usa altura de linha 1,2 e a 1ª linha 1 pt abaixo do topo, como no PDF, para seguir as linhas impressas.
 - **Descrição por item:** botão discreto no canto do campo (aparece no hover/foco; dourado com a contagem quando há descrições) abre o popup padrão (diálogo próprio com o mesmo cabeçalho, para abrir também sobre a ficha na mesa). Uma descrição de até 500 caracteres por item; linha descrita ganha um filete dourado. Na edição, aplicar marca a ficha como alterada e grava com "Salvar ficha"; na leitura (inclusive na mesa) mostra só os itens descritos. O formulário acessível tem o botão "Descrições" por campo de lista.
 - **Dados:** `Character.ItemNotes` (JSON `{ chave: texto }`, até 200 descrições). A chave é o texto do item normalizado, então a descrição acompanha o item quando ele muda de linha ou de campo e some se o item for renomeado ou apagado (o servidor descarta chaves de itens que não existem). `PUT …/sheet` recebe `notes` (substitui; nulo preserva), passa por `SessionService.WriteCharacterAsync` como o resto da ficha e registra cada mudança no histórico (`@descricao`).
 
@@ -1133,3 +1134,97 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
   - `GET …/sessions/start-context` devolvia `maps` no envelope `{ items }`, e o modal de início falhava com `items.filter is not a function`. Agora `maps` é a lista simples.
   - O corpo comum de 64 KiB só comportava ~530 paredes no salvamento da camada, porque o editor reenvia `id`, `kind`, `open` e `hidden`. Isso deixava o limite do domínio (2.000) e o aviso "Cena pesada" inalcançáveis. `UploadLimits.LayerRequestBytes` (512 KiB) vale só para PUT `/api/campaigns/{id}/assets/layers` e POST `/api/sessions/{id}/fog/walls`; o servidor continua validando quantidade e geometria.
   - A lista de NPCs da mesa, se aberta, recarrega quando a aba volta a ficar visível.
+
+## ADR-101 — Barras de ação em uma fila: ferramentas em ícone com tooltip (18/11/2026)
+
+**Contexto:** telas e popups com muitos botões de texto quebravam em duas filas no desktop (1.440 px): barra da ficha do jogador (zoom, importar/baixar PDF, histórico, duplicar e salvar), barra do explorador da Preparação (Nova pasta, Importar e Filtros empurravam a exibição para baixo) e ações do card de campanha/one-shot (Editar/Excluir/Sair abaixo de Abrir). No editor de cena, as seis transformações da composição e as ações de parede ocupavam três filas no painel lateral.
+
+**Decisão:**
+- Ferramentas secundárias viram botões só com ícone: `ui.iconButton(ícone, rótulo, ação, id, classes, extra)`. O rótulo é o nome acessível e o tooltip (`data-tip`, até 80 caracteres). Mesma `data-action`, mesmo comportamento e mesmo alvo de 44 px (36 px no desktop dentro de painéis com `small` e 35 px no card; 44 px em toque).
+- Ação primária (Salvar, Novo mapa, Abrir/Entrar, Editar no caderno) continua com texto. Alternâncias de modo com rótulo curto (Ficha completa/Resumo) também.
+- Indisponível continua com motivo alcançável: o "Excluir" bloqueado do card aponta `aria-describedby` para a nota visível já existente, sem repetir o texto.
+- Os ícones de linha saem de `editor-core.js` para `js/icons.js` (sem dependências; `editor-core` reexporta `icon`). Acrescentados: zoomIn, zoomOut, upload, download, history, edit, leave, flipX, flipY, rotate, front, back, split, join, vertex e promote.
+- O filtro da Preparação mostra a quantidade de filtros ativos num contador sobre o ícone; o número também fica no nome acessível.
+- Verificação: `tests/support/form-alignment.mjs` ganhou `buttonRowIssues`. `tests/forms-ui.mjs` (páginas) e `tests/modals-ui.mjs` (modais) acusam, no desktop, contêiner flex com quatro ou mais botões em mais de uma fila.
+
+**Jornadas afetadas:** jogador no celular (ficha), preparar cena (explorador e editor), criar campanha (lista). Nenhum clique obrigatório a mais; nenhuma ferramenta nova (sem mudança em `TOOL_INVENTORY` ou `BASIC_BUDGET`) e nenhuma ação nova na Busca de ações.
+
+**Alternativas descartadas:**
+- Menu "Mais ações" para as ferramentas da ficha: acrescentaria um clique a ações frequentes (zoom, PDF).
+- Reduzir fonte/padding dos botões de texto: continuaria quebrando com a importação de PDF e prejudicaria a leitura.
+
+**Consequências:**
+- Sem migração. Service worker `v78` com `js/icons.js` na lista pública (sem dados).
+- No celular, a barra da ficha fica em faixas fixas: modo, busca, ferramentas e Salvar; "Ficha completa" e "Resumo" ficam lado a lado (corrige o desalinhamento acusado por `forms-ui`).
+- Correções encontradas pelos QAs na mesma entrega:
+  - Celular, Preparação/Mapas: rótulos `sr-only` e motivos de indisponível (`position: absolute`) da barra escapavam do `overflow-x: auto` e alargavam a página para 865 px. `.px-toolbar` passa a ser `position: relative` no celular.
+  - `tests/modals-ui.mjs` usava a Preparação antiga: NPC, cena e mapa agora abrem pelo botão Novo da barra (`[data-px=new]`); enviar mapa por Importar › Imagem por link. Pasta nova e renomear são inline (sem modal) e saíram da lista. Mesa no celular é testada deitada (844×390), como exige o ADR-056.
+  - `tests/help-ui.mjs` abre "Mais opções" antes de conferir a ajuda `sessoes.abertura.unica` (ADR-100 a moveu para lá).
+
+## ADR-102 — Planos de conta Basic, Plus, Pro e Max (18/11/2026)
+
+**Contexto:** a conta comum tinha limites fixos (3 campanhas, 10 one-shots) e a equipe era ilimitada. O armazenamento só tinha cota de 250 MB de imagens e 250 MB de anexos por campanha, e o maior arquivo era 10 MB (imagem) ou 25 MB (anexo). Faltavam limites de fichas e de jogadores por mesa, e não havia como oferecer contas maiores.
+
+**Decisão:**
+
+- `AppUser.Plan` (`basic`, `plus`, `pro`, `max`; migração `AccountPlans`, contas existentes ficam `basic`). A tabela de limites vive em `Domain/AccountPlans.cs` e as regras em `AccountLimits`. Embaixadores e admins usam o Max qualquer que seja o valor gravado. Valor desconhecido vale Basic.
+
+| Limite | Basic | Plus | Pro | Max / Embaixador / Admin |
+|---|---|---|---|---|
+| Campanhas ativas (mestre ou jogador) | 3 | 5 | 10 | sem limite |
+| One-shots (participações vitalícias) | 10 | 15 | 30 | sem limite |
+| Jogadores por campanha | 5 | 8 | 15 | sem limite |
+| Jogadores por one-shot | 8 | 8 | 15 | sem limite |
+| Fichas de personagem | 5 | 10 | 20 | sem limite |
+| Espaço total | 500 MiB | 2 GiB | 4 GiB | 20 GiB |
+| Maior arquivo | 20 MiB | 30 MiB | 60 MiB | 100 MiB |
+
+- O pedido do Basic trazia "campanhas com no máximo 5 jogadores" e "campanhas e one-shots com no máximo 8"; lido como 5 em campanhas e 8 em one-shots.
+- "One-shots" mantém a semântica existente: participações vitalícias (criar ou entrar), não mesas simultâneas.
+- **Jogadores:** o plano de quem mestra decide. `JoinAsync` confere a vaga com a campanha bloqueada (entradas concorrentes se serializam). Converter uma one-shot com mais jogadores do que uma campanha do plano aceita é recusado (409) sem alterar nada.
+- **Fichas:** contam todas as fichas de que a pessoa é dona. Criar e duplicar bloqueiam a linha da conta na mesma transação.
+- **Espaço total** substitui as duas cotas de 250 MB por campanha. Envios de imagens, imagens-fonte, composições, cópias de cenas/mapas, anexos de página e retratos de ficha chamam `AccountLimits.EnsureStorageAsync` com o delta líquido. A conta é a de quem mestra a campanha (ou a do dono da ficha). A linha da conta é bloqueada (ordem campanha → conta). Textos e versões entram no uso mostrado, mas não bloqueiam edições.
+- **Maior arquivo:** o plano de quem envia vale nas rotas de imagens da campanha, retratos de ficha e anexos de página. `UploadLimits` passa a aceitar até 100 MiB + margem nessas rotas; o endpoint lê o formulário com o limite do plano (413). A decodificação de imagem continua limitada a 4.096 px por lado e 8 MP. A imagem achatada gerada no navegador continua mirando 10 MB. Biblioteca, PDFs de fichas-modelo, músicas, avatar e anexos por link (10 MiB) mantêm os limites próprios: são conteúdo da plataforma ou têm teto próprio de download.
+- **Troca de plano:** só Admin, por `PUT /api/admin/users/{id}/plan`, com motivo e auditoria `user.plan` na mesma transação. Não há cobrança nem autoatendimento nesta versão. Reduzir o plano não apaga nada; só recusa novas criações, entradas e envios acima do novo limite.
+- **Interface:** "Minha conta" mostra o plano, jogadores por campanha e por one-shot, o maior arquivo, os medidores de campanhas, one-shots e fichas e o espaço total do plano. As listas de campanhas e one-shots resumem o plano. O painel admin mostra e altera o plano. `/auth/me` traz `maxFileBytes` para os formulários avisarem antes de enviar. Ajuda `admin.usuarios.planos`; `conta.uso.limites` e `campanhas.conta.limites` atualizadas.
+
+**Jornadas:** criar campanha, abrir sessão (one-shot), jogador entrando pelo convite e envio de mapas no preparo. Nenhum clique obrigatório novo e nenhum campo obrigatório novo para quem joga. A troca de plano pede motivo, como a troca de papel.
+
+**Consequências:** migração `AccountPlans` (coluna com padrão, sem perda de dados). Service worker `v79` (texto e regras) e `v82` (layout do plano em "Minha conta"). As contas ganham limite de fichas e de jogadores que antes não existia; contas existentes acima do limite continuam funcionando, mas não criam mais. A duplicação de fichas mantém o teto técnico de 200 (`MaxOwnedCharacters`), também para o Max. `apps/Eternnus.Web/web.config` eleva o `requestFiltering` do IIS para 106.954.752 bytes (o padrão ~28,6 MB recusaria Plus/Pro/Max), e o deploy confere o valor no pacote. `IISServerOptions` e `FormOptions` globais não foram usados: a hospedagem é `OutOfProcess` e os limites ficam por rota (HOSPEDAGEM.md). As somas de armazenamento rodam a cada envio, e esse custo não foi medido com volume real.
+
+## ADR-103 — Todo o conteúdo da campanha conta no espaço do mestre (18/11/2026)
+
+**Contexto:** a soma de armazenamento (ADR-096/102) contava imagens, anexos, versões, páginas, recursos, acervo e sessões anteriores, mas deixava de fora outros textos e dados da campanha. Ficavam de fora a descrição e os ajustes da campanha, os textos e a composição das cenas (até 400 mil caracteres), a composição e os tiles dos mapas, as camadas de névoa/paredes (até 2 × 400 mil), os personagens do mestre, os capítulos, a linha do tempo, as cenas dos registros de sessão e o chat/log da mesa. As versões nomeadas (até 2 MiB cada) eram gravadas sem conferir o espaço do plano.
+
+**Decisão:**
+
+- `AccountLimits.StorageAsync` passa a somar, sempre na conta de quem mestra:
+  - em `images` ("Imagens e mapas"): `CampaignMap.Composition`, `TileData`, `Summary` e `Entries`; `CampaignMapLayer.State` e `Prepared`; `Scene.Composition`, `Layers` e `Entry`;
+  - em `texts` ("Textos"): `Campaign.Name`, `Description`, `NextSessionNote` e `TableSettings`; os textos de `Scene`, `MasterCharacter`, `StoryChapter` e `TimelineEvent`; as cenas de `PastSession` (pelo tamanho do JSON gravado); e `TableEvent.Content`/`Data` das campanhas mestradas.
+- As cenas dos registros de sessão são uma coluna JSON. Elas são medidas por SQL direto (`length` da coluna, com o dono como parâmetro), porque o SQLite não traduz `SelectMany` sobre JSON.
+- `POST /api/campaigns/{id}/versions` (versão nomeada nova) chama `EnsureCampaignStorageAsync` com o tamanho do documento: 409 quando o espaço do plano acaba. Versões automáticas giram (20 por documento) e só entram no uso.
+- Continua valendo a regra do ADR-102: textos, dados estruturais salvos pelos editores e o chat **entram no uso, mas não bloqueiam** a edição nem a mesa. O bloqueio fica nos envios de imagens e anexos, nas cópias e nas versões nomeadas.
+- Service worker `v80` (ajuda `conta.uso.limites` atualizada). Sem tipo novo na barra de "Minha conta": os dados de mapas e cenas entram em "Imagens e mapas"; os demais, em "Textos".
+
+**Jornadas:** preparar cena e conduzir não ganham cliques nem campos. Só a versão nomeada pode ser recusada por falta de espaço, com a mesma mensagem dos envios.
+
+**Consequências:** o uso mostrado sobe para quem já tem campanhas, e contas perto do limite podem passar a recusar envios. Nada é apagado. Sem migração. Cada soma faz mais 8 consultas agregadas por conta, e esse custo não foi medido com volume real. A consulta SQL direta foi testada só em SQLite; o ramo PostgreSQL (`length("Scenes"::text)`) não foi executado neste ambiente. Posições de tokens das cenas (`Prepared`/`Saved`, JSON) e o histórico de ficha não entram na soma.
+
+## ADR-104 — Loja do Aventureiro: afiliados e recomendações contextuais (18/11/2026)
+
+**Contexto:** monetizar a plataforma com links de afiliado da Amazon, Shopee e Mercado Livre sem competir com campanhas, fichas, mapas ou sessões, sem dados de pagamento e sem perfis comerciais invasivos.
+
+**Decisão:**
+- Módulo próprio no monólito: `Domain/Store.cs` e `Domain/StoreRanking.cs` (entidades, regras puras de palavras-chave e ranking), `Application/StoreCatalogService.cs`, `StoreRecommendationService.cs`, `StoreAffiliateService.cs`, `StoreAnalyticsService.cs`, `StoreQueries.cs`, `Infrastructure/StoreLinkReader.cs` e `Features/Store/StoreEndpoints.cs`. Migração aditiva `AffiliateStore` (oito tabelas, doze categorias semeadas, nenhum produto).
+- Cadastro começa pela URL de afiliado, guardada como informada (parâmetros preservados) e validada por lista fechada de hosts. A prévia lê só metadados públicos (Open Graph/JSON-LD) com as defesas de SSRF de `RemoteImageFetcher`, redirecionamentos restritos à mesma loja e nada de cookies/JavaScript. Amazon fica sem leitura por padrão (o programa de associados restringe preço obtido fora da API oficial). Nenhuma API oficial está integrada; a loja funciona inteira com cadastro manual.
+- Preço e disponibilidade só são exibidos com conferência explícita do Admin e dentro da validade (24 h padrão); preço anterior só quando verificado e maior; nunca percentual estimado.
+- Recomendação determinística em dois estágios: grupos imutáveis (sistema principal → sistemas secundários → genéricos → outros sistemas com interesse → demais) e pontuação dentro do grupo (interesses consentidos, categorias clicadas, metadados, oferta conferida, prioridade, novidade, popularidade), com diversidade de loja/categoria e rotação limitada só dentro do grupo.
+- Análise de mensagens é opt-in, limitada aos textos do próprio usuário (Guilda não removida/retida e mensagens públicas da mesa), 180 dias, só termos do vocabulário do catálogo e sem temas sensíveis. Calculada ao consentir e por `StoreMaintenanceWorker`; GET nunca grava. Revogar ou apagar remove os dados derivados.
+- Vitrine compartilhada (`js/store-recommendations.js`) num slot fixo do `shell`, carregada sob demanda, cancelável e silenciosa em falhas; colunas por container query. Nunca na mesa, editores, ficha, admin, conta ou login. Página `#store` (item secundário: lateral no desktop, “Mais” no celular) e aba `#admin/store`.
+- Cliques por POST com antiforgery, deduplicados (30 min), retidos 365 dias; métricas só agregadas, sem CTR (impressões não são registradas) e sem receita.
+
+**Simplicidade (ADR-100):** nenhuma ferramenta nova da mesa ou dos editores (sem mudança em `TOOL_INVENTORY`, `BASIC_BUDGET` ou Busca de ações). Jornadas afetadas: abrir campanha e páginas gerais ganham a faixa discreta acima do título, sem clique obrigatório; criar campanha, preparar cena, abrir sessão, conduzir e jogador no celular não mudam (a barra inferior continua com quatro destinos + Mais). Nenhum campo obrigatório novo fora do cadastro administrativo (URL e título).
+
+**Alternativas descartadas:** raspagem de preços (viola regras dos programas e gera dado incorreto); LLM externo para interesses (dependência, custo e privacidade); guardar imagens das lojas no servidor (programas exigem servir pelo CDN da loja); registrar impressões a cada página (escritas constantes para um CTR de valor duvidoso).
+
+**Consequências:** imagens carregam do CDN da loja no navegador do usuário; sem credenciais oficiais não há atualização automática de preço; o vocabulário depende das tags cadastradas. Documentação completa em `docs/LOJA_AFILIADOS.md`.

@@ -101,12 +101,13 @@ test("the shared map is a locked synthetic element that never enters the saved s
   assert.equal(sceneSourceResolver("c1", () => "javascript:alert(1)")("self"), null);
 });
 
-test("image input accepts PNG/JPEG up to 10 MB, limits batches and trusts only campaign assets from drags", () => {
+test("image input accepts PNG/JPEG up to the plan limit (Basic 20 MB without account), limits batches and trusts only campaign assets from drags", () => {
   const file = (name, type, size) => ({ name, type, size });
   assert.equal(imageFileProblem(file("a.png", "image/png", 10)), "");
   assert.equal(imageFileProblem(file("a.jpg", "", 10)), "", "tipo vazio com extensão conhecida");
   assert.match(imageFileProblem(file("a.gif", "image/gif", 10)), /PNG nem JPEG/);
-  assert.match(imageFileProblem(file("a.png", "image/png", 11 * 1024 * 1024)), /10 MB/);
+  assert.equal(imageFileProblem(file("a.png", "image/png", 11 * 1024 * 1024)), "", "acima do antigo limite de 10 MB");
+  assert.match(imageFileProblem(file("a.png", "image/png", 21 * 1024 * 1024)), /20 MB/);
   assert.match(imageFileProblem(file("a.png", "image/png", 0)), /vazio/);
   const many = Array.from({ length: MAX_FILES + 2 }, (_, i) => file(`f${i}.png`, "image/png", 5));
   const split = splitImageFiles([...many, file("x.webp", "image/webp", 5)]);

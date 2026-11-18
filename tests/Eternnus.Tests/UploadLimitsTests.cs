@@ -57,4 +57,17 @@ public sealed class UploadLimitsTests
         var context = new DefaultHttpContext(); context.Request.Method = method; context.Request.Path = path;
         Assert.Equal(allowed ? UploadLimits.DocumentRequestBytes : (long?)null, UploadLimits.For(context.Request));
     }
+
+    /// <summary>O IIS recusa antes do app o que passar de <c>maxAllowedContentLength</c> (ADR-102): o web.config acompanha a maior rota de upload.</summary>
+    [Fact]
+    public void Iis_request_filtering_covers_the_largest_upload_route()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "Eternnus.sln"))) dir = dir.Parent;
+        Assert.NotNull(dir);
+        var config = System.Xml.Linq.XDocument.Load(Path.Combine(dir!.FullName, "apps", "Eternnus.Web", "web.config"));
+        var limit = long.Parse(config.Descendants("requestLimits").Single().Attribute("maxAllowedContentLength")!.Value);
+        long[] routes = [CampaignAssetsService.MaxImageRequestBytes, CampaignAssetsService.MaxCompositionRequestBytes, UploadLimits.AttachmentRequestBytes, UploadLimits.DocumentRequestBytes, UploadLimits.LayerRequestBytes];
+        Assert.Equal(routes.Max(), limit);
+    }
 }

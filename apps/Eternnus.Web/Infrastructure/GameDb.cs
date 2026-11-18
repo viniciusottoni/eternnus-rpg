@@ -40,6 +40,14 @@ public class GameDb(DbContextOptions<GameDb> options) : IdentityDbContext<AppUse
     public DbSet<RollRequest> RollRequests => Set<RollRequest>();
     public DbSet<CampaignAttendance> Attendance => Set<CampaignAttendance>();
     public DbSet<MusicTrack> MusicTracks => Set<MusicTrack>();
+    public DbSet<StoreProduct> StoreProducts => Set<StoreProduct>();
+    public DbSet<StoreProductSystem> StoreProductSystems => Set<StoreProductSystem>();
+    public DbSet<StoreProductTag> StoreProductTags => Set<StoreProductTag>();
+    public DbSet<StoreCategory> StoreCategories => Set<StoreCategory>();
+    public DbSet<StoreSettings> StoreSettings => Set<StoreSettings>();
+    public DbSet<StoreInteraction> StoreInteractions => Set<StoreInteraction>();
+    public DbSet<StoreUserPreferences> StorePreferences => Set<StoreUserPreferences>();
+    public DbSet<StoreUserInterest> StoreInterests => Set<StoreUserInterest>();
     protected override void OnModelCreating(ModelBuilder b)
     {
         base.OnModelCreating(b);
@@ -97,6 +105,7 @@ public class GameDb(DbContextOptions<GameDb> options) : IdentityDbContext<AppUse
         NoticeModel.Configure(b);
         DocumentVersionModel.Configure(b);
         CharacterPortraitModel.Configure(b);
+        StoreModel.Configure(b);
     }
 
     /// <summary>Plataforma: papéis, sistemas, auditoria, suporte, biblioteca, fichas-modelo, Guilda e progressão.</summary>
@@ -105,6 +114,8 @@ public class GameDb(DbContextOptions<GameDb> options) : IdentityDbContext<AppUse
         b.Entity<AppUser>().HasIndex(x => x.Role);
         b.Entity<AppUser>().HasIndex(x => x.CreatedAt);
         b.Entity<AppUser>().HasIndex(x => x.Xp);
+        // Contas existentes recebem "basic" na migração (ADR-102).
+        b.Entity<AppUser>().Property(x => x.Plan).HasDefaultValue(AccountPlans.Basic);
 
         b.Entity<RpgSystem>().HasIndex(x => x.Slug).IsUnique();
         b.Entity<RpgSystem>().HasIndex(x => x.Name).IsUnique();

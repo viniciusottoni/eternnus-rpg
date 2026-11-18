@@ -1,7 +1,7 @@
 # GURPS 4ª Edição — mapeamento da planilha oficial (Devir)
 
 - **Sistema:** GURPS 4ª Edição (`gurps-4e`), id `175cd437-ba53-4516-a624-f2835a05db56`
-- **Modelo:** Ficha oficial GURPS 4e, id `a6b27457-1177-4ba9-9a72-6f3f6b2132e0`, **v1 publicada** e **padrão do sistema**
+- **Modelo:** Ficha oficial GURPS 4e, id `a6b27457-1177-4ba9-9a72-6f3f6b2132e0`, **v2 publicada** (versão `3ac469ad-e15d-4bcf-9472-6fd76a065ee4`) e **padrão do sistema**; as versões anteriores continuam publicadas para fichas que ainda não migraram. Documento: `gurps-4e-ficha-v2.json`.
 - **PDF:** `GURPS 4e - Ficha em Branco.pdf` (2 páginas), sha256 `82691381a71fe019964b297a0b93ce60b1fdc2c689016a8a1bdd75151f3461d6`
 - **Conteúdo:** 158 campos e 8 ações. O formato é o mesmo do editor (compactDoc).
 - **Arquivos:** `gerar-mapeamento.js` (gerador), `gurps-4e-ficha-v1.json` (documento aplicado) e `previa-exportacao.png` (simulação das 2 páginas).
@@ -74,3 +74,11 @@ As medidas foram feitas na MediaBox; o gerador subtrai `OX = 14,1732` de todo x.
   - Calculados: atributos 160 pontos, BC 10, Esquiva 9, vantagens 27, desvantagens −40, perícias 20.
   - Visual: os textos caem sobre as linhas e os custos dentro dos colchetes, nas 2 páginas.
 - Em "Testar ficha" com valores altos (atributos 14 e 18, totais de 3 dígitos), nenhum número foi cortado.
+
+## v2 (18/11/2026): mais listas (ADR-098)
+
+- **O que mudou:** só nomes de campo, para o site tratar como lista: `linguas` e `familiaridades` passaram a `linguas_itens` e `familiaridades_itens`; `linguas_falada` e `linguas_escrita` seguem as mesmas linhas como colunas das línguas. Posição, fonte, ações e PDF são os mesmos da v1.
+- **Como fica:** no preenchimento, uma caixa por linha impressa (como as linhas de magias), todas no mesmo campo; cada linha é um item com descrição própria; o que não cabe termina em "…".
+- **Fichas existentes:** Nenhuma ficha de jogador usava a v1.
+- **Verificação:** campos e ações da v2 no servidor batem 100% com o gerador.
+
