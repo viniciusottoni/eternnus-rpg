@@ -1217,7 +1217,7 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 **Decisão:**
 - Módulo próprio no monólito: `Domain/Store.cs` e `Domain/StoreRanking.cs` (entidades, regras puras de palavras-chave e ranking), `Application/StoreCatalogService.cs`, `StoreRecommendationService.cs`, `StoreAffiliateService.cs`, `StoreAnalyticsService.cs`, `StoreQueries.cs`, `Infrastructure/StoreLinkReader.cs` e `Features/Store/StoreEndpoints.cs`. Migração aditiva `AffiliateStore` (oito tabelas, doze categorias semeadas, nenhum produto).
 - Cadastro começa pela URL de afiliado, guardada como informada (parâmetros preservados) e validada por lista fechada de hosts. A prévia lê só metadados públicos (Open Graph/JSON-LD) com as defesas de SSRF de `RemoteImageFetcher`, redirecionamentos restritos à mesma loja e nada de cookies/JavaScript. Amazon fica sem leitura por padrão (o programa de associados restringe preço obtido fora da API oficial). Nenhuma API oficial está integrada; a loja funciona inteira com cadastro manual.
-- Preço e disponibilidade só são exibidos com conferência explícita do Admin e dentro da validade (24 h padrão); preço anterior só quando verificado e maior; nunca percentual estimado.
+- Preço e disponibilidade só são exibidos com conferência explícita do Admin e dentro da validade (24 h padrão); preço anterior só quando verificado e maior; nunca percentual estimado (o selo “−N%” da ADR-106 é calculado só desses dois preços conferidos).
 - Recomendação determinística em dois estágios: grupos imutáveis (sistema principal → sistemas secundários → genéricos → outros sistemas com interesse → demais) e pontuação dentro do grupo (interesses consentidos, categorias clicadas, metadados, oferta conferida, prioridade, novidade, popularidade), com diversidade de loja/categoria e rotação limitada só dentro do grupo.
 - Análise de mensagens é opt-in, limitada aos textos do próprio usuário (Guilda não removida/retida e mensagens públicas da mesa), 180 dias, só termos do vocabulário do catálogo e sem temas sensíveis. Calculada ao consentir e por `StoreMaintenanceWorker`; GET nunca grava. Revogar ou apagar remove os dados derivados.
 - Vitrine compartilhada (`js/store-recommendations.js`) num slot fixo do `shell`, carregada sob demanda, cancelável e silenciosa em falhas; colunas por container query. Nunca na mesa, editores, ficha, admin, conta ou login. Página `#store` (item secundário: lateral no desktop, “Mais” no celular) e aba `#admin/store`.
@@ -1228,3 +1228,47 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 **Alternativas descartadas:** raspagem de preços (viola regras dos programas e gera dado incorreto); LLM externo para interesses (dependência, custo e privacidade); guardar imagens das lojas no servidor (programas exigem servir pelo CDN da loja); registrar impressões a cada página (escritas constantes para um CTR de valor duvidoso).
 
 **Consequências:** imagens carregam do CDN da loja no navegador do usuário; sem credenciais oficiais não há atualização automática de preço; o vocabulário depende das tags cadastradas. Documentação completa em `docs/LOJA_AFILIADOS.md`.
+
+## ADR-105 — Mesa ao vivo no padrão visual dos editores e barras só com ícone (18/11/2026)
+
+**Contexto:** os editores de mapa e cena já usavam o núcleo gráfico (ADR-081/086): topo em faixa única, trilho de ferramentas só com ícone, painéis planos, barra contextual acima do mapa e barra de estado. A mesa ao vivo continuava no modelo antigo: molduras ornamentadas em cada bloco, trilho do mestre com rótulos de 200 px sobre o mapa, paleta de paredes/luz com botões de texto em duas filas, abas do painel cortadas ("♪ T…") e barras com vários botões de texto que quebravam linha (exemplo: controles da Trilha em duas filas).
+
+**Decisão:**
+- **Mesma linguagem do núcleo.** `table-shell.css` (carregado depois dos estilos dos editores) aplica à mesa os tokens e componentes de `editor.css`: `.ed-tools`/`.ed-tool`/`.ed-tool-group` no trilho, `.ed-context` nas abas do painel, faixa do topo com o gradiente do editor, painéis planos separados por linhas e títulos de painel em caixa alta dourada, palco com o fundo xadrez do editor, barra de turno como barra de estado. Sem duplicar componentes: só acabamento e distribuição.
+- **Trilho do mestre e do jogador só com ícone** (`icons.js`), nome acessível e dica; indisponível diz o motivo na dica e no leitor de tela (o texto do motivo fica visualmente oculto para não quebrar a fila). A Básica continua no topo e na mesma posição; a Completa acrescenta grupos depois dela; as ações do marcador selecionado vão para um grupo no fim, para nada mudar de lugar ao selecionar. "Ajustes avançados ativos" vira ícone com contador. Isso substitui, na mesa, a regra "ícone + rótulo visível" da ADR-048, como os editores já faziam desde a ADR-081.
+- **Distribuição no desktop:** trilho em coluna fixa à esquerda do mapa, bandeja de dados em coluna fixa à direita e paleta de névoa/paredes/luz como barra contextual acima do mapa (o mapa encolhe; nada cobre o tabuleiro). Ferramentas da paleta só com ícone numa fila, com o nome da escolhida visível ao lado. No layout compacto (ADR-056) as áreas não mudam: trilho e paleta em faixa no topo do mapa, alvos de 44 px.
+- **Ícone quando o símbolo basta** (extensão da ADR-101 a toda a mesa): Meu caderno, Busca de ações, Pausar/Retomar (em destaque quando pausada; o estado também está no subtítulo), Sair da tela, Tela cheia, Minha ficha, câmera do mapa (afastar, aproximar, ampliar, arrastar), Cenas, Pedir teste, Rolar, Nota, Ficha, Ordem, Dar a vez, Mover, Desfazer, controles da Trilha (tocar/pausar, ±10 s, repetir, parar), silenciar pessoal e "Tocar" de cada faixa do catálogo. Ficam com texto: "Encerrar sessão" (destrutiva, isolada), "Próxima vez", "Rolar dados" e "Encerrar a vez" do jogador (ações principais), "Ações" do jogador, favoritas, "Liberar/Bloquear movimento" (estado com consequência) e os d4…d20.
+- **Abas do painel:** ícone em todas e o nome visível só na ativa (o nome segue no leitor de tela e na dica); seis abas cabem numa fila sem rolagem. No compacto, só ícones.
+- **Topo:** o título cede espaço com reticências e as ações ficam com a largura natural (antes o último controle era cortado na borda direita a 1.440 px).
+- **Dica e clique (`help.js`):** a dica de um botão some ao clicar com o ponteiro e só volta depois que o ponteiro sai dele. Com botões só de ícone, o foco do clique reabria a dica e o Esc seguinte a fechava em vez de fechar o diálogo aberto pelo botão (Busca de ações). Teclado continua igual: foco mostra a dica.
+- **Textos só para leitor de tela** dentro das faixas roláveis ficam presos em `top/left: 0`; na posição natural alargavam a página no celular e o navegador reduzia o zoom.
+
+**Jornadas afetadas:** conduzir e jogador no celular (mesma ordem e mesmos `data-action`). Nenhum clique obrigatório a mais, nenhuma ferramenta nova (sem mudança em `TOOL_INVENTORY`, `BASIC_BUDGET` ou na Busca de ações) e nenhum campo novo. Ajuda: as dicas são o nível "dica" de [AJUDA_CONTEXTUAL.md](AJUDA_CONTEXTUAL.md); as chaves ⓘ existentes continuam.
+
+**Alternativas descartadas:**
+- Reescrever a mesa sobre `createEditorShell`: traria menus, histórico e layout de documento que a mesa não usa e mudaria a leitura ao vivo.
+- Manter rótulos visíveis no trilho: ocupa ~200 px de mapa e destoa dos editores.
+- Esconder as ações principais em ícone: "Próxima vez", "Rolar dados" e "Encerrar sessão" precisam ser lidos de relance.
+
+**Consequências:**
+- Sem migração e sem mudança de contrato. Service worker `v83` com `table-shell.css` na lista pública (sem dados) e `v85` com `help.js`.
+- Toque não abre dica (regra da ajuda): no celular os ícones dependem do símbolo e do nome acessível, como nos editores desde a ADR-081.
+- Validação: unitários e roteiros de mesa em Chromium com PostgreSQL (ver [TESTES.md](TESTES.md)); capturas em 1.440 × 900, 2.560 × 1.280 e 844 × 390 para mestre e jogador.
+
+## ADR-106 — Ações de linha só com ícone e desconto visível na loja (18/11/2026)
+
+**Contexto:** na tabela de produtos do admin, “Pausar”, “Arquivar” e “Excluir” em texto quebravam em duas filas por linha; o mesmo padrão se repetia em Categorias, Sistemas e Músicas. Na loja, o cartão só dizia “Oferta”, sem mostrar quanto, e o botão “Ver oferta na/no {loja}” não deixava claro que leva à compra.
+
+**Decisão:**
+- **Ações de linha sempre ícone.** Novo `rowAction(ícone, verbo, item, ação, id, classes, extra)` em `js/ui.js`, sobre `iconButton`: dica com o verbo, nome acessível “Verbo: item”, `data-tip` próprio prevalece (motivo de indisponível). Aplicado a Loja › Produtos (pausar/ativar, arquivar, excluir), Loja › Categorias (editar, excluir), Sistemas (editar, mesa padrão, excluir) e Músicas (ouvir/parar prévia, renomear, excluir). Novo ícone `archive` em `js/icons.js`. Colunas de ações não quebram linha (`.sa-actions`, `.ml-actions`, `.admin-row-actions`). Mesmos `data-action` e `data-id`.
+- **Desconto “−N%”.** `discountPercent(card)` em `js/store-policy.js` calcula N dos dois preços conferidos que já habilitam a oferta (arredondado para baixo; null abaixo de 1%). Cartão: selo no canto superior direito da imagem, substituindo a pílula “Oferta”. Detalhe: “−N%” na pílula ao lado da loja. Nome acessível “N% de desconto”.
+- **Botão de saída “Comprar na/no {loja}”** (`buyLabel`); na vitrine compacta, “Comprar”. Destino, `rel="sponsored"`, nova aba e registro de clique não mudam.
+- **Vitrine alinhada ao conteúdo.** A faixa usa a largura (até 1.500 px), a centralização e o recuo lateral do `#main` (38/27/20 px), então suas bordas coincidem com as do título e dos cartões em qualquer largura; antes ficava presa à esquerda em telas largas.
+- **ⓘ nunca quebra linha.** Caixa de seleção ou texto auxiliar seguidos de ⓘ ficam dentro de `.field-label` (aventura de exemplo na criação de campanha/one-shot; limites da conta em One-shot). `tests/help-ui.mjs` passa a auditar o modal de criação.
+- **Plano da conta legível.** Em Minha conta › Uso da conta, o nome do plano fica colado ao rótulo, em selo dourado (“Plano [Max]”), em vez de alinhado à borda direita, longe do rótulo.
+
+**Simplicidade (ADR-100):** nenhuma ferramenta nova da mesa ou dos editores (sem mudança em `TOOL_INVENTORY`, `BASIC_BUDGET` ou Busca de ações), nenhum campo novo e nenhum clique a mais. Jornadas: criar campanha só muda o alinhamento do ⓘ; o resto afeta painel admin, loja e vitrine.
+
+**Alternativas descartadas:** menu “⋯” por linha (um clique a mais para toda ação); manter texto e alargar a coluna (a tabela já usa a largura toda); percentual arredondado para cima (pode exagerar o desconto).
+
+**Consequências:** sem migração e sem mudança de contrato. Service worker `v84`. Em toque a dica não abre (regra da ajuda): os ícones dependem do símbolo e do nome acessível.

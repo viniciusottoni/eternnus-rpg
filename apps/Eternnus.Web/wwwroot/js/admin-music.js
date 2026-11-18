@@ -1,6 +1,6 @@
 // Painel admin → Músicas: catálogo do servidor usado por todas as mesas. Admin envia, busca, ouve, renomeia e exclui;
 // mestres apenas buscam e reproduzem na mesa. Reutiliza modal, formulários e loading comuns; HTTP em soundtrack-api.js.
-import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
+import { $, esc, button, rowAction, modal, formError, submitForm, toast } from "./ui.js";
 import { helpButton } from "./help.js";
 import { highlightIn } from "./data-table.js";
 import { adminDeleteTrack, adminListTracks, adminRenameTrack, adminUploadTrack } from "./soundtrack-api.js";
@@ -95,7 +95,7 @@ export function renderMusicCatalog(view) {
 
   function rows(items) {
     return `<ul class="ml-tracks">${items
-      .map((t) => `<li class="ml-row metal${t.inUse ? " is-current" : ""}"><div class="ml-info"><strong>${esc(t.title)}</strong><small>${esc(t.format)} · ${t.durationMs ? formatTime(t.durationMs) : "duração desconhecida"} · ${formatBytes(t.sizeBytes)}${t.inUse ? ' · <span class="status-chip">Tocando em sessão</span>' : ""}</small></div><div class="ml-actions">${button(previewId === t.id ? "■ Parar prévia" : "▶ Ouvir", "am-preview", t.id, "subtle small", `aria-label="${previewId === t.id ? "Parar prévia" : "Ouvir prévia"}: ${esc(t.title)}"`)}${button("Renomear", "am-rename", t.id, "subtle small", `aria-label="Renomear: ${esc(t.title)}"`)}${t.inUse ? `<button type="button" class="danger small" aria-disabled="true" aria-describedby="am-in-use" data-action="am-delete-blocked">Excluir</button>` : button("Excluir", "am-delete", t.id, "danger small", `aria-label="Excluir: ${esc(t.title)}"`)}</div></li>`)
+      .map((t) => `<li class="ml-row metal${t.inUse ? " is-current" : ""}"><div class="ml-info"><strong>${esc(t.title)}</strong><small>${esc(t.format)} · ${t.durationMs ? formatTime(t.durationMs) : "duração desconhecida"} · ${formatBytes(t.sizeBytes)}${t.inUse ? ' · <span class="status-chip">Tocando em sessão</span>' : ""}</small></div><div class="ml-actions">${previewId === t.id ? rowAction("stop", "Parar prévia", t.title, "am-preview", t.id) : rowAction("play", "Ouvir prévia", t.title, "am-preview", t.id)}${rowAction("edit", "Renomear", t.title, "am-rename", t.id)}${t.inUse ? rowAction("trash", "Excluir", t.title, "am-delete-blocked", t.id, "danger small", 'aria-disabled="true" aria-describedby="am-in-use" data-tip="Excluir: faixa tocando em uma sessão"') : rowAction("trash", "Excluir", t.title, "am-delete", t.id, "danger small")}</div></li>`)
       .join("")}</ul>${items.some((t) => t.inUse) ? '<p class="form-help" id="am-in-use">Faixas tocando em uma sessão só podem ser excluídas depois que o mestre parar ou trocar a música.</p>' : ""}`;
   }
   function pager() {

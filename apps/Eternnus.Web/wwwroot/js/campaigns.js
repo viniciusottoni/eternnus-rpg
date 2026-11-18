@@ -161,7 +161,7 @@ export async function loadSystems(c) {
   }
 }
 /** Opção da aventura de exemplo (N1), comum à criação de campanha e de one-shot. Desmarcada por padrão. */
-export const starterField = () => `<div class="field"><label class="check"><input type="checkbox" name="starter" aria-describedby="starter-help"> Começar com uma aventura de exemplo</label>${helpButton("campanhas.criacao.aventura-exemplo", "Aventura de exemplo")}<small id="starter-help" class="form-help">Cria uma cena tática pronta, dois personagens do mestre, uma página de premissa e um objetivo. Tudo fica editável na Preparação.</small></div>`;
+export const starterField = () => `<div class="field"><div class="field-label"><label class="check"><input type="checkbox" name="starter" aria-describedby="starter-help"> Começar com uma aventura de exemplo</label>${helpButton("campanhas.criacao.aventura-exemplo", "Aventura de exemplo")}</div><small id="starter-help" class="form-help">Cria uma cena tática pronta, dois personagens do mestre, uma página de premissa e um objetivo. Tudo fica editável na Preparação.</small></div>`;
 export function campaignForm(c, onDone = load) {
   modal(
     c ? "Editar campanha" : "Uma nova história",

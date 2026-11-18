@@ -714,7 +714,9 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | Aviso de afiliado na loja | Auxiliar visível + ⓘ | `loja.pagina.afiliados` (catálogo `js/help/loja.js`, área nova `loja`) |
 | Personalização e privacidade | ⓘ no texto de abertura do modal + auxiliares visíveis por opção | `loja.pagina.personalizacao` |
 | Vitrine: × ocultar | Nome acessível “Ocultar recomendações” + tooltip | — |
-| Vitrine: “Ver oferta” | Nome acessível com loja, nova aba e link de afiliado | — |
+| Vitrine: “Comprar” / Loja: “Comprar na/no {loja}” | Nome acessível com produto, loja, nova aba e link de afiliado | — |
+| Selo de desconto “−N%” (cartão e detalhe) | Nome acessível “N% de desconto” | — |
+| Ações de linha das listas do admin (Loja, Sistemas, Músicas) | Tooltip com o verbo + nome acessível com o item (`rowAction`) | — |
 | Título truncado (vitrine e cartões) | Tooltip de texto completo (`data-tip-full`) | — |
 | Admin › Loja › Produtos / URL de afiliado | ⓘ no título e no campo | `admin.loja.link` |
 | Admin › Loja › Vitrine | ⓘ no título | `admin.loja.recomendacao` |

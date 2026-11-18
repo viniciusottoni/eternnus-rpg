@@ -32,7 +32,7 @@ export async function renderOneShots() {
   shell("one-shot");
   page = 1;
   $("#main").innerHTML =
-    `<div class="page-heading"><div><span class="eyebrow">UMA NOITE, UMA HISTÓRIA</span><h1>One-shot ${helpButton("campanhas.one-shot.continuidade", "One-shot e continuidade")}<span class="heading-gem" aria-hidden="true">⬡</span></h1><p>Mesa rápida: crie, convide e jogue. A sessão abre junto com a mesa.</p></div>${button("+ Nova one-shot", "os-create", "", "primary")}</div><p id="os-limits" class="form-help"></p>${helpButton("campanhas.conta.limites", "Limites da conta")}<div class="list-summary"><span id="os-count"></span>${button("Entrar por convite ↗", "os-join", "", "text-button")}</div><div id="os-list" aria-live="polite"><p class="loading-line" role="status">Reunindo as mesas…</p></div><div id="os-pagination" class="pagination"></div>`;
+    `<div class="page-heading"><div><span class="eyebrow">UMA NOITE, UMA HISTÓRIA</span><h1>One-shot ${helpButton("campanhas.one-shot.continuidade", "One-shot e continuidade")}<span class="heading-gem" aria-hidden="true">⬡</span></h1><p>Mesa rápida: crie, convide e jogue. A sessão abre junto com a mesa.</p></div>${button("+ Nova one-shot", "os-create", "", "primary")}</div><div class="field-label"><p id="os-limits" class="form-help"></p>${helpButton("campanhas.conta.limites", "Limites da conta")}</div><div class="list-summary"><span id="os-count"></span>${button("Entrar por convite ↗", "os-join", "", "text-button")}</div><div id="os-list" aria-live="polite"><p class="loading-line" role="status">Reunindo as mesas…</p></div><div id="os-pagination" class="pagination"></div>`;
   $("#main").addEventListener("click", onClick);
   await load();
 }

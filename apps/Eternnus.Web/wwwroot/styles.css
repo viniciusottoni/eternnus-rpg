@@ -1676,7 +1676,9 @@ mark.search-hit {
 .usage-note { margin: 6px 0 0; font-size: 12px; color: var(--quiet); }
 /* Plano da conta (ADR-102): nome e regras que não são contadores. */
 .usage-plan { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #0c0c0b; }
-.usage-plan .usage-row strong { color: var(--gold); }
+/* Nome do plano colado ao rótulo, em selo dourado: "Plano [Max]" se lê junto, sem vão até a borda direita. */
+.usage-plan .usage-row { justify-content: flex-start; align-items: center; gap: 8px; margin-bottom: 8px; }
+.usage-plan .usage-row strong { padding: 2px 10px; border: 1px solid #c6a46380; border-radius: 999px; background: #c6a4631a; color: var(--gold); font-size: 12px; font-weight: 700; letter-spacing: .4px; }
 .usage-facts { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 16px; font-size: 12px; }
 .usage-facts div { display: flex; flex-direction: column; gap: 2px; }
 .usage-facts dt { color: var(--muted); }
@@ -2871,7 +2873,8 @@ dialog::backdrop { background: #060c0bd1; backdrop-filter: blur(5px); }
 /* Ajuda contextual: ouro/metal compartilhado, sem ornamentos na área de leitura. */
 /* O ⓘ fica colado ao texto a que se refere: rótulo e botão não se esticam. */
 .field-label { display: flex; align-items: center; justify-content: flex-start; gap: 0; margin: 0 0 6px; }
-.field-label > label, .field-label > span { flex: 0 1 auto; margin: 0; }
+/* ⓘ sempre na mesma linha do texto que explica: rótulo, caixa de seleção ou texto auxiliar ficam com ele numa fila. */
+.field-label > label, .field-label > span, .field-label > p { flex: 0 1 auto; margin: 0; }
 .field-label > label.check { margin: 0; }
 /* ⓘ discreto: 18 px visíveis; a área de toque cresce por pseudo-elemento sem empurrar o layout. */
 /* Invariante do componente: regras de botões/formulários não podem esticar o círculo.

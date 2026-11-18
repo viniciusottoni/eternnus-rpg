@@ -13,6 +13,8 @@ const under = (host, domain) => host === domain || host.endsWith("." + domain);
 export const marketplaceName = (key) => MARKETPLACES[key] || "Loja";
 /** "na Amazon", "na Shopee", "no Mercado Livre" (concordância nas frases de oferta). */
 export const atMarketplace = (key) => (key === "mercadolivre" ? "no " : "na ") + marketplaceName(key);
+/** Texto do botão de saída para a loja: "Comprar na Amazon", "Comprar no Mercado Livre". */
+export const buyLabel = (key) => "Comprar " + atMarketplace(key);
 
 function httpsUrl(value) {
   if (typeof value !== "string" || value.length > 2000 || /[\s\u0000-\u001f]/.test(value)) return null;
@@ -53,10 +55,17 @@ export const PRICE_UNKNOWN = "Consultar preço na loja";
 export function priceLabel(card) {
   return card?.priceStatus === "current" && Number.isInteger(card.priceCents) ? formatPrice(card.priceCents, card.currency) : PRICE_UNKNOWN;
 }
-/** Preço anterior riscado + selo "Oferta" só com dois preços conferidos e anterior maior (sem percentual estimado). */
+/** Preço anterior riscado + selo de desconto só com dois preços conferidos e anterior maior. */
 export function offerBadge(card) {
   return !!card && card.onSale === true && card.priceStatus === "current" && Number.isInteger(card.priceCents) &&
     Number.isInteger(card.previousPriceCents) && card.previousPriceCents > card.priceCents;
+}
+
+/** Percentual de desconto calculado dos dois preços conferidos (arredondado para baixo, nunca exagera); null sem oferta válida ou abaixo de 1%. */
+export function discountPercent(card) {
+  if (!offerBadge(card)) return null;
+  const pct = Math.floor(((card.previousPriceCents - card.priceCents) * 100) / card.previousPriceCents);
+  return pct >= 1 ? pct : null;
 }
 
 export function truncate(text, max = 80) {

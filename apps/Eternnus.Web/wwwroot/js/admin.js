@@ -5,7 +5,7 @@ import { api } from "./api.js";
 import { newsSlot } from "./notices.js";
 import { state } from "./state.js";
 import { shell } from "./layout.js";
-import { $, esc, button, field, formError, submitForm, modal, toast, navigate } from "./ui.js";
+import { $, esc, button, rowAction, field, formError, submitForm, modal, toast, navigate } from "./ui.js";
 import { isAdmin } from "./policy.js";
 import { guardAvatars } from "./sheet.js";
 import { highlightIn, TABLE_PAGE_SIZE } from "./data-table.js";
@@ -467,7 +467,7 @@ async function renderSystems(ctx) {
             ["Sistema", "Slug", "Situação", "Campanhas", "Fichas-modelo", "Biblioteca", '<span class="sr-only">Ações</span>'],
             systems.map((s) => {
               const used = s.campaigns + s.templates + s.library > 0;
-              return `<tr><td><strong>${esc(s.name)}</strong>${s.protected ? ' <span class="badge" data-tip="Sistema da plataforma que não pode ser excluído.">PROTEGIDO</span>' : ""}${s.description ? `<small class="admin-sub">${esc(s.description)}</small>` : ""}</td><td><code>${esc(s.slug)}</code></td><td>${s.active ? '<span class="status-chip good">Ativo</span>' : '<span class="status-chip quiet">Inativo</span>'}</td><td class="num">${number(s.campaigns)}</td><td class="num">${number(s.templates)}</td><td class="num">${number(s.library)}</td><td><span class="admin-row-actions">${button("Editar", "admin-system-edit", s.id, "subtle small")}${button("Mesa padrão", "admin-system-table", s.id, "subtle small", `aria-label="Configuração padrão da mesa de ${esc(s.name)}"`)}${button("Excluir", "admin-system-delete", s.id, "danger small", s.protected || used ? `aria-disabled="true" data-tip="${s.protected ? "Sistema protegido" : "Em uso: desative em vez de excluir"}"` : "")}</span></td></tr>`;
+              return `<tr><td><strong>${esc(s.name)}</strong>${s.protected ? ' <span class="badge" data-tip="Sistema da plataforma que não pode ser excluído.">PROTEGIDO</span>' : ""}${s.description ? `<small class="admin-sub">${esc(s.description)}</small>` : ""}</td><td><code>${esc(s.slug)}</code></td><td>${s.active ? '<span class="status-chip good">Ativo</span>' : '<span class="status-chip quiet">Inativo</span>'}</td><td class="num">${number(s.campaigns)}</td><td class="num">${number(s.templates)}</td><td class="num">${number(s.library)}</td><td><span class="admin-row-actions">${rowAction("edit", "Editar", s.name, "admin-system-edit", s.id)}${rowAction("settings", "Mesa padrão", s.name, "admin-system-table", s.id)}${rowAction("trash", "Excluir", s.name, "admin-system-delete", s.id, "danger small", s.protected || used ? `aria-disabled="true" data-tip="${s.protected ? "Excluir: sistema protegido" : "Excluir: em uso, desative em vez de excluir"}"` : "")}</span></td></tr>`;
             }),
             "Sistemas de RPG",
           )

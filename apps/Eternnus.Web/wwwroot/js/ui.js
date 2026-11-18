@@ -43,6 +43,12 @@ export function button(text, action, id = "", classes = "", extra = "") {
 export function iconButton(iconName, label, action, id = "", classes = "subtle", extra = "") {
   return button(icon(iconName), action, id, `${classes} tool-icon`.trim(), `aria-label="${esc(label)}" ${extra}`.trim());
 }
+/** Ação de linha de lista ou tabela: sempre ícone, para a coluna de ações não quebrar linha. A dica mostra só o
+ *  verbo; o nome acessível inclui o item (`Excluir: Nome`). `extra` com `data-tip` próprio (motivo de indisponível) prevalece. */
+export function rowAction(iconName, verb, subject, action, id = "", classes = "subtle small", extra = "") {
+  const label = subject ? `${verb}: ${subject}` : verb;
+  return iconButton(iconName, label, action, id, classes, extra.includes("data-tip=") ? extra : `data-tip="${esc(verb)}" ${extra}`.trim());
+}
 /** Barra de ações com muitos botões: ferramentas à esquerda, ações principais à direita (primária por último).
  *  Recebe HTML já montado por `button()`. Dentro de modal fica fixa no rodapé da rolagem. */
 export function actionBar(tools = "", main = "") {

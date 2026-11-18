@@ -30,7 +30,7 @@ const entries = {
     "title": "Indicadores da loja",
     "summary": "Cliques agregados; sem CTR, receita ou dados individuais.",
     "body": [
-      "Cada clique em “Ver oferta” é registrado por usuário, produto e origem (vitrine, página da loja ou detalhe), contado uma vez a cada 30 minutos e guardado por 365 dias.",
+      "Cada clique em “Comprar” é registrado por usuário, produto e origem (vitrine, página da loja ou detalhe), contado uma vez a cada 30 minutos e guardado por 365 dias.",
       "Impressões não são registradas, por isso não há CTR. Receita, comissão e conversões dependem de integração oficial com as lojas e não são exibidas. O painel nunca mostra termos, mensagens ou interesses de usuários."
     ],
     "audience": "admin"

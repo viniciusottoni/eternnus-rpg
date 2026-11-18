@@ -2804,7 +2804,7 @@ dialog.fog-editor-modal {
 .ml-usage { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
 .ml-search .field { max-width: 420px; }
 .ml-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: var(--radius); }
-.ml-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ml-actions { display: flex; flex-wrap: nowrap; gap: 6px; }
 .ml-actions button { min-height: 44px; }
 .ml-preview { margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); }
 .ml-preview[hidden] { display: none; }

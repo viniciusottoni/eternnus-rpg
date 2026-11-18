@@ -17,6 +17,7 @@ export const STATIC_PATHS = Object.freeze([
   "/editor-tiles.css",
   "/editor-image.css",
   "/editor-scene.css",
+  "/table-shell.css",
   "/manifest.webmanifest",
   ...[
     "app",
