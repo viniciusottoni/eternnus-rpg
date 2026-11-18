@@ -20,6 +20,10 @@ import { withLoading } from "./loading.js";
 //     guides,   // edit (opcional, padrão true): guias de alinhamento com os outros campos da página.
 //     label,    // nome acessível do conjunto (padrão "Ficha").
 //     invalid,  // Set/array de nomes de campos a marcar como problemáticos (edit).
+//     isList,   // fill/view (opcional): (field) → campo de lista (um item por linha, sem quebra, "…" no que não couber; ADR-098).
+//     isLines,  // fill/view (opcional): (field) → também linha a linha, sem descrições (colunas de uma lista: dano, custo…).
+//     notes,    // fill/view (opcional): { count(field, value), text(key), open(field, value) } — botão discreto de descrições.
+//     roll,     // fill/view (opcional): { formula(field) → texto | null, run(field, formula) } — botão de rolar no campo (ADR-099).
 //   });
 //   sheet.ready                → Promise resolvida quando o PDF terminou de abrir (ou falhou; a ficha continua utilizável).
 //   sheet.setFields(fields)    → redesenha a camada de campos preservando seleção e foco.
@@ -28,11 +32,14 @@ import { withLoading } from "./loading.js";
 //   sheet.zoom(factor?)        → lê ou define o zoom (0,5–3; 1 = largura disponível, até 920 px).
 //   sheet.setOptions({ snap, guides, invalid })
 //   sheet.values()             → cópia dos valores atuais com os calculados.
+//   sheet.refreshNotes()       → reavalia marcadores de descrição e linhas cortadas (após mudar as descrições).
+//   sheet.reveal(name, line?)  → rola até o campo (e a linha) e o destaca por alguns segundos (busca na ficha, ADR-099).
 //   sheet.destroy()            → cancela renderizações, libera o documento pdf.js e os observers e limpa o contêiner.
 //
 // Segurança: nenhum dado do usuário entra em innerHTML, classes ou atributos livres (textContent e propriedades DOM);
 // estilos por CSSOM (compatível com a CSP sem 'unsafe-inline'); pdf.js com isEvalSupported:false e enableScripting:false.
 import { computeSheet, parseNumber } from "./formula.js";
+import { fieldItems, noteKey } from "./item-notes-policy.js";
 import { alignGuides, clamp, moveRect, normalizeRect, rectFromPoints, resizeRect, roleInfo, snapRect, typeInfo, ALIGNS } from "./sheet-editor-policy.js";
 
 export const MODES = Object.freeze(["edit", "fill", "view"]);
@@ -162,6 +169,7 @@ export function renderSheet(container, options = {}) {
       view.el.style.setProperty("--ps-scale", String(view.box.scale));
       if (view.visible) queueRender(view);
     }
+    measureSoon();
   }
 
   // ----- Campos -----
@@ -213,6 +221,8 @@ export function renderSheet(container, options = {}) {
     if (kind === "textarea") {
       control = document.createElement("textarea");
       if (f.maxLength) control.maxLength = f.maxLength;
+      // Lista: um item por linha, sem quebra automática (o que não cabe vira "…" fora da edição).
+      if (lines(f)) control.wrap = "off";
     } else if (kind === "checkbox") {
       control = document.createElement("input");
       control.type = "checkbox";
@@ -249,6 +259,7 @@ export function renderSheet(container, options = {}) {
     control.setAttribute("aria-label", fieldLabel(f) + (kind === "output" ? " (calculado)" : ""));
     el.append(control);
     writeControl(control, f);
+    decorate(el, f);
     return el;
   }
   function writeControl(control, f) {
@@ -266,6 +277,7 @@ export function renderSheet(container, options = {}) {
       hint.textContent = problem || ''; hint.hidden = !problem;
       control.setAttribute('aria-describedby', hintId);
     }
+    if (control.parentElement && lines(f)) decorate(control.parentElement, f);
   }
   function viewElement(f) {
     const el = document.createElement("div");
@@ -275,8 +287,98 @@ export function renderSheet(container, options = {}) {
     text.textContent = displayValue(f, computed[f.name]);
     el.setAttribute("role", "note");
     el.setAttribute("aria-label", `${fieldLabel(f)}: ${f.type === "checkbox" ? (computed[f.name] === "true" ? "marcado" : "desmarcado") : computed[f.name] || "vazio"}`);
+    if (lines(f) && f.type === "textarea") text.hidden = true;
     el.append(text);
+    decorate(el, f);
     return el;
+  }
+
+  // ----- Campos de lista (ADR-098): linhas com "…", texto completo no tooltip e botão de descrições -----
+  function isList(f) {
+    return mode !== "edit" && typeof opts.isList === "function" && !!opts.isList(f);
+  }
+  /** Linha a linha: listas e colunas de lista (sem quebra; só as listas têm descrições). */
+  function lines(f) {
+    return isList(f) || (mode !== "edit" && typeof opts.isLines === "function" && !!opts.isLines(f));
+  }
+  function noteText(key) {
+    return typeof opts.notes?.text === "function" ? opts.notes.text(key) : "";
+  }
+  /** Recria a camada de linhas (texto longo) e o botão de descrições de um campo de lista. */
+  function decorate(el, f) {
+    if (!lines(f)) return;
+    const value = String(computed[f.name] ?? "");
+    const items = fieldItems(value);
+    el.classList.add("ps-list");
+    if (f.type === "textarea") {
+      let lines = el.querySelector(":scope > .ps-lines");
+      if (!lines) {
+        lines = document.createElement("div");
+        lines.className = "ps-lines";
+        lines.setAttribute("aria-hidden", "true");
+        const control = el.querySelector(".ps-control, .ps-value");
+        if (control) control.after(lines);
+        else el.prepend(lines);
+      }
+      lines.replaceChildren(...value.split("\n").map((raw, index) => {
+        const line = document.createElement("div");
+        line.className = "ps-line";
+        line.dataset.line = String(index);
+        line.textContent = raw;
+        if (isList(f) && noteText(noteKey(raw))) line.classList.add("has-note");
+        return line;
+      }));
+    } else {
+      el.querySelector(".ps-value")?.classList.add("ps-ellipsis");
+    }
+    const count = opts.notes ? Number(opts.notes.count(f, value)) || 0 : 0;
+    const show = isList(f) && !!opts.notes && items.length > 0 && (mode === "fill" || count > 0);
+    let button = el.querySelector(":scope > .ps-note");
+    if (!show) {
+      button?.remove();
+      measureSoon();
+      return;
+    }
+    if (!button) {
+      button = document.createElement("button");
+      button.type = "button";
+      button.className = "ps-note";
+      el.append(button);
+    }
+    button.classList.toggle("has-notes", count > 0);
+    button.textContent = count > 0 ? String(count) : "+";
+    const name = fieldLabel(f);
+    button.setAttribute("aria-label", count > 0 ? `Descrições de ${name}: ${count} ${count === 1 ? "item descrito" : "itens descritos"}` : `Adicionar descrições em ${name}`);
+    measureSoon();
+  }
+  /** Botão discreto de rolar (ADR-099): só em campos com fórmula e valor; o clique chama opts.roll.run. */
+  function rollButton(el, f) {
+    const formula = typeof opts.roll?.formula === "function" ? opts.roll.formula(f) : null;
+    if (!formula || String(computed[f.name] ?? "") === "") return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ps-roll";
+    button.textContent = "🎲";
+    button.setAttribute("aria-label", `Rolar ${fieldLabel(f)} (${formula})`);
+    button.dataset.tip = formula.slice(0, 80);
+    el.classList.add("has-roll");
+    el.append(button);
+  }
+  /** Marca o que não coube: o tooltip padrão (data-tip-full) mostra o texto inteiro no hover. */
+  let measureFrame = 0, revealTimer = 0;
+  function measureSoon() {
+    if (measureFrame || destroyed) return;
+    measureFrame = requestAnimationFrame(() => {
+      measureFrame = 0;
+      if (destroyed) return;
+      for (const node of root.querySelectorAll(".ps-line, .ps-list .ps-value.ps-ellipsis, .ps-list input.ps-control")) {
+        const input = node.tagName === "INPUT";
+        const text = (input ? node.value : node.textContent).trim();
+        const target = input ? node.parentElement : node;
+        if (text && node.scrollWidth > node.clientWidth + 1) target.dataset.tipFull = text;
+        else delete target.dataset.tipFull;
+      }
+    });
   }
   const uid = Math.random().toString(36).slice(2, 8);
   let elements = [];
@@ -290,7 +392,7 @@ export function renderSheet(container, options = {}) {
       if (!view) return null;
       const el = mode === "edit" ? editElement(f, index) : mode === "fill" ? fillElement(f, index) : viewElement(f, index);
       el.dataset.index = String(index);
-      if (mode !== "edit") el.append(caption(f));
+      if (mode !== "edit") { el.append(caption(f)); rollButton(el, f); }
       place(el, f);
       view.layer.append(el);
       return el;
@@ -524,6 +626,30 @@ export function renderSheet(container, options = {}) {
   root.addEventListener("keydown", onKeyDown, { signal });
   root.addEventListener("focusin", onFocusIn, { signal });
   root.addEventListener("dblclick", onDoubleClick, { signal });
+  root.addEventListener("click", (event) => {
+    const roll = event.target.closest(".ps-roll");
+    if (roll) {
+      const f = fields[Number(roll.closest("[data-index]")?.dataset.index)];
+      const formula = f && opts.roll?.formula(f);
+      if (formula) opts.roll.run(f, formula);
+      return;
+    }
+    const note = event.target.closest(".ps-note");
+    if (note) {
+      const f = fields[Number(note.closest("[data-index]")?.dataset.index)];
+      if (f) opts.notes?.open(f, String(computed[f.name] ?? ""));
+      return;
+    }
+    // Clicar numa linha edita o campo com o cursor no início dela.
+    const line = event.target.closest(".ps-line");
+    const control = line?.closest(".ps-field")?.querySelector("textarea.ps-control");
+    if (!line || !control || mode !== "fill") return;
+    const index = Number(line.dataset.line) || 0;
+    const offset = control.value.split("\n").slice(0, index).reduce((sum, text) => sum + text.length + 1, 0);
+    control.focus({ preventScroll: true });
+    control.setSelectionRange(offset, offset);
+  }, { signal });
+  root.addEventListener("focusout", () => measureSoon(), { signal });
   root.addEventListener("input", onInput, { signal });
   root.addEventListener("change", onInput, { signal });
 
@@ -664,7 +790,26 @@ export function renderSheet(container, options = {}) {
     values() {
       return { ...computed };
     },
+    refreshNotes() {
+      if (destroyed) return;
+      for (const [index, el] of elements.entries()) if (el && fields[index]) decorate(el, fields[index]);
+    },
     select,
+    reveal(name, line = null) {
+      if (destroyed) return false;
+      const index = fields.findIndex((f) => f.name === name);
+      const el = elements[index];
+      if (!el) return false;
+      for (const old of root.querySelectorAll(".ps-found")) old.classList.remove("ps-found");
+      const target = (line != null && el.querySelector(`.ps-line[data-line="${Number(line)}"]`)) || el;
+      const reduce = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+      target.scrollIntoView({ block: "center", inline: "nearest", behavior: reduce ? "auto" : "smooth" });
+      el.classList.add("ps-found");
+      if (target !== el) target.classList.add("ps-found");
+      clearTimeout(revealTimer);
+      revealTimer = setTimeout(() => { for (const node of root.querySelectorAll(".ps-found")) node.classList.remove("ps-found"); }, 2600);
+      return true;
+    },
     zoom(factor) {
       if (factor === undefined) return zoomFactor;
       zoomFactor = clampZoom(factor);
@@ -686,6 +831,8 @@ export function renderSheet(container, options = {}) {
       io?.disconnect();
       ro?.disconnect();
       clearTimeout(resizeTimer);
+      clearTimeout(revealTimer);
+      cancelAnimationFrame(measureFrame);
       for (const view of views) view.task?.cancel();
       doc?.destroy();
       doc = null;

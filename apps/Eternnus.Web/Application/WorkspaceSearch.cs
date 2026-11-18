@@ -46,7 +46,7 @@ public sealed partial class WorkspaceService
             var (live, past) = LogQueries(campaign, master, term, null, false, null);
             var liveRows = Cap(await live.OrderByDescending(s => s.Number).Take(MaxSearchHits).Select(s => new { s.Id, s.Number, s.Title, s.Recap, Objective = master ? s.Objective : "" }).ToListAsync(ct));
             var pastRows = Cap(await past.OrderByDescending(s => s.Number).Take(MaxSearchHits).ToListAsync(ct));
-            hits.AddRange(liveRows.Select(s => new SearchHit("session", $"Sessão {s.Number:00} — {s.Title}", TextSearch.Excerpt(s.Recap, term) ?? TextSearch.Excerpt(s.Objective, term), $"{root}/sessions/{SessionLogSources.Key(SessionLogSources.Eternnus, s.Id)}")));
+            hits.AddRange(liveRows.Select(s => new SearchHit("session", (s.Title.Length > 0 ? $"Sessão {s.Number:00} — {s.Title}" : $"Sessão {s.Number:00}"), TextSearch.Excerpt(s.Recap, term) ?? TextSearch.Excerpt(s.Objective, term), $"{root}/sessions/{SessionLogSources.Key(SessionLogSources.Eternnus, s.Id)}")));
             hits.AddRange(pastRows.Select(s => new SearchHit("session", $"Sessão {s.Number:00} — {s.Title}", TextSearch.Excerpt(s.Summary, term) ?? s.Scenes.Select(x => TextSearch.Excerpt(x.Title + ": " + x.Text, term)).FirstOrDefault(x => x != null), $"{root}/sessions/{SessionLogSources.Key(SessionLogSources.Past, s.Id)}")));
         }
 

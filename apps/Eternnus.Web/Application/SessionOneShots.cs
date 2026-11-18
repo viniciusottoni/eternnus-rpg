@@ -2,7 +2,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
 
 /// <summary>Criação da one-shot pela página One-shot. A mesa nasce com sua sessão única aberta; não há "iniciar sessão" depois.</summary>
-public record OneShotInput(string Name, string Description, Guid? RpgSystemId = null, string? System = null);
+/// <remarks><c>Starter</c>: semeia a aventura de exemplo (N1) e abre a mesa apresentando a cena inicial (ADR-100).</remarks>
+public record OneShotInput(string Name, string Description, Guid? RpgSystemId = null, string? System = null, bool Starter = false);
 
 public partial class SessionService
 {
@@ -16,7 +17,7 @@ public partial class SessionService
         var description = Trim(x.Description, 10000, "A premissa aceita até 10.000 caracteres.", false);
         if (x.System?.Length > 80) throw new RuleException(400, "Confira o sistema da one-shot.");
         var system = await RpgSystemService.ResolveForCampaignAsync(db, x.RpgSystemId, x.System, null, ct);
-        var map = BattleMaps.All.First(m => m.Kind == MapKinds.Tileset);
+        var map = x.Starter ? StarterAdventure.Map : BattleMaps.All.First(m => m.Kind == MapKinds.Tileset);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var account = await AccountLimits.LockUserAsync(db, user, ct);
         var campaign = new Campaign
@@ -26,14 +27,21 @@ public partial class SessionService
         };
         await AccountLimits.ReserveAsync(db, account, campaign, ct);
         db.Campaigns.Add(campaign);
+        // Aventura de exemplo depois da quota; a mesa abre já apresentando a cena inicial (ADR-100), como "iniciar pela cena".
+        var starter = x.Starter ? await StarterAdventure.SeedAsync(db, campaign, Now, ct) : null;
         var session = new GameSession { CampaignId = campaign.Id, Number = 1, Title = name, Objective = "", StartedAt = Now, MapKind = map.Kind, MapKey = map.Key };
         db.Sessions.Add(session);
         db.SessionParticipants.Add(new() { SessionId = session.Id, UserId = user, IsMaster = true, JoinedAt = Now, LastSeenAt = Now });
         Event(session, user, await NameAsync(user, ct), EventKinds.Start, $"One-shot aberta — {name}", new { map = map.Name, mapKind = map.Kind });
         await Progression.AwardAsync(user, XpReasons.CampaignCreated, $"campaign_created:{campaign.Id}", ct);
         await db.SaveChangesAsync(ct);
+        if (starter != null && await db.Scenes.SingleOrDefaultAsync(sc => sc.Id == starter.SceneId && sc.CampaignId == campaign.Id, ct) is { } scene)
+        {
+            await ShowSceneAsync(new Access(session, campaign, true), scene, false, user, ct);
+            await db.SaveChangesAsync(ct);
+        }
         await tx.CommitAsync(ct);
-        return new { campaignId = campaign.Id, sessionId = session.Id };
+        return starter == null ? (object)new { campaignId = campaign.Id, sessionId = session.Id } : new { campaignId = campaign.Id, sessionId = session.Id, starterSceneId = starter.SceneId };
     }
 
     /// <summary>

@@ -3,7 +3,9 @@ namespace Eternnus.Web;
 
 public class RuleException(int status, string message) : Exception(message) { public int Status { get; } = status; }
 /// <summary><see cref="RpgSystemId"/> é a escolha preferida; <see cref="System"/> (texto) é aceito por compatibilidade e casado pelo nome.</summary>
-public record CampaignInput(string Name, string Description, string? System = null, int Revision = 0, Guid? RpgSystemId = null, bool IsOneShot = false, string? PlayMode = null, string? Origin = null, string? Continuity = null, string? CurrentArc = null, int? FirstSessionNumber = null, DateOnly? OriginalStartDate = null);
+public record CampaignInput(string Name, string Description, string? System = null, int Revision = 0, Guid? RpgSystemId = null, bool IsOneShot = false, string? PlayMode = null, string? Origin = null, string? Continuity = null, string? CurrentArc = null, int? FirstSessionNumber = null, DateOnly? OriginalStartDate = null, bool Starter = false);
+/// <summary>Resultado da criação: <see cref="StarterSceneId"/> só existe quando a aventura de exemplo foi pedida (N1).</summary>
+public record CampaignCreated(Guid Id, Guid? StarterSceneId);
 public record JoinInput(string Code);
 
 public class CampaignService(GameDb db, ProgressionService progression, AuditService audit)
@@ -60,7 +62,9 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
         c.CurrentArc = x.CurrentArc?.Trim() ?? c.CurrentArc; c.FirstSessionNumber = x.FirstSessionNumber ?? c.FirstSessionNumber;
         if (x.Origin != null) c.OriginalStartDate = x.OriginalStartDate;
     }
-    public async Task<Guid> CreateAsync(CampaignInput x, string user, CancellationToken ct)
+    public async Task<Guid> CreateAsync(CampaignInput x, string user, CancellationToken ct) => (await CreateDetailedAsync(x, user, ct)).Id;
+    /// <summary>Cria a campanha; com <see cref="CampaignInput.Starter"/>, semeia a aventura de exemplo na mesma transação, depois da quota.</summary>
+    public async Task<CampaignCreated> CreateDetailedAsync(CampaignInput x, string user, CancellationToken ct)
     {
         Validate(x);
         // One-shots nascem pela página One-shot (POST /api/one-shots), já com a sessão única aberta.
@@ -76,8 +80,9 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
         await AccountLimits.ReserveAsync(db, account, c, ct);
         ApplyContinuity(c, x);
         db.Campaigns.Add(c);
+        var starter = x.Starter ? await StarterAdventure.SeedAsync(db, c, DateTime.UtcNow, ct) : null;
         await progression.AwardAsync(user, XpReasons.CampaignCreated, $"campaign_created:{c.Id}", ct);
-        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return c.Id;
+        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return new(c.Id, starter?.SceneId);
     }
     public async Task UpdateAsync(Guid id, CampaignInput x, string user, CancellationToken ct)
     {

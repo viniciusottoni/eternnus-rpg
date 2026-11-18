@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
-  normalizeInterface, toolsFor, TOOL_INVENTORY, TOOL_GROUPS, gridFor, filterMaps, groupMaps, acceptsMap, recentMapKeys,
+  normalizeInterface, toolsFor, TOOL_INVENTORY, BASIC_BUDGET, TOOL_GROUPS, gridFor, filterMaps, groupMaps, acceptsMap, recentMapKeys,
   sceneStatus, pendingParts, hiddenCustomizations, placementProblem, simulateView, metersToCells, mapTypeLabel, VISIBILITY_OPTIONS,
 } from "../apps/Eternnus.Web/wwwroot/js/scene-policy.js";
 import { decodeBits } from "../apps/Eternnus.Web/wwwroot/js/fog-policy.js";
@@ -142,4 +142,13 @@ test("the old parallel editors are gone: one scene editor, layer editor delegate
   assert.doesNotMatch(tools, /export async function openScenes/);
   const editor = await read("wwwroot/js/scene-editor.js");
   assert.match(editor, /tool = "select"/); // começa em Selecionar e mover, nunca pintando
+});
+
+test("G1 (ADR-100): a Básica não cresce sem decisão registrada", () => {
+  for (const where of ["editor", "table"]) {
+    const basic = toolsFor("basic", where);
+    assert.ok(basic.length <= BASIC_BUDGET[where], `${where}: ${basic.length} ferramentas na Básica (orçamento ${BASIC_BUDGET[where]})`);
+  }
+  assert.ok(toolsFor("basic", "table").some((t) => t.id === "gather"));
+  assert.ok(Object.isFrozen(BASIC_BUDGET));
 });

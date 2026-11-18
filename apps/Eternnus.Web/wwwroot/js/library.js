@@ -9,6 +9,7 @@ import { $, esc, button, field, formError, modal, toast, empty, formatDate } fro
 import { isStaff, isAdmin } from "./policy.js";
 import { isGuid } from "./session-policy.js";
 import { highlightIn } from "./data-table.js";
+import { mountImageZoom } from "./image-zoom.js";
 
 export const CATEGORIES = Object.freeze({
   rules: ["Regras", "▤"],
@@ -76,6 +77,8 @@ export function precheckFile(file) {
   return "";
 }
 const fileUrl = (id, inline) => `/api/library/${id}/file${inline ? "?inline=1" : ""}`;
+/** Miniatura da capa (ADR-095): JPEG reduzido no servidor, sem distorção. Sem miniatura, o cartão mantém o ícone. */
+const thumbUrl = (id) => `/api/library/${id}/thumbnail`;
 const dateOnly = (value) =>
   new Date(String(value).endsWith("Z") ? value : value + "Z").toLocaleDateString("pt-BR", { dateStyle: "medium" });
 
@@ -88,12 +91,13 @@ export async function renderLibrary(segments = []) {
   const main = $("#main");
   main.innerHTML = `<div class="page-heading"><div><span class="eyebrow">SABER GUARDADO PELA GUILDA</span><h1>Biblioteca ${helpButton("biblioteca.arquivos.verificacao", "Arquivos da Biblioteca")}<span class="heading-gem">✦</span></h1><p>Regras, aventuras, mapas, fichas e artes para a sua mesa.</p></div>${staff ? button("+ Adicionar material", "lib-add", "", "primary") : ""}</div>
 <form id="lib-filters" class="lib-toolbar" role="search">
-  <div class="lib-search"><label for="lib-q">Buscar</label><div class="lib-search-row"><input id="lib-q" name="q" type="search" maxlength="100" value="${esc(filters.q)}" placeholder="Título ou descrição…"><button type="submit" class="subtle">Buscar</button></div></div>
+  <div class="lib-search"><label for="lib-q">Buscar</label><input id="lib-q" name="q" type="search" maxlength="100" value="${esc(filters.q)}" placeholder="Título ou descrição…"></div>
   <div class="lib-filter"><label for="lib-system">Sistema</label><select id="lib-system" name="systemId"><option value="">Todos os sistemas</option></select></div>
   <div class="lib-filter"><label for="lib-category">Categoria</label><select id="lib-category" name="category"><option value="">Todas</option>${Object.entries(CATEGORIES)
     .map(([key, [label]]) => `<option value="${key}" ${filters.category === key ? "selected" : ""}>${label}</option>`)
     .join("")}</select></div>
   <div class="lib-filter"><label for="lib-type">Tipo</label><select id="lib-type" name="type"><option value="">Todos</option><option value="pdf" ${filters.type === "pdf" ? "selected" : ""}>PDF</option><option value="image" ${filters.type === "image" ? "selected" : ""}>Imagem</option></select></div>
+  <div class="lib-submit"><button type="submit" class="subtle">Buscar</button></div>
 </form>
 <div class="list-summary lib-summary"><span class="lib-summary-actions">${staff ? `<label class="lib-toggle"><input type="checkbox" id="lib-deleted" ${showDeleted ? "checked" : ""}> Mostrar excluídos</label>` : ""}</span></div>
 <div id="lib-grid" class="lib-grid" aria-live="polite" aria-busy="true"></div>
@@ -183,6 +187,14 @@ async function load() {
           ? empty("A estante ainda está vazia.", "Publique o primeiro material para toda a guilda.", "lib-add", "+ Adicionar material")
           : empty("A estante ainda está vazia.", "Em breve a equipe publicará regras, mapas e aventuras aqui.");
   grid.querySelectorAll(".lib-title").forEach((title) => highlightIn(title, filters.q));
+  // Capa: a miniatura só aparece depois de carregar; sem ela (PDF, WebP, imagem grande demais), fica o ícone.
+  grid.querySelectorAll(".lib-thumb").forEach((img) => {
+    // Sem `hidden`: imagem lazy oculta não carrega. Fica transparente até a capa ganhar `has-thumb`.
+    const show = () => img.closest(".lib-cover")?.classList.add("has-thumb");
+    img.addEventListener("load", show, { once: true });
+    img.addEventListener("error", () => img.remove(), { once: true });
+    if (img.complete && img.naturalWidth) show();
+  });
   const pages = Math.ceil(result.total / PAGE_SIZE);
   $("#lib-pagination").innerHTML =
     pages > 1
@@ -196,7 +208,7 @@ function card(item) {
   const [label, icon] = CATEGORIES[category];
   const staff = isStaff(state.user);
   return `<article class="lib-card metal${item.deletedAt ? " is-deleted" : ""}">
-  <button type="button" class="lib-cover lib-cat-${category}" data-action="lib-open" data-id="${item.id}" aria-label="Abrir ${esc(item.title)}"><span class="lib-icon" aria-hidden="true">${icon}</span><span class="lib-kind">${kind === "pdf" ? "PDF" : kind === "image" ? "IMAGEM" : "ARQUIVO"}</span></button>
+  <button type="button" class="lib-cover lib-cat-${category}" data-action="lib-open" data-id="${item.id}" aria-label="Abrir ${esc(item.title)}"><span class="lib-icon" aria-hidden="true">${icon}</span><span class="lib-kind">${kind === "pdf" ? "PDF" : kind === "image" ? "IMAGEM" : "ARQUIVO"}</span>${kind === "image" && isGuid(item.id) ? `<img class="lib-thumb" src="${thumbUrl(item.id)}" alt="" loading="lazy" decoding="async">` : ""}</button>
   <div class="lib-card-body">
     <div class="lib-tags"><span class="badge">${label}</span>${item.deletedAt ? `<span class="status-chip bad">Excluído em ${dateOnly(item.deletedAt)}</span>` : ""}</div>
     <h2 class="lib-title">${esc(item.title)}</h2>
@@ -284,18 +296,47 @@ function openItem(item) {
   if (kind === "image") {
     const root = openModal(
       item.title,
-      `${meta}<div class="lib-stage lib-image-stage"><p class="lib-stage-status" role="status">Carregando imagem…</p><img class="lib-image" alt="${esc(item.title)}" hidden></div><div class="form-actions">${actions}</div>`,
+      `${meta}<div class="lib-pdf-toolbar lib-image-toolbar" role="toolbar" aria-label="Controles da imagem">${helpButton("biblioteca.leitor.imagem", "Zoom da imagem")}
+  <span class="lib-zoom">${button("−", "img-zoom-out", "", "subtle", 'aria-label="Diminuir zoom" disabled')}<b data-img-zoom aria-live="polite">–</b>${button("+", "img-zoom-in", "", "subtle", 'aria-label="Aumentar zoom" disabled')}${button("Ajustar", "img-fit", "", "subtle", 'aria-label="Ajustar à tela" disabled')}${button("100%", "img-actual", "", "subtle", 'aria-label="Tamanho real" disabled')}</span>
+</div>
+<div class="lib-stage lib-image-stage" tabindex="0" aria-label="Imagem ${esc(item.title)}. Role ou use + e − para o zoom, arraste ou use as setas para mover, 0 ajusta à tela."><p class="lib-stage-status" role="status">Carregando imagem…</p><img class="lib-image" alt="${esc(item.title)}" draggable="false" hidden></div>
+<p class="muted small lib-keyboard-hint">Roda do mouse ou pinça aproxima no ponto indicado · arraste para mover · duplo clique alterna entre ajustar e tamanho real · teclado: + − zoom, 0 ajusta, 1 tamanho real, setas movem.</p>
+<div class="form-actions">${actions}</div>`,
       { wide: true },
     );
     const img = root.querySelector(".lib-image");
+    const stage = root.querySelector(".lib-image-stage");
     const status = root.querySelector(".lib-stage-status");
+    const label = root.querySelector("[data-img-zoom]");
+    const control = (action) => root.querySelector(`[data-action="${action}"]`);
+    let zoom = null, closed = false;
+    viewer = { destroy() { closed = true; zoom?.destroy(); zoom = null; } };
     img.onload = () => {
+      if (closed) return;
       status.remove();
       img.hidden = false;
+      stage.classList.add("is-zoomable");
+      zoom = mountImageZoom(stage, img, {
+        onChange({ percent, atMin, atMax, fit }) {
+          label.textContent = `${percent}%`;
+          control("img-zoom-out").disabled = atMin;
+          control("img-zoom-in").disabled = atMax;
+          control("img-fit").disabled = fit;
+          control("img-actual").disabled = percent === 100;
+        },
+      });
     };
     img.onerror = () => {
       status.textContent = "Não foi possível exibir a imagem. Tente baixar o arquivo.";
     };
+    root.addEventListener("click", (e) => {
+      const action = e.target.closest("[data-action]")?.dataset.action;
+      if (!zoom || !action?.startsWith("img-")) return;
+      if (action === "img-zoom-in") zoom.zoomIn();
+      if (action === "img-zoom-out") zoom.zoomOut();
+      if (action === "img-fit") zoom.fit();
+      if (action === "img-actual") zoom.actual();
+    });
     img.src = fileUrl(item.id, true);
     return;
   }

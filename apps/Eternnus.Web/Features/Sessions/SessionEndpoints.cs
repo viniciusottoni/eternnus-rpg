@@ -12,6 +12,9 @@ public static class SessionEndpoints
         var campaigns = app.MapGroup("/api/campaigns/{campaignId:guid}").RequireAuthorization("Verified");
         campaigns.MapGet("/sessions", (Guid campaignId, int? page, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.ListAsync(campaignId, Id(u), page ?? 1, ct));
         campaigns.MapPost("/sessions", async (Guid campaignId, StartSessionInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => Results.Ok(await s.StartAsync(campaignId, x, Id(u), ct)));
+        // Contexto do modal de início (ADR-100): número, mapas, cenas e capítulos numa ida ao servidor; somente leitura.
+        campaigns.MapGet("/sessions/start-context", async (Guid campaignId, SessionService s, WorkspaceService w, ClaimsPrincipal u, CancellationToken ct) =>
+            Results.Ok(new { context = await s.StartContextAsync(campaignId, Id(u), ct), chapters = await w.ChapterList(campaignId, Id(u), ct) }));
         campaigns.MapGet("/table", (Guid campaignId, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.EntryAsync(campaignId, Id(u), ct));
         campaigns.MapGet("/maps", (Guid campaignId, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.MapsAsync(campaignId, Id(u), ct));
         campaigns.MapGet("/table-settings", (Guid campaignId, SessionService s, ClaimsPrincipal u, CancellationToken ct) => s.CampaignTableSettingsAsync(campaignId, Id(u), ct));

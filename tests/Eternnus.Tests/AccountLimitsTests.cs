@@ -69,6 +69,30 @@ public sealed class AccountLimitsTests : IAsyncLifetime
         Assert.Equal(10, await db.OneShotParticipations.CountAsync(p => p.UserId == "common"));
     }
     [Fact]
+    public async Task Storage_sums_only_mastered_campaigns_by_kind()
+    {
+        var mine = await Create();
+        var other = await Create("master");
+        var page = new WorkspacePage { CampaignId = mine, OwnerId = "common", Title = "abc", Content = "12345" };
+        db.AddRange(
+            new CampaignMap { CampaignId = mine, Name = "Mapa", Content = new byte[1000] },
+            new CampaignMap { CampaignId = other, Name = "Alheio", Content = new byte[5000] },
+            page,
+            new WorkspaceAttachment { PageId = page.Id, Name = "a.png", Content = new byte[300], Size = 300 },
+            new MasterResource { CampaignId = mine, Name = "NPC", Content = "xy" });
+        await db.SaveChangesAsync();
+        var usage = await AccountLimits.StorageAsync(db, "common", default);
+        Assert.Equal(1, usage.Campaigns);
+        Assert.Equal(250L * 1024 * 1024, usage.Capacity);
+        Assert.Equal(1000, usage.Images);
+        Assert.Equal(300, usage.Attachments);
+        Assert.Equal(3 + 5 + 3 + 2, usage.Texts);
+        Assert.Equal(1000 + 300 + 13, usage.Used);
+        var none = await AccountLimits.StorageAsync(db, "nobody", default);
+        Assert.Equal(0, none.Capacity);
+        Assert.Equal(0, none.Used);
+    }
+    [Fact]
     public async Task Ambassador_and_admin_are_not_limited()
     {
         for (var i = 0; i < 4; i++) await Create("master");

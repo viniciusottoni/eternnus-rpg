@@ -83,7 +83,8 @@ add("tracos", "Traços de personalidade", "textarea", 0, 418, 140, 155, 47, 9, {
 add("ideais", "Ideais", "textarea", 0, 418, 209, 155, 34, 9, { maxLength: 1000 });
 add("ligacoes", "Ligações", "textarea", 0, 418, 264, 155, 34, 9, { maxLength: 1000 });
 add("defeitos", "Defeitos", "textarea", 0, 418, 319, 155, 34, 9, { maxLength: 1000 });
-add("idiomas_proficiencias", "Idiomas e outras proficiências", "textarea", 0, 35, 628, 164, 125, 9, { maxLength: 3000 });
+// "_itens": lista (um item por linha, com descrição por item; ADR-098).
+add("idiomas_proficiencias_itens", "Idiomas e outras proficiências", "textarea", 0, 35, 628, 164, 125, 9, { maxLength: 3000 });
 // Equipamento
 [["pc", "PC (peças de cobre)", 607.5], ["pp", "PP (peças de prata)", 633.5], ["pe", "PE (peças de electrum)", 659.5], ["po", "PO (peças de ouro)", 685.5], ["pl", "PL (peças de platina)", 711.5]]
   .forEach(([k, l, cy]) => { [y, h] = boxed(cy, 10); add(`moedas_${k}`, l, "number", 0, 231, y, 30, h, 10, { min: 0, max: 999999999, align: "center" }); });
@@ -104,7 +105,7 @@ add("aliados", "Aliados e organizações", "textarea", 1, 222, 132, 184, 216, 9,
 add("simbolo_nome", "Símbolo — nome", "text", 1, 423, 155.5, 138, 12, 9, { maxLength: 60 });
 add("historia_personagem", "História do personagem", "textarea", 1, 35, 386, 166, 366, 9, { maxLength: 10000 });
 add("outras_caracteristicas", "Outras características e habilidades", "textarea", 1, 222, 377, 357, 200, 9, { maxLength: 10000 });
-add("tesouro", "Tesouro", "textarea", 1, 222, 606, 357, 147, 9, { maxLength: 4000 });
+add("tesouro_itens", "Tesouro", "textarea", 1, 222, 606, 357, 147, 9, { maxLength: 4000 });
 // ---------- Página 3 (magias) ----------
 add("classe_conjurador", "Classe de conjurador", "text", 2, 52, 63, 200, 20, 14, { maxLength: 60 });
 [y, h] = boxed(68.7, 11);

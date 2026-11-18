@@ -60,6 +60,46 @@ try {
   await mobile.screenshot({ path: `${out}/player-mobile.png`, fullPage: true });
   const reduced = await ui(master); await reduced.emulateMedia({ reducedMotion: 'reduce' }); await go(reduced, `campaign/${c.id}/timeline`, 'O Despertar');
   check(await reduced.locator('.tl-line.tl-draw').count(), 0);
+  // "+" sobre a linha (ADR-093): insere entre dois pontos sem perguntar a posição.
+  const insOrder = (await master(base)).items.filter((x) => x.kind === 'event');
+  await page.goto(env.origin + '/#campaign/' + c.id + '/timeline'); await page.locator('.tl-ins').first().waitFor();
+  const target = insOrder[3];
+  await page.getByRole('button', { name: `Inserir acontecimento depois de 4. ${target.title}`, exact: true }).click();
+  ok(await page.locator('#tl-position').count() === 0, 'Criação sem campo de posição');
+  ok((await page.locator('.tl-where').textContent()).includes(`depois de 4. ${target.title}`), 'Formulário diz onde o ponto entra');
+  await page.locator('#tl-title').fill('Pelo mais da linha'); await page.getByRole('button', { name: 'Salvar ponto', exact: true }).click();
+  await page.locator('.tl-spot', { hasText: 'Pelo mais da linha' }).waitFor();
+  const afterIns = (await master(base)).items.filter((x) => x.kind === 'event').map((x) => x.title);
+  check(afterIns.indexOf('Pelo mais da linha'), afterIns.indexOf(target.title) + 1);
+  // Trechos: com mais de 10 acontecimentos, só o último abre; os outros mostram números e recolhem/expandem.
+  for (let i = 0; i < 16; i++) await master(base, 'POST', { title: `Crônica ${i + 1}`, summary: 'Mais um capítulo da longa história.', kind: 'event', published: true });
+  const longPage = await ui(master); await go(longPage, `campaign/${c.id}/timeline`, 'Linha do tempo');
+  await longPage.locator('.tl-seg').first().waitFor();
+  check(await longPage.locator('.tl-seg').count(), 3);
+  check(await longPage.locator('.tl-seg.is-open').count(), 1);
+  check(await longPage.locator('.tl-seg').last().evaluate((el) => el.classList.contains('is-open')), true);
+  check(await longPage.locator('.tl-seg').first().locator('.tl-mini-dot').count(), 10);
+  check(await longPage.locator('.tl-seg').first().locator('.tl-serpent').count(), 0);
+  await longPage.locator('.tl-chip').first().click();
+  await longPage.locator('.tl-seg').first().locator('.tl-serpent').waitFor();
+  check(await longPage.locator('.tl-seg').first().locator('.tl-seg-toggle').getAttribute('aria-expanded'), 'true');
+  await longPage.waitForTimeout(1600); await longPage.screenshot({ path: `${out}/segments-desktop.png`, fullPage: true });
+  // A preferência sobrevive à recarga.
+  await longPage.reload(); await longPage.locator('.tl-seg').first().waitFor();
+  check(await longPage.locator('.tl-seg.is-open').count(), 2);
+  await longPage.getByRole('button', { name: 'Recolher tudo', exact: true }).click();
+  check(await longPage.locator('.tl-seg.is-open').count(), 0); check(await longPage.locator('.tl-serpent').count(), 0);
+  await longPage.locator('.tl-mini-dot').nth(2).click(); await longPage.locator('#modal .tl-lead, #modal .muted').first().waitFor();
+  await longPage.keyboard.press('Escape');
+  await longPage.getByRole('button', { name: 'Expandir tudo', exact: true }).click();
+  check(await longPage.locator('.tl-seg.is-open').count(), 3);
+  const insVisible = await longPage.locator('.tl-ins').evaluateAll((els) => els.filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth; }).length);
+  ok(insVisible >= 20, `“+” visíveis na tela (${insVisible})`);
+  await longPage.waitForTimeout(1600); await longPage.screenshot({ path: `${out}/segments-expanded.png`, fullPage: true });
+  const longMobile = await ui(master, true); await go(longMobile, `campaign/${c.id}/timeline`, 'Linha do tempo');
+  await longMobile.locator('.tl-seg').first().waitFor();
+  ok(await longMobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Sem overflow móvel com trechos');
+  await longMobile.screenshot({ path: `${out}/segments-mobile.png`, fullPage: true });
   check(errors, []); await writeFile(`${out}/result.json`, JSON.stringify({ errors, passed: true }, null, 2));
   console.log('Linha do tempo: permissões, visibilidade, corrida de revisão e interface desktop/celular aprovadas.');
 } finally { await browser?.close(); await env.stop(); }

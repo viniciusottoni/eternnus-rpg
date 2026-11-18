@@ -505,7 +505,7 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
     /// Reprocessa a imagem sem metadados. Com <paramref name="keepAlpha"/>, PNG com transparência continua PNG (marcador de imagem livre);
     /// sem transparência, ou sem a opção, vira JPEG sobre fundo branco.
     /// </summary>
-    public static async Task<(byte[] Bytes, int Width, int Height)> Normalize(UploadedDocument image, CancellationToken ct, bool keepAlpha = false)
+    public static async Task<(byte[] Bytes, int Width, int Height)> Normalize(UploadedDocument image, CancellationToken ct, bool keepAlpha = false, int? maxSide = null)
     {
         if (image.Content.Length is 0 or > MaxImageBytes) throw new RuleException(413, "Envie uma imagem de até 10 MB.");
         if (image.ContentType is not (DocumentKinds.Jpeg or DocumentKinds.Png)) throw new RuleException(415, "Use uma imagem PNG ou JPEG.");
@@ -528,6 +528,8 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
             decoded.Ping(image.Content, settings);
             if (decoded.Width < 64 || decoded.Height < 64 || decoded.Width > 4096 || decoded.Height > 4096 || (long)decoded.Width * decoded.Height > 8000000) throw new RuleException(400, "Use imagem estática de 64–4.096 pixels por lado e até 8 milhões de pixels.");
             decoded.Read(image.Content, settings); ct.ThrowIfCancellationRequested(); decoded.AutoOrient(); decoded.Strip();
+            // Reduz mantendo a proporção (retrato de personagem, ADR-097); imagens menores ficam como estão.
+            if (maxSide is int side && (decoded.Width > side || decoded.Height > side)) decoded.Resize(new MagickGeometry((uint)side, (uint)side));
             var alpha = keepAlpha && decoded.HasAlpha && !decoded.IsOpaque;
             if (!alpha) { decoded.BackgroundColor = MagickColors.White; decoded.Alpha(AlphaAction.Remove); decoded.Quality = 88; }
             var bytes = decoded.ToByteArray(alpha ? MagickFormat.Png : MagickFormat.Jpeg);

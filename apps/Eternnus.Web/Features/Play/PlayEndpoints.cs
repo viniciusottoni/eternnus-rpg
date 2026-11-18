@@ -76,6 +76,11 @@ public static class PlayEndpoints
         session.MapPost("/roll-requests/{requestId:guid}/cancel", async (Guid sessionId, Guid requestId, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.CancelRollRequestAsync(sessionId, requestId, Id(u), ct); return Ok(); });
         session.MapPost("/characters/{characterId:guid}/resource", async (Guid sessionId, Guid characterId, SheetResourceInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => Results.Ok(await s.AdjustResourceAsync(sessionId, characterId, x, Id(u), ct)));
         session.MapPost("/characters/{characterId:guid}/conditions", async (Guid sessionId, Guid characterId, ConditionsInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.SetConditionsAsync(sessionId, characterId, x, Id(u), ct); return Ok(); });
+        // Ficha em jogo (ADR-099): condições com duração e uso de magia/poder/item com custo e rolagem.
+        session.MapPost("/characters/{characterId:guid}/effects", async (Guid sessionId, Guid characterId, EffectsInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.SetEffectsAsync(sessionId, characterId, x, Id(u), ct); return Ok(); });
+        session.MapPost("/characters/{characterId:guid}/use-item", async (Guid sessionId, Guid characterId, UseItemInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => Results.Ok(await s.UseItemAsync(sessionId, characterId, x, Id(u), ct)));
+        // "Colocar o grupo" (ADR-100): personagens presentes para a entrada; marcadores do mestre ficam onde estão.
+        session.MapPost("/party/gather", async (Guid sessionId, SessionService s, ClaimsPrincipal u, CancellationToken ct) => Results.Ok(await s.GatherPartyAsync(sessionId, Id(u), ct)));
         session.MapPost("/undo", async (Guid sessionId, UndoInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.UndoAsync(sessionId, x, Id(u), ct); return Ok(); });
         session.MapPost("/scene", async (Guid sessionId, PresentSceneInput x, SessionService s, ClaimsPrincipal u, CancellationToken ct) => { await s.PresentSceneAsync(sessionId, x, Id(u), ct); return Ok(); });
         // Prévia (somente leitura) de "reposicionar marcadores": o que /scene/apply com tokens faria.

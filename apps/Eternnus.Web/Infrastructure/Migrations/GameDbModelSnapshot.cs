@@ -627,11 +627,21 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<int>("Constitution")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Effects")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
                     b.Property<int>("Hp")
                         .HasColumnType("integer");
 
                     b.Property<int>("Intellect")
                         .HasColumnType("integer");
+
+                    b.Property<string>("ItemNotes")
+                        .IsRequired()
+                        .HasMaxLength(150000)
+                        .HasColumnType("character varying(150000)");
 
                     b.Property<int>("Level")
                         .HasColumnType("integer");
@@ -661,6 +671,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasColumnType("character varying(450)");
 
                     b.Property<int?>("Perception")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PortraitVersion")
                         .HasColumnType("integer");
 
                     b.Property<bool>("Private")
@@ -760,6 +773,42 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.HasIndex("CharacterId", "Field", "Id");
 
                     b.ToTable("FieldChanges");
+                });
+
+            modelBuilder.Entity("Eternnus.Web.CharacterPortrait", b =>
+                {
+                    b.Property<Guid>("CharacterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("integer");
+
+                    b.HasKey("CharacterId");
+
+                    b.ToTable("CharacterPortraits", (string)null);
                 });
 
             modelBuilder.Entity("Eternnus.Web.CharacterVersion", b =>
@@ -2985,6 +3034,15 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Eternnus.Web.CharacterPortrait", b =>
+                {
+                    b.HasOne("Eternnus.Web.Character", null)
+                        .WithOne()
+                        .HasForeignKey("Eternnus.Web.CharacterPortrait", "CharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Eternnus.Web.CharacterVersion", b =>
                 {
                     b.HasOne("Eternnus.Web.Character", null)
@@ -3574,6 +3632,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
                                 .IsRequired()
                                 .HasMaxLength(40);
 
+                            b1.Property<bool?>("Notes");
+
                             b1.PrimitiveCollection<string>("Options")
                                 .IsRequired();
 
@@ -3581,6 +3641,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                             b1.Property<string>("Role")
                                 .HasMaxLength(20);
+
+                            b1.Property<string>("Roll")
+                                .HasMaxLength(120);
 
                             b1.Property<string>("Section")
                                 .HasMaxLength(60);

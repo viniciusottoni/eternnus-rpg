@@ -443,6 +443,10 @@ export function createCompositionSurface(host, ctl) {
     drag = { kind: "marquee", id: e.pointerId, p0: dp, p1: dp, additive, at: sp };
     invalidate();
   }
+  // Shift sempre trava a proporção. Sem Shift, imagens mantêm a proporção, salvo com "Manter proporção" desligado.
+  function keepRatioOn(e, els) {
+    return e.shiftKey || (ctl.options().keepRatio !== false && els.some((el) => el.type === "image"));
+  }
   function snapIf(p, e) {
     if (!ctl.options().snap || e.ctrlKey || e.metaKey) return { point: p, guides: [] };
     const s = snapPoint(p, snapOpts());
@@ -493,8 +497,7 @@ export function createCompositionSurface(host, ctl) {
       drag.guides = [];
       // Encaixe do ponteiro só com o elemento alinhado aos eixos (0°, 90°, 180°…).
       if (Math.abs(drag.start.rotation % 90) < 0.01) { const s = snapIf(dp, e); p = s.point; drag.guides = s.guides; }
-      const keepRatio = (drag.start.type === "image") !== e.shiftKey;
-      const r = resizeFromHandle(drag.start, drag.handle, p, { keepRatio, fromCenter: e.altKey });
+      const r = resizeFromHandle(drag.start, drag.handle, p, { keepRatio: keepRatioOn(e, [drag.start]), fromCenter: e.altKey });
       Object.assign(drag.el, { x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100, width: Math.round(r.width * 100) / 100, height: Math.round(r.height * 100) / 100 });
       clampGeometry(drag.el);
       drag.readout = `${Math.round(drag.el.width)} × ${Math.round(drag.el.height)} px`;
@@ -511,8 +514,8 @@ export function createCompositionSurface(host, ctl) {
       if (!drag.began) { drag.began = true; ctl.begin(`Redimensionar ${drag.els.length} elementos`); }
       drag.guides = [];
       const s = snapIf(dp, e);
-      // Proporção mantida por padrão (Shift solta); Alt redimensiona a partir do centro.
-      const r = resizeFromHandle({ ...drag.bounds, rotation: 0 }, drag.handle, s.point, { keepRatio: !e.shiftKey, fromCenter: e.altKey });
+      // Shift trava a proporção; Alt redimensiona a partir do centro.
+      const r = resizeFromHandle({ ...drag.bounds, rotation: 0 }, drag.handle, s.point, { keepRatio: keepRatioOn(e, drag.starts), fromCenter: e.altKey });
       drag.guides = s.guides;
       const next = scaleGroup(drag.starts, drag.bounds, r);
       for (const el of drag.els) { Object.assign(el, next.get(el.id)); clampGeometry(el); }

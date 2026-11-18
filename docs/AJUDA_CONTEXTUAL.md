@@ -59,6 +59,7 @@ Auditoria inicial: 59 conceitos e 202 linhas de controles/opções, antes de edi
 | Motivo e auditoria | `admin.js` | ⓘ | `admin.acoes.auditoria` | Ações administrativas registram ator e motivo. | Aplicado |
 | Arquivos da Biblioteca | `library.js` | ⓘ | `biblioteca.arquivos.verificacao` | A equipe publica materiais após validação no servidor. | Aplicado |
 | Leitor de PDF | `library.js` | ⓘ | `biblioteca.leitor.controles` | Você pode trocar de página e ajustar o zoom. | Aplicado |
+| Zoom da imagem | `library.js` | ⓘ | `biblioteca.leitor.imagem` | Aproxime, afaste e mova a imagem para ver os detalhes. | Aplicado |
 | Mestre e Jogador | `campaigns.js` | ⓘ | `campanhas.lista.papeis` | Seu papel depende da campanha. | Aplicado |
 | Catálogo de músicas | `admin-music.js` | ⓘ | `admin.musicas.catalogo` | Faixas do servidor que os Mestres buscam por nome e tocam na mesa. | Aplicado (Admin) |
 | Trilha sonora compartilhada | `table-soundtrack.js` | ⓘ | `mesa.trilha.compartilhada` | O Mestre escolhe no catálogo do servidor e controla a mesma música para toda a mesa. | Aplicado |
@@ -93,8 +94,23 @@ Auditoria inicial: 59 conceitos e 202 linhas de controles/opções, antes de edi
 | Acesso com Google ou Discord | `auth.js` | ⓘ | `conta.acesso.social` | O provedor precisa informar um e-mail verificado. | Aplicado |
 | Autenticador | `auth.js` | ⓘ | `conta.acesso.autenticador` | Uma segunda etapa protege o acesso à conta. | Aplicado |
 | Aprovação do avatar | `profile.js` | ⓘ | `conta.perfil.avatar` | A imagem só aparece após a aprovação no servidor. | Aplicado |
+| Uso da conta | `profile.js` | ⓘ | `conta.uso.limites` | Quotas, contadores e espaço das campanhas que você mestra. | Aplicado |
 | Instalar o Eternnus | `pwa.js` | ⓘ | `conta.app.instalacao` | Você pode adicionar o site à tela inicial. | Aplicado |
 | Ficha compartilhada ou privada | `character-sheet.js` | ⓘ | `fichas.visibilidade.privacidade` | Você escolhe a visibilidade da sua ficha. | Aplicado |
+| Imagem do personagem | `character-portrait.js` | ⓘ | `fichas.imagem.personagem` | Cada ficha pode ter uma imagem, mostrada ao lado da ficha. | Aplicado |
+| Descrições por item (botão no canto do campo de lista) | `pdf-sheet.js`; `item-notes.js` | Tooltip + texto visível | — | Rótulo acessível vira tooltip ("Descrições de …: N itens descritos"); o popup explica limite de 500 caracteres e gravação ao salvar. | Aplicado |
+| Resumo da ficha (Ficha completa/Resumo) | `character-sheet.js`; `sheet-compact.js` | ⓘ | `fichas.ficha.resumo` | Recursos, testes e listas com descrições sem o PDF; preferência local. | Aplicado |
+| Buscar na ficha | `character-sheet.js` | ⓘ + status | `fichas.ficha.busca` | Rótulo, valor, linha de lista e descrição; Enter vai ao primeiro. | Aplicado |
+| Duplicar ficha | `character-sheet.js` | ⓘ | `fichas.ficha.duplicar` | O que a cópia leva e o que não leva. | Aplicado |
+| Rascunho local da ficha | `character-sheet.js` | ⓘ no aviso | `fichas.ficha.rascunho` | Restaurar/Descartar, conflito com versão salva depois. | Aplicado |
+| Restaurar pelo histórico | `character-sheet.js` | ⓘ + texto visível | `fichas.historico.restaurar` | Voltar um valor ou ao início de uma sessão; só grava ao salvar. | Aplicado |
+| Ficha na mesa (Resumo, rolar) | `table-sheet.js` | ⓘ | `mesa.ficha.resumo` | Testes que rolam, quem pode rolar e usar. | Aplicado |
+| Botão de rolar no campo (🎲) | `pdf-sheet.js` | Tooltip (`data-tip` com a fórmula) | — | O rótulo acessível diz o teste e a fórmula. | Aplicado |
+| Usar item | `table-sheet.js`; `item-notes.js` | ⓘ + texto visível | `mesa.ficha.usar` | Sugestão tirada da descrição, custo e rolagem num registro só. | Aplicado |
+| Condições com duração | `table.js`; `table-sheet.js` | ⓘ | `mesa.condicoes.duracao` | Rodadas descontadas no turno; selo no marcador. | Aplicado |
+| Visão do grupo | `table.js`; `table-sheet.js` | ⓘ | `mesa.grupo.visao` | Tabela do mestre com todas as fichas da campanha. | Aplicado |
+| Editor: descrições por item / rolar ao clicar | `sheet-templates.js` | ⓘ | `modelos.campo.descricoes-por-item`, `modelos.campo.rolar-ao-clicar` | Automático/Sim/Não; Automático/Não rolar/Fórmula própria. | Aplicado |
+| Linha cortada com "…" | `pdf-sheet.js` | Tooltip (`data-tip-full`) | — | Mostra o texto inteiro do item no tooltip padrão; o nome acessível do campo já tem o valor completo. | Aplicado |
 | Versão da ficha | `character-sheet.js` | ⓘ | `fichas.versao.migracao` | Sua ficha mantém a versão do modelo usada na criação. | Aplicado |
 | PDF preenchido | `character-sheet.js` | ⓘ | `fichas.pdf.exportacao` | O PDF usa os últimos valores salvos da ficha. | Aplicado |
 | Importar PDF preenchido | `character-sheet.js` | ⓘ | `fichas.pdf.importacao` | Traz os valores de um PDF editável para a ficha padrão do sistema. | Aplicado |
@@ -593,6 +609,7 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | Título “Linha do tempo” | `campaign-timeline.js` | ⓘ conceito: autoria do mestre, ordem manual, marcos opcionais e publicação. | `campanhas.acervo.linha-do-tempo` |
 | Campos Quando, Descrição curta e Relato completo | `campaign-timeline.js` | Auxiliar visível ligado por `aria-describedby` (texto livre; onde cada texto aparece). | — |
 | “Mostrar ao grupo” | `campaign-timeline.js` | Auxiliar visível: sem marcar, rascunho só do mestre. | — |
+| “+” sobre a linha (inserir entre pontos) | `campaign-timeline.js` | Ícone com `aria-label` e `data-tip` nomeando o ponto vizinho; o formulário mostra onde o ponto entra. Conceito no ⓘ da página. | — | | Trechos recolhíveis, números do trecho e navegador (“1–10”, Expandir/Recolher tudo) | `campaign-timeline.js` | Cabeçalho com `aria-expanded`, intervalo, títulos e contagem; números com `aria-label`/`data-tip` do título. Conceito no ⓘ da página. | — |
 | Selo “Rascunho” e “Definir início/fim” | `campaign-timeline.js` | Rótulos autoexplicativos; “+ Acontecimento” no limite usa `aria-disabled` + `data-tip` com o motivo. | — |
 
 ## Classificação — mapas próprios com tiles (ADR-078)
@@ -661,3 +678,20 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | Janela "Versões salvas" (guardar com nome, Carregar, Nomear/Renomear, Excluir) | `editor-drafts.js` | ⓘ `campanhas.editor.rascunhos` no título; campo com `label`; estados de carregando, vazio e erro (`role="alert"`); excluir com confirmação e `aria-label` com a data |
 | "Salvar como nova cena" no conflito da cena | `scene-editor.js` | Rótulo visível; consequência descrita no texto do aviso |
 | Recarregar a versão salva (conflito) | três editores | Confirmação informa que o rascunho fica guardado em Arquivo › Rascunho local… |
+
+## Classificação — criar → jogar e condução simplificada (ADR-100)
+
+| Elemento | Arquivo | Nível / chave |
+| --- | --- | --- |
+| Checklist "Pronto para jogar?" (convite, fichas, cena opcional) | `campaign-page.js` | ⓘ `sessoes.inicio.checklist` (mestre); estado de cada item em texto visível e `sr-only` (concluído/pendente) |
+| "Começar por" (cenas preparadas ou "Só um mapa") no modal de início | `campaign-page.js` | ⓘ `sessoes.abertura.cena` (mestre); descrição visível em cada opção |
+| "Mais opções: nome, objetivo e capítulo" e "Nome da sessão (opcional)" | `campaign-page.js` | Auxiliar visível; ⓘ `sessoes.abertura.unica` reutilizada |
+| "Começar com uma aventura de exemplo" | `campaigns.js`, `one-shots.js` | Auxiliar visível (`aria-describedby`) + ⓘ `campanhas.criacao.aventura-exemplo` |
+| "Mais opções: campanha já em andamento" e sistema já preenchido ("Você pode trocar depois.") | `campaigns.js` | Texto visível; ⓘ existentes de origem e forma de jogar |
+| "Tipo de luz" (Vela, Tocha, Fogueira, Lanterna, Personalizado) | `scene-editor.js` | ⓘ `mesa.luz.predefinicoes` (mestre); valores em casas no próprio rótulo |
+| "Luz carregada" e "Visão no escuro" do marcador | `table.js` | Rótulo visível; números no rótulo da opção; campo numérico continua ao lado |
+| "Trocar ou remover a ficha" | `table.js` | Auxiliar visível; ⓘ `mesa.npcs.ficha` reutilizada |
+| "Personagens do mestre" (arrastar ou "Colocar") | `table.js` | Auxiliar visível; "Colocar" é a alternativa por teclado/toque; dica da faixa do mapa durante a escolha da casa |
+| Ferramenta "Colocar o grupo" | `table.js` | Rótulo visível; resultado em toast |
+| Busca de ações (Ctrl+K, "/" e botão "⌕ Ações") | `command-palette.js`, `table.js`, `editor-core.js` | Rótulo visível e instrução "↑ ↓ escolhem, Enter executa, Esc fecha." no próprio diálogo; motivo de indisponibilidade em cada item |
+| Selo "Cena pesada" no rodapé do editor | `scene-editor.js` | Texto visível com contagem e limite |

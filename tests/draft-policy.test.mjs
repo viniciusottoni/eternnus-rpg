@@ -12,7 +12,8 @@ test('chave do rascunho: usuário, campanha, tipo e documento; recusa partes inv
   assert.equal(draftKey('u1', 'c-1', 'tilemap', 'm1'), 'u1|c-1|tilemap|m1');
   assert.equal(draftKey('u1', 'c-1', 'scene', null), 'u1|c-1|scene|new');
   assert.equal(draftKey('u1', 'c-1', 'maplayer', 'asset:abc@def'), 'u1|c-1|maplayer|asset:abc@def');
-  assert.equal(draftKey('u1', 'c-1', 'sheet', 'x'), null);
+  assert.equal(draftKey('u1', 'c-1', 'other', 'x'), null);
+  assert.equal(draftKey('u1', 'fichas', 'sheet', 'x'), 'u1|fichas|sheet|x');
   assert.equal(draftKey('', 'c', 'scene', 'x'), null);
   assert.equal(draftKey('u|2', 'c', 'scene', 'x'), null);
   assert.equal(draftKey('u', 'c', 'scene', '<script>'), null);

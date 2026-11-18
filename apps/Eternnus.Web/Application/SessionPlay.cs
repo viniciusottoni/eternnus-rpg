@@ -135,7 +135,9 @@ public partial class SessionService
         }
         else visibility = (await Fog.SettingsAsync(a.Campaign, a.Session, ct)).PlayerRollVisibility;
         var who = await ActorAsync(me, user, ct);
-        var (roll, notation, total) = await RollAnyAsync(me.IsMaster ? null : me.CharacterId, x.Spec, x.Formula, ct);
+        var scope = await RollScopeAsync(a, me, x.CharacterId, user, ct);
+        if (x.CharacterId != null && scope != me.CharacterId) who = await db.Characters.Where(c => c.Id == scope).Select(c => c.Name).SingleAsync(ct);
+        var (roll, notation, total) = await RollAnyAsync(scope, x.Spec, x.Formula, ct);
         RecordRoll(a.Session, user, await NameAsync(user, ct), who, label, roll, notation, total, visibility, a.IsMaster, null, recipients);
         await CommitAsync(tx, a.Session, ct);
         // Rolagem "somente mestre": quem rolou não recebe o resultado nem na resposta.
@@ -411,7 +413,59 @@ public partial class SessionService
             if (current != expected) throw new RuleException(409, "O valor mudou depois; desfazer não sobrescreve a alteração mais recente.");
             if (await SetResourceAsync(a, character, sheet, field, _ => restore, user, "", e.Id, ct) == null) throw new RuleException(409, "Nada a desfazer: o valor já é o anterior.");
         }
+        else if (e.Kind == EventKinds.Token && a.IsMaster) await UndoTokenAsync(a, e, d, user, author, ct);
+        else if (e.Kind == EventKinds.Map && a.IsMaster && d.TryGetProperty("cells", out _)) await UndoFogPaintAsync(a, e, d, user, author, ct);
         else throw new RuleException(400, "Esta alteração não pode ser desfeita.");
         await CommitAsync(tx, a.Session, ct);
     }
+
+    /// <summary>
+    /// Desfaz marcador adicionado (remove se ainda estiver onde surgiu) ou removido (recria com o mesmo retrato, se a casa
+    /// estiver livre). Só o mestre; personagens de jogadores nunca entram aqui.
+    /// </summary>
+    async Task UndoTokenAsync(Access a, TableEvent e, JsonElement d, string user, string author, CancellationToken ct)
+    {
+        var scene = await RequireSceneAsync(a, ct);
+        var tokenId = d.GetProperty("tokenId").GetGuid();
+        if (d.TryGetProperty("snapshot", out var snap) && snap.ValueKind == JsonValueKind.String)
+        {
+            if (scene.Raw.ContainsKey(tokenId)) throw new RuleException(409, "Esse marcador já está no mapa.");
+            var t = JsonSerializer.Deserialize<TokenSnapshot>(snap.GetString()!, Json) ?? throw new RuleException(400, "Registro inválido.");
+            if (scene.Raw.Count >= 60) throw new RuleException(409, "Limite de 60 marcadores no mapa.");
+            var token = t.ToToken(tokenId, a.Session.Id);
+            if (!scene.Grid.Inside(token.X, token.Y) || scene.Grid.BlocksMove(token.X, token.Y)) throw new RuleException(409, "A posição anterior está bloqueada agora.");
+            var span = scene.Map.Free ? TokenSpan.One : token.SpanOf();
+            if (span.Problem(scene.Grid, token.X, token.Y) != null || (!scene.Map.Free && span.Hits(token.X, token.Y, TokenSpans.Taken(scene.Raw.Values))))
+                throw new RuleException(409, "A posição anterior está ocupada ou bloqueada agora.");
+            if (token.MasterCharacterId is { } npc && !await db.MasterCharacters.AnyAsync(m => m.Id == npc && m.CampaignId == a.Campaign.Id, ct)) token.MasterCharacterId = null;
+            db.SessionTokens.Add(token);
+            Event(a.Session, user, author, EventKinds.Token, $"{token.Label} voltou ao mapa (desfeito)", new { undoOf = e.Id, tokenId }, masterOnly: Secret(scene, token));
+        }
+        else
+        {
+            var token = scene.Raw.GetValueOrDefault(tokenId) ?? throw new RuleException(409, "O marcador não está mais no mapa.");
+            if (token.CharacterId != null) throw new RuleException(409, "Personagens de jogadores não são removidos do mapa.");
+            if (token.X != d.GetProperty("x").GetInt32() || token.Y != d.GetProperty("y").GetInt32()) throw new RuleException(409, "O marcador já mudou de lugar; desfazer não sobrescreve a mudança mais recente.");
+            var tracked = await db.SessionTokens.SingleAsync(t => t.Id == tokenId && t.SessionId == a.Session.Id, ct);
+            db.SessionTokens.Remove(tracked);
+            Event(a.Session, user, author, EventKinds.Token, $"{token.Label} deixou o mapa (desfeito)", new { undoOf = e.Id, tokenId, removed = true }, masterOnly: Secret(scene, token));
+        }
+        await RefreshFogAsync(a, user, ct);
+    }
+}
+
+/// <summary>Retrato de um marcador do mestre removido, guardado no evento privado para "desfazer" (ADR-100).</summary>
+public sealed record TokenSnapshot(string Label, string Side, int X, int Y, int? Fx, int? Fy, bool Hidden, List<string>? RevealedTo, int? Light, int? Vision,
+    int? Perception, string? Senses, int? Dc, string? DetectSense, int? DetectRange, Guid? MasterCharacterId, string Appearance, int Size, string? ImageUrl,
+    int? Width, int? Height, int LastMovedTurn)
+{
+    public static TokenSnapshot Of(SessionToken t) => new(t.Label, t.Side, t.X, t.Y, t.Fx, t.Fy, t.Hidden, t.RevealedTo, t.Light, t.Vision, t.Perception, t.Senses,
+        t.Dc, t.DetectSense, t.DetectRange, t.MasterCharacterId, t.Appearance, t.Size, t.ImageUrl, t.Width, t.Height, t.LastMovedTurn);
+
+    public SessionToken ToToken(Guid id, Guid sessionId) => new()
+    {
+        Id = id, SessionId = sessionId, Label = Label, Side = Side, X = X, Y = Y, Fx = Fx, Fy = Fy, Hidden = Hidden, RevealedTo = RevealedTo ?? [], Light = Light,
+        Vision = Vision, Perception = Perception, Senses = Senses, Dc = Dc, DetectSense = DetectSense, DetectRange = DetectRange, MasterCharacterId = MasterCharacterId,
+        Appearance = Appearance, Size = Size, ImageUrl = ImageUrl, Width = Width, Height = Height, LastMovedTurn = LastMovedTurn,
+    };
 }

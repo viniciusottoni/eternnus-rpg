@@ -697,6 +697,16 @@ function drawBubbles(g, token, s, bubble, free = false) {
     g.fillStyle = "#eef5ff";
     g.fillText(a.value, sx, sy + sr * 0.05);
   }
+  if (bubble.effects > 0 && s >= 20) {
+    // Condições com duração: selo roxo com a contagem, do lado oposto ao escudo.
+    const er = Math.max(7, s * 0.14), ex = cx - radius * 0.86, ey = cy - radius * 0.32;
+    g.beginPath(); g.arc(ex, ey, er, 0, Math.PI * 2);
+    g.fillStyle = "#3a2350f2"; g.fill();
+    g.strokeStyle = "#cdb1ec"; g.lineWidth = Math.max(1, s * 0.03); g.stroke();
+    g.font = `700 ${Math.max(8, er * 1.05)}px "Segoe UI", Arial, sans-serif`;
+    g.fillStyle = "#f6edff";
+    g.fillText(String(Math.min(bubble.effects, 9)), ex, ey + er * 0.05);
+  }
   g.restore();
   return hit;
 }
@@ -1495,6 +1505,8 @@ export function createBoard(host, handlers = {}) {
   document.addEventListener("visibilitychange", restart);
 
   return {
+    /** Casa (ou ponto fino, no mapa livre) sob as coordenadas da tela; null fora do mapa. Usado ao soltar NPCs (ADR-100). */
+    pointAt,
     update(next, nextView = view) {
       const previousKey = state?.map?.key;
       if (previousKey !== next.map.key) { moves.clear(); landing.clear(); sizing.clear(); resize = null; resetCamera = true; }

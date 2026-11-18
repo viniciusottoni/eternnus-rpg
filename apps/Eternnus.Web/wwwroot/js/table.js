@@ -43,7 +43,10 @@ import {
 } from "./session-policy.js";
 import { FOG_TOOLS, FOG_PICKS, MARK_KINDS, fogReach, decodeBits, settingsFromForm, attackCells } from "./fog-policy.js";
 import { settingsFields } from "./table-settings.js";
-import { playerCommands, requiresTurn, modeLabel, resourceState, waitingText, canUndo, unreadCount, MOBILE_VIEWS, QUICK_DICE, quickSpec, rollSpotlight, tokenBubbles } from "./play-policy.js";
+import { TOKEN_LIGHT_PRESETS, VISION_PRESETS, CUSTOM, DEFAULT, presetText, tokenPresetOf, presetById } from "./light-presets-policy.js";
+import { tableCommands } from "./table-commands-policy.js";
+import { mountCommandPalette, openCommandPalette } from "./command-palette.js";
+import { viewOnMyTurn, playerCommands, requiresTurn, modeLabel, resourceState, waitingText, canUndo, unreadCount, MOBILE_VIEWS, QUICK_DICE, quickSpec, rollSpotlight, tokenBubbles } from "./play-policy.js";
 import { isImageType, isUvttName } from "./vtt-import-policy.js";
 import { doorNear } from "./wall-policy.js";
 import { interfaceMode, interfaceToggle, mountInterfaceToggle, onInterfaceChange, setInterfaceMode } from "./interface-mode.js";
@@ -51,6 +54,7 @@ import { HELP, hiddenCustomizations, pendingParts } from "./scene-policy.js";
 import { isFreeMap, tokenCenter, freeReachCells, withinReach, placement } from "./free-move-policy.js";
 const tools = () => import("./table-tools.js");
 const npcSheets = () => import("./npc-sheet.js");
+const tableSheet = () => import("./table-sheet.js");
 const mapImport = () => import("./map-import.js");
 /** Ferramentas de névoa por grupo (interface Completa) e o atalho "Revelar área" da Básica. */
 const FOG_GROUPS = {
@@ -158,6 +162,8 @@ function mountTable(campaignId, sessionId, isMaster) {
     lastSeenChat = 0,
     bubbles = true,
     quickHidden = false,
+    pendingNpc = null,
+    npcDock = [],
     spotTimer = 0;
   const previousHp = new Map();
   let previousActive;
@@ -166,7 +172,7 @@ function mountTable(campaignId, sessionId, isMaster) {
   $("#app").className = "table-app";
   $("#app").innerHTML = `<div class="table-shell">
     <header class="table-top"><a class="table-brand" href="#campaign/${esc(campaignId)}" aria-label="Voltar à campanha"><img src="/assets/eternnus-logo.webp" alt="Eternnus RPG"></a><div class="table-title"><h1><span id="t-campaign">Mesa</span> <span class="online-badge" data-tip="A sessão está ativa; presenças aparecem no grupo." id="t-online"><i aria-hidden="true"></i>ONLINE</span></h1><p id="t-sub">Conectando à sessão…</p></div><div class="table-top-scroll" role="group" aria-label="Comandos da sessão — deslize para ver mais"><button type="button" id="t-fullscreen" class="subtle" hidden>Tela cheia</button><div class="table-top-actions" id="t-top"></div><div class="session-audio-host" id="t-audio" hidden></div><div class="music-dock"></div></div></header>
-    <aside class="party" aria-labelledby="party-title" tabindex="-1"><h2 id="party-title"><span aria-hidden="true">⚔</span> Aventureiros <span class="count-chip" id="t-count">0 online</span></h2><ul id="t-party" class="party-list"></ul><p class="party-caption">Avatares conectados e estado atual${helpButton("mesa.mapa.legenda", "Marcadores, vida e presença")}</p></aside>
+    <aside class="party" aria-labelledby="party-title" tabindex="-1"><h2 id="party-title"><span aria-hidden="true">⚔</span> Aventureiros <span class="count-chip" id="t-count">0 online</span></h2>${isMaster ? button("Visão do grupo", "t-party-view", "", "subtle small party-view-button") : ""}<ul id="t-party" class="party-list"></ul>${isMaster ? `<details class="npc-dock" id="t-npc-dock"><summary>Personagens do mestre</summary><p class="form-help">Arraste para o mapa ou use “Colocar” e escolha a casa.</p><ul class="npc-dock-list" id="t-npc-dock-list"></ul></details>` : ""}<p class="party-caption">Avatares conectados e estado atual${helpButton("mesa.mapa.legenda", "Marcadores, vida e presença")}</p></aside>
     <main class="stage" id="main" tabindex="-1" aria-label="Mapa da sessão"><div class="stage-chip" id="t-chip"></div><div class="stage-tools" id="t-tools" role="toolbar" aria-label="Ferramentas do mapa" aria-orientation="vertical"></div><div class="fog-palette" id="t-fog" role="toolbar" aria-label="Névoa e luz" hidden></div><div class="play-banner" id="t-banner" role="status" hidden></div><div class="pending-banner" id="t-pending" role="status" hidden></div><div class="board" id="t-board"></div><div class="turn-herald" id="t-herald" aria-hidden="true"><span></span></div><div class="roll-spotlight" id="t-spot" role="status" aria-live="polite" hidden></div><div class="dice-tray" id="t-dice" role="toolbar" aria-label="Dados rápidos"></div><div class="drop-veil" id="t-drop" hidden><p><strong>Solte para usar como mapa</strong><span>Imagem PNG, JPEG ou WebP, ou arquivo UVTT (.dd2vtt, .uvtt, .df2vtt)</span></p></div><input type="file" id="t-map-file" accept="image/png,image/jpeg,image/webp,.dd2vtt,.uvtt,.df2vtt" hidden><p class="stage-hint" id="t-hint" role="status"></p></main>
     <section class="side-panel" aria-label="Registros da mesa"><div class="panel-tabs" role="tablist" id="t-tabs"></div><div class="panel-body" id="t-panel" role="tabpanel" tabindex="0"></div><form id="t-chat" class="chat-form" autocomplete="off"><div class="field-label"><label class="sr-only" for="t-message">Mensagem para a mesa</label>${helpButton("mesa.chat.comandos", "Conversa e dados")}</div><input id="t-message" name="content" maxlength="2000" placeholder="Escrever mensagem… (/r 1d20+3 para rolar)" required><button type="submit" class="primary icon-send" aria-label="Enviar">➤</button></form></section>
     <div class="table-bottom"><footer class="turn-bar" id="t-turn" aria-live="polite"></footer><nav class="table-view-switch" id="t-views" aria-label="Alternar entre mapa, ficha e conversa"></nav></div>
@@ -257,7 +263,10 @@ function mountTable(campaignId, sessionId, isMaster) {
   }
   const beat = setInterval(heartbeat, HEARTBEAT_MS);
   const onVisible = () => {
-    if (!document.hidden) heartbeat();
+    if (document.hidden) return;
+    heartbeat();
+    // NPC criado em outra aba (Preparação › Personagens): a lista aberta se atualiza ao voltar para a mesa.
+    if (document.querySelector("#t-npc-dock")?.open) loadNpcDock();
   };
   document.addEventListener("visibilitychange", onVisible);
 
@@ -327,8 +336,8 @@ function mountTable(campaignId, sessionId, isMaster) {
     $("#t-online").hidden = !!s.endedAt;
     // Interface Básica/Completa só para o mestre; encerrar fica separado das ações frequentes.
     const top = live.me.isMaster
-      ? `${interfaceToggle("t-interface")}${button(play.paused ? "▶ Retomar partida" : "⏸ Pausar", "t-pause", "", "subtle")}<span class="top-separator" aria-hidden="true"></span>${button("↩ Sair da tela", "t-exit", "", "subtle")}${button(live.campaign.isOneShot ? "■ Encerrar e apagar" : "■ Encerrar sessão", "t-end", "", "danger")}`
-      : `${button("▣ Minha ficha", "t-my-sheet", "", "subtle")}${button("Sair da mesa", "t-exit", "", "subtle")}`;
+      ? `${button("⌕ Ações", "t-palette", "", "subtle")}${interfaceToggle("t-interface")}${button(play.paused ? "▶ Retomar partida" : "⏸ Pausar", "t-pause", "", "subtle")}<span class="top-separator" aria-hidden="true"></span>${button("↩ Sair da tela", "t-exit", "", "subtle")}${button(live.campaign.isOneShot ? "■ Encerrar e apagar" : "■ Encerrar sessão", "t-end", "", "danger")}`
+      : `${button("⌕ Ações", "t-palette", "", "subtle")}${button("▣ Minha ficha", "t-my-sheet", "", "subtle")}${button("Sair da mesa", "t-exit", "", "subtle")}`;
     // Só redesenha quando muda: preserva o foco no controle de interface entre atualizações ao vivo.
     if (top !== topHtml) { topHtml = top; $("#t-top").innerHTML = `<a class="button subtle" href="#campaign/${esc(campaignId)}/notes" target="_blank" rel="noopener">Meu caderno</a>` + top; }
   }
@@ -346,7 +355,7 @@ function mountTable(campaignId, sessionId, isMaster) {
           const { tone } = hpState(p.hp, p.maxHp);
           const clickable = p.canView;
           const res = p.summary?.resources?.[0];
-          const detail = !p.canView ? "<small>Ficha privada</small>" : `${res ? `<small>${esc(res.label)}: ${esc(resourceState(res).text)}</small>${res.max ? hpBar(res.value, res.max, `${res.label} de ${p.characterName}`) : ""}` : ""}${p.summary?.conditions ? `<small class="conditions">${esc(p.summary.conditions)}</small>` : ""}`;
+          const detail = !p.canView ? "<small>Ficha privada</small>" : `${res ? `<small>${esc(res.label)}: ${esc(resourceState(res).text)}</small>${res.max ? hpBar(res.value, res.max, `${res.label} de ${p.characterName}`) : ""}` : ""}${p.summary?.conditions ? `<small class="conditions">${esc(p.summary.conditions)}</small>` : ""}${p.summary?.effects?.length ? `<small class="effects-chip">${esc(p.summary.effects.map((e) => `${e.name}${e.rounds ? ` · ${e.rounds}` : ""}`).join(", "))}</small>` : ""}`;
           const body = `<img class="avatar" src="${esc(p.avatarUrl)}" alt="" referrerpolicy="no-referrer"><span class="party-text"><strong>${esc(p.characterName)}</strong>${detail}</span><i class="presence" aria-label="Conectado" data-tip="Presença renovada nos últimos 45 segundos"></i>`;
           return `<li class="party-card ${active ? "active" : ""} ${tone}" data-character="${esc(p.characterId)}">${clickable ? `<button type="button" class="party-button" data-action="t-sheet" data-id="${esc(p.characterId)}" aria-label="Abrir ficha de ${esc(p.characterName)}${active ? " (turno atual)" : ""}">${body}</button>` : `<div class="party-button" aria-label="${esc(p.characterName)}${active ? ", turno atual" : ""}">${body}</div>`}${active ? '<span class="turn-flag" aria-hidden="true">⌛</span>' : ""}</li>`;
         })
@@ -390,7 +399,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     const complete = ui === "complete";
     const selBubble = sel ? tokenBubbles(live).get(sel.id) : null;
     const gridMap = tiles && Number(live.map.gridPixels) >= 8 && String(live.map.key || "").startsWith("asset:") && !watched;
-    const basicTools = `${labeled("➤", "t-tool-select", "Selecionar e mover", mode === "none" && tiles && !watched, !tiles)}${labeled("⚑", "t-tool-place", "Adicionar personagem", mode === "place", !tiles)}${fogOn ? labeled("☀", "t-fog-group", "Revelar área", mode === "fog" && fogGroup === "reveal", !tiles, "reveal") : ""}${labeled("👁", "t-view-as", watched ? "Voltar à visão do mestre" : "Ver como jogador", !!watched, !tiles)}${sel?.masterCharacterId ? labeled("▣", "t-token-sheet", "Ficha do elemento", false, false) : ""}${sel && !sel.characterId ? labeled("✎", "t-token-edit", "Editar marcador", false, false) : ""}${sel ? labeled("◐", "t-token-look", "Forma e tamanho", false, false) : ""}${sel && selBubble?.target ? labeled("♥", "t-token-bubble", `${selBubble.resource.label} do selecionado`, false, false) : ""}${sel && !sel.characterId ? labeled("✕", "t-tool-remove", "Remover marcador", false, false) : ""}${labeled("⇪", "t-map-upload", "Enviar mapa ou UVTT")}${gridMap ? labeled("▦", "t-map-grid", "Ajustar grade do mapa") : ""}`;
+    const basicTools = `${labeled("➤", "t-tool-select", "Selecionar e mover", mode === "none" && tiles && !watched, !tiles)}${labeled("⚑", "t-tool-place", "Adicionar personagem", mode === "place", !tiles)}${labeled("⇲", "t-gather", "Colocar o grupo", false, !tiles)}${fogOn ? labeled("☀", "t-fog-group", "Revelar área", mode === "fog" && fogGroup === "reveal", !tiles, "reveal") : ""}${labeled("👁", "t-view-as", watched ? "Voltar à visão do mestre" : "Ver como jogador", !!watched, !tiles)}${sel?.masterCharacterId ? labeled("▣", "t-token-sheet", "Ficha do elemento", false, false) : ""}${sel && !sel.characterId ? labeled("✎", "t-token-edit", "Editar marcador", false, false) : ""}${sel ? labeled("◐", "t-token-look", "Forma e tamanho", false, false) : ""}${sel && selBubble?.target ? labeled("♥", "t-token-bubble", `${selBubble.resource.label} do selecionado`, false, false) : ""}${sel && !sel.characterId ? labeled("✕", "t-tool-remove", "Remover marcador", false, false) : ""}${labeled("⇪", "t-map-upload", "Enviar mapa ou UVTT")}${gridMap ? labeled("▦", "t-map-grid", "Ajustar grade do mapa") : ""}`;
     const completeTools = complete
       ? `<div class="tool-group" role="group" aria-label="Elementos"><span class="tool-group-title">Elementos</span>${labeled("✎", "t-token-settings", "Luz, visão e ocultação", false, !sel)}</div><div class="tool-group" role="group" aria-label="Paredes, luz e exploração">${labeled("▇", "t-fog-group", "Paredes e portas", mode === "fog" && fogGroup === "walls", !tiles, "walls")}${labeled("✹", "t-fog-group", "Luz e visão", mode === "fog" && fogGroup === "light", !tiles, "light")}${labeled("⚠", "t-fog-group", "Exploração", mode === "fog" && fogGroup === "explore", !tiles, "explore")}</div><div class="tool-group" role="group" aria-label="Grade e configuração">${labeled("▦", "t-tool-grid", "Mostrar grade", gridShown(), !tiles)}${labeled("♥", "t-tool-bubbles", "Vida e armadura nos marcadores", bubbles, !tiles)}${labeled("⚙", "t-table-settings", "Configuração da mesa")}</div>`
       : "";
@@ -410,7 +419,7 @@ function mountTable(campaignId, sessionId, isMaster) {
         : !live.me.isMaster && isMyTurn(live) && live.map.kind === "tileset" && live.play?.mode === "tactical"
           ? [canMoveNow() && live.me.character?.movementRole !== false ? "Casas douradas: para onde você pode ir (arraste seu personagem)" : "", live.me.character?.reach > 0 ? `área vermelha: alcance de ataque (${live.me.character.reach} m)` : ""].filter(Boolean).join(" · ")
         : mode === "place"
-          ? "Clique em uma casa livre para posicionar uma criatura."
+          ? pendingNpc ? `Clique em uma casa livre para colocar ${npcDock.find((n) => n.id === pendingNpc)?.name || "o personagem"}. Esc cancela.` : "Clique em uma casa livre para posicionar uma criatura."
           : mode === "fog"
             ? pick ? `${pick.label}: clique em uma casa. Esc sai da névoa.` : `${FOG_TOOLS.find((t) => t.id === fogTool)?.label}: clique ou arraste sobre as casas. Esc sai da névoa.`
             : sel && live.me.isMaster
@@ -566,6 +575,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     }
   }
   function setMode(next) {
+    if (next !== "place") pendingNpc = null;
     mode = next;
     if (next !== "none") selected = null;
     renderTools();
@@ -762,7 +772,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     }).join("");
     const stats = (c.stats || []).map((s) => `<li><span>${esc(s.label)}</span><b>${esc(s.value)}</b></li>`).join("");
     const cmds = playerCommands(live);
-    return `<div class="sheet-summary"><h3>${esc(c.name)}</h3>${resources ? `<ul class="resource-list">${resources}</ul>` : '<p class="muted small">Este modelo não define recursos para acompanhar na mesa.</p>'}${stats ? `<ul class="stat-list">${stats}</ul>` : ""}<form id="t-conditions" class="conditions-form"><label for="t-cond">Condições e nota curta</label><input id="t-cond" name="conditions" maxlength="300" value="${esc(c.conditions || "")}" placeholder="Ex.: envenenado, sem munição"><button type="submit" class="subtle small">Salvar</button></form><div class="summary-actions"><h4>Ações favoritas${helpButton("mesa.acoes.desfazer", "Desfazer uma mudança")}</h4>${cmds.favorites.length ? cmds.favorites.map((a) => button(esc(a.name), "t-act-id", a.id, "subtle small", cmds.canAct ? "" : `aria-disabled="true" data-tip="${esc(cmds.reason)}"`)).join("") : '<p class="muted small">Sua ficha ainda não tem ações.</p>'}${(c.actions || []).length ? button("☆ Escolher favoritas", "t-favorites", "", "text-button small") : ""}</div>${button("Ver ficha completa", "t-my-sheet", "", "primary wide-button")}</div>`;
+    return `<div class="sheet-summary"><h3>${esc(c.name)}</h3>${resources ? `<ul class="resource-list">${resources}</ul>` : '<p class="muted small">Este modelo não define recursos para acompanhar na mesa.</p>'}${stats ? `<ul class="stat-list">${stats}</ul>` : ""}<form id="t-conditions" class="conditions-form"><label for="t-cond">Condições e nota curta</label><input id="t-cond" name="conditions" maxlength="300" value="${esc(c.conditions || "")}" placeholder="Ex.: envenenado, sem munição"><button type="submit" class="subtle small">Salvar</button></form><div class="summary-effects"><h4>Condições com duração${helpButton("mesa.condicoes.duracao", "Condições com duração")}</h4><p class="small">${(c.effects || []).length ? esc(c.effects.map((e) => `${e.name}${e.rounds ? ` · ${e.rounds} ${e.rounds === 1 ? "rodada" : "rodadas"}` : ""}`).join(", ")) : "Nenhuma."}</p>${button("Ajustar condições", "t-effects", c.id, "subtle small")}</div><div class="summary-actions"><h4>Ações favoritas${helpButton("mesa.acoes.desfazer", "Desfazer uma mudança")}</h4>${cmds.favorites.length ? cmds.favorites.map((a) => button(esc(a.name), "t-act-id", a.id, "subtle small", cmds.canAct ? "" : `aria-disabled="true" data-tip="${esc(cmds.reason)}"`)).join("") : '<p class="muted small">Sua ficha ainda não tem ações.</p>'}${(c.actions || []).length ? button("☆ Escolher favoritas", "t-favorites", "", "text-button small") : ""}</div>${button("Ver ficha completa", "t-my-sheet", "", "primary wide-button")}</div>`;
   }
 
   /** Mestre: preparação salva que ainda não vale na mesa (texto, visibilidade, mapa). Aplicar é sempre explícito. */
@@ -855,6 +865,43 @@ function mountTable(campaignId, sessionId, isMaster) {
   // Arrastar arquivo sobre o palco: só o mestre troca o mapa. Para todos, soltar não abre o arquivo no navegador.
   const stage = $(".stage");
   const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+  // Personagens do mestre arrastáveis (ADR-100): lista carregada ao abrir; "Colocar" é a alternativa por teclado e toque.
+  const NPC_DND = "application/x-eternnus-npc";
+  const dock = $("#t-npc-dock");
+  async function loadNpcDock() {
+    const list = $("#t-npc-dock-list");
+    list.innerHTML = '<li class="loading-line" role="status">Carregando…</li>';
+    try {
+      npcDock = (await api(`/campaigns/${campaignId}/npcs`)).items.filter((n) => !n.copy);
+      list.innerHTML = npcDock.length
+        ? npcDock.map((n) => `<li draggable="true" data-npc-drag="${esc(n.id)}"><span>${esc(n.name)}</span>${button("Colocar", "t-npc-place", n.id, "subtle small")}</li>`).join("")
+        : '<li class="muted small">Nenhum personagem do mestre ainda. Crie em Preparação › Personagens.</li>';
+    } catch (error) {
+      list.innerHTML = `<li role="alert">Não foi possível carregar. ${esc(error.message)}</li>`;
+    }
+  }
+  dock?.addEventListener("toggle", () => { if (dock.open) loadNpcDock(); });
+  dock?.addEventListener("dragstart", (e) => {
+    const li = e.target.closest?.("[data-npc-drag]");
+    if (!li || !e.dataTransfer) return;
+    e.dataTransfer.setData(NPC_DND, li.dataset.npcDrag);
+    e.dataTransfer.setData("text/plain", li.querySelector("span")?.textContent || "");
+    e.dataTransfer.effectAllowed = "copy";
+  });
+  const carriesNpc = (e) => [...(e.dataTransfer?.types || [])].includes(NPC_DND) && live?.me.isMaster && !live.session.endedAt && live.map.kind === "tileset";
+  async function placeNpc(npcId, cell) {
+    await api(`${base}/npc-tokens`, "POST", { masterCharacterId: npcId, ...placement(cell, freeMap()) });
+    if (mode === "place") setMode("none");
+  }
+  stage.addEventListener("dragover", (e) => { if (!carriesNpc(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+  stage.addEventListener("drop", (e) => {
+    if (!carriesNpc(e)) return;
+    e.preventDefault();
+    const cell = board.pointAt(e.clientX, e.clientY);
+    if (!cell) return toast("Solte o personagem dentro do mapa.");
+    placeNpc(e.dataTransfer.getData(NPC_DND), cell).catch((error) => toast(error.message));
+  });
+
   let dragDepth = 0;
   stage.addEventListener("dragenter", (e) => {
     if (!hasFiles(e)) return;
@@ -936,6 +983,11 @@ function mountTable(campaignId, sessionId, isMaster) {
       el.classList.add("show");
       if (mine) el.classList.add("yours");
       if (mine) toast("É o seu turno. Escolha sua ação.");
+      if (mine) {
+        const typing = document.activeElement?.matches?.("input, textarea, select, [contenteditable='true']");
+        const next = viewOnMyTurn(mobileView, { compact: matchMedia(COMPACT_TABLE).matches, busy: !!typing || !!document.querySelector("dialog[open]") });
+        if (next !== mobileView) { mobileView = next; renderViews(); }
+      }
     }
     previousActive = now;
   }
@@ -972,6 +1024,7 @@ function mountTable(campaignId, sessionId, isMaster) {
   async function onCell(cell) {
     try {
       if (live.me.isMaster && mode === "fog") return await onFogPick(cell);
+      if (live.me.isMaster && mode === "place" && pendingNpc) return await placeNpc(pendingNpc, cell);
       if (live.me.isMaster && mode === "place") return addTokenModal(cell);
       if (live.me.isMaster && selected) {
         await quick(`${base}/tokens/${selected}/move`, "POST", placement(cell, freeMap()));
@@ -1064,16 +1117,23 @@ function mountTable(campaignId, sessionId, isMaster) {
     const o = token.overrides || {};
     const creature = !token.characterId;
     // Modelos só são carregados quando há ficha para vincular.
-    const templates = creature && !token.masterCharacterId ? (await api(`/campaigns/${campaignId}/npc-templates`)).items : [];
+    // Criaturas sempre carregam os modelos: vincular, trocar ou remover a ficha (ADR-100).
+    const templates = creature ? (await api(`/campaigns/${campaignId}/npc-templates`)).items : [];
+    // Predefinições (ADR-100): escolher preenche o número abaixo; vazio usa a ficha ou o padrão da mesa.
+    const presetSelect = (key, label, list, value) => {
+      const current = tokenPresetOf(list, key, value);
+      return `<div class="field"><label for="f-${key}-preset">${label}</label><select id="f-${key}-preset" data-token-preset="${key}"><option value="${DEFAULT}" ${current === DEFAULT ? "selected" : ""}>${token.characterId ? "Usar o valor da ficha" : "Usar o padrão da mesa"}</option>${list.map((p) => `<option value="${p.id}" ${p.id === current ? "selected" : ""}>${esc(presetText(p))}</option>`).join("")}<option value="${CUSTOM}" ${current === CUSTOM ? "selected" : ""}>Personalizado</option></select></div>`;
+    };
     const num = (name, label, value, min, max, help) => `<div class="field"><label for="f-${name}">${label}</label><input id="f-${name}" name="${name}" type="number" min="${min}" max="${max}" step="1" value="${value ?? ""}" placeholder="${creature && name !== "light" ? "—" : "Valor da ficha/mesa"}" aria-describedby="f-${name}-help"><small class="form-help" id="f-${name}-help">${help}</small></div>`;
     const sideOption = (value, label) => `<option value="${value}" ${token.side === value ? "selected" : ""}>${label}</option>`;
+    const templateField = (label, help) => `<div class="field"><div class="field-label"><label for="f-template">${label}</label>${helpButton("mesa.npcs.ficha", "Ficha de NPC ou criatura")}</div><select id="f-template" name="templateId" aria-describedby="f-template-help"><option value="">Sem ficha</option>${templates.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}${t.playerDefault ? " — modelo dos jogadores" : ""}</option>`).join("")}</select><small class="form-help" id="f-template-help">${help}</small></div>`;
     const sheetField = !creature ? "" : token.masterCharacterId
-      ? `<p class="form-help">Ficha vinculada. Para ver ou trocar o modelo, use “Ficha do elemento”.</p>`
-      : `<div class="field"><div class="field-label"><label for="f-template">Vincular ficha (opcional)</label>${helpButton("mesa.npcs.ficha", "Ficha de NPC ou criatura")}</div><select id="f-template" name="templateId" aria-describedby="f-template-help"><option value="">Sem ficha</option>${templates.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}${t.playerDefault ? " — modelo dos jogadores" : ""}</option>`).join("")}</select><small class="form-help" id="f-template-help">Com ficha, você acompanha vida e atributos pelo botão “Ficha do elemento”. O vínculo não pode ser desfeito aqui.</small></div>`;
+      ? `<p class="form-help">Ficha vinculada. Para ver os valores, use “Ficha do elemento”.</p><label class="check"><input type="checkbox" name="unlinkSheet" data-unlink-sheet aria-describedby="f-unlink-help"> Trocar ou remover a ficha</label><small class="form-help" id="f-unlink-help">A ficha atual continua em Preparação › Personagens; só deixa de acompanhar este marcador.</small><div data-replace-sheet hidden>${templateField("Nova ficha (opcional)", "Sem ficha: o marcador fica só com nome e lado.")}</div>`
+      : templateField("Vincular ficha (opcional)", "Com ficha, você acompanha vida e atributos pelo botão “Ficha do elemento”. Dá para trocar ou remover depois.");
     const identity = creature
       ? `<fieldset><legend>Identificação${helpButton("mesa.marcadores.editar", "Editar marcador")}</legend><div class="form-grid two"><div class="field"><label for="f-tlabel">Nome</label><input id="f-tlabel" name="label" maxlength="40" required value="${esc(token.label)}"></div><div class="field"><label for="f-tside">Lado</label><select id="f-tside" name="side">${sideOption("enemy", "Inimigo")}${sideOption("neutral", "Neutro")}${sideOption("ally", "Aliado")}</select></div></div>${sheetField}</fieldset>`
       : `<p class="form-help">Nome, lado e ficha deste personagem vêm da ficha do jogador.</p>`;
-    const details = `<p class="form-help">Agora: luz ${token.light ?? 0} · visão ${token.vision ?? 0} casas${token.characterId ? ` · percepção ${token.perception ?? 0}` : ""}. Deixe em branco para usar ${token.characterId ? "a ficha" : "o padrão da mesa"}.</p>${num("light", "Luz (casas)", o.light, 0, 30, "Ilumina para todos; para em paredes.")}${num("vision", "Visão própria (casas)", o.vision, 0, 30, "Só o dono enxerga, mesmo no escuro.")}${token.characterId ? `${num("perception", "Percepção", o.perception, -100, 1000, "Usada na detecção automática.")}<div class="field"><label for="f-senses">Sentidos</label><textarea id="f-senses" name="senses" rows="2" maxlength="400" placeholder="sentir magia: 9" aria-describedby="f-senses-help">${esc(o.senses || "")}</textarea><small class="form-help" id="f-senses-help">Um por linha; alcance em metros opcional.</small></div>` : `<label class="check"><input type="checkbox" name="hidden" ${token.hidden ? "checked" : ""}> Oculta</label><fieldset><legend>Detecção automática</legend>${num("dc", "Dificuldade de percepção", token.dc, -100, 1000, "Percepção da ficha igual ou maior revela.")}${num("detectRange", "Distância máxima (casas)", token.detectRange, 0, 30, "Opcional.")}<div class="field"><label for="f-dsense">Sentido que detecta</label><input id="f-dsense" name="detectSense" maxlength="40" value="${esc(token.detectSense || "")}"></div></fieldset>${token.hidden ? playerChecks(token.revealedTo || []) : ""}`}`;
+    const details = `<p class="form-help">Agora: luz ${token.light ?? 0} · visão ${token.vision ?? 0} casas${token.characterId ? ` · percepção ${token.perception ?? 0}` : ""}. Deixe em branco para usar ${token.characterId ? "a ficha" : "o padrão da mesa"}.</p>${presetSelect("light", "Luz carregada", TOKEN_LIGHT_PRESETS, o.light)}${num("light", "Luz (casas)", o.light, 0, 30, "Ilumina para todos; para em paredes.")}${presetSelect("vision", "Visão no escuro", VISION_PRESETS, o.vision)}${num("vision", "Visão própria (casas)", o.vision, 0, 30, "Só o dono enxerga, mesmo no escuro.")}${token.characterId ? `${num("perception", "Percepção", o.perception, -100, 1000, "Usada na detecção automática.")}<div class="field"><label for="f-senses">Sentidos</label><textarea id="f-senses" name="senses" rows="2" maxlength="400" placeholder="sentir magia: 9" aria-describedby="f-senses-help">${esc(o.senses || "")}</textarea><small class="form-help" id="f-senses-help">Um por linha; alcance em metros opcional.</small></div>` : `<label class="check"><input type="checkbox" name="hidden" ${token.hidden ? "checked" : ""}> Oculta</label><fieldset><legend>Detecção automática</legend>${num("dc", "Dificuldade de percepção", token.dc, -100, 1000, "Percepção da ficha igual ou maior revela.")}${num("detectRange", "Distância máxima (casas)", token.detectRange, 0, 30, "Opcional.")}<div class="field"><label for="f-dsense">Sentido que detecta</label><input id="f-dsense" name="detectSense" maxlength="40" value="${esc(token.detectSense || "")}"></div></fieldset>${token.hidden ? playerChecks(token.revealedTo || []) : ""}`}`;
     // Criatura: identificação primeiro; luz, visão e ocultação recolhidas, abertas quando vêm da ferramenta própria.
     const body = creature ? `${identity}<details class="token-advanced" ${advanced ? "open" : ""}><summary>Luz, visão e ocultação</summary>${details}</details>` : `${identity}${details}`;
     modal(
@@ -1081,6 +1141,19 @@ function mountTable(campaignId, sessionId, isMaster) {
       `<form id="token-settings-form">${body}${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}${creature && token.hidden ? button("Revelar para todos", "t-token-reveal-all", token.id, "subtle") : ""}<button type="submit" class="primary">Salvar</button></div></form>`,
     );
     (creature && !advanced ? $("#f-tlabel") : $("#token-settings-form input, #token-settings-form select"))?.focus();
+    $("#token-settings-form").addEventListener("change", (e) => {
+      const t = e.target, form = e.currentTarget;
+      if (t.dataset.unlinkSheet !== undefined) { form.querySelector("[data-replace-sheet]").hidden = !t.checked; return; }
+      const lists = { light: TOKEN_LIGHT_PRESETS, vision: VISION_PRESETS };
+      if (t.dataset.tokenPreset) {
+        const key = t.dataset.tokenPreset, input = form.querySelector(`#f-${key}`), p = presetById(lists[key], t.value);
+        if (t.value === CUSTOM) return input.focus();
+        input.value = p ? p[key] : "";
+      } else if (t.id === "f-light" || t.id === "f-vision") {
+        const key = t.id.slice(2);
+        form.querySelector(`#f-${key}-preset`).value = tokenPresetOf(lists[key], key, t.value);
+      }
+    });
     $("#token-settings-form").onsubmit = (e) => {
       e.preventDefault();
       const form = e.currentTarget;
@@ -1088,11 +1161,12 @@ function mountTable(campaignId, sessionId, isMaster) {
         await api(`${base}/tokens/${token.id}/settings`, "POST", {
           light: optionalInt(data.light), vision: optionalInt(data.vision), perception: optionalInt(data.perception),
           senses: data.senses || null, hidden: data.hidden === "on", dc: optionalInt(data.dc), detectSense: data.detectSense || null, detectRange: optionalInt(data.detectRange),
-          ...(creature ? { label: data.label, side: data.side, templateId: data.templateId || null } : {}),
+          ...(creature ? { label: data.label, side: data.side, templateId: (!token.masterCharacterId || data.unlinkSheet === "on") && data.templateId ? data.templateId : null, unlinkSheet: data.unlinkSheet === "on" } : {}),
         });
         if (creature && data.hidden === "on" && token.hidden) await api(`${base}/tokens/${token.id}/reveal`, "POST", { all: false, userIds: checkedPlayers(form) });
         $("#modal").close();
-        if (data.templateId) toast("Ficha vinculada. Abra “Ficha do elemento” para acompanhar o estado.");
+        if (data.templateId && (!token.masterCharacterId || data.unlinkSheet === "on")) toast("Ficha vinculada. Abra “Ficha do elemento” para acompanhar o estado.");
+        else if (data.unlinkSheet === "on") toast("Ficha desvinculada. Ela continua em Preparação › Personagens.");
       });
     };
   }
@@ -1134,22 +1208,22 @@ function mountTable(campaignId, sessionId, isMaster) {
 
   async function sheetModal(characterId) {
     const c = await api(`${base}/characters/${characterId}`);
-    let sheetController;
     const p = live.participants.find((x) => x.characterId === characterId);
     const master = live.me.isMaster;
     modal(
       `Ficha de ${c.name}`,
-      `${p ? `<p class="muted small">Jogador: ${esc(p.name)}${p.online ? " · conectado" : " · ausente"}</p>` : ""}${sheetViewHtml(c, { full: true })}<div id="table-model-sheet"></div>${
+      `${p ? `<p class="muted small">Jogador: ${esc(p.name)}${p.online ? " · conectado" : " · ausente"}</p>` : ""}${sheetViewHtml(c, { full: true })}${c.canEdit ? `<section class="ts-effects"><h4>Condições com duração${helpButton("mesa.condicoes.duracao", "Condições com duração")}</h4><p class="small" id="ts-effects-text">${(c.effects || []).length ? esc(c.effects.map((e) => `${e.name}${e.rounds ? ` · ${e.rounds}` : ""}`).join(", ")) : "Nenhuma."}</p>${button("Ajustar condições", "t-effects", characterId, "subtle small")}</section>` : ""}<div id="table-model-sheet"></div>${
         master
           ? `<form id="hp-form" class="hp-form"><h4>Ajustar vida</h4><div class="hp-row"><div class="field"><label for="f-amount">Pontos</label><input id="f-amount" name="amount" type="number" min="1" max="100000" value="5" required></div><div class="field"><label for="f-reason">Motivo</label><input id="f-reason" name="reason" maxlength="120" placeholder="Ataque de criatura"></div></div>${formError()}${actionBar(`<button type="submit" class="danger" name="kind" value="damage">− Dano</button><button type="submit" class="subtle" name="kind" value="heal">+ Cura</button>`, button("✎ Editar ficha", "t-edit-sheet", characterId, "subtle") + button("⌛ Conceder turno", "t-give-turn", characterId, "primary", p?.online && !live.session.endedAt ? "" : "disabled"))}</form>`
           : `<div class="form-actions">${c.canEdit ? button("✎ Editar ficha", "t-edit-sheet", characterId, "primary") : ""}</div>`
       }`,
     );
     if (c.sheet) {
-      const { renderSheet } = await import("./pdf-sheet.js");
-      const container = $("#table-model-sheet");
-      sheetController = renderSheet(container, { pdfUrl: c.sheet.version.pdfUrl, pages: c.sheet.version.pages, fields: c.sheet.version.fields, mode: "view", values: { ...c.sheet.values, ...c.sheet.computed } });
-      $("#modal").addEventListener("close", () => sheetController?.destroy(), { once: true });
+      // Resumo com testes e itens que se usam + ficha completa com o botão de rolar (ADR-099). Editar continua na página da ficha.
+      const { mountTableSheet } = await tableSheet();
+      const canAct = master || (live.me.characterId === characterId && c.canEdit);
+      const release = mountTableSheet($("#table-model-sheet"), { c, base, master, canAct });
+      $("#modal").addEventListener("close", () => release(), { once: true });
     }
     paintBars($("#modal-body"));
     guardAvatars($("#modal-body"));
@@ -1331,6 +1405,20 @@ function mountTable(campaignId, sessionId, isMaster) {
     }
     if (action === "t-my-sheet" && live.me.characterId)
       await sheetModal(live.me.characterId);
+    if (action === "t-party-view" && live.me.isMaster) {
+      const { partyModal } = await tableSheet();
+      await partyModal({ campaignId });
+    }
+    if (action === "t-effects" && id) {
+      const { effectsDialog } = await tableSheet();
+      const mine = live.me.character?.id === id ? live.me.character : null;
+      const who = live.participants.find((x) => x.characterId === id);
+      const effects = mine?.effects ?? who?.summary?.effects ?? [];
+      effectsDialog({ base, characterId: id, name: mine?.name || who?.characterName || "personagem", effects, onSaved: (items) => {
+        const text = document.querySelector("#ts-effects-text");
+        if (text) text.textContent = items.length ? items.map((e) => `${e.name}${e.rounds ? ` · ${e.rounds}` : ""}`).join(", ") : "Nenhuma.";
+      } });
+    }
     if (action === "t-edit-sheet") {
       openSheetEditor({ id }, async () => {});
     }
@@ -1445,6 +1533,17 @@ function mountTable(campaignId, sessionId, isMaster) {
     if (action === "t-token-look") { const sel = live.tokens.find((t) => t.id === selected); if (sel) await (await tools()).openTokenLook({ base, campaignId, token: sel }); }
     if (action === "t-move-grant") await quick(`${base}/move-grant`, "POST", { allowed: id === "1" });
     if (action === "t-token-reveal-all") { await quick(`${base}/tokens/${id}/reveal`, "POST", { all: true, userIds: [] }); $("#modal").close(); }
+    if (action === "t-palette") openCommandPalette();
+    if (action === "t-gather") {
+      if (live.map.kind !== "tileset") return toast("Colocar o grupo exige um mapa com grade.");
+      const r = await api(`${base}/party/gather`, "POST");
+      toast(r.moved + r.placed ? `Grupo reunido na entrada (${r.moved + r.placed} ${r.moved + r.placed === 1 ? "personagem" : "personagens"}). Cada movimento pode ser desfeito.` : "O grupo já está na entrada.");
+    }
+    if (action === "t-npc-place") {
+      if (live.map.kind !== "tileset") return toast("Colocar personagens exige um mapa com grade.");
+      pendingNpc = id; setMode("place");
+      $("#t-board")?.focus?.();
+    }
     if (action === "t-view-as") {
       if (viewAs) { viewAs = null; viewAsState = null; renderTools(); board.update(boardState(), boardView()); }
       else viewAsModal();
@@ -1535,7 +1634,21 @@ function mountTable(campaignId, sessionId, isMaster) {
   document.addEventListener("keydown", onKey);
 
   poll();
+  // Busca de ações (ADR-100): mesmo despacho dos botões; o servidor revalida tudo.
+  const disposePalette = mountCommandPalette($(".table-shell"), {
+    getContext: () => ({ role: live?.me.isMaster ? "master" : "player", mode: ui }),
+    getCommands: () => !live ? [] : tableCommands({
+      isMaster: live.me.isMaster, tiles: live.map.kind === "tileset", fogOn: !!live.fog?.active, complete: ui === "complete",
+      selected: live.tokens.find((t) => t.id === selected) || null, undoId: lastUndoable()?.id ?? null,
+      ended: !!live.session.endedAt, paused: !!live.play?.paused,
+    }),
+    onRun: async (c) => {
+      if (c.needsComplete) setInterfaceMode("complete");
+      await command(c.action, c.arg, null);
+    },
+  });
   return () => {
+    disposePalette();
     stop();
     document.removeEventListener("click", onModalClick);
     document.removeEventListener("keydown", onKey);

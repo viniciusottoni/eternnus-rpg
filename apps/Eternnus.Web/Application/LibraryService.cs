@@ -98,6 +98,16 @@ public class LibraryService(GameDb db, AuditService audit)
         return (file, row.FileName);
     }
 
+    /// <summary>Arquivo atual do item para a miniatura (só id e tipo; o conteúdo é lido apenas quando não há cache). Mesmo acesso de <see cref="FileAsync"/>.</summary>
+    public async Task<(Guid FileId, string ContentType)> ThumbnailSourceAsync(Guid id, string userId, CancellationToken ct)
+    {
+        var row = await db.Library.AsNoTracking().Where(i => i.Id == id)
+            .Join(db.Files, i => i.FileId, f => f.Id, (i, f) => new { i.FileId, i.DeletedAt, f.ContentType })
+            .SingleOrDefaultAsync(ct) ?? throw NotFound();
+        if (row.DeletedAt != null && !PlatformRoles.IsStaff(await RoleAsync(userId, ct))) throw NotFound();
+        return (row.FileId, row.ContentType);
+    }
+
     /// <summary>Contador de downloads: incremento atômico, sem alterar a revisão (não gera conflito com edições).</summary>
     public async Task MarkDownloadedAsync(Guid id, CancellationToken ct)
     {

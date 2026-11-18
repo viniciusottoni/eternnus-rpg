@@ -11,6 +11,7 @@ import { isAdmin } from "./policy.js";
 import { mountClientTable } from "./data-table.js";
 import { isGuid } from "./session-policy.js";
 import { renderSheet, clampZoom } from "./pdf-sheet.js";
+import { isListField, lineFieldNames } from "./item-notes-policy.js";
 import { validate, validateFields, rollPreview, computeSheet, sheetScope } from "./formula.js";
 import {
   LIMITS,
@@ -18,6 +19,8 @@ import {
   FIELD_ROLES,
   ACTION_KINDS,
   ALIGNS,
+  NOTES_MODES,
+  ROLL_MODES,
   CHANGE_LABELS,
   UndoStack,
   typeInfo,
@@ -41,6 +44,13 @@ import {
   referenceSuggestions,
   applySuggestion,
   lostOnRename,
+  supportsNotes,
+  supportsRoll,
+  notesMode,
+  notesFromMode,
+  rollMode,
+  rollFromMode,
+  rollFormulaError,
 } from "./sheet-editor-policy.js";
 
 const PAGE_SIZE = 20;
@@ -591,6 +601,9 @@ class Editor {
       fields: this.doc.fields,
       mode: edit ? "edit" : this.view === "test" ? "fill" : "view",
       values: this.view === "test" ? this.samples : {},
+      // Listas e colunas de lista linha a linha, como na ficha do jogador (ADR-098); descrições só na ficha.
+      isList: isListField,
+      isLines: ((names) => (f) => names.has(f.name))(lineFieldNames(this.doc.fields, this.doc.pages)),
       snap: this.snap ? 0.005 : 0,
       label: edit ? "Ficha em edição" : "Pré-visualização da ficha",
       invalid: this.invalidNames(),
@@ -750,7 +763,10 @@ class Editor {
     else if (this.tab === "version") panel.innerHTML = this.versionPanel();
     else panel.innerHTML = this.fieldPanel();
     if (this.view === "test") this.renderTestResults();
-    if (this.tab === "field") this.refreshFormulaCheck();
+    if (this.tab === "field") {
+      this.refreshFormulaCheck();
+      this.refreshRollCheck();
+    }
   }
   fieldPanel() {
     const f = this.doc.fields[this.selected];
@@ -791,8 +807,10 @@ class Editor {
       ? `<div class="tpl-prop-row"><div class="field"><label for="ed-prop-min">Mínimo</label><input id="ed-prop-min" data-prop="min" inputmode="decimal" value="${num(f.min)}" ${ro}></div><div class="field"><label for="ed-prop-max">Máximo</label><input id="ed-prop-max" data-prop="max" inputmode="decimal" value="${num(f.max)}" ${ro}></div></div>`
       : ""
   }
+  ${supportsRoll(f.type) ? this.rollControls(f, ro) : ""}
   ${f.type === "number" || textual ? `<div class="field"><label for="ed-prop-default">Valor inicial</label><input id="ed-prop-default" data-prop="default" maxlength="200" ${f.type === "number" ? 'inputmode="decimal"' : ""} value="${esc(f.default ?? "")}" ${ro}></div>` : ""}
   ${textual ? `<div class="field"><label for="ed-prop-maxlength">Limite de caracteres</label><input id="ed-prop-maxlength" data-prop="maxLength" type="number" min="1" max="${f.type === "textarea" ? 10000 : 2000}" value="${num(f.maxLength)}" placeholder="Sem limite próprio" ${ro}></div>` : ""}
+  ${supportsNotes(f.type) ? this.notesControls(f, ro) : ""}
   ${f.type === "checkbox" ? `<div class="field"><label for="ed-prop-default">Valor inicial</label><select id="ed-prop-default" data-prop="default" ${ro}><option value="">Desmarcada</option><option value="true" ${f.default === "true" ? "selected" : ""}>Marcada</option></select></div>` : ""}
   ${
     f.type === "select"
@@ -854,7 +872,20 @@ class Editor {
         if (f.type === "checkbox" && !["true", "false"].includes(f.default)) f.default = null;
         if (!["text", "textarea"].includes(f.type)) f.maxLength = null;
         if (!["number", "computed"].includes(f.type)) f.min = f.max = null;
+        if (!supportsNotes(f.type)) f.notes = null;
+        if (!supportsRoll(f.type)) f.roll = null;
         rerender = true;
+        break;
+      case "notes":
+        f.notes = notesFromMode(raw);
+        rerender = true;
+        break;
+      case "rollMode":
+        f.roll = rollFromMode(raw, f);
+        rerender = true;
+        break;
+      case "roll":
+        f.roll = raw;
         break;
       case "role":
         f.role = raw || null;
@@ -913,7 +944,8 @@ class Editor {
     this.changed({ panel: rerender });
     if (prop === "name" || prop === "label") this.refreshNameMessage();
     if (prop === "formula") this.refreshFormulaCheck();
-    if (rerender) $("#ed-prop-" + (prop === "maxLength" ? "maxlength" : prop))?.focus();
+    if (prop === "roll") this.refreshRollCheck();
+    if (rerender) $("#ed-prop-" + ({ maxLength: "maxlength", rollMode: "roll-mode" }[prop] || prop))?.focus();
   }
   refreshNameMessage() {
     const f = this.doc.fields[this.selected];
@@ -954,6 +986,51 @@ class Editor {
     const values = computeSheet(compactDoc(this.doc).fields, sampleValues(this.doc.fields));
     msg.className = "tpl-msg is-ok";
     msg.textContent = `✓ Fórmula válida. Com os valores de exemplo: ${values[f.name] || "—"}.`;
+  }
+  // ADR-099: descrições por item (texto) e rolagem ao clicar (número/calculado), gravadas por campo.
+  notesControls(f, ro) {
+    const mode = notesMode(f);
+    const hint =
+      mode === "yes"
+        ? "Cada linha vira um item e o jogador pode descrever cada um na ficha."
+        : mode === "no"
+          ? "Texto corrido: sem descrições por item."
+          : isListField({ ...f, notes: null })
+            ? "Automático: pelo nome, este campo é tratado como lista com descrições."
+            : "Automático: pelo nome, este campo é texto corrido.";
+    return `<div class="field"><div class="field-label"><label for="ed-prop-notes">Descrições por item</label>${helpButton("modelos.campo.descricoes-por-item", "Descrições por item")}</div><select id="ed-prop-notes" data-prop="notes" aria-describedby="ed-prop-notes-msg" ${ro}>${NOTES_MODES.map((m) => `<option value="${m.value}" ${m.value === mode ? "selected" : ""}>${esc(m.label)}</option>`).join("")}</select>
+    <p class="tpl-msg" id="ed-prop-notes-msg">${esc(hint)}</p></div>`;
+  }
+  rollControls(f, ro) {
+    const mode = rollMode(f);
+    const select = `<div class="field"><div class="field-label"><label for="ed-prop-roll-mode">Rolar ao clicar</label>${helpButton("modelos.campo.rolar-ao-clicar", "Rolar ao clicar")}</div><select id="ed-prop-roll-mode" data-prop="rollMode" aria-describedby="ed-prop-roll-msg" ${ro}>${ROLL_MODES.map((m) => `<option value="${m.value}" ${m.value === mode ? "selected" : ""}>${esc(m.label)}</option>`).join("")}</select></div>`;
+    const formula =
+      mode === "custom"
+        ? `<div class="field tpl-formula-field"><label for="ed-prop-roll">Fórmula de rolagem</label><div class="tpl-combo"><input id="ed-prop-roll" data-prop="roll" maxlength="${LIMITS.roll}" spellcheck="false" value="${esc(f.roll || "")}" placeholder="Ex.: 1d20 + @${esc(f.name)}" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="ed-prop-roll-list" aria-describedby="ed-prop-roll-msg" ${ro}><ul class="tpl-suggest" id="ed-prop-roll-list" role="listbox" hidden></ul></div></div>`
+        : "";
+    return `${select}${formula}<p class="tpl-msg" id="ed-prop-roll-msg" aria-live="polite"></p>`;
+  }
+  refreshRollCheck() {
+    const f = this.doc.fields[this.selected];
+    const msg = $("#ed-prop-roll-msg");
+    if (!f || !msg || !supportsRoll(f.type)) return;
+    const input = $("#ed-prop-roll");
+    const mode = rollMode(f);
+    input?.setAttribute("aria-invalid", "false");
+    if (mode === "auto") {
+      msg.className = "tpl-msg";
+      msg.textContent = "Automático: a ficha decide pelo nome e pelo papel do campo se ele rola ao clicar.";
+      return;
+    }
+    if (mode === "none") {
+      msg.className = "tpl-msg";
+      msg.textContent = input ? "Sem fórmula, o campo não rola ao clicar." : "O valor deste campo nunca rola ao clicar.";
+      return;
+    }
+    const error = rollFormulaError(f, this.doc.fields);
+    input?.setAttribute("aria-invalid", String(!!error));
+    msg.className = "tpl-msg " + (error ? "is-error" : "is-ok");
+    msg.textContent = error || "✓ Fórmula válida. Use dados (1d20, 2d20kh1, 1d100 <= @campo) e @campos numéricos.";
   }
   fieldsPanel() {
     if (!this.doc.fields.length)

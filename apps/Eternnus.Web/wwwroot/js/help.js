@@ -1,6 +1,6 @@
 import { esc } from './ui.js';
 import { state } from './state.js';
-import { HELP_KEYS, validHelpKey, validTip, validTipDetail, validHelpEntry, canReadHelp, catalogModule, safeHelpRoute } from './help-policy.js';
+import { HELP_KEYS, validHelpKey, validTip, validTipDetail, validTipFull, validHelpEntry, canReadHelp, catalogModule, safeHelpRoute } from './help-policy.js';
 
 const localDevelopment = () => ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
 const context = () => ({ isMaster: state.liveTable ? state.liveTable.isMaster === true : state.campaign?.isMaster === true, isPlayer: state.liveTable?.isMaster === false });
@@ -93,9 +93,20 @@ function place(el, origin) {
 }
 function showTip(el) {
   clearTimeout(showTimer); showTimer = null;
-  if (dismissed || !el.isConnected || !validTip(el.dataset.tip)) return;
+  const full = validTipFull(el.dataset.tipFull) ? el.dataset.tipFull : '';
+  if (dismissed || !el.isConnected || (!full && !validTip(el.dataset.tip))) return;
   hideTip();
   tipTrigger = el;
+  // Linha cortada com "…": o texto inteiro, sem formatação, numa caixa um pouco mais larga.
+  tooltip.classList.toggle('tooltip-full', !!full);
+  if (full) {
+    tooltip.textContent = full;
+    tooltip.classList.remove('tooltip-rich');
+    mount(tooltip, el);
+    tooltip.showPopover();
+    place(tooltip, el);
+    return;
+  }
   // Nome em destaque e, quando houver, uma descrição curta do que fazer, em letras menores.
   const detail = el.dataset.tipDetail;
   if (validTipDetail(detail)) {
@@ -249,7 +260,7 @@ export function installHelp() {
   }, true);
   document.addEventListener('pointerover', (event) => {
     if (event.pointerType === 'touch') return;
-    const target = event.target.closest('[data-tip], #help-tooltip');
+    const target = event.target.closest('[data-tip], [data-tip-full], #help-tooltip');
     if (!target || target.contains(event.relatedTarget)) return;
     hoverTarget = target; clearTimeout(hideTimer);
     if (target === tooltip) return;
@@ -257,9 +268,9 @@ export function installHelp() {
     showTimer = setTimeout(() => showTip(target), 400);
   });
   document.addEventListener('pointerout', (event) => {
-    const target = event.target.closest('[data-tip], #help-tooltip');
+    const target = event.target.closest('[data-tip], [data-tip-full], #help-tooltip');
     if (!target || target.contains(event.relatedTarget)) return;
-    hoverTarget = event.relatedTarget?.closest?.('[data-tip], #help-tooltip') || null;
+    hoverTarget = event.relatedTarget?.closest?.('[data-tip], [data-tip-full], #help-tooltip') || null;
     scheduleHideTip();
   });
   document.addEventListener('focusin', (event) => {

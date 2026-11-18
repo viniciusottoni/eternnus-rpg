@@ -141,6 +141,13 @@ O `GET …/live` passa a incluir `fog`:
 | `POST /api/sessions/{id}/fog/lights` | Mestre | Aceita também `dim, color, intensity, animation`. |
 | `POST /api/campaigns/{id}/prep/preview-view` | Mestre | `{ mapKey, sceneId?, layer?, tokens, visionMode?, viewerCharacterId? \| viewerUserId? \| party }` → `{ active, viewer, visible, explored, cells, lights, walls, marks, shown, perceived }` (índices do arranjo). Somente leitura. |
 
+## Predefinições, desfazer e peso da cena (ADR-100)
+
+- **Tipos de luz:** Vela (1/2), Tocha (4/8), Fogueira (5/10) e Lanterna (6/12), em casas de luz plena e penumbra. A escolha preenche os números validados pelo servidor. "Personalizado" mostra o raio na Básica; a Completa mantém penumbra, cor, intensidade e animação. Os valores não dependem de nenhum sistema de RPG.
+- **Marcador:** "Luz carregada" (Sem luz ou um dos tipos) e "Visão no escuro" (sem, curta 6, longa 12). "Usar o valor da ficha/padrão da mesa" deixa o campo vazio, como antes.
+- **Desfazer:** revelar e cobrir na mesa geram evento privado do mestre com as casas alteradas. Desfazer só vale no mesmo mapa/camada e se as casas ainda estiverem como a pintura deixou. A exploração dos jogadores (memória) não é apagada.
+- **Peso:** o editor mostra "Cena pesada" a partir de 80% dos limites do servidor (paredes, luzes, marcas, marcadores). É aviso de limite; o custo real de desenho não foi medido.
+
 ## Limites conhecidos
 
 - Bytes de imagem já entregues não podem ser recolhidos. Escurecer de novo uma casa que o jogador já explorou não apaga o que ele pode ter guardado; a mesa avisa o mestre.

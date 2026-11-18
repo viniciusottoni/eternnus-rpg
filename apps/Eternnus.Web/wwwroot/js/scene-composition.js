@@ -105,7 +105,7 @@ export function createSceneComposer(opts) {
     doc: drawDoc,
     selection: () => selection,
     tool: () => (["select", "hand", "zoom"].includes(opts.tool()) ? opts.tool() : "select"),
-    options: () => ({ showGrid: !!opts.options?.().grid, snap: opts.options?.().snap !== false, snapObjects: opts.options?.().snapObjects !== false, hideOutside: false, grid: opts.options?.().grid || null }),
+    options: () => ({ showGrid: !!opts.options?.().grid, snap: opts.options?.().snap !== false, snapObjects: opts.options?.().snapObjects !== false, hideOutside: false, grid: opts.options?.().grid || null, keepRatio: opts.keepRatio?.() !== false }),
     resolveSrc: opts.resolveSrc,
     cache: opts.cache,
     // Clicar num membro de grupo seleciona o grupo inteiro (mesma regra do editor de mapas).

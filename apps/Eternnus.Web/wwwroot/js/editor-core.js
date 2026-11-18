@@ -3,7 +3,8 @@
 // Usado pelos editores de mapas de tiles, mapas de imagem e cenas. Não faz chamadas HTTP nem guarda estado de jogo.
 import { $, esc, modal, toast } from "./ui.js";
 import { helpButton } from "./help.js";
-import { interfaceMode, interfaceToggle, mountInterfaceToggle, onInterfaceChange } from "./interface-mode.js";
+import { interfaceMode, interfaceToggle, mountInterfaceToggle, onInterfaceChange, setInterfaceMode } from "./interface-mode.js";
+import { mountCommandPalette } from "./command-palette.js";
 import { FIELD_SAFE, clampMenu, isTypingTarget, isRequiredLayer, rulerLabel, rulerSteps, shortcutLabel, shortcutOf, zoomLabel,
   normalizeContexts, toolInContext, panelInContext, availableContexts, toolAfterContext, contextShortcutIndex,
   layoutPrefKey, normalizeLayoutPref, panelOrder, movePanel, PANEL_WIDTH } from "./editor-policy.js";
@@ -904,6 +905,15 @@ export function createEditorShell(opts) {
     return true;
   }
   const disposeToggle = mountInterfaceToggle(root);
+  // Busca de ações (ADR-100): as ferramentas do editor por nome; as da Completa trocam a interface ao escolher.
+  const disposePalette = mountCommandPalette(root, {
+    getContext: () => ({ role: "master", mode }),
+    getCommands: () => opts.tools.filter((t) => !t.hidden?.()).map((t) => ({
+      id: t.id, label: t.label, group: (opts.groups || []).find((g) => g.id === t.group)?.label || "Ferramentas", keywords: [t.tip || "", t.key ? `tecla ${t.key}` : ""],
+      basic: t.basic !== false, disabled: t.disabled?.() || null,
+    })),
+    onRun: (c) => { if (c.needsComplete) setInterfaceMode("complete"); useTool(c.id); },
+  });
   const stopMode = onInterfaceChange((next) => {
     mode = next; root.dataset.interface = next;
     const current = opts.tools.find((t) => t.id === tool);
@@ -912,6 +922,7 @@ export function createEditorShell(opts) {
     opts.onModeChange?.(next);
   });
   dialog.addEventListener("close", () => {
+    disposePalette();
     closed = true;
     cancelAnimationFrame(rulerFrame);
     topFit.disconnect();

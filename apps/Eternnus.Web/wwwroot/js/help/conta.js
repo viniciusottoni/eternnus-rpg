@@ -36,6 +36,16 @@ const entries = {
     ],
     "audience": "all"
   },
+  "conta.uso.limites": {
+    "title": "Uso da conta",
+    "summary": "Quotas, contadores e espaço das campanhas que você mestra.",
+    "body": [
+      "Campanhas ativas somam as que você mestra e as de que participa; arquivadas continuam contando. Participações em one-shots são vitalícias. Sem limite (Administradores e Embaixadores), o número aparece com ∞ e continua sendo contado.",
+      "Armazenamento soma o que está guardado nas campanhas e one-shots que você mestra, separado por cor: imagens e mapas, anexos e atlas, versões salvas e textos, mais as imagens das suas fichas de personagem. Textos são uma estimativa por caracteres.",
+      "Só imagens e mapas têm limite: até 250 MB por campanha. A capacidade mostrada é a soma desse limite das campanhas que você mestra; os demais tipos aparecem para orientação."
+    ],
+    "audience": "all"
+  },
   "conta.app.instalacao": {
     "title": "Instalar o Eternnus",
     "summary": "Você pode adicionar o site à tela inicial.",

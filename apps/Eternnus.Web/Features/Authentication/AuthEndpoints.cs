@@ -45,7 +45,7 @@ public static class AuthEndpoints
         api.MapGet("/limits", async (ClaimsPrincipal principal, UserManager<AppUser> users, GameDb db, CancellationToken ct) =>
         {
             var user = await users.GetUserAsync(principal);
-            return user == null ? Results.Unauthorized() : Results.Ok(await AccountLimits.SummaryAsync(db, user, ct));
+            return user == null ? Results.Unauthorized() : Results.Ok(await AccountLimits.AccountAsync(db, user, ct));
         }).RequireAuthorization();
         api.MapPost("/register", async (RegisterInput x, UserManager<AppUser> users, SignInManager<AppUser> signIn, AccountMail mail, GameDb db) =>
         {

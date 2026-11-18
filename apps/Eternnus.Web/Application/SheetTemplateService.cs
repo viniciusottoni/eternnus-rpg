@@ -38,6 +38,8 @@ public static class SheetTemplateLimits
 {
     public const int MaxPages = 50, MaxFields = 300, MaxActions = 100, MaxOptions = 50, MaxOptionLength = 80, MaxNotes = 1000;
     public const int MaxTemplateName = 100, MaxTemplateDescription = 2000, MaxTextLength = 10000;
+    /// <summary>Fórmula de rolagem por campo (<see cref="SheetField.Roll"/>).</summary>
+    public const int MaxRollFormula = 120;
     public const double MinPageSize = 50, MaxPageSize = 5000, MinFontSize = 4, MaxFontSize = 72;
     /// <summary>Menor lado de um campo, em fração da página (≈ 2,4 pt numa A4).</summary>
     public const double MinFieldSize = 0.004;
@@ -537,7 +539,7 @@ public class SheetTemplateService(GameDb db, AuditService audit)
     // ---------------- Validação ----------------
 
     /// <summary>Ponto ÚNICO de chamada à linguagem de fórmulas (WP3) ao publicar: estrutura + regras semânticas + SheetCalculator.ValidateFields
-    /// + Formula.Validate(modo Roll, nomes numéricos) para cada ação. Enquanto a linguagem não estiver disponível, responde 503.</summary>
+    /// + Formula.Validate(modo Roll, nomes numéricos) para cada ação e cada rolagem de campo. Enquanto a linguagem não estiver disponível, responde 503.</summary>
     public static IReadOnlyList<SheetIssue> ValidateForPublish(SheetTemplateVersion v)
     {
         var issues = StructureIssues(v.Pages, v.Fields, v.Actions, v.Notes);
@@ -550,6 +552,12 @@ public class SheetTemplateService(GameDb db, AuditService audit)
             {
                 var check = Formula.Validate(a.Formula, FormulaMode.Roll, numeric);
                 if (!check.Ok) issues.Add(new SheetIssue(null, a.Key, $"Ação \"{a.Name}\": {check.Error ?? "fórmula inválida."}"));
+            }
+            // ADR-099: rolagem por campo usa a mesma linguagem e o mesmo escopo das ações ("" = não rolar; nulo = automático).
+            foreach (var f in v.Fields.Where(f => f.Type is SheetFieldTypes.Number or SheetFieldTypes.Computed && !string.IsNullOrWhiteSpace(f.Roll)))
+            {
+                var check = Formula.Validate(f.Roll!, FormulaMode.Roll, numeric);
+                if (!check.Ok) issues.Add(new SheetIssue(f.Name, null, $"Campo {f.Name}: rolagem — {check.Error ?? "fórmula inválida."}"));
             }
         }
         catch (NotImplementedException)
@@ -606,6 +614,9 @@ public class SheetTemplateService(GameDb db, AuditService audit)
             if (f.Track == SheetSummary.Resource && f.Type is not SheetFieldTypes.Number) Add("recursos ajustáveis na mesa precisam ser numéricos.");
             if (f.MaxField is not null && !fields.Any(o => o.Name == f.MaxField && o.Type is SheetFieldTypes.Number or SheetFieldTypes.Computed)) Add("o teto do recurso deve apontar para um campo numérico.");
             if ((f.Section ?? "").Length > 60) Add("seção com mais de 60 caracteres.");
+            if (f.Notes is not null && f.Type is not (SheetFieldTypes.Text or SheetFieldTypes.TextArea)) Add("descrições por item só valem para campos de texto.");
+            if (f.Roll is not null && f.Type is not (SheetFieldTypes.Number or SheetFieldTypes.Computed)) Add("a rolagem ao clicar só vale para campos numéricos ou calculados.");
+            if ((f.Roll ?? "").Length > SheetTemplateLimits.MaxRollFormula) Add($"fórmula de rolagem com mais de {SheetTemplateLimits.MaxRollFormula} caracteres.");
         }
         var keys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var a in actions.Take(SheetTemplateLimits.MaxActions + 1))
@@ -649,7 +660,7 @@ public class SheetTemplateService(GameDb db, AuditService audit)
         return issues;
     }
 
-    /// <summary>Diferenças por NOME de campo e chave de ação. "changed" = significado (tipo, papel, fórmula, padrão, limites, opções, rótulo);
+    /// <summary>Diferenças por NOME de campo e chave de ação. "changed" = significado (tipo, papel, fórmula, padrão, limites, opções, rótulo, descrições por item, rolagem);
     /// "moved" = só posição/aparência.</summary>
     public static SheetVersionDiff Diff(SheetTemplateVersion? before, SheetTemplateVersion after)
     {
@@ -670,6 +681,8 @@ public class SheetTemplateService(GameDb db, AuditService audit)
             if (o.Max != f.Max) changes.Add("max");
             if (o.MaxLength != f.MaxLength) changes.Add("maxLength");
             if (!o.Options.SequenceEqual(f.Options)) changes.Add("options");
+            if (o.Notes != f.Notes) changes.Add("notes");
+            if (o.Roll != f.Roll) changes.Add("roll");
             if (changes.Count > 0) changed.Add(new SheetFieldDiff(f.Name, changes));
             else if (o.Page != f.Page || !Same(o.X, f.X) || !Same(o.Y, f.Y) || !Same(o.W, f.W) || !Same(o.H, f.H) || !Same(o.FontSize, f.FontSize) || o.Align != f.Align) moved.Add(f.Name);
         }
@@ -811,6 +824,13 @@ public class SheetTemplateService(GameDb db, AuditService audit)
             Options = type == SheetFieldTypes.Select ? (f.Options ?? []).Select(o => (o ?? "").Trim()).ToList() : [],
             FontSize = f.FontSize,
             Align = string.IsNullOrWhiteSpace(f.Align) ? "left" : f.Align.Trim(),
+            // ADR-099: descrições por item só em texto; rolagem só em número/calculado ("" = não rolar é preservado).
+            Notes = textual ? f.Notes : null,
+            Roll = type is SheetFieldTypes.Number or SheetFieldTypes.Computed ? f.Roll?.Trim() : null,
+            // Ficha resumida: marcação de recurso/destaque, teto e seção não podem sumir ao salvar pelo editor.
+            Track = f.Track is { } track && SheetSummary.Tracks.Contains(track.Trim()) ? track.Trim() : null,
+            MaxField = string.IsNullOrWhiteSpace(f.MaxField) ? null : Clip(f.MaxField.Trim(), 40),
+            Section = string.IsNullOrWhiteSpace(f.Section) ? null : Clip(f.Section.Trim(), 60),
         };
     }
 
@@ -827,7 +847,8 @@ public class SheetTemplateService(GameDb db, AuditService audit)
     static SheetField CloneField(SheetField f) => new()
     {
         Name = f.Name, Label = f.Label, Type = f.Type, Role = f.Role, Page = f.Page, X = f.X, Y = f.Y, W = f.W, H = f.H, Formula = f.Formula, Default = f.Default,
-        Min = f.Min, Max = f.Max, MaxLength = f.MaxLength, Options = [.. f.Options], FontSize = f.FontSize, Align = f.Align,
+        Min = f.Min, Max = f.Max, MaxLength = f.MaxLength, Options = [.. f.Options], FontSize = f.FontSize, Align = f.Align, Notes = f.Notes, Roll = f.Roll,
+        Track = f.Track, MaxField = f.MaxField, Section = f.Section,
     };
     static SheetActionDefinition CloneAction(SheetActionDefinition a) => new() { Key = a.Key, Name = a.Name, Kind = a.Kind, Formula = a.Formula, Description = a.Description };
 

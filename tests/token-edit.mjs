@@ -87,11 +87,12 @@ try {
   ok(!/Sem ficha/.test(await m.locator('#t-hint').textContent()), 'dica deixa de avisar depois do vínculo');
   await m.screenshot({ path: `${out}/master-linked.png`, animations: 'disabled' });
 
-  // Segundo vínculo é recusado; o modal passa a orientar para "Ficha do elemento".
+  // Segundo vínculo direto é recusado; trocar exige marcar "Trocar ou remover a ficha" (ADR-100, J7).
   await master(`${base}/tokens/${skeleton.id}/settings`, 'POST', settings({ templateId: template }), 409);
   await edit.click();
   await m.locator('#token-settings-form').waitFor();
-  check(await m.locator('#f-template').count(), 0, 'marcador vinculado não oferece outro vínculo');
+  check(await m.locator('#f-template').isVisible(), false, 'marcador vinculado não oferece outro vínculo direto');
+  ok(await m.locator('[data-unlink-sheet]').count(), 'marcador vinculado oferece trocar ou remover a ficha');
   await m.keyboard.press('Escape');
   check(errors, [], 'sem erros no navegador');
   console.log('token-edit: ok');

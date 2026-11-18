@@ -9,6 +9,24 @@ const entries = {
     ],
     "audience": "master"
   },
+  "sessoes.abertura.cena": {
+    "title": "Iniciar pela cena",
+    "summary": "A sessão pode abrir já apresentando uma cena preparada.",
+    "body": [
+      "Ao escolher uma cena, a mesa abre no mapa dela, com os marcadores, a névoa e o texto preparados. Cenas de texto usam o mapa escolhido logo abaixo.",
+      "Escolha “Só um mapa” para começar sem cena. As cenas continuam disponíveis na aba Cenas da mesa."
+    ],
+    "audience": "master"
+  },
+  "sessoes.inicio.checklist": {
+    "title": "Pronto para jogar?",
+    "summary": "Mostra o que já está pronto antes da primeira sessão.",
+    "body": [
+      "Convite e fichas mostram quantos jogadores entraram e quantos já têm ficha. A cena é opcional: sem ela, a sessão abre num mapa pronto.",
+      "Você pode iniciar a qualquer momento. Quem entrar depois vai direto para a mesa e cria a ficha por lá."
+    ],
+    "audience": "master"
+  },
   "sessoes.historico.alteracoes": {
     "title": "Antes e depois",
     "summary": "O histórico registra as mudanças da sessão.",

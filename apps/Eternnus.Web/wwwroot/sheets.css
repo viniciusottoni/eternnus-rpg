@@ -1134,3 +1134,153 @@
   justify-content: flex-start;
   text-align: left;
 }
+
+/* Imagem do personagem (ADR-097): coluna própria ao lado do PDF; nada cobre as páginas da ficha. */
+.cs-body { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; align-items: start; }
+.cs-portrait { position: sticky; top: 16px; padding: 18px; display: grid; gap: 10px; justify-items: center; text-align: center; }
+.cs-portrait-head { display: flex; align-items: center; gap: 8px; justify-self: stretch; justify-content: center; }
+.cs-portrait-head h2 { margin: 0; font-size: 13px; letter-spacing: .04em; color: var(--bright); }
+.cs-portrait-frame { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 3 / 4; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: radial-gradient(circle at 50% 35%, #3a3424, #121210 70%); color: var(--gold); }
+button.cs-portrait-frame { cursor: zoom-in; }
+button.cs-portrait-frame:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.cs-portrait-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.cs-portrait-frame.is-loaded .cs-portrait-initials { visibility: hidden; }
+.cs-portrait-initials { font: 48px var(--serif); opacity: .75; }
+.cs-portrait-name { margin: 0; font: 17px var(--serif); color: var(--text); overflow-wrap: anywhere; }
+.cs-portrait-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.cs-portrait-actions button { min-height: 44px; }
+.cs-portrait .form-help { margin: 0; }
+.cs-portrait-status:empty { display: none; }
+@media (max-width: 900px) {
+  .cs-body { grid-template-columns: minmax(0, 1fr); }
+  .cs-portrait { position: static; grid-template-columns: 112px minmax(0, 1fr); justify-items: start; text-align: left; align-items: center; }
+  .cs-portrait-head, .cs-portrait-name, .cs-portrait-actions, .cs-portrait .form-help { grid-column: 2; }
+  .cs-portrait-head { justify-content: flex-start; grid-row: 1; }
+  .cs-portrait-frame { grid-column: 1; grid-row: 1 / span 4; }
+  .cs-portrait-actions { justify-content: flex-start; }
+}
+/* Cartão de Personagens: a imagem ocupa a faixa do topo, cobre sem distorcer e começa pelo alto (rosto). */
+.character-card .card-top { height: 140px; }
+.card-top.has-portrait { position: relative; overflow: hidden; align-items: flex-start; justify-content: flex-end; background: #121210; }
+.card-top .character-banner { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.card-top.has-portrait::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, #0000 55%, #0b0f0dcc); pointer-events: none; }
+.card-top.has-portrait .badge { position: relative; z-index: 1; background: #1b1c16e6; }
+
+/* Campos de lista da ficha (ADR-098): um item por linha; o que não cabe vira "…" e o hover mostra o texto inteiro. */
+.ps-list .ps-value.ps-ellipsis,
+.ps-list input.ps-control { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ps-list textarea.ps-control { white-space: pre; overflow-x: hidden; }
+.ps-lines { position: absolute; inset: 0; overflow: hidden; padding-top: 0.15em; line-height: 1.3; pointer-events: none; }
+.ps-mode-view .ps-lines { line-height: 1.15; padding-top: 0; }
+.ps-line { min-height: 1.3em; overflow: hidden; white-space: pre; text-overflow: ellipsis; padding: 0 0.2em; pointer-events: auto; cursor: text; }
+.ps-mode-view .ps-line { min-height: 1.15em; cursor: default; }
+.ps-line.has-note { box-shadow: inset 2px 0 0 #b8892c; }
+/* Fora da edição, a camada de linhas aparece por cima do texto (transparente) do campo; editando, some. */
+.ps-fill.ps-list textarea.ps-control:not(:focus) { color: transparent; caret-color: var(--ps-ink); }
+.ps-fill.ps-list:focus-within .ps-lines { display: none; }
+/* Linha a linha (listas e colunas de lista): mesma altura de linha do PDF exportado (1,2 × fonte) e 1ª linha 1 pt abaixo do topo,
+   para cada item cair na linha impressa, editando ou não. */
+.ps-list textarea.ps-control,
+.ps-list .ps-lines,
+.ps-mode-view .ps-list .ps-lines { line-height: 1.2; padding-top: calc(var(--ps-scale, 1) * 1px - 0.04em); }
+.ps-list .ps-line,
+.ps-mode-view .ps-list .ps-line { min-height: 1.2em; padding: 0 0.25em; }
+.ps-note { position: absolute; top: 0; right: 0; z-index: 2; display: grid; place-items: center; min-width: 16px; min-height: 0; height: 16px; box-shadow: none; line-height: 1; padding: 0 4px; border: 1px solid #8a7a5a; border-radius: 8px; background: #fffaf0; color: #6b5c3e; font: 700 10px/1 system-ui, sans-serif; opacity: 0; transition: opacity var(--motion-fast, 180ms) ease; cursor: pointer; }
+.ps-note::before { content: ""; position: absolute; inset: -14px; }
+.ps-note.has-notes { opacity: 1; background: #b8892c; border-color: #8a651c; color: #fff; }
+.ps-list:hover .ps-note, .ps-list:focus-within .ps-note, .ps-note:focus-visible { opacity: 1; }
+.ps-note:focus-visible { outline: 2px solid #1d5fa8; outline-offset: 1px; }
+@media (hover: none) { .ps-note { opacity: .7; } }
+@media (prefers-reduced-motion: reduce) { .ps-note { transition: none; } }
+.cs-notes-button { margin-top: 6px; min-height: 44px; }
+
+/* Popup de descrições: mesmo visual do modal padrão, em diálogo próprio (abre também sobre a ficha da mesa). */
+.notes-dialog { width: min(620px, calc(100vw - 32px)); max-height: min(86dvh, 760px); }
+.notes-dialog-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 6px 4px; }
+.notes-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 14px; }
+.notes-list label { overflow-wrap: anywhere; }
+.notes-list textarea { width: 100%; min-height: 88px; resize: vertical; }
+.notes-read { display: grid; gap: 14px; margin: 0; }
+.notes-read dt { color: var(--bright); font-weight: 600; overflow-wrap: anywhere; }
+.notes-read dd { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.notes-dialog .form-actions { position: sticky; bottom: -6px; margin-top: 16px; padding: 12px 0 6px; background: #0f1817; border-top: 1px solid #c6a46333; }
+
+/* ADR-099: ficha em jogo — rolar, resumo, busca, rascunho, condições e visão do grupo */
+.cs-view { display: inline-flex; align-items: center; gap: 4px; }
+.cs-view [aria-pressed="true"], .ts-tabs [aria-pressed="true"] { border-color: var(--gold); color: var(--bright); background: #c6a46322; }
+.cs-find { position: relative; display: inline-flex; align-items: center; gap: 4px; }
+.cs-find input { width: min(220px, 52vw); min-height: 44px; }
+.cs-find-results { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; display: grid; gap: 2px; width: min(360px, 86vw); max-height: 320px; overflow-y: auto; margin: 0; padding: 6px; list-style: none; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); }
+.cs-find-results button { width: 100%; justify-content: flex-start; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.cs-find-results li.muted { padding: 8px; }
+.cs-draft { margin: 12px 0; }
+.cs-draft p { margin: 0 0 8px; }
+.cs-compact { padding: 16px; min-width: 0; }
+.cs-restore-point { margin: 8px 0 16px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); }
+.cs-restore-point select { min-width: 0; flex: 1 1 260px; }
+.cs-history li .small, .cs-history li button { margin-top: 6px; }
+
+/* Botão de rolar no campo da ficha (PDF): discreto, aparece no hover/foco e sempre visível no toque. */
+.ps-roll { position: absolute; top: 50%; right: -20px; transform: translateY(-50%); z-index: 3; display: grid; place-items: center; min-width: 18px; min-height: 0; height: 18px; padding: 0 3px; box-shadow: none; line-height: 1; border: 1px solid #8a651c; border-radius: 9px; background: #fffaf0; color: #6b5c3e; font: 700 11px/1 system-ui, sans-serif; opacity: 0; transition: opacity var(--motion-fast, 180ms) ease; cursor: pointer; }
+.ps-roll::before { content: ""; position: absolute; inset: -13px; }
+/* O botão fica à direita, fora do campo: o campo numérico deixa de cortar o que transborda, e só o valor corta. */
+.ps-view.has-roll { overflow: visible; }
+.ps-view.has-roll > .ps-caption { visibility: hidden; }
+.ps-view.has-roll .ps-value { min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ps-field.has-roll:hover .ps-roll, .ps-field.has-roll:focus-within .ps-roll, .ps-roll:focus-visible { opacity: 1; }
+.ps-roll:focus-visible { outline: 2px solid #1d5fa8; outline-offset: 1px; }
+@media (hover: none) { .ps-roll { opacity: .75; } }
+.ps-found { outline: 3px solid #e0a526; outline-offset: 2px; background: #f6d77a55; border-radius: 2px; }
+@media (prefers-reduced-motion: no-preference) { .ps-found { animation: ps-found-pulse 1.2s ease-out 1; } }
+@keyframes ps-found-pulse { from { outline-color: #ffcf4a; outline-offset: 6px; } to { outline-color: #e0a526; outline-offset: 2px; } }
+@media (prefers-reduced-motion: reduce) { .ps-roll { transition: none; } }
+
+/* Ficha compacta (Resumo) */
+.sheet-compact { display: grid; gap: 18px; }
+.sheet-compact h4 { margin: 0 0 8px; color: var(--gold); font-size: .9rem; letter-spacing: .04em; text-transform: uppercase; }
+.sc-resources { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.sc-resource { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #0f0f0e99; }
+.sc-resource strong { color: var(--bright); }
+.sc-bar { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: #2c2a24; overflow: hidden; }
+.sc-bar > span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #8f2f24, #c6a463); }
+.sc-stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+.sc-stats > div { padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius); }
+.sc-stats dt { color: var(--muted); font-size: .8rem; }
+.sc-stats dd { margin: 0; color: var(--bright); font-weight: 700; }
+.sc-rolls { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.sc-roll, .sc-roll-static { display: flex; width: 100%; min-height: 44px; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: #0f0f0e99; color: var(--text); text-align: left; }
+.sc-roll b, .sc-roll-static b { color: var(--bright); }
+.sc-roll:hover, .sc-roll:focus-visible { border-color: var(--gold); }
+.sc-roll::after { content: "🎲"; font-size: .9em; }
+.sc-list ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.sc-list li { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid #49433766; overflow-wrap: anywhere; }
+.sc-list li.has-note { border-left: 3px solid var(--gold); padding-left: 8px; }
+.sc-list details { flex: 1 1 auto; min-width: 0; }
+.sc-list summary { cursor: pointer; min-height: 32px; }
+.sc-list details p { margin: 6px 0 0; color: var(--muted); white-space: pre-line; }
+.sc-item { flex: 1 1 auto; min-width: 0; }
+.sc-use { flex: 0 0 auto; }
+.sc-empty { margin: 0; color: var(--muted); }
+
+/* Mesa: abas da ficha, condições com duração, uso de item e visão do grupo */
+.ts-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 12px; }
+.ts-effects, .summary-effects { margin: 10px 0; }
+.ts-effects h4, .summary-effects h4 { margin: 0 0 4px; }
+.ts-effects p, .summary-effects p { margin: 0 0 6px; }
+.effects-chip { display: block; color: #d9c2f2; }
+.party-view-button { margin: 0 0 8px; }
+.effect-list { display: grid; gap: 8px; margin: 0 0 10px; padding: 0; list-style: none; }
+.effect-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; align-items: end; gap: 8px; }
+.use-note { margin: 0 0 12px; padding: 10px; border-left: 3px solid var(--gold); background: #c6a46314; white-space: pre-line; }
+.notes-read dt { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.party-table-wrap { max-width: 100%; overflow-x: auto; }
+.party-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.party-table th, .party-table td { padding: 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.party-table th[scope="row"] small { display: block; color: var(--muted); font-weight: 400; }
+.party-table thead th { color: var(--gold); white-space: nowrap; }
+@media (max-width: 640px) {
+  .effect-row { grid-template-columns: 1fr 1fr; }
+  .effect-row > button { grid-column: 1 / -1; }
+  .cs-find input { width: 100%; }
+  .cs-find { flex: 1 1 100%; }
+}

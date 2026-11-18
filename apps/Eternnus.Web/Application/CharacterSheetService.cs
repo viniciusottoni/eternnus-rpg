@@ -9,7 +9,8 @@ public sealed record FormulaField(string Name, string Label);
 
 /// <summary>Gravação da ficha baseada em modelo: valores por nome de campo (calculados nunca vêm do cliente).
 /// Envio parcial: somente os campos presentes mudam. <see cref="Actions"/> nulo preserva as ações do jogador.</summary>
-public record CharacterSheetInput(Dictionary<string, JsonElement>? Values, List<CharacterAction>? Actions, int Revision, bool? Private = null);
+/// <summary><paramref name="Notes"/>: descrições por item (substitui o conjunto); nulo preserva as atuais (ADR-098).</summary>
+public record CharacterSheetInput(Dictionary<string, JsonElement>? Values, List<CharacterAction>? Actions, int Revision, bool? Private = null, Dictionary<string, string?>? Notes = null);
 public record CharacterMigrationInput(Guid TargetVersionId, int Revision);
 
 /// <summary>Estado carregado de uma ficha: versão do modelo (fixada na ficha), modelo e valores gravados completos.
@@ -51,7 +52,7 @@ public static class CharacterSheets
         throw new RuleException(400, "Escolha uma ficha do sistema da campanha.");
     }
 
-    static IQueryable<Campaign> OpenCampaigns(GameDb db)
+    internal static IQueryable<Campaign> OpenCampaigns(GameDb db)
     {
         var now = DateTime.UtcNow; var absent = now - OneShotLifecycleService.MasterAbsence;
         return db.Campaigns.Where(p => !p.IsOneShot || ((p.ExpiresAt == null || p.ExpiresAt > now) && (p.MasterLastSeenAt == null || p.MasterLastSeenAt > absent)));
@@ -451,6 +452,9 @@ public static class CharacterSheets
             c.Private,
             canEdit = user != null && (c.OwnerId == user || await IsMasterAsync(db, c.Id, user, ct)),
             canChangeVisibility = c.OwnerId == user,
+            c.Name,
+            canChangePortrait = c.OwnerId == user,
+            c.PortraitVersion,
             legacy = ctx.Legacy,
             template = new { ctx.Template.Id, ctx.Template.Name, systemId = ctx.Template.RpgSystemId, archived = ctx.Template.ArchivedAt != null, isDefault = ctx.Template.IsDefault && ctx.Template.CampaignId == null },
             version = new
@@ -460,6 +464,7 @@ public static class CharacterSheets
             },
             values = stored,
             computed,
+            notes = CharacterItemNotes.Visible(c.ItemNotes, CharacterItemNotes.Items(v.Fields, stored)),
             actions = CombinedActions(v, c.Actions),
             newerVersion = current,
         };
@@ -468,7 +473,7 @@ public static class CharacterSheets
 
 /// <summary>Casos de uso da ficha do jogador baseada em ficha-modelo. Toda leitura/escrita confere o dono no banco;
 /// mudanças com sessão ativa entram na linha do tempo da sessão por <see cref="SessionService.WriteCharacterAsync"/>.</summary>
-public class CharacterSheetService(GameDb db, SessionService sessions, ProgressionService progression, TimeProvider clock)
+public partial class CharacterSheetService(GameDb db, SessionService sessions, ProgressionService progression, TimeProvider clock)
 {
     public const int PageSize = 20;
     DateTime Now => clock.GetUtcNow().UtcDateTime;
@@ -652,6 +657,39 @@ public class CharacterSheetService(GameDb db, SessionService sessions, Progressi
         }
     }
 
+    /// <summary>"Item: texto" para o histórico (rótulo sem o prefixo "Descrição: "); vazio quando não há descrição.</summary>
+    static string HistoryText(string label, string text)
+    {
+        if (text.Length == 0) return "";
+        var value = $"{label["Descrição: ".Length..]}: {text}";
+        return value.Length > CharacterSheets.HistoryValueLength ? value[..CharacterSheets.HistoryValueLength] : value;
+    }
+
+    /// <summary>Descrições por item: substitui o conjunto, valida contra os itens da ficha já gravada e registra cada mudança no histórico.</summary>
+    void SaveNotes(Character c, SheetContext ctx, Dictionary<string, string?> input, List<SheetChange> changes, string user, Guid? sessionId)
+    {
+        var items = CharacterItemNotes.Items(ctx.Version.Fields, JsonSerializer.Deserialize<Dictionary<string, string>>(c.Values) ?? []);
+        // Descrições de itens que já não existem somem em silêncio; o histórico registra só as dos itens atuais.
+        var before = CharacterItemNotes.Visible(c.ItemNotes, items);
+        var after = CharacterItemNotes.Normalize(input, items);
+        var json = JsonSerializer.Serialize(after);
+        if (json.Length > 150000) throw new RuleException(400, "As descrições ficaram grandes demais. Reduza os textos.");
+        var diff = CharacterItemNotes.Diff(before, after, items);
+        if (json != c.ItemNotes) c.ItemNotes = json;
+        var source = c.OwnerId == user ? FieldChangeSources.Edit : FieldChangeSources.Master;
+        foreach (var change in diff)
+        {
+            db.FieldChanges.Add(new CharacterFieldChange
+            {
+                CharacterId = c.Id, Field = CharacterItemNotes.HistoryField,
+                OldValue = HistoryText(change.Label, change.Before),
+                NewValue = HistoryText(change.Label, change.After),
+                ChangedById = user, SessionId = sessionId, TemplateVersionId = c.TemplateVersionId!.Value, Source = source, CreatedAt = Now,
+            });
+            changes.Add(change);
+        }
+    }
+
     // ---------------- Ficha por modelo ----------------
 
     public async Task<object> SheetAsync(Guid id, string user, CancellationToken ct)
@@ -672,6 +710,7 @@ public class CharacterSheetService(GameDb db, SessionService sessions, Progressi
             var changes = CharacterSheets.Commit(db, c, ctx, stored, user, c.OwnerId == user ? FieldChangeSources.Edit : FieldChangeSources.Master, sessionId, Now);
             if (x.Actions != null) c.Actions = x.Actions;
             AuditExtras(c, x.Private, actionsBefore, changes, user, sessionId);
+            if (x.Notes != null) SaveNotes(c, ctx, x.Notes, changes, user, sessionId);
             if (ctx.Legacy && changes.Count == 0) changes.Add(new("template", "Modelo", "Clássica", "Sistema livre"));
             return changes;
         }, ct);
@@ -699,7 +738,7 @@ public class CharacterSheetService(GameDb db, SessionService sessions, Progressi
         var labels = fields.GroupBy(f => f.Name).ToDictionary(g => g.Key, g => g.First().Label, StringComparer.Ordinal);
         return new
         {
-            items = items.Select(h => new { h.Id, h.Field, label = labels.GetValueOrDefault(h.Field) ?? h.Field, h.OldValue, h.NewValue, h.Source, h.SessionId, h.session, h.ChangedById, h.TemplateVersionId, h.CreatedAt, h.changedBy }),
+            items = items.Select(h => new { h.Id, h.Field, label = h.Field == CharacterItemNotes.HistoryField ? "Descrição de item" : labels.GetValueOrDefault(h.Field) ?? h.Field, h.OldValue, h.NewValue, h.Source, h.SessionId, h.session, h.ChangedById, h.TemplateVersionId, h.CreatedAt, h.changedBy }),
             total, page, pageSize = PageSize,
         };
     }

@@ -650,3 +650,32 @@ Executado neste ambiente (Windows, .NET 10.0.303, Node 24.14.1):
 - `dotnet test` filtrado (`TableFog`, `FogRules`, `SceneEditor`, `TablePlay`, `SessionService`, `PrepWorkspace`, `CampaignAssets`, `DocumentVersion`, `CampaignTileMaps`, `MapComposition`, `VectorWall`, `PrepPreview`, `UploadLimits`) com SQLite: 143 aprovados, 0 falhas. `VectorWallTests` usa o mesmo fixture do cliente; `PrepPreviewTests` confere parede/janela/porta aberta na prévia, somente leitura (nenhuma camada ou sessão criada), acesso só do mestre e validação.
 - Chrome headless (protocolo DevTools) sobre o editor de cenas real com API simulada, 1440 × 900 e 390 × 844: 19 de 19 verificações — contexto Paredes e portas, coordenadas do documento na barra de estado, traço com ímã e diagonal terminado por Enter, desfazer/refazer, seleção e troca de tipo pela barra contextual, arrastar vértice compartilhado, diagnóstico, corpo do PUT com paredes e luzes completas, chamada da prévia real e ausência de rolagem lateral no celular. O roteiro achou e corrigiu um defeito (a casa sob o cursor sobrescrevia as coordenadas exatas).
 - Não executado: toque real, E2E com PostgreSQL/Playwright (o servidor real não foi exercitado pelo navegador), medição de carga com muitas paredes.
+
+## ADR-100 — criar → jogar e condução simplificada (18/11/2026)
+
+Executado no Windows (.NET SDK 10, Node 22). Esta máquina não tem PostgreSQL nem Docker, então só rodaram testes em SQLite e regras puras.
+
+- `dotnet build Eternnus.sln`: sem erros nem avisos.
+- `dotnet test` filtrado (`StarterAdventure`, `AccountLimits`, `SessionService`, `TableSimplification`, `TableFog`, `TablePlay`, `SceneEditor`, `SessionLog`, `SceneComposition`, `CampaignTileMaps`, `VectorWall`, `PrepPreview`, `PrepWorkspace`, `Workspace`, `Progression`, `SheetPlay`): 205 de 205. Depois do ajuste na busca, `Workspace`, `TextSearch` e `Timeline`: 38 de 38.
+- Testes novos (.NET):
+  - `SessionServiceTests`: sessão sem nome, início pela cena (mapa, marcadores, texto, evento), cena alheia ou inexistente → 404 sem abrir a mesa, cena de texto com o mapa escolhido, contexto de início só do mestre.
+  - `TableSimplificationTests`: colocar o grupo e desfazer cada movimento, grupo sem jogadores → 409, desfazer marcador adicionado (só no lugar) e removido (configurações e segredo preservados, jogador sem retrato), desfazer revelar/cobrir com recusa após mudança, desvincular ficha de NPC, faixas compactas.
+  - `StarterAdventureTests`: inclusive one-shot apresentando a cena.
+- `node --test` (23 arquivos novos ou impactados, entre eles `start-policy`, `light-presets-policy`, `scene-weight-policy`, `table-commands-policy`, `command-palette-policy`, `play-policy`, `scene-policy` (G1), ajuda, PWA, service worker e editores): 168 de 168.
+- `node --check` nos módulos alterados.
+- **Não executado nesta etapa:** toque em aparelho físico e medição de cliques das jornadas (metas em AUDITORIA_SIMPLICIDADE.md).
+
+### Validação com PostgreSQL e navegador (18/11/2026)
+
+Ambiente: PostgreSQL 17 do `compose.yaml` no Docker Desktop, com banco descartável `eternnus_test_*` por suíte, e Chrome do sistema headless via `artifacts/qa-runtime`.
+
+| Comando | Resultado |
+|---|---|
+| `node tests/simplicity.mjs` (novo) | 138 verificações. Aventura de exemplo (cena, 2 NPCs, premissa); `start-context` só do mestre (jogador 403, outro 404); sessão sem nome iniciada pela cena ("Sessão 01", cena apresentada); Colocar o grupo (jogador 403, movimento desfazível); desfazer adição/remoção de marcador e pintura de névoa. Dois desfazer simultâneos dão `204`/`409`, sem marcador duplicado (`FOR UPDATE`). Pintura em xadrez cabe nos 4.000 caracteres de `Events.Data`. Jogador não recebe retrato nem casas pintadas; com névoa ativa, inimigo removido não é anunciado. Desvincular ficha (jogador 403, personagem 409); one-shot de exemplo. Navegador: checklist, modal de início já na cena, Busca de ações (Ctrl+K, botão, Esc), lista de NPCs (Colocar + clique, arrastar e soltar na casa, recarga ao voltar à aba), predefinições Tocha/visão longa e troca de ficha pelo modal. Celular deitado 844×390: volta ao Mapa na vez do jogador, alvos ≥ 44 px, sem rolagem horizontal, sem erros no navegador. Capturas em `artifacts/qa/simplicidade/` |
+| Desempenho (mesma suíte) | Cripta com 1.500 paredes: abertura da mesa em ~3,7 s (inclui a abertura fixa de 3.000 ms), tarefas longas de 118 e 276 ms ao abrir e nenhuma ao mover um marcador. Editor salva 2.000 paredes (244 KB); 2.001ª → `409`. Números em `artifacts/qa/simplicidade/performance.json` |
+| `sessions.mjs`, `table-play.mjs`, `table-fog.mjs`, `scene-editor.mjs`, `campaign-sessions.mjs`, `campaign-assets.mjs`, `campaign-workspace.mjs`, `token-edit.mjs` | Passaram. `sessions.mjs` passou a recusar título com mais de 120 caracteres, porque sem título agora é válido. `token-edit.mjs` passou a esperar "Trocar ou remover a ficha" no lugar do vínculo direto |
+| `free-movement.mjs` | Falha anterior ao ADR-100: procura `[data-action=ca-upload]`, removido em `f3f60dc` |
+| `table-vtt-ui.mjs` | Falha anterior ao ADR-100: "porta do UVTT na casa certa". O import UVTT mudou em `115d38e`, depois da última atualização do teste |
+| `table-viewport.mjs` | Falha intermitente "pinça não amplia o diálogo"/"página mantém escala". A falha muda de ponto entre execuções, persiste com a Busca de ações desligada no editor e o ADR-100 não altera toque, zoom ou `touch-action`. Causa não identificada; suspeita no toque sintético (CDP) do Chrome do sistema |
+
+Correções feitas a partir desta validação: `maps` do `start-context` como lista (o modal de início falhava com `items.filter is not a function`), `UploadLimits.LayerRequestBytes` (512 KiB, antes ~530 paredes) e recarga da lista de NPCs. Os testes .NET afetados (`SessionServiceTests`, `UploadLimitsTests`, `TableSimplificationTests`, `StarterAdventureTests`) passaram.
