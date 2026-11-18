@@ -47,29 +47,80 @@ public static class StoreQueries
         public bool PriceCurrent { get; init; }
         public int Priority { get; init; }
         public DateTime CreatedAt { get; init; }
+        public DateTime? PublishedAt { get; init; }
         public int Clicks { get; init; }
+        public int? Exposures { get; init; }
+        public long? LastCycle { get; init; }
         public List<Guid> Systems { get; init; } = [];
         public List<string> Tags { get; init; } = [];
     }
 
     /// <summary>Até <paramref name="window"/> candidatos (na ordem SQL dos grupos) ordenados pelo ranking completo.</summary>
-    public static async Task<List<StoreRanked>> RankAsync(GameDb db, IQueryable<StoreProduct> query, StoreRankContext x, StoreSettings settings, DateTime cut, int window, CancellationToken ct)
+    public static async Task<List<StoreRanked>> RankAsync(GameDb db, IQueryable<StoreProduct> query, StoreRankContext x, StoreSettings settings, DateTime cut, int window, CancellationToken ct,
+        IReadOnlyDictionary<Guid, double>? recent = null)
     {
-        var rows = await GroupOrdered(query, x).Take(window).Select(p => new CandidateRow
+        var rows = await CandidatesAsync(db, GroupOrdered(query, x), null, cut, window, ct);
+        var terms = await TermsAsync(db, settings, ct);
+        var maxClicks = rows.Count == 0 ? 0 : rows.Max(r => r.Clicks);
+        return StoreRanking.Rank(rows.Select(r => Candidate(r, terms, recent)), x with { MaxClicks = maxClicks });
+    }
+
+    /// <summary>Linhas de candidatos na ordem dada; com <paramref name="userId"/>, junta o resumo de exibições do usuário (ADR-108).</summary>
+    static Task<List<CandidateRow>> CandidatesAsync(GameDb db, IQueryable<StoreProduct> ordered, string? userId, DateTime cut, int limit, CancellationToken ct)
+    {
+        var stats = db.StoreUserProductStats.Where(s => s.UserId == userId);
+        return ordered.Take(limit).Select(p => new CandidateRow
         {
             Id = p.Id, Marketplace = p.Marketplace, CategoryId = p.CategoryId, Title = p.Title,
             HasImage = p.ImageUrl != null, HasDescription = p.Description != "",
             PriceCurrent = p.PriceCents != null && p.PriceCheckedAt != null && p.PriceCheckedAt >= cut,
-            Priority = p.Priority, CreatedAt = p.CreatedAt, Clicks = p.Clicks,
+            Priority = p.Priority, CreatedAt = p.CreatedAt, PublishedAt = p.PublishedAt, Clicks = p.Clicks,
+            Exposures = userId == null ? null : stats.Where(s => s.ProductId == p.Id).Select(s => (int?)s.Exposures).FirstOrDefault(),
+            LastCycle = userId == null ? null : stats.Where(s => s.ProductId == p.Id).Select(s => (long?)s.LastCycle).FirstOrDefault(),
             Systems = p.Systems.Select(s => s.RpgSystemId).ToList(), Tags = p.Tags.Select(t => t.Value).ToList(),
         }).ToListAsync(ct);
-        var keywords = await db.StoreCategories.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Keywords, ct);
-        var vocabulary = StoreVocabulary.Build([], settings.Synonyms);
-        var maxClicks = rows.Count == 0 ? 0 : rows.Max(r => r.Clicks);
-        var candidates = rows.Select(r => new StoreRankCandidate(r.Id, r.Marketplace, r.CategoryId, r.Systems,
-            vocabulary.ProductTerms(r.Title, r.Tags, r.CategoryId is { } c ? keywords.GetValueOrDefault(c) : null),
-            r.HasImage, r.HasDescription, r.PriceCurrent, r.Priority, r.CreatedAt, r.Clicks));
-        return StoreRanking.Rank(candidates, x with { MaxClicks = maxClicks });
+    }
+
+    /// <summary>Termos de produto: vocabulário de sinônimos e palavras-chave das categorias.</summary>
+    sealed record ProductTerms(StoreVocabulary Vocabulary, Dictionary<Guid, string> Keywords);
+    static async Task<ProductTerms> TermsAsync(GameDb db, StoreSettings settings, CancellationToken ct) =>
+        new(StoreVocabulary.Build([], settings.Synonyms), await db.StoreCategories.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Keywords, ct));
+
+    static StoreRankCandidate Candidate(CandidateRow r, ProductTerms terms, IReadOnlyDictionary<Guid, double>? recent) =>
+        new(r.Id, r.Marketplace, r.CategoryId, r.Systems,
+            terms.Vocabulary.ProductTerms(r.Title, r.Tags, r.CategoryId is { } c ? terms.Keywords.GetValueOrDefault(c) : null),
+            r.HasImage, r.HasDescription, r.PriceCurrent, r.Priority, r.CreatedAt, r.Clicks, r.PublishedAt, recent?.GetValueOrDefault(r.Id) ?? 0);
+
+    /// <summary>Filas da vitrine (ADR-108): até <paramref name="limit"/> candidatos por fila, já com grupo, pontuação e o que o
+    /// usuário viu. Nunca carrega o catálogo inteiro: cada fila é ordenada e limitada no banco.</summary>
+    public static async Task<List<List<StorePoolItem>>> PoolsAsync(GameDb db, IReadOnlyList<IQueryable<StoreProduct>?> ordered, string userId, StoreRankContext x,
+        StoreSettings settings, DateTime cut, int limit, IReadOnlyDictionary<Guid, double> recent, IReadOnlySet<Guid> clicked, CancellationToken ct)
+    {
+        var rows = new List<List<CandidateRow>>();
+        foreach (var query in ordered) rows.Add(query == null ? [] : await CandidatesAsync(db, query, userId, cut, limit, ct));
+        if (rows.All(r => r.Count == 0)) return rows.Select(_ => new List<StorePoolItem>()).ToList();
+        var terms = await TermsAsync(db, settings, ct);
+        var maxClicks = rows.SelectMany(r => r).Select(r => r.Clicks).DefaultIfEmpty(0).Max();
+        var context = x with { MaxClicks = maxClicks };
+        return rows.Select(list => list.Select(r =>
+        {
+            var c = Candidate(r, terms, recent);
+            var group = StoreRanking.Group(c, context);
+            StoreSeen? seen = r.Exposures is { } n ? new StoreSeen(n, r.LastCycle ?? 0, clicked.Contains(r.Id)) : null;
+            return new StorePoolItem(c, group, StoreRanking.Score(c, context, group), seen);
+        }).ToList()).ToList();
+    }
+
+    /// <summary>Popularidade recente: pessoas distintas que clicaram em cada produto nos últimos <paramref name="days"/> dias
+    /// (até 300 produtos), normalizada 0–1 em escala log. Repetir cliques não infla; cliques não são vendas.</summary>
+    public static async Task<Dictionary<Guid, double>> RecentPopularityAsync(GameDb db, DateTime now, CancellationToken ct, int days = 30)
+    {
+        var since = now.AddDays(-days);
+        var rows = await db.StoreInteractions.AsNoTracking().Where(i => i.CreatedAt >= since)
+            .GroupBy(i => i.ProductId).Select(g => new { g.Key, Users = g.Select(i => i.UserId).Distinct().Count() })
+            .OrderByDescending(g => g.Users).ThenBy(g => g.Key).Take(300).ToListAsync(ct);
+        var top = rows.Count == 0 ? 0 : rows.Max(r => r.Users);
+        return top == 0 ? [] : rows.ToDictionary(r => r.Key, r => Math.Log(1 + r.Users) / Math.Log(1 + top));
     }
 
     sealed class CardRow

@@ -199,7 +199,46 @@ export function installHelp() {
     touchInput = event.pointerType === 'touch';
     if (touchInput) hideTip();
   }, true);
+  // ⓘ nunca desce sozinho para a linha seguinte: junta-se ao texto que explica num trecho sem quebra.
+  // Fluxo de texto: só a última palavra vai junto (o resto do rótulo continua quebrando normalmente).
+  // Flex com quebra: o item vizinho e o ⓘ viram um só item. Flex sem quebra e grid já mantêm a fila.
+  const glueHelp = (root) => {
+    const buttons = [...(root.matches?.('.help-button') ? [root] : []), ...root.querySelectorAll('.help-button')];
+    for (const button of buttons) {
+      if (button.dataset.helpGlue) continue;
+      button.dataset.helpGlue = '1';
+      const parent = button.parentElement;
+      if (!parent || parent.classList.contains('help-glue')) continue;
+      const style = getComputedStyle(parent);
+      let previous = button.previousSibling;
+      while (previous && previous.nodeType === Node.TEXT_NODE && !previous.nodeValue.trim()) previous = previous.previousSibling;
+      if (!previous) continue;
+      const glue = document.createElement('span');
+      if (/flex/.test(style.display)) {
+        if (style.flexWrap === 'nowrap') continue;
+        if (previous.nodeType !== Node.TEXT_NODE && previous.nodeType !== Node.ELEMENT_NODE) continue;
+        glue.className = 'help-glue help-glue-flex';
+        previous.before(glue); glue.append(previous, button);
+      } else if (/grid/.test(style.display)) {
+        continue;
+      } else if (previous.nodeType === Node.TEXT_NODE) {
+        // Espaço solto entre o texto e o ⓘ seria ponto de quebra; a margem do botão já faz o respiro.
+        while (button.previousSibling !== previous) button.previousSibling.remove();
+        const match = /(\S+)\s*$/.exec(previous.nodeValue);
+        if (!match) continue;
+        const word = previous.splitText(match.index);
+        word.nodeValue = match[1];
+        glue.className = 'help-glue';
+        word.before(glue); glue.append(word, button);
+      } else if (previous.nodeType === Node.ELEMENT_NODE && getComputedStyle(previous).display === 'inline' && previous.textContent.trim().length <= 32) {
+        while (button.previousSibling !== previous) button.previousSibling.remove();
+        glue.className = 'help-glue';
+        previous.before(glue); glue.append(previous, button);
+      }
+    }
+  };
   const enhance = (root) => {
+    glueHelp(root);
     // Liga também as instruções visíveis dos formulários antigos ao respectivo controle.
     const groups = [...(root.matches?.('.field, label') ? [root] : []), ...root.querySelectorAll('.field, label')];
     for (const group of groups) {

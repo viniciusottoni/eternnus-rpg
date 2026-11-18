@@ -189,16 +189,22 @@ public sealed class StoreVocabulary
     }
 }
 
+/// <param name="PublishedAt">Primeira ativação (novidade); nulo usa <paramref name="CreatedAt"/>.</param>
+/// <param name="RecentPopularity">Pessoas distintas que clicaram nos últimos 30 dias, normalizado 0–1 (ADR-108).</param>
 public sealed record StoreRankCandidate(Guid Id, string Marketplace, Guid? CategoryId, IReadOnlyList<Guid> SystemIds, IReadOnlySet<string> Terms,
-    bool HasImage, bool HasDescription, bool PriceCurrent, int Priority, DateTime CreatedAt, int Clicks);
+    bool HasImage, bool HasDescription, bool PriceCurrent, int Priority, DateTime CreatedAt, int Clicks, DateTime? PublishedAt = null, double RecentPopularity = 0)
+{
+    public DateTime NoveltyAt => PublishedAt ?? CreatedAt;
+}
 
 /// <param name="Primary">Sistema principal (campanha aberta, interesse escolhido ou campanha ativa mais recente).</param>
 /// <param name="Secondary">Demais sistemas com peso 0–1 (recência; campanhas arquivadas pesam menos).</param>
 /// <param name="Interests">Termos inferidos com consentimento (0–1).</param>
 /// <param name="CategoryAffinity">Categorias dos produtos que o próprio usuário abriu (0–1).</param>
 /// <param name="Seed">Semente estável da rotação (identificador do usuário).</param>
+/// <param name="Bucket">Faixa de rotação fixa (sessão de catálogo da loja): paginação estável. Nula usa a janela de <paramref name="RotationHours"/>.</param>
 public sealed record StoreRankContext(Guid? Primary, IReadOnlyDictionary<Guid, double> Secondary, IReadOnlyDictionary<string, double> Interests,
-    IReadOnlyDictionary<Guid, double> CategoryAffinity, DateTime Now, string Seed, int RotationHours, int MaxClicks);
+    IReadOnlyDictionary<Guid, double> CategoryAffinity, DateTime Now, string Seed, int RotationHours, int MaxClicks, long? Bucket = null);
 
 public sealed record StoreRanked(StoreRankCandidate Candidate, int Group, double Score);
 
@@ -238,8 +244,8 @@ public static class StoreRanking
         var completeness = (c.HasImage ? 0.4 : 0) + (c.HasDescription ? 0.3 : 0) + (c.PriceCurrent ? 0.3 : 0);
         var secondary = group == GroupSecondary ? c.SystemIds.Select(s => x.Secondary.GetValueOrDefault(s)).DefaultIfEmpty(0).Max() : 0;
         var category = c.CategoryId is { } id ? x.CategoryAffinity.GetValueOrDefault(id) : 0;
-        var age = Math.Max(0, (x.Now - c.CreatedAt).TotalDays);
-        var popularity = x.MaxClicks > 0 ? Math.Log(1 + c.Clicks) / Math.Log(1 + x.MaxClicks) : 0;
+        var age = Math.Max(0, (x.Now - c.NoveltyAt).TotalDays);
+        var popularity = Popularity(c, x.MaxClicks);
         return Weights.Interest * InterestMatch(c, x)
             + Weights.Category * Math.Clamp(category, 0, 1)
             + Weights.SecondarySystem * Math.Clamp(secondary, 0, 1)
@@ -250,10 +256,18 @@ public static class StoreRanking
             + Weights.Popularity * popularity;
     }
 
+    /// <summary>Popularidade 0–1: cliques únicos recentes pesam 70%; o volume acumulado (log) só 30%, para um produto antigo
+    /// não liderar para sempre. Cliques não são vendas.</summary>
+    public static double Popularity(StoreRankCandidate c, int maxClicks)
+    {
+        var historical = maxClicks > 0 ? Math.Log(1 + Math.Max(0, c.Clicks)) / Math.Log(1 + maxClicks) : 0;
+        return 0.7 * Math.Clamp(c.RecentPopularity, 0, 1) + 0.3 * Math.Clamp(historical, 0, 1);
+    }
+
     /// <summary>Lista completa ordenada: grupo, depois pontuação, com rotação limitada dentro de faixas de pontuação próxima.</summary>
     public static List<StoreRanked> Rank(IEnumerable<StoreRankCandidate> candidates, StoreRankContext x)
     {
-        var bucket = (long)Math.Floor((x.Now - DateTime.UnixEpoch).TotalHours / Math.Max(1, x.RotationHours));
+        var bucket = x.Bucket ?? (long)Math.Floor((x.Now - DateTime.UnixEpoch).TotalHours / Math.Max(1, x.RotationHours));
         var result = new List<StoreRanked>();
         foreach (var group in candidates.Select(c => { var g = Group(c, x); return new StoreRanked(c, g, Score(c, x, g)); })
                      .GroupBy(r => r.Group).OrderBy(g => g.Key))

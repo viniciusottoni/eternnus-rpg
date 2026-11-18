@@ -19,19 +19,35 @@ const entries = {
     "body": [
       "Os produtos entram em grupos fixos: sistema da campanha aberta (ou da campanha ativa mais recente), sistemas das outras campanhas, genéricos, outros sistemas ligados aos interesses do usuário e, por fim, os demais.",
       "Dentro de cada grupo pesam interesses consentidos, categorias que o próprio usuário abriu, imagem e descrição, preço conferido, novidade, popularidade interna e a prioridade administrativa. Nenhum desses fatores muda o grupo.",
-      "A vitrine evita repetir loja e categoria quando há alternativa próxima e alterna produtos empatados a cada janela de rotação."
+      "Na página da loja, a ordem fica estável enquanto a pessoa pagina. A vitrine do topo usa a rotação inteligente."
     ],
     "audience": "admin",
     "related": [
+      "admin.loja.rotacao",
+      "admin.loja.metricas"
+    ]
+  },
+  "admin.loja.rotacao": {
+    "title": "Rotação inteligente da vitrine",
+    "summary": "Cada tela nova traz outra seleção, sem perder o contexto da campanha.",
+    "body": [
+      "A vitrine alterna quatro filas: populares do perfil, novidades do perfil, descoberta relacionada (o que a pessoa menos viu dentro do perfil) e exploração fora do perfil. As proporções são metas acumuladas sobre o que cada pessoa realmente viu e precisam somar 100%; a exploração nunca é zero.",
+      "Só conta como visto o cartão que ficou ao menos metade visível por cerca de um segundo. Um produto visto não volta antes do histórico antirrepetição, se houver alternativa; produtos vistos muitas vezes sem clique esfriam por mais tempo e depois voltam.",
+      "Com a cobertura progressiva, descoberta e exploração percorrem o catálogo do menos exibido ao mais exibido, então todo produto ativo recebe exibição ao longo das navegações. Cliques em produtos distintos de um sistema o trazem para o perfil aos poucos; o sistema da campanha continua à frente."
+    ],
+    "audience": "admin",
+    "related": [
+      "admin.loja.recomendacao",
       "admin.loja.metricas"
     ]
   },
   "admin.loja.metricas": {
     "title": "Indicadores da loja",
-    "summary": "Cliques agregados; sem CTR, receita ou dados individuais.",
+    "summary": "Exibições, cliques e CTR agregados; sem receita nem dados individuais.",
     "body": [
       "Cada clique em “Comprar” é registrado por usuário, produto e origem (vitrine, página da loja ou detalhe), contado uma vez a cada 30 minutos e guardado por 365 dias.",
-      "Impressões não são registradas, por isso não há CTR. Receita, comissão e conversões dependem de integração oficial com as lojas e não são exibidas. O painel nunca mostra termos, mensagens ou interesses de usuários."
+      "Exibição é um cartão da vitrine visto de fato, contado uma vez por navegação e guardado por 180 dias. CTR é a parte das exibições que recebeu clique; com poucas exibições, o CTR suavizado puxa para a média para um único clique não parecer destaque.",
+      "Cobertura mostra quantos produtos ativos foram exibidos no período e quantos nunca foram. Cliques não são vendas: receita, comissão e conversões dependem de integração oficial com as lojas. O painel nunca mostra históricos, termos, mensagens ou interesses de usuários."
     ],
     "audience": "admin"
   },

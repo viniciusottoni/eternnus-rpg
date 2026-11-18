@@ -21,11 +21,15 @@ export const saveStorePreferences = (prefs, { background = false } = {}) =>
     useCampaignSystems: !!prefs.useCampaignSystems,
     analyzeMessages: !!prefs.analyzeMessages,
     interestSystemId: prefs.interestSystemId || null,
+    learnFromClicks: prefs.learnFromClicks !== false,
   }, { background });
 export const clearStoreInterests = () => api("/store/interests", "DELETE");
 /** Clique na oferta: escrita explícita em segundo plano; falha não impede a navegação. */
 export const recordStoreClick = (productId, surface) =>
   api("/store/interactions", "POST", { productId, surface }, { background: true }).catch(() => {});
+/** Exibição confirmada da vitrine (ADR-108): só os cartões que ficaram visíveis, com o token emitido pelo servidor. */
+export const recordStoreImpressions = (view, productIds) =>
+  api("/store/impressions", "POST", { view, productIds }, { background: true }).catch(() => {});
 
 // ---------- Administração (Admin) ----------
 export function adminStoreProducts(filters = {}) {

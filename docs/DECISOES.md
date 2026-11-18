@@ -1272,3 +1272,37 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 **Alternativas descartadas:** menu “⋯” por linha (um clique a mais para toda ação); manter texto e alargar a coluna (a tabela já usa a largura toda); percentual arredondado para cima (pode exagerar o desconto).
 
 **Consequências:** sem migração e sem mudança de contrato. Service worker `v84`. Em toque a dica não abre (regra da ajuda): os ícones dependem do símbolo e do nome acessível.
+
+## ADR-107 — Mesa: ferramentas soltas dos painéis, menu de contexto e atalhos; ⓘ colado em todo o sistema (18/11/2026)
+
+**Contexto:** na ADR-105 o trilho de ferramentas e a bandeja de dados viraram colunas encostadas nos painéis de aventureiros e de chat, e ficou difícil ver o que é ferramenta do mapa e o que é painel. Na mesa, o botão direito abria o menu do navegador ("Salvar imagem como…") e Delete não fazia nada, ao contrário do editor de cena. O ⓘ ainda descia sozinho para a linha de baixo em rótulos que quebram (ex.: "Apresentar imagem temporária").
+
+**Decisão:**
+- **Trilho e dados como cartões.** No desktop, trilho (56 px) e bandeja (54 px) ficam a 10 px das bordas do palco, com moldura dourada, cantos de 10 px e sombra; a bandeja fica centrada na vertical. O mapa e a barra contextual recuam o mesmo vão. O layout compacto (ADR-056) não muda.
+- **Menu de contexto da mesa.** `table-map.js` entrega `onContext` também fora do editor quando a tela o fornece (botão direito, tecla Menu ou Shift+F10 no mapa). `table.js` usa o `openContextMenu` do `editor-core.js` (carregado sob demanda) com as ações que já existem no trilho: no marcador do mestre, ficha, editar (Enter), forma e tamanho, recurso da bolha, luz/visão (Completa), remover (Delete) e desmarcar (Esc). Na casa: mover o selecionado para cá, adicionar personagem aqui, grupo na entrada, revelar área, rolagem, desfazer (Ctrl+Z), grade e Busca de ações. Jogador: mover o próprio personagem, ficha, ver imagem da criatura, mover para casa alcançável. O botão direito seleciona o marcador, como no editor.
+- **Atalhos da mesa.** Delete/Backspace removem a criatura selecionada (personagem de jogador não sai do mapa: aviso), Enter abre a edição, Esc cancela o modo e depois desmarca, Ctrl+Z desfaz a última alteração elegível. Ignorados em campos, diálogos, menus e com a ajuda aberta.
+- **ⓘ colado.** `help.js` junta, ao renderizar, o ⓘ à última palavra do texto anterior (`.help-glue`, sem quebra) ou, em flex com quebra, ao item vizinho (`.help-glue-flex`). Vale para todo HTML do sistema sem mudar as 144 chamadas de `helpButton`.
+
+**Simplicidade (ADR-100):** nenhuma ferramenta nova no trilho (sem mudança em `TOOL_INVENTORY`/`BASIC_BUDGET`); "Remover marcador selecionado" entra na Busca de ações. Menu e atalhos são caminhos opcionais para ações existentes: nenhum clique obrigatório a mais. Jornadas: conduzir e preparar cena na mesa.
+
+**Consequências:** sem migração e sem mudança de contrato; o servidor revalida cada ação. Service worker `v86`. Teste `tests/table-context-menu.mjs`.
+
+## ADR-108 — Vitrine da loja com Round Robin inteligente, exibição confirmada e cobertura do catálogo (18/11/2026)
+
+**Contexto:** a vitrine da ADR-104 rotacionava só empates dentro de janelas de até seis horas e o navegador guardava a seleção por cinco minutos: navegando por várias telas, o usuário via praticamente as mesmas ofertas. A ordem rígida dos grupos impedia explorar produtos fora do perfil, nada registrava o que foi de fato visto e a janela de 192 candidatos excluía produtos para sempre.
+
+**Decisão:**
+- **Quatro filas** (populares do perfil, novidades do perfil, descoberta relacionada, exploração fora do perfil) lidas do banco já ordenadas e limitadas (48 cada), combinadas por metas cumulativas configuráveis (40/30/20/10). O 1º cartão — o único no celular — segue round robin ponderado suave pelo número da navegação; os demais cobrem a maior defasagem entre meta e exibições reais. Contexto da campanha primeiro em A e B; no máximo uma exploração por exibição havendo alternativa relevante. Regras puras em `Domain/StoreRotation.cs`.
+- **Ciclo por usuário no banco** (`StoreRotationState`), avançado só por exibição confirmada: cartão ≥ 50% visível por ~1 s (`IntersectionObserver`), enviado por `POST /api/store/impressions` com token protegido (Data Protection, 2 h) emitido pelo `GET` — que continua só lendo. Idempotência por (usuário, ciclo, produto); avanço único por ciclo sob bloqueio da linha de estado. Funciona após reinício e entre instâncias; nada autoritativo em memória.
+- **Histórico de exposição** (`StoreExposure` + resumo `StoreUserProductStat`): antirrepetição de 10 navegações exibidas, resfriamento dobrado para muitas exibições sem clique, repetição permitida em catálogo pequeno. Desempate: nunca visto, visto há mais tempo, menos exibido, relevância, sinal da fila.
+- **Cobertura progressiva:** descoberta e exploração percorrem o catálogo do menos visto ao mais visto (fila circular sobre o resumo), sem carregar o catálogo; novos produtos entram como inéditos, inativos saem na hora. Exploração mínima de 5%.
+- **Aprendizado por cliques:** produtos distintos clicados, com meia-vida de 30 dias, trazem um sistema ao perfil como secundário aos poucos (um clique isolado não basta; repetir o mesmo produto não soma). Controle do Admin e do usuário (“Aprender com os produtos que eu abro”), com transparência dos sistemas aprendidos. Nunca vira termo de mensagem nem substitui o sistema da campanha.
+- **Métricas:** exibições, cliques atribuídos à exibição (um por exibição, 24 h), CTR por fila e produto com suavização e amostra mínima, cobertura, nunca exibidos, menos exibidos e distribuição por loja/sistema/categoria — só agregados. Popularidade usa pessoas distintas que clicaram em 30 dias (70%) e o volume histórico (30%); cliques não são vendas.
+- **Página da loja:** mantém o ranking contextual, agora com sistemas aprendidos, popularidade recente e `PublishedAt` (primeira ativação) na novidade; `seed` da sessão de catálogo estabiliza a paginação. Filtros e ordenações explícitas continuam prevalecendo.
+- Migração aditiva `SmartStoreRotation` (três tabelas, colunas com padrões para linhas existentes, `PublishedAt = CreatedAt` para produtos já ativos). Retenção de exibições e resumos: 180 dias.
+
+**Simplicidade (ADR-100):** nenhuma ferramenta da mesa ou dos editores (sem mudança em `TOOL_INVENTORY`, `BASIC_BUDGET` ou Busca de ações). Jornadas: nenhuma jornada principal muda; a faixa das páginas gerais apenas renova a seleção a cada tela, sem clique obrigatório. Campos novos só na configuração administrativa (todos com padrão) e uma opção na Personalização (ligada por padrão).
+
+**Alternativas descartadas:** embaralhar com semente temporal (repete e não garante cobertura); contar exibição no `GET` (viola “GET não grava” e contaria telas canceladas e cartões escondidos); estado do ciclo no navegador ou em memória do servidor (não vale entre abas, reinícios e instâncias); machine learning externo (dependência, custo e explicabilidade); bandit com sorteio (não reproduzível nos testes).
+
+**Consequências:** cerca de uma dúzia de consultas pequenas por navegação elegível (carga não medida); escrita de até três linhas por exibição confirmada; sem JavaScript/`IntersectionObserver` a vitrine aparece, mas o ciclo não avança. Service worker `v87`. Detalhes em [LOJA_AFILIADOS.md §4.5–4.7](LOJA_AFILIADOS.md).

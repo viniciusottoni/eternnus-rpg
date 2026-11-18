@@ -192,6 +192,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     onResize: (token, size) => onResize(token, size),
     onBubble: (token) => bubbleModal(token),
     onCancel: () => setMode("none"),
+    onContext: (at) => openTableMenu(at),
   });
   const temporaryImages = mountTemporaryImages(sessionId, $(".party"));
   // Trilha sonora compartilhada: o selo do topo existe para todos; o painel "Trilha" monta sob demanda.
@@ -1650,9 +1651,105 @@ function mountTable(campaignId, sessionId, isMaster) {
       submit.disabled = false;
     }
   });
+  // ---------- Menu de contexto e atalhos (mesmo padrão do editor de cena, com as ações da mesa) ----------
+  // O menu só reúne ações que já existem no trilho e na Busca de ações; o servidor revalida cada uma.
+  const run = (action, arg = "") => () => command(action, arg, null);
+  function selectToken(id) {
+    if (selected === id) return;
+    selected = id;
+    renderTools();
+    board.setView(boardView());
+  }
+  function tokenMenuItems(token) {
+    const ended = live.session.endedAt ? "A sessão foi encerrada." : null;
+    if (!live.me.isMaster) {
+      if (token.characterId === live.me.characterId) return [
+        { label: "Mover meu personagem", checked: mode === "move", disabled: !canMoveNow(), disabledReason: awaitingMoveGrant() ? "Aguarde o mestre liberar o seu movimento." : "Aguarde sua vez para mover.", run: run("t-move") },
+        { label: "Minha ficha", run: run("t-my-sheet") },
+      ];
+      if (token.image && !token.characterId) return [{ label: "Ver imagem", run: async () => (await npcSheets()).showImage(token.image, token.label) }];
+      return [];
+    }
+    selectToken(token.id);
+    const bubble = tokenBubbles(live).get(token.id);
+    const PC = "Personagens dos jogadores ficam no mapa; remova só criaturas e elementos do mestre.";
+    return [
+      token.masterCharacterId ? { label: "Ficha do elemento", run: run("t-token-sheet") } : null,
+      !token.characterId ? { label: "Editar marcador…", shortcut: "enter", disabled: !!ended, disabledReason: ended, run: run("t-token-edit") } : null,
+      { label: "Forma e tamanho…", disabled: !!ended, disabledReason: ended, run: run("t-token-look") },
+      bubble?.target ? { label: `${bubble.resource.label}…`, disabled: !!ended, disabledReason: ended, run: run("t-token-bubble") } : null,
+      ui === "complete" ? { label: "Luz, visão e ocultação…", disabled: !!ended, disabledReason: ended, run: run("t-token-settings") } : null,
+      { separator: true },
+      { label: "Remover marcador", shortcut: "delete", danger: true, disabled: !!(ended || token.characterId), disabledReason: ended || PC, run: run("t-tool-remove") },
+      { separator: true },
+      { label: "Desmarcar", shortcut: "escape", run: () => { selected = null; renderTools(); board.setView(boardView()); } },
+    ];
+  }
+  function cellMenuItems(cell) {
+    const ended = live.session.endedAt ? "A sessão foi encerrada." : null;
+    const tiles = live.map.kind === "tileset";
+    const items = [];
+    if (!live.me.isMaster) {
+      if (cell && canMoveNow() && canMoveTo(cell)) items.push({ label: "Mover para cá", run: () => onCell(cell) });
+      items.push({ label: "Montar rolagem…", run: run("t-roll-builder") });
+    } else {
+      const sel = live.tokens.find((t) => t.id === selected);
+      if (cell && sel && tiles) items.push({ label: `Mover ${sel.label} para cá`, disabled: !!ended, disabledReason: ended, run: () => onCell(cell) });
+      if (cell && tiles) items.push({ label: "Adicionar personagem aqui…", disabled: !!ended, disabledReason: ended, run: () => addTokenModal(cell) });
+      items.push({ label: "Colocar o grupo na entrada", disabled: !!(ended || !tiles), disabledReason: ended || "Exige um mapa com grade.", run: run("t-gather") });
+      if (live.fog?.active) items.push({ label: "Revelar área", disabled: !!ended, disabledReason: ended, run: run("t-fog-group", "reveal") });
+      items.push({ separator: true }, { label: "Montar rolagem…", run: run("t-roll-builder") });
+    }
+    const undo = lastUndoable();
+    items.push(
+      { label: "Desfazer a última alteração", shortcut: "mod+z", disabled: !undo || !!ended, disabledReason: ended || "Nada para desfazer agora.", run: run("t-undo", undo ? String(undo.id) : "") },
+      { label: "Mostrar grade", checked: gridShown(), disabled: !tiles, disabledReason: "Exige um mapa com grade.", run: run("t-tool-grid") },
+      { label: "Busca de ações…", shortcut: "mod+k", run: run("t-palette") },
+    );
+    return items;
+  }
+  async function openTableMenu({ cell, token, x, y }) {
+    if (!live || $("#modal").open) return;
+    const found = token ? live.tokens.find((t) => t.id === token.id) || token : null;
+    const items = found ? tokenMenuItems(found) : [];
+    const { openContextMenu } = await import("./editor-core.js");
+    if (items.length) return openContextMenu({ x, y }, items, { label: found.label || "Marcador" });
+    openContextMenu({ x, y }, cellMenuItems(cell), { label: "Mapa" });
+  }
+  const typing = (el) => !!el && (el.matches?.("input, textarea, select, [contenteditable], [contenteditable] *") || el.isContentEditable);
   const onKey = (e) => {
-    if (e.key === "Escape" && mode !== "none" && !$("#modal").open)
-      setMode("none");
+    // Campos, diálogos (Busca de ações, ajuda) e menus abertos tratam as próprias teclas.
+    if ($("#modal").open || document.querySelector(".ed-menu, #help-popup:popover-open") || typing(e.target) || e.target.closest?.("dialog, [role=dialog]")) {
+      if (e.key === "Escape" && mode !== "none" && !$("#modal").open) setMode("none");
+      return;
+    }
+    if (e.key === "Escape") {
+      if (mode !== "none") setMode("none");
+      else if (selected && live?.me.isMaster) { selected = null; renderTools(); board.setView(boardView()); }
+      return;
+    }
+    if (!live || live.session.endedAt) return;
+    const mod = e.ctrlKey || e.metaKey;
+    // Ctrl+Z: mesma ação do botão "Desfazer" (só a última alteração elegível, revalidada no servidor).
+    if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "z") {
+      const undo = lastUndoable();
+      if (!undo) return;
+      e.preventDefault();
+      command("t-undo", String(undo.id), null).catch((error) => toast(error.message));
+      return;
+    }
+    if (!live.me.isMaster || !selected || mod || e.altKey) return;
+    const sel = live.tokens.find((t) => t.id === selected);
+    if (!sel) return;
+    // Delete/Backspace removem o marcador selecionado; Enter abre a edição (fora de botões e do mapa, que já usam Enter).
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      if (sel.characterId) return toast("Personagens dos jogadores ficam no mapa; remova só criaturas e elementos do mestre.");
+      command("t-tool-remove", "", null).catch((error) => toast(error.message));
+    } else if (e.key === "Enter" && !sel.characterId && !e.target.closest?.("button, a[href], canvas, summary, [role=tab]")) {
+      e.preventDefault();
+      command("t-token-edit", "", null).catch((error) => toast(error.message));
+    }
   };
   document.addEventListener("keydown", onKey);
 

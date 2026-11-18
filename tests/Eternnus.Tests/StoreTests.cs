@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using Eternnus.Web;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -9,7 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Eternnus.Tests;
 
 /// <summary>Loja do Aventureiro (ADR-104): catálogo, links afiliados, recomendador contextual e privacidade, em SQLite.</summary>
-public sealed class StoreTests : IAsyncLifetime
+public sealed partial class StoreTests : IAsyncLifetime
 {
     /// <summary>Leitor de páginas falso: nunca acessa a rede e registra se foi chamado.</summary>
     sealed class FakeReader : StoreLinkReader
@@ -31,6 +32,7 @@ public sealed class StoreTests : IAsyncLifetime
     StoreRecommendationService recommendations = null!;
     StoreAnalyticsService analytics = null!;
     StoreAffiliateService affiliates = null!;
+    StoreViewTokens tokens = null!;
     readonly Guid t20 = Guid.NewGuid(), dnd = Guid.NewGuid(), coc = Guid.NewGuid();
     Campaign arton = null!, reinos = null!;
     static readonly Guid Books = Guid.Parse("00000000-0000-4000-8000-000000000301"), Dice = Guid.Parse("00000000-0000-4000-8000-000000000304"),
@@ -55,10 +57,11 @@ public sealed class StoreTests : IAsyncLifetime
         await db.SaveChangesAsync();
         reader = new FakeReader();
         var audit = new AuditService(db);
-        recommendations = new StoreRecommendationService(db, TimeProvider.System);
+        tokens = new StoreViewTokens(new EphemeralDataProtectionProvider());
+        recommendations = new StoreRecommendationService(db, TimeProvider.System, tokens);
         affiliates = new StoreAffiliateService(db, reader, new ConfigurationBuilder().Build(), NullLogger<StoreAffiliateService>.Instance);
         catalog = new StoreCatalogService(db, audit, recommendations, affiliates, TimeProvider.System);
-        analytics = new StoreAnalyticsService(db, TimeProvider.System);
+        analytics = new StoreAnalyticsService(db, TimeProvider.System, tokens);
     }
     public async Task DisposeAsync() { await db.DisposeAsync(); await connection.DisposeAsync(); }
 
@@ -507,7 +510,8 @@ public sealed class StoreTests : IAsyncLifetime
         var metrics = Json(await analytics.MetricsAsync(30, default));
         Assert.Equal(3, metrics.GetProperty("clicks").GetProperty("total").GetInt32());
         Assert.Equal(1, metrics.GetProperty("clicks").GetProperty("showcase").GetInt32());
-        Assert.False(metrics.GetProperty("impressionsTracked").GetBoolean());
+        Assert.True(metrics.GetProperty("impressionsTracked").GetBoolean());
+        Assert.Equal(0, metrics.GetProperty("impressions").GetProperty("total").GetInt32());
         Assert.Equal(3, metrics.GetProperty("bySystem")[0].GetProperty("clicks").GetInt32());
         Assert.Equal("Dados e acessórios", metrics.GetProperty("byCategory")[0].GetProperty("name").GetString());
         Assert.DoesNotContain(Ana, metrics.GetRawText());

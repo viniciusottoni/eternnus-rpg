@@ -2881,6 +2881,10 @@ dialog::backdrop { background: #060c0bd1; backdrop-filter: blur(5px); }
    O alvo de toque de 44 px continua no ::before, independente do círculo visível. */
 button.help-button, .help-button { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 18px !important; box-sizing: border-box; width: 18px !important; height: 18px !important; min-width: 18px !important; min-height: 18px !important; max-width: 18px !important; max-height: 18px !important; aspect-ratio: 1; padding: 0 !important; align-self: center; margin: 0 0 0 .4em; vertical-align: .12em; color: var(--gold); background: transparent; border: 1px solid #c6a46399; border-radius: 50%; box-shadow: none; cursor: pointer; transform: none; transition: color var(--motion-fast), border-color var(--motion-fast), background var(--motion-fast); }
 .help-button::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; }
+/* Colagem do ⓘ ao texto (help.js): nunca fica sozinho na linha de baixo. */
+.help-glue { white-space: nowrap; }
+.help-glue-flex { display: inline-flex; flex-wrap: nowrap; align-items: center; min-width: 0; max-width: 100%; white-space: normal; }
+.help-glue-flex > :not(.help-button) { min-width: 0; }
 .help-button span { font: italic 600 11px/1 var(--serif); letter-spacing: 0; }
 button.help-button:hover, button.help-button[aria-expanded="true"] { color: var(--bright); border-color: var(--bright); background: #c6a4631f; transform: none; box-shadow: none; }
 @media (pointer: coarse) { .help-button::before { inset: -13px; } }

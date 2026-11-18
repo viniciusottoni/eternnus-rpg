@@ -11,9 +11,9 @@ public static class StoreEndpoints
         static string Me(ClaimsPrincipal u) => PlatformAccess.UserId(u);
         var store = app.MapGroup("/api/store").RequireAuthorization("Verified");
         store.MapGet("/products", ([FromQuery] string? q, [FromQuery] string[]? system, [FromQuery] Guid[]? category, [FromQuery] string[]? marketplace,
-            decimal? minPrice, decimal? maxPrice, bool? available, bool? onSale, string? sort, int? page, Guid? campaignId,
+            decimal? minPrice, decimal? maxPrice, bool? available, bool? onSale, string? sort, int? page, Guid? campaignId, int? seed,
             StoreCatalogService s, ClaimsPrincipal u, CancellationToken ct) =>
-            s.ProductsAsync(new(q, system, category, marketplace, minPrice, maxPrice, available, onSale, sort, page ?? 1, campaignId), Me(u), ct));
+            s.ProductsAsync(new(q, system, category, marketplace, minPrice, maxPrice, available, onSale, sort, page ?? 1, campaignId, seed), Me(u), ct));
         store.MapGet("/products/{id:guid}", (Guid id, StoreCatalogService s, CancellationToken ct) => s.ProductAsync(id, ct));
         store.MapGet("/suggestions", (string? q, StoreCatalogService s, CancellationToken ct) => s.SuggestionsAsync(q, ct));
         store.MapGet("/categories", (StoreCatalogService s, CancellationToken ct) => s.FiltersAsync(ct));
@@ -23,6 +23,9 @@ public static class StoreEndpoints
         store.MapDelete("/interests", async (StoreRecommendationService s, ClaimsPrincipal u, CancellationToken ct) => { await s.ClearInterestsAsync(Me(u), ct); return Results.NoContent(); });
         store.MapPost("/interactions", async (StoreInteractionInput x, StoreAnalyticsService s, ClaimsPrincipal u, CancellationToken ct) => { await s.RecordAsync(Me(u), x, ct); return Results.NoContent(); })
             .RequireRateLimiting("store");
+        // Exibições confirmadas da vitrine (ADR-108): token da exibição, idempotente; o GET de recomendações nunca grava.
+        store.MapPost("/impressions", async (StoreImpressionInput x, StoreAnalyticsService s, ClaimsPrincipal u, CancellationToken ct) => { await s.RecordImpressionsAsync(Me(u), x, ct); return Results.NoContent(); })
+            .RequireRateLimiting("store-impressions");
 
         var admin = app.MapGroup("/api/admin/store").RequireAuthorization("Verified").RequireAuthorization(PlatformAccess.AdminPolicy);
         admin.MapGet("/products", (string? q, string? status, string? marketplace, Guid? category, Guid? system, int? page, StoreCatalogService s, CancellationToken ct) =>

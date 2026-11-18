@@ -720,7 +720,9 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | Título truncado (vitrine e cartões) | Tooltip de texto completo (`data-tip-full`) | — |
 | Admin › Loja › Produtos / URL de afiliado | ⓘ no título e no campo | `admin.loja.link` |
 | Admin › Loja › Vitrine | ⓘ no título | `admin.loja.recomendacao` |
-| Admin › Loja › Indicadores | ⓘ no título + aviso visível sem CTR/receita | `admin.loja.metricas` |
+| Admin › Loja › Indicadores | ⓘ no título + aviso visível (exibição, CTR, amostra pequena, sem receita) | `admin.loja.metricas` |
+| Admin › Loja › Vitrine › Rotação inteligente (ADR-108) | ⓘ na legenda + auxiliares visíveis por campo; soma das proporções em `<output>` | `admin.loja.rotacao` |
+| Personalização › “Aprender com os produtos que eu abro” (ADR-108) | Auxiliar visível com os sistemas já aprendidos; detalhe em `loja.pagina.personalizacao` | — |
 | Preço, conferência, prioridade, validade, sinônimos | Auxiliar visível ligado por `aria-describedby` | — |
 
 A área `loja` entra em `HELP_AREAS`, no índice `HELP_KEYS` e na lista pública do PWA.

@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
 
 public record StoreCatalogQuery(string? Q = null, string[]? System = null, Guid[]? Category = null, string[]? Marketplace = null, decimal? MinPrice = null,
-    decimal? MaxPrice = null, bool? Available = null, bool? OnSale = null, string? Sort = null, int Page = 1, Guid? CampaignId = null);
+    decimal? MaxPrice = null, bool? Available = null, bool? OnSale = null, string? Sort = null, int Page = 1, Guid? CampaignId = null, int? Seed = null);
 public record StorePageDto(List<StoreCardDto> Items, int Total, int Page, int PageSize, string Sort, bool Personalized, StoreContextDto Context);
 public record StoreSuggestionDto(Guid Id, string Title);
 public record StoreFacetDto(Guid Id, string Name, string Slug, int Count);
@@ -26,9 +26,13 @@ public record StoreCategoryInput(string? Name, string? Keywords = null, int Orde
 public record StoreCategoryDto(Guid Id, string Name, string Slug, string Keywords, int Order, bool Archived, int Products);
 public record StorePageOptionDto(string Key, string Label);
 public record StoreSettingsInput(bool Enabled = true, int ShowcaseWide = 3, int ShowcaseMedium = 2, int ShowcaseNarrow = 1, string[]? Pages = null, int MaxPerMarketplace = 2,
-    bool CategoryDiversity = true, int RotationHours = 6, int PriceStaleHours = 24, int MetadataRefreshHours = 24, bool RequireImage = true, string? Synonyms = null, int Revision = 0);
+    bool CategoryDiversity = true, int RotationHours = 6, int PriceStaleHours = 24, int MetadataRefreshHours = 24, bool RequireImage = true, string? Synonyms = null, int Revision = 0,
+    bool SmartRotation = true, bool RotateOnNavigation = true, int RepeatWindow = 10, int SharePopular = 40, int ShareNew = 30, int ShareRelated = 20, int ShareExplore = 10,
+    int FatigueImpressions = 6, bool LearnFromClicks = true, bool CatalogCoverage = true);
 public record StoreSettingsDto(bool Enabled, int ShowcaseWide, int ShowcaseMedium, int ShowcaseNarrow, string[] Pages, int MaxPerMarketplace, bool CategoryDiversity,
-    int RotationHours, int PriceStaleHours, int MetadataRefreshHours, bool RequireImage, string Synonyms, int Revision, StorePageOptionDto[] PageOptions, string[] PageReader);
+    int RotationHours, int PriceStaleHours, int MetadataRefreshHours, bool RequireImage, string Synonyms, int Revision, StorePageOptionDto[] PageOptions, string[] PageReader,
+    bool SmartRotation, bool RotateOnNavigation, int RepeatWindow, int SharePopular, int ShareNew, int ShareRelated, int ShareExplore, int FatigueImpressions,
+    bool LearnFromClicks, bool CatalogCoverage);
 
 /// <summary>Catálogo público (filtros e paginação no servidor) e manutenção administrativa da loja (ADR-104).</summary>
 public partial class StoreCatalogService(GameDb db, AuditService audit, StoreRecommendationService recommendations, StoreAffiliateService affiliates, TimeProvider clock)
@@ -65,9 +69,11 @@ public partial class StoreCatalogService(GameDb db, AuditService audit, StoreRec
             var prefs = await StoreQueries.PreferencesAsync(db, userId, ct);
             var context = await recommendations.ContextAsync(userId, x.CampaignId, prefs, settings, ct);
             systemName = context.SystemName;
+            // Sessão de catálogo (ADR-108): com semente, a rotação dos empates fica fixa entre páginas — nada some nem repete.
+            var rank = x.Seed is > 0 and <= int.MaxValue ? context.Rank with { Bucket = x.Seed.Value } : context.Rank;
             var skip = (page - 1) * PageSize;
             ids = skip < StoreRecommendationService.Window
-                ? (await StoreQueries.RankAsync(db, query, context.Rank, settings, cut, StoreRecommendationService.Window, ct)).Skip(skip).Take(PageSize).Select(r => r.Candidate.Id).ToList()
+                ? (await StoreQueries.RankAsync(db, query, rank, settings, cut, StoreRecommendationService.Window, ct, await StoreQueries.RecentPopularityAsync(db, Now, ct))).Skip(skip).Take(PageSize).Select(r => r.Candidate.Id).ToList()
                 : await StoreQueries.GroupOrdered(query, context.Rank).Skip(skip).Take(PageSize).Select(p => p.Id).ToListAsync(ct);
         }
         else
@@ -246,6 +252,7 @@ public partial class StoreCatalogService(GameDb db, AuditService audit, StoreRec
         var status = StoreProductStatuses.All.Contains(x.Status) ? x.Status! : throw new RuleException(400, "Status inválido.");
         var before = product.Status;
         product.Status = status;
+        if (status == StoreProductStatuses.Active) product.PublishedAt ??= Now;
         product.UpdatedAt = Now;
         product.Revision++;
         audit.Record(actor, "store.product.status", "store", product.Id.ToString(), $"Mudou o produto {product.Title} de {before} para {status}", new { before, after = status });
@@ -324,6 +331,7 @@ public partial class StoreCatalogService(GameDb db, AuditService audit, StoreRec
         if (!offerKnown) p.PriceCheckedAt = null;
         else if (x.ConfirmPrice) p.PriceCheckedAt = Now;
         p.Status = status;
+        if (status == StoreProductStatuses.Active) p.PublishedAt ??= Now;
         p.Priority = x.Priority;
         p.UpdatedAt = Now;
         p.Systems.RemoveAll(s => !systemIds.Contains(s.RpgSystemId));
@@ -405,7 +413,8 @@ public partial class StoreCatalogService(GameDb db, AuditService audit, StoreRec
     StoreSettingsDto SettingsDto(StoreSettings s) => new(s.Enabled, s.ShowcaseWide, s.ShowcaseMedium, s.ShowcaseNarrow,
         s.Pages.Split(',', StringSplitOptions.RemoveEmptyEntries), s.MaxPerMarketplace, s.CategoryDiversity, s.RotationHours, s.PriceStaleHours,
         s.MetadataRefreshHours, s.RequireImage, s.Synonyms, s.Revision, StorePages.Options.Select(o => new StorePageOptionDto(o.Key, o.Label)).ToArray(),
-        affiliates.PageReaderMarketplaces());
+        affiliates.PageReaderMarketplaces(), s.SmartRotation, s.RotateOnNavigation, s.RepeatWindow, s.SharePopular, s.ShareNew, s.ShareRelated, s.ShareExplore,
+        s.FatigueImpressions, s.LearnFromClicks, s.CatalogCoverage);
 
     public async Task<StoreSettingsDto> SaveSettingsAsync(StoreSettingsInput x, string actor, CancellationToken ct)
     {
@@ -417,6 +426,12 @@ public partial class StoreCatalogService(GameDb db, AuditService audit, StoreRec
         Range(x.RotationHours, 1, 168, "Janela de rotação (horas)");
         Range(x.PriceStaleHours, 1, 720, "Validade do preço (horas)");
         Range(x.MetadataRefreshHours, 6, 720, "Atualização de metadados (horas)");
+        Range(x.RepeatWindow, 1, 50, "Histórico antirrepetição (navegações)");
+        Range(x.FatigueImpressions, 0, 50, "Exibições sem clique antes do resfriamento maior");
+        foreach (var (share, label) in new[] { (x.SharePopular, "Populares"), (x.ShareNew, "Novidades"), (x.ShareRelated, "Descoberta relacionada") }) Range(share, 0, 100, label);
+        // A exploração nunca chega a zero: é ela que garante a cobertura do catálogo fora do perfil.
+        Range(x.ShareExplore, StoreRotation.MinExplore, 50, "Exploração fora do perfil");
+        if (x.SharePopular + x.ShareNew + x.ShareRelated + x.ShareExplore != 100) throw new RuleException(400, "As proporções das filas precisam somar 100%.");
         var pages = (x.Pages ?? []).Distinct().ToArray();
         if (pages.Any(p => !StorePages.IsValid(p))) throw new RuleException(400, "Página inválida para a vitrine.");
         var synonyms = string.Join('\n', (x.Synonyms ?? "").Replace("\r", "").Split('\n').Select(l => string.Join(", ", l.Split(',').Select(t => t.Trim().ToLowerInvariant()).Where(t => t.Length > 0))).Where(l => l.Length > 0));
@@ -441,6 +456,16 @@ public partial class StoreCatalogService(GameDb db, AuditService audit, StoreRec
         settings.MetadataRefreshHours = x.MetadataRefreshHours;
         settings.RequireImage = x.RequireImage;
         settings.Synonyms = synonyms;
+        settings.SmartRotation = x.SmartRotation;
+        settings.RotateOnNavigation = x.RotateOnNavigation;
+        settings.RepeatWindow = x.RepeatWindow;
+        settings.SharePopular = x.SharePopular;
+        settings.ShareNew = x.ShareNew;
+        settings.ShareRelated = x.ShareRelated;
+        settings.ShareExplore = x.ShareExplore;
+        settings.FatigueImpressions = x.FatigueImpressions;
+        settings.LearnFromClicks = x.LearnFromClicks;
+        settings.CatalogCoverage = x.CatalogCoverage;
         settings.UpdatedAt = Now;
         // Os padrões do código valem como revisão 1; toda gravação (inclusive a primeira) avança a revisão.
         settings.Revision++;

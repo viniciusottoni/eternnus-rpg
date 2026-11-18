@@ -13,6 +13,8 @@ import {
 const META_MS = 5 * 60 * 1000;
 // Filtros ficam em memória do módulo: voltar à loja mantém a busca anterior.
 let filters = emptyFilters();
+// Sessão de catálogo (ADR-108): fixa a ordem dos empates enquanto o usuário pagina; nova a cada abertura da loja.
+let catalogSeed = 1;
 let meta = null;
 let metaAt = 0;
 
@@ -73,6 +75,7 @@ function readFilters(form) {
 
 /** Abre a página. Devolve ao roteador a função de descarte (cancela consultas e temporizadores). */
 export async function renderStore() {
+  catalogSeed = 1 + Math.floor(Math.random() * 2147483646);
   shell("store");
   const controllers = new Set();
   let suggestTimer = 0;
@@ -121,7 +124,7 @@ export async function renderStore() {
     if (!results.querySelector(".store-grid")) results.innerHTML = '<p class="loading-line" role="status">Consultando os mercadores…</p>';
     const c = (listing = signal());
     try {
-      const data = await storeProducts(catalogQuery(filters), { signal: c.signal });
+      const data = await storeProducts(catalogQuery(filters, "", catalogSeed), { signal: c.signal });
       if (!alive || request !== seq) return;
       paint(data);
     } catch (error) {
@@ -285,6 +288,7 @@ async function openPreferences() {
 <label class="store-check" for="sp-campaigns"><input type="checkbox" id="sp-campaigns" name="useCampaignSystems" ${prefs.useCampaignSystems ? "checked" : ""} aria-describedby="sp-campaigns-hint"><span>Usar os sistemas das minhas campanhas</span></label><small class="form-help" id="sp-campaigns-hint">Só o sistema de RPG de cada campanha em que você joga ou mestra é usado. Desligado, a loja mostra produtos gerais ou o sistema escolhido abaixo.</small>
 <label class="store-check" for="sp-messages"><input type="checkbox" id="sp-messages" name="analyzeMessages" ${prefs.analyzeMessages ? "checked" : ""} aria-describedby="sp-messages-hint"><span>Analisar minhas mensagens para sugerir produtos</span></label><small class="form-help" id="sp-messages-hint">Opcional. Considera só o que você escreveu nos últimos 180 dias: seus tópicos e respostas da Guilda e suas mensagens abertas à mesa. Nunca usa mensagens privadas, de outras pessoas, rolagens, fichas ou notas do mestre, e só guarda palavras do catálogo da loja (como “miniatura” ou “dados metálicos”). Desligar apaga o que foi inferido.${prefs.messagesConsentAt ? ` Consentimento dado em ${esc(when(prefs.messagesConsentAt))}.` : ""}</small>
 <div class="field"><label for="sp-system">Sistema de interesse</label><select id="sp-system" name="interestSystemId" aria-describedby="sp-system-hint"><option value="">Automático (pelas campanhas)</option>${systems}</select><small class="form-help" id="sp-system-hint">Nas páginas gerais, este sistema passa à frente. Dentro de uma campanha, vale o sistema dela.</small></div>
+<label class="store-check" for="sp-learn"><input type="checkbox" id="sp-learn" name="learnFromClicks" ${prefs.learnFromClicks !== false ? "checked" : ""} aria-describedby="sp-learn-hint"><span>Aprender com os produtos que eu abro</span></label><small class="form-help" id="sp-learn-hint">Sistemas e categorias dos produtos em que você clica passam a aparecer mais, aos poucos: um clique isolado pesa pouco e cliques antigos perdem força. O sistema da campanha continua à frente e outras sugestões seguem aparecendo.${prefs.learnedSystems?.length ? ` Aprendido até agora: ${esc(prefs.learnedSystems.join(", "))}.` : ""}</small>
 <fieldset><legend>Interesses inferidos</legend>${terms}${button("Apagar interesses inferidos", "sp-clear", "", "subtle small", prefs.interests?.count ? "" : 'aria-disabled="true" data-tip="Não há interesses guardados."')}</fieldset>
 ${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">Salvar preferências</button></div></form>`);
   const form = $("#store-prefs-form");
@@ -310,6 +314,7 @@ ${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", 
         useCampaignSystems: form.useCampaignSystems.checked,
         analyzeMessages: form.analyzeMessages.checked,
         interestSystemId: form.interestSystemId.value || null,
+        learnFromClicks: form.learnFromClicks.checked,
       });
       invalidateShowcase();
       $("#modal").close();

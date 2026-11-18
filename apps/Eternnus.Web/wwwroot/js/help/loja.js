@@ -23,6 +23,7 @@ const entries = {
           "Desligar a análise apaga os interesses inferidos na hora.",
           "“Apagar interesses inferidos” remove os termos e ignora mensagens anteriores.",
           "Você pode ocultar a vitrine do topo das páginas a qualquer momento.",
+          "“Aprender com os produtos que eu abro” usa só os seus cliques: sistemas clicados em produtos diferentes aparecem mais, aos poucos. Desligar para o aprendizado na hora.",
           "Nada do que você escreve é enviado às lojas parceiras."
         ]
       }

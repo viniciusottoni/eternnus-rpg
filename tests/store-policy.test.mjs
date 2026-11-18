@@ -137,3 +137,53 @@ test("Loja is a secondary navigation item (sidebar and mobile 'Mais'), a platfor
   assert.match(admin, /\["store", "Loja"\]/);
   assert.match(admin, /import\("\.\/admin-store\.js"\)/);
 });
+
+// ---------- Rotação inteligente e exibição confirmada (ADR-108) ----------
+test("a card counts as seen only at half visibility with the tab visible", () => {
+  assert.equal(policy.EXPOSURE_RATIO, 0.5);
+  assert.equal(policy.EXPOSURE_MS, 1000);
+  assert.equal(policy.exposureVisible({ isIntersecting: true, intersectionRatio: 0.5 }, true), true);
+  assert.equal(policy.exposureVisible({ isIntersecting: true, intersectionRatio: 0.49 }, true), false);
+  assert.equal(policy.exposureVisible({ isIntersecting: false, intersectionRatio: 1 }, true), false);
+  assert.equal(policy.exposureVisible({ isIntersecting: true, intersectionRatio: 1 }, false), false); // aba oculta
+  assert.equal(policy.exposureVisible(null, true), false);
+});
+
+test("only a real route change is a new navigation; re-rendering the same route is not", () => {
+  assert.equal(policy.isNewNavigation(null, "#campaigns"), true);
+  assert.equal(policy.isNewNavigation("#campaigns", "#campaigns"), false);
+  assert.equal(policy.isNewNavigation("#campaigns", "#guild"), true);
+  assert.equal(policy.isNewNavigation("#guild", "#campaigns"), true); // voltar à mesma página é nova navegação
+});
+
+test("the exposure ledger counts each product once per view, across resizes and re-observation", () => {
+  const ledger = policy.createExposureLedger(2);
+  assert.equal(ledger.add("view-1", "a"), true);
+  assert.equal(ledger.add("view-1", "a"), false); // saiu e voltou à tela / girou o celular
+  assert.equal(ledger.add("view-1", "b"), true);
+  assert.equal(ledger.add("view-2", "a"), true);   // outra exibição (outra navegação) conta de novo
+  assert.equal(ledger.has("view-1", "b"), true);
+  ledger.add("view-3", "z");                        // guarda só as últimas exibições
+  assert.equal(ledger.has("view-1", "a"), false);
+  assert.equal(ledger.add("", "a"), false);
+  assert.equal(ledger.add("view-3", ""), false);
+  ledger.clear();
+  assert.equal(ledger.has("view-3", "z"), false);
+});
+
+test("catalog sessions send a stable seed so pagination neither repeats nor hides products", () => {
+  const f = { ...policy.emptyFilters(), page: 2 };
+  assert.equal(new URLSearchParams(policy.catalogQuery(f, "", 12345)).get("seed"), "12345");
+  for (const bad of [0, -1, 1.5, 2147483648, "7", null]) assert.equal(new URLSearchParams(policy.catalogQuery(f, "", bad)).has("seed"), false, String(bad));
+});
+
+test("the showcase renews per navigation without polling, persists nothing sensitive and confirms exposures by POST", async () => {
+  const source = await readFile(new URL("js/store-recommendations.js", root), "utf8");
+  assert.match(source, /new IntersectionObserver/);
+  assert.match(source, /recordStoreImpressions/);
+  assert.doesNotMatch(source, /setInterval|localStorage|CACHE_MS/);
+  assert.match(source, /data-store-item=/);
+  const api = await readFile(new URL("js/store-api.js", root), "utf8");
+  assert.match(api, /"\/store\/impressions", "POST"/);
+  assert.match(api, /learnFromClicks: prefs\.learnFromClicks !== false/);
+});

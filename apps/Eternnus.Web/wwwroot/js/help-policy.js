@@ -160,6 +160,7 @@ export const HELP_KEYS = Object.freeze({
   "admin.musicas.catalogo": "admin",
   "admin.loja.link": "admin",
   "admin.loja.recomendacao": "admin",
+  "admin.loja.rotacao": "admin",
   "admin.loja.metricas": "admin",
   "loja.pagina.afiliados": "all",
   "loja.pagina.personalizacao": "all",

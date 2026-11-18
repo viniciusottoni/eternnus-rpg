@@ -66,6 +66,23 @@ try {
   check((await ana("/api/store/recommendations?page=table")).show, false, "vitrine nunca na mesa");
   await ana("/api/store/interactions", "POST", { productId: core.id, surface: "showcase" }, 204);
 
+  // Rotação inteligente (ADR-108): o GET não grava; a exibição é confirmada por POST com o token, uma vez por ciclo.
+  const anaSql = `(SELECT "Id" FROM "AspNetUsers" WHERE "Email"='loja.ana@example.test')`;
+  const exposures = () => Number(sql(`SELECT count(*) FROM "StoreExposures" WHERE "UserId" = ${anaSql}`));
+  const cycle = () => Number(sql(`SELECT coalesce(max("Cycle"), 0) FROM "StoreRotationStates" WHERE "UserId" = ${anaSql}`));
+  check(recommendations.view.strategies.length, recommendations.items.length, "fila informada para cada cartão");
+  check(exposures(), 0, "consultar a vitrine não grava exibição");
+  const firstSeen = { view: recommendations.view.token, productIds: [recommendations.items[0].id] };
+  await ana("/api/store/impressions", "POST", firstSeen, 400, { csrf: false });
+  await ana("/api/store/impressions", "POST", firstSeen, 204);
+  await ana("/api/store/impressions", "POST", firstSeen, 204);
+  check([exposures(), cycle()], [1, 1], "exibição contada uma vez e ciclo avançado uma vez");
+  await admin("/api/store/impressions", "POST", firstSeen, 400);
+  await ana("/api/store/impressions", "POST", { view: "forjado", productIds: [core.id] }, 400);
+  const nextView = await ana("/api/store/recommendations?page=guild");
+  check(nextView.view.cycle, 1, "nova navegação usa o novo ciclo");
+  check(nextView.items.some((i) => i.id === recommendations.items[0].id), false, "produto visto não volta havendo alternativa");
+
   // ---------- Interface ----------
   browser = await chromium.launch({ executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
   async function pageFor(client, { mobile = false, width = 1440 } = {}) {
@@ -98,10 +115,25 @@ try {
   }
 
   // Desktop: menu, vitrine acima do título e três colunas.
+  const waitExposures = async (page, target) => {
+    for (let i = 0; i < 40 && exposures() < target; i++) await page.waitForTimeout(150);
+    await page.waitForTimeout(600); // nada além do esperado chega depois
+    return exposures();
+  };
   const desk = await pageFor(ana);
+  let recommendationCalls = 0;
+  desk.on("request", (r) => { if (r.url().includes("/api/store/recommendations")) recommendationCalls++; });
+  const baseExposures = exposures();
+  const baseCycle = cycle();
   await go(desk, "overview", '#store-strip[data-state="ready"] .store-strip-item');
   ok(await desk.locator('.sidebar nav[aria-label="Menu principal"] a.nav-item[href="#store"]').isVisible(), "Loja no menu lateral");
   check(await visibleItems(desk), 3, "três produtos no desktop largo");
+  check(await waitExposures(desk, baseExposures + 3), baseExposures + 3, "três cartões visíveis confirmados depois de ~1 s");
+  check(cycle(), baseCycle + 1, "exibição confirmada avança o ciclo");
+  const calls = recommendationCalls;
+  await desk.evaluate(() => window.dispatchEvent(new HashChangeEvent("hashchange")));
+  await desk.waitForTimeout(800);
+  check(recommendationCalls, calls, "renderizar de novo a mesma rota não pede nova seleção");
   const geometry = await desk.evaluate(() => {
     const strip = document.querySelector("#store-strip").getBoundingClientRect();
     const heading = document.querySelector("#main .page-heading").getBoundingClientRect();
@@ -135,6 +167,13 @@ try {
   await desk.waitForTimeout(150);
   check(await visibleItems(desk), 2, "duas colunas com contêiner médio");
   await desk.setViewportSize({ width: 1440, height: 900 });
+  await desk.waitForTimeout(1300);
+  check(exposures(), baseExposures + 3, "mudar a largura não duplica exibições");
+  // Cada navegação real pede uma seleção nova, inclusive ao voltar para a mesma página.
+  const [guildShown] = await Promise.all([desk.waitForResponse((r) => r.url().includes("/api/store/recommendations?page=guild")), go(desk, "guild", "#main *")]);
+  const [homeAgain] = await Promise.all([desk.waitForResponse((r) => r.url().includes("/api/store/recommendations?page=home")), go(desk, "overview", "#main *")]);
+  check([guildShown.status(), homeAgain.status()], [200, 200], "nova consulta em cada navegação");
+  ok((await homeAgain.json()).view.cycle >= baseCycle + 1, "voltar ao início usa um ciclo novo");
 
   // Telas imersivas e administrativas não mostram a vitrine.
   for (const route of [`campaign/${campaign.id}/prep`, "settings", "store"]) {
@@ -183,8 +222,10 @@ try {
 
   // Celular: Loja no "Mais", barra inferior inalterada, vitrine com um produto e alvos de toque.
   const phone = await pageFor(ana, { mobile: true });
+  const phoneBase = await waitExposures(desk, 0);
   await go(phone, "overview", '#store-strip[data-state="ready"] .store-strip-item');
   check(await visibleItems(phone), 1, "um produto no celular");
+  check(await waitExposures(phone, phoneBase + 1), phoneBase + 1, "no celular só o cartão visível conta");
   check(await phone.locator(".sidebar nav .nav-primary").count(), 4, "barra inferior com os mesmos destinos principais");
   await phone.locator('[data-action="nav-more"]').click();
   ok(await phone.locator('#nav-more-panel a[href="#store"]').isVisible(), "Loja no menu Mais");
@@ -216,14 +257,26 @@ try {
   await board.waitForFunction(() => [...document.querySelectorAll(".sa-table th")].some((th) => th.textContent.includes("Escudo do Mestre")), null, { timeout: 10000 });
   await go(board, "admin/store/categories", "#sa-body table");
   await go(board, "admin/store/settings", "#sa-settings");
+  ok(await board.locator("#ss-smart").isChecked() && await board.locator("#ss-nav").isChecked(), "rotação inteligente ligada por padrão");
+  check(await board.locator("#ss-share-sum").textContent(), "100%", "soma das proporções visível");
+  await board.locator("#ss-shareRelated").fill("30");
+  check(await board.locator("#ss-share-sum").textContent(), "110%", "soma atualizada ao digitar");
+  await board.locator('#sa-settings button[type="submit"]').click();
+  await board.waitForFunction(() => document.querySelector("#sa-settings [data-form-error]")?.textContent.includes("somar 100%"), null, { timeout: 10000 });
+  await board.locator("#ss-shareRelated").fill("20");
+  await board.screenshot({ path: `${dir}/admin-loja-rotacao.png`, fullPage: true });
   await board.locator('#sa-settings button[type="submit"]').click();
   await board.waitForFunction(() => document.querySelector("#toast")?.textContent.includes("Configurações da loja salvas"), null, { timeout: 10000 });
+  await admin("/api/admin/store/settings", "PUT", { ...(await admin("/api/admin/store/settings")), shareExplore: 0, sharePopular: 50 }, 400);
   await go(board, "admin/store/metrics", ".stat-grid");
-  ok((await board.locator("#sa-body").textContent()).includes("CTR não é calculado"), "métricas sem CTR inventado");
-  await board.screenshot({ path: `${dir}/admin-loja.png` });
+  const metricsText = await board.locator("#sa-body").textContent();
+  ok(metricsText.includes("CTR = cliques atribuídos") && metricsText.includes("Desempenho por fila") && metricsText.includes("Produtos menos exibidos"), "painel com exibições, CTR por fila e cobertura");
+  await board.screenshot({ path: `${dir}/admin-loja.png`, fullPage: true });
   const metrics = await admin("/api/admin/store/metrics?days=30");
   ok(metrics.clicks.showcase >= 1 && metrics.clicks.detail >= 1, "cliques por superfície");
-  check(metrics.impressionsTracked, false, "impressões não registradas");
+  check(metrics.impressionsTracked, true, "exibições registradas");
+  ok(metrics.impressions.total >= 5 && metrics.coverage.active >= 5 && metrics.coverage.shown >= 4, "exibições e cobertura agregadas");
+  ok(!JSON.stringify(metrics).includes("loja.ana@example.test"), "métricas sem dados individuais");
 
   check(errors, [], "nenhum erro de JavaScript ou CSP");
   console.log(`ok: ${env.assertions?.() ?? "store-ui"} verificações`);
