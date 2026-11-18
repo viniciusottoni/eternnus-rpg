@@ -2,12 +2,14 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
 
-public record StartSessionInput(string Title, string Objective, string MapKind, string MapKey, Guid? ChapterId = null);
+/// <summary><paramref name="SceneId"/> (ADR-100): abre a sessão já apresentando uma cena preparada; o mapa da cena prevalece sobre <paramref name="MapKind"/>/<paramref name="MapKey"/>.</summary>
+public record StartSessionInput(string? Title, string? Objective, string? MapKind, string? MapKey, Guid? ChapterId = null, Guid? SceneId = null);
 public record SessionChapterInput(Guid? ChapterId);
 public record JoinSessionInput(Guid? CharacterId);
 public record SessionTextInput(string Content);
 public record SessionNoteInput(string Content, bool Shared);
-public record SessionRollInput(string? Formula, string? Label, DiceSpec? Spec = null, string? Visibility = null, List<Guid>? Recipients = null);
+/// <summary><paramref name="CharacterId"/>: ficha usada para os @campos (ADR-099); jogador só a própria, mestre qualquer ficha da sessão.</summary>
+public record SessionRollInput(string? Formula, string? Label, DiceSpec? Spec = null, string? Visibility = null, List<Guid>? Recipients = null, Guid? CharacterId = null);
 public record TurnInput(Guid? CharacterId, string? Key = null);
 public record ActionInput(string Kind, string? ActionId, string? Target);
 public record MapInput(string MapKind, string MapKey);
@@ -137,7 +139,11 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
     }
 
     // ---------- Campanha ----------
-    public async Task<object> MapsAsync(Guid campaignId, string user, CancellationToken ct)
+    public async Task<object> MapsAsync(Guid campaignId, string user, CancellationToken ct) =>
+        new { items = await MapItemsAsync(campaignId, user, ct) };
+
+    /// <summary>Mapas que o mestre pode usar (oficiais, recursos e acervo), como lista simples.</summary>
+    async Task<IEnumerable<object>> MapItemsAsync(Guid campaignId, string user, CancellationToken ct)
     {
         var (_, master) = await CampaignAccessAsync(campaignId, user, ct);
         if (!master) throw new RuleException(403, "Somente o mestre escolhe mapas.");
@@ -145,7 +151,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
             .Select(r => new { key = "resource:" + r.Id, kind = MapKinds.Cartographic, name = r.Name, description = "Mapa da campanha", imageUrl = (string?)r.Content, rows = Array.Empty<string>() }).ToListAsync(ct);
         var builtIn = BattleMaps.All.Select(m => new { key = m.Key, kind = m.Kind, name = m.Name, description = m.Description, imageUrl = m.ImageUrl, rows = m.Rows });
         var assets = await new CampaignAssetsService(db).MapChoicesAsync(campaignId, ct);
-        return new { items = builtIn.Concat(resources).Cast<object>().Concat(assets) };
+        return builtIn.Concat(resources).Cast<object>().Concat(assets).ToList();
     }
 
     public async Task<object> ListAsync(Guid campaignId, string user, int page, CancellationToken ct)
@@ -170,7 +176,8 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
 
     public async Task<object> StartAsync(Guid campaignId, StartSessionInput x, string user, CancellationToken ct)
     {
-        var title = Trim(x.Title, 120, "Informe o nome da sessão com até 120 caracteres.");
+        // Nome opcional (ADR-100): sem nome, a sessão é identificada só pelo número.
+        var title = Trim(x.Title, 120, "O nome da sessão aceita até 120 caracteres.", false);
         var objective = Trim(x.Objective, 2000, "O objetivo aceita até 2.000 caracteres.", false);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var campaign = db.Database.IsNpgsql()
@@ -185,24 +192,61 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         if (campaign.IsOneShot) throw new RuleException(409, "One-shots têm sessão única, aberta na criação da mesa.");
         if (campaign.ArchivedAt != null) throw new RuleException(409, "Esta campanha está arquivada. Restaure-a antes de iniciar uma sessão.");
         if (await db.Sessions.AnyAsync(s => s.CampaignId == campaignId && s.EndedAt == null, ct)) throw new RuleException(409, "Já existe uma sessão em andamento nesta campanha.");
-        var map = await ResolveMapAsync(campaignId, x.MapKind, x.MapKey, ct);
+        var scene = x.SceneId is { } sceneId
+            ? await db.Scenes.SingleOrDefaultAsync(sc => sc.Id == sceneId && sc.CampaignId == campaignId, ct) ?? throw new RuleException(404, "Cena não encontrada.")
+            : null;
+        var map = scene != null && SceneHasMap(scene)
+            ? await ResolveMapAsync(campaignId, SceneMapKind(scene), scene.MapKey, ct)
+            : await ResolveMapAsync(campaignId, x.MapKind, x.MapKey, ct);
         var chapterId = await WorkspaceService.ChapterOf(db, campaignId, x.ChapterId, ct);
-        var liveMax = await db.Sessions.Where(s => s.CampaignId == campaignId).MaxAsync(s => (int?)s.Number, ct) ?? 0;
-        var pastMax = await db.Set<PastSession>().Where(s => s.CampaignId == campaignId).MaxAsync(s => (int?)s.Number, ct) ?? 0;
-        var first = await db.Campaigns.Where(c => c.Id == campaignId).Select(c => c.FirstSessionNumber).SingleAsync(ct);
-        var number = Math.Max(first, Math.Max(liveMax, pastMax) + 1);
+        var number = await NextSessionNumberAsync(campaignId, ct);
         // A forma de condução fica fixa na sessão: mudar a campanha depois não altera regras de uma partida em andamento.
         var playMode = (await Fog.CampaignSettingsAsync(campaign, ct)).PlayMode;
         var session = new GameSession { CampaignId = campaignId, Number = number, Title = title, Objective = objective, StartedAt = Now, MapKind = map.Kind, MapKey = map.Key, PlayMode = playMode, ChapterId = chapterId };
         db.Sessions.Add(session);
         db.SessionParticipants.Add(new() { SessionId = session.Id, UserId = user, IsMaster = true, JoinedAt = Now, LastSeenAt = Now });
         var author = await NameAsync(user, ct);
-        Event(session, user, author, EventKinds.Start, $"Sessão {number:00} iniciada — {title}", new { map = map.Name, mapKind = map.Kind, playMode });
+        Event(session, user, author, EventKinds.Start, title.Length > 0 ? $"Sessão {number:00} iniciada — {title}" : $"Sessão {number:00} iniciada", new { map = map.Name, mapKind = map.Kind, playMode });
         if (objective.Length > 0) Event(session, user, author, EventKinds.Note, objective, new { title = "Objetivo inicial" }, masterOnly: true);
         await NoticeService.NotifyAsync(db, campaignId, user, NoticeAreas.Table, session.Id.ToString(), NoticeAudience.Players, ct);
-        try { await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); }
+        try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException) { throw new RuleException(409, "Já existe uma sessão em andamento nesta campanha."); }
-        return new { session.Id, session.Number };
+        // Cena inicial na mesma transação: a mesa abre já apresentando a cena (marcadores, névoa e texto), sem segundo passo.
+        if (scene != null) { await ShowSceneAsync(new Access(session, campaign, true), scene, false, user, ct); await db.SaveChangesAsync(ct); }
+        await tx.CommitAsync(ct);
+        return new { session.Id, session.Number, sceneId = scene?.Id };
+    }
+
+    static bool SceneHasMap(Scene scene) => scene.Kind != SceneKinds.Text && scene.MapKey.Length > 0;
+    static string SceneMapKind(Scene scene) => scene.Kind == SceneKinds.Map ? MapKinds.Tileset : MapKinds.Cartographic;
+
+    /// <summary>Próximo número: maior entre o mínimo da campanha e o maior número registrado (Eternnus ou anterior) + 1.</summary>
+    async Task<int> NextSessionNumberAsync(Guid campaignId, CancellationToken ct)
+    {
+        var liveMax = await db.Sessions.Where(s => s.CampaignId == campaignId).MaxAsync(s => (int?)s.Number, ct) ?? 0;
+        var pastMax = await db.Set<PastSession>().Where(s => s.CampaignId == campaignId).MaxAsync(s => (int?)s.Number, ct) ?? 0;
+        var first = await db.Campaigns.Where(c => c.Id == campaignId).Select(c => c.FirstSessionNumber).SingleAsync(ct);
+        return Math.Max(first, Math.Max(liveMax, pastMax) + 1);
+    }
+
+    /// <summary>
+    /// Contexto do modal "Iniciar nova sessão" numa só consulta (ADR-100): próximo número, mapas, cenas preparadas e o capítulo
+    /// sugerido (o da sessão mais recente). Somente leitura e somente para o mestre.
+    /// </summary>
+    public async Task<object> StartContextAsync(Guid campaignId, string user, CancellationToken ct)
+    {
+        var maps = await MapItemsAsync(campaignId, user, ct);
+        var scenes = await db.Scenes.AsNoTracking().Where(s => s.CampaignId == campaignId).OrderBy(s => s.Order).ThenBy(s => s.Name).Take(100)
+            .Select(s => new { s.Id, s.Name, s.Kind, s.MapKey, s.SharedText, s.UpdatedAt }).ToListAsync(ct);
+        var last = await db.Sessions.AsNoTracking().Where(s => s.CampaignId == campaignId).OrderByDescending(s => s.Number).Select(s => new { s.ChapterId }).FirstOrDefaultAsync(ct);
+        return new
+        {
+            nextNumber = await NextSessionNumberAsync(campaignId, ct),
+            maps,
+            scenes = scenes.Select(s => new { s.Id, s.Name, s.Kind, s.MapKey, hasText = s.SharedText.Length > 0, s.UpdatedAt }),
+            hasSessions = last != null,
+            lastChapterId = last?.ChapterId,
+        };
     }
 
     /// <summary>Ponto de entrada da mesa: indica a sessão ativa e as fichas que o jogador pode levar.</summary>
@@ -422,11 +466,13 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
             if (chosen == default) throw new RuleException(409, "Esse personagem não está presente na mesa.");
             a.Session.ActiveCharacterId = a.Session.LastActiveCharacterId = target; a.Session.TurnNumber++; text = $"Turno de {chosen.Name}";
             a.Session.ActiveTurnKey = TurnOrders.Parse(a.Session.TurnOrder).Any(e => e.Key == "c:" + target) ? "c:" + target : null;
+            await TickEffectsAsync(a.Session, ActiveCharacters(a.Session), user, ct);
         }
         else if (x.Key is { Length: > 0 } key)
         {
             var entry = TurnOrders.Parse(a.Session.TurnOrder).FirstOrDefault(e => e.Key == key) ?? throw new RuleException(400, "Essa entrada não está na ordem de turnos.");
             Activate(a.Session, entry); text = $"Turno de {entry.Label}";
+            await TickEffectsAsync(a.Session, ActiveCharacters(a.Session), user, ct);
         }
         else { a.Session.ActiveCharacterId = null; a.Session.ActiveTurnKey = null; text = "O mestre retomou a narrativa"; }
         Event(a.Session, user, await NameAsync(user, ct), EventKinds.Turn, text, new { characterId = x.CharacterId, turn = a.Session.TurnNumber });
@@ -441,12 +487,14 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         {
             var entry = await NextEntryAsync(a.Session, configured, ct) ?? throw new RuleException(409, "Ninguém da ordem de turnos está disponível agora.");
             Activate(a.Session, entry);
+            await TickEffectsAsync(a.Session, ActiveCharacters(a.Session), user, ct);
             Event(a.Session, user, await NameAsync(user, ct), EventKinds.Turn, $"Turno de {entry.Label}", new { characterId = a.Session.ActiveCharacterId, key = entry.Key, turn = a.Session.TurnNumber });
             await CommitAsync(tx, a.Session, ct); return;
         }
         var order = await TurnOrderAsync(sessionId, ct);
         var next = TableRules.NextTurn(order.Select(o => o.Character).ToList(), a.Session.ActiveCharacterId ?? a.Session.LastActiveCharacterId) ?? throw new RuleException(409, "Nenhum aventureiro presente para receber o turno.");
         a.Session.ActiveCharacterId = a.Session.LastActiveCharacterId = next; a.Session.TurnNumber++;
+        await TickEffectsAsync(a.Session, [next], user, ct);
         Event(a.Session, user, await NameAsync(user, ct), EventKinds.Turn, $"Turno de {order.First(o => o.Character == next).Name}", new { characterId = next, turn = a.Session.TurnNumber });
         await CommitAsync(tx, a.Session, ct);
     }
@@ -464,7 +512,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         var order = TurnOrders.Parse(a.Session.TurnOrder);
         var next = order.Count > 0 ? await NextEntryAsync(a.Session, order, ct) : null;
         a.Session.ActiveTurnKey = null;
-        if (next != null) Activate(a.Session, next);
+        if (next != null) { Activate(a.Session, next); await TickEffectsAsync(a.Session, ActiveCharacters(a.Session), user, ct); }
         Event(a.Session, user, await NameAsync(user, ct), EventKinds.Turn, next == null ? $"{name} encerrou o turno" : $"{name} encerrou o turno · agora: {next.Label}",
             new { ended = true, turn = a.Session.TurnNumber, key = next?.Key, characterId = a.Session.ActiveCharacterId });
         await CommitAsync(tx, a.Session, ct);
@@ -674,7 +722,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         if (x.TemplateId != null || !string.IsNullOrWhiteSpace(x.ImageUrl))
             token.MasterCharacterId = await CreatureAsync(a, label, x.Side, x.TemplateId, x.ImageUrl, ct);
         db.SessionTokens.Add(token);
-        Event(a.Session, user, await NameAsync(user, ct), EventKinds.Token, $"{label} surgiu no mapa", new { tokenId = token.Id, side = x.Side, x = x.X, y = x.Y }, masterOnly: Secret(scene, token));
+        Event(a.Session, user, await NameAsync(user, ct), EventKinds.Token, $"{label} surgiu no mapa", new { tokenId = token.Id, side = x.Side, x = x.X, y = x.Y, undoable = true }, masterOnly: Secret(scene, token));
         await RefreshFogAsync(a, user, ct);
         await CommitAsync(tx, a.Session, ct);
         return new { token.Id, masterCharacterId = token.MasterCharacterId };
@@ -747,6 +795,54 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         await CommitAsync(tx, a.Session, ct);
     }
 
+    /// <summary>
+    /// "Colocar o grupo" (ADR-100): leva os personagens presentes para a entrada da cena (ou do mapa), na ordem de chegada.
+    /// Marcadores do mestre ficam onde estão; quem não couber permanece no lugar. Cada mudança vira um movimento desfazível.
+    /// </summary>
+    public async Task<object> GatherPartyAsync(Guid sessionId, string user, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var a = await LockAsync(sessionId, user, ct); RequireMaster(a);
+        var scene = await RequireSceneAsync(a, ct);
+        var s = a.Session;
+        var present = await db.SessionParticipants.Where(p => p.SessionId == s.Id && p.CharacterId != null && !p.IsMaster).OrderBy(p => p.JoinedAt)
+            .Select(p => p.CharacterId!.Value).ToListAsync(ct);
+        if (present.Count == 0) throw new RuleException(409, "Nenhum personagem de jogador está na mesa.");
+        var tokens = await db.SessionTokens.Where(t => t.SessionId == s.Id).ToListAsync(ct);
+        // Casas das criaturas do mestre (inclusive áreas grandes) continuam ocupadas; as dos personagens serão redistribuídas.
+        var taken = TokenSpans.Taken(tokens.Where(t => t.CharacterId == null)).ToHashSet();
+        var sceneEntry = s.SceneId is { } sceneId
+            ? await db.Scenes.AsNoTracking().Where(x => x.Id == sceneId && x.CampaignId == s.CampaignId && x.Kind == SceneKinds.Map && x.MapKey == s.MapKey).Select(x => x.Entry).FirstOrDefaultAsync(ct)
+            : null;
+        var entries = await EntryRectsAsync(s, sceneEntry, ct);
+        var author = await NameAsync(user, ct);
+        var characters = await db.Characters.Where(c => present.Contains(c.Id)).ToDictionaryAsync(c => c.Id, ct);
+        int moved = 0, placed = 0;
+        foreach (var id in present.Distinct())
+        {
+            if (ScenePlacement.Spot(scene.Map, scene.Grid, taken, entries) is not { } p) continue;
+            if (!scene.Map.Free) taken.Add(p);
+            var token = tokens.FirstOrDefault(t => t.CharacterId == id);
+            if (token == null)
+            {
+                if (!characters.TryGetValue(id, out var c)) continue;
+                db.SessionTokens.Add(new() { SessionId = s.Id, CharacterId = id, Label = c.Name.Length > 40 ? c.Name[..40] : c.Name, Side = "ally", X = p.X, Y = p.Y });
+                placed++;
+                continue;
+            }
+            if (token.X == p.X && token.Y == p.Y && token.Fx == null && token.Fy == null) continue;
+            var from = new { x = token.X, y = token.Y, fx = token.Fx, fy = token.Fy };
+            token.X = p.X; token.Y = p.Y; token.Fx = null; token.Fy = null;
+            Event(s, user, author, EventKinds.Move, $"{token.Label} foi para a entrada", new { tokenId = token.Id, from, to = new { x = p.X, y = p.Y, fx = (int?)null, fy = (int?)null }, undoable = true });
+            moved++;
+        }
+        if (moved + placed == 0) { await tx.RollbackAsync(ct); return new { moved, placed }; }
+        Event(s, user, author, EventKinds.Token, "Mestre reuniu o grupo na entrada", new { moved, placed });
+        await RefreshFogAsync(a, user, ct);
+        await CommitAsync(tx, s, ct);
+        return new { moved, placed };
+    }
+
     public async Task RemoveTokenAsync(Guid sessionId, Guid tokenId, string user, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -755,7 +851,14 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         if (token.CharacterId != null) throw new RuleException(409, "Personagens de jogadores não são removidos do mapa.");
         var scene = await Fog.SceneAsync(a.Session, a.Campaign, false, ct);
         db.SessionTokens.Remove(token);
-        Event(a.Session, user, await NameAsync(user, ct), EventKinds.Token, $"{token.Label} deixou o mapa", new { tokenId, removed = true }, masterOnly: Secret(scene, token));
+        var author = await NameAsync(user, ct);
+        // Desfazer (ADR-100): o retrato completo do marcador fica só no evento privado do mestre. Se o marcador era
+        // visível ao grupo, os jogadores recebem uma cópia sem dados (o mestre vê só o original).
+        var snapshot = JsonSerializer.Serialize(TokenSnapshot.Of(token), Json);
+        var undoable = snapshot.Length <= 3000;
+        Event(a.Session, user, author, EventKinds.Token, $"{token.Label} deixou o mapa",
+            undoable ? new { tokenId, removed = true, snapshot, undoable = true } : new { tokenId, removed = true }, masterOnly: true);
+        if (!Secret(scene, token)) Event(a.Session, user, author, EventKinds.Token, $"{token.Label} deixou o mapa", new { tokenId, removed = true }, recipientCopy: true);
         await RefreshFogAsync(a, user, ct);
         await CommitAsync(tx, a.Session, ct);
     }
@@ -772,7 +875,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         return new
         {
             c.Id, c.OwnerId, c.Name, c.Archetype, c.Level, c.Hp, c.MaxHp, c.Strength, c.Agility, c.Intellect, c.Constitution, c.Armor, c.Movement,
-            c.Notes, c.Actions, c.TemplateVersionId, c.Values, c.Revision, c.UpdatedAt, c.Private, canEdit = a.IsMaster || c.OwnerId == user, sheet,
+            c.Notes, c.Actions, c.TemplateVersionId, c.Values, c.Revision, c.UpdatedAt, c.Private, canEdit = a.IsMaster || c.OwnerId == user, sheet, effects = CharacterEffects.Parse(c.Effects),
         };
     }
 
@@ -847,7 +950,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         if (s.MapKind == MapKinds.Tileset && await Fog.SceneAsync(s, a.Campaign, false, ct) is { } scene)
         {
             var players = participants.Where(p => !p.isMaster && p.characterId != null).Select(p => (object)new { p.userId, p.name, p.characterName });
-            (map, boardTokens, fog) = Board(scene, user, a.IsMaster, map, players, portraits: await PortraitsAsync(sessionId, ct));
+            (map, boardTokens, fog) = Board(scene, user, a.IsMaster, map, players, portraits: await PortraitsAsync(sessionId, user, a.IsMaster, ct));
         }
         Character? sheet = null;
         if (!a.IsMaster && me?.CharacterId is { } mine) sheet = await db.Characters.AsNoTracking().SingleOrDefaultAsync(c => c.Id == mine, ct);
@@ -858,7 +961,7 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
             var (resources, stats) = SheetSummary.Build(context.Version.Fields, CharacterSheets.All(context.Version.Fields, context.Stored));
             liveCharacter = new
             {
-                resources, stats, conditions = sheet.Conditions, shortcuts = Shortcuts.Parse(sheet.Shortcuts), classic = context.Legacy || context.IsFree,
+                resources, stats, conditions = sheet.Conditions, effects = CharacterEffects.Parse(sheet.Effects), shortcuts = Shortcuts.Parse(sheet.Shortcuts), classic = context.Legacy || context.IsFree,
                 sheet.Id, sheet.Name, sheet.Archetype, sheet.Level, sheet.Hp, sheet.MaxHp, sheet.Strength, sheet.Agility, sheet.Intellect,
                 sheet.Constitution, sheet.Armor, sheet.Movement, sheet.Notes, sheet.Revision, sheet.UpdatedAt,
                 templateId = context.Template.Id, templateName = context.Template.Name,

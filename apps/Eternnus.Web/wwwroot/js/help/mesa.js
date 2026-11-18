@@ -1,5 +1,42 @@
 // Texto público estático; catálogos avaliados sob demanda.
 const entries = {
+  "mesa.ficha.resumo": {
+    "title": "Ficha na mesa",
+    "summary": "Resumo com testes que rolam e itens que se usam; a ficha completa fica na outra aba.",
+    "body": [
+      "Clique num teste (perícia, atributo, resistência…) para rolar o dado com o valor da ficha. A rolagem segue a visibilidade da mesa.",
+      "Os testes vêm do modelo da ficha; em fichas no estilo d20 sem configuração, modificadores, perícias, resistências, iniciativa e percepção rolam 1d20 + valor.",
+      "Só o dono da ficha e o mestre rolam e usam itens; os demais apenas leem fichas compartilhadas."
+    ],
+    "audience": "all"
+  },
+  "mesa.ficha.usar": {
+    "title": "Usar item da ficha",
+    "summary": "Gasta o custo e rola a fórmula da magia, poder ou item num registro só.",
+    "body": [
+      "A janela sugere a rolagem e o custo a partir da descrição do item (por exemplo “6d6” e “3 PM”). Confira e ajuste antes de usar.",
+      "Se o recurso não tiver saldo, nada é gasto nem rolado. O gasto entra no histórico da ficha e pode ser desfeito como os outros ajustes de recurso; a rolagem fica registrada."
+    ],
+    "audience": "all"
+  },
+  "mesa.condicoes.duracao": {
+    "title": "Condições com duração",
+    "summary": "Condições que perdem uma rodada a cada turno do personagem.",
+    "body": [
+      "Cada condição tem nome e, se quiser, quantas rodadas dura. Quando o turno chega ao personagem, ela perde uma rodada e sai ao chegar a zero, com aviso no registro.",
+      "Sem rodadas, a condição fica até alguém remover. O marcador no mapa mostra quantas condições o personagem tem. O dono da ficha e o mestre ajustam."
+    ],
+    "audience": "all"
+  },
+  "mesa.grupo.visao": {
+    "title": "Visão do grupo",
+    "summary": "Recursos, destaques e condições de todas as fichas da campanha numa tabela.",
+    "body": [
+      "Mostra cada ficha vinculada à campanha, inclusive de quem não está na mesa agora: recursos, destaques do modelo, armadura, percepção e condições.",
+      "Só o mestre da campanha vê esta tabela."
+    ],
+    "audience": "master"
+  },
   "mesa.mapa.camera": {
     "title": "Ampliar e percorrer o mapa",
     "summary": "No celular, o mapa ocupa a área disponível sem deformar a grade.",
@@ -270,6 +307,15 @@ const entries = {
     "body": [
       "Os bytes passam entre os navegadores. A imagem não vira arquivo do acervo e é descartada ao sair.",
       "Conexões entre redes restritas podem falhar. Retirar a apresentação não apaga uma cópia que alguém já guardou."
+    ],
+    "audience": "master"
+  },
+  "mesa.luz.predefinicoes": {
+    "title": "Tipos de luz",
+    "summary": "Escolha uma luz pronta em vez de digitar números.",
+    "body": [
+      "Vela, Tocha, Fogueira e Lanterna preenchem o raio de luz plena e a penumbra em casas. Os valores não dependem de nenhum sistema de RPG; ajuste se a sua mesa usar outra medida.",
+      "Personalizado mostra o número para você digitar. Na interface Completa, cor, intensidade e animação continuam disponíveis."
     ],
     "audience": "master"
   },

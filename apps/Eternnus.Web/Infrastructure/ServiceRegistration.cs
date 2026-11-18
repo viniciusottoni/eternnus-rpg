@@ -103,9 +103,9 @@ public static class ServiceRegistration
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         builder.Services.AddScoped<IDocumentScanner, ClamAvDocumentScanner>(); builder.Services.AddScoped<DocumentFiles>(); builder.Services.AddSingleton<RemoteImageFetcher>();
         builder.Services.AddScoped<AuditService>(); builder.Services.AddScoped<AdminService>(); builder.Services.AddScoped<RpgSystemService>();
-        builder.Services.AddScoped<SupportService>(); builder.Services.AddScoped<LibraryService>(); builder.Services.AddScoped<SheetTemplateService>();
+        builder.Services.AddScoped<SupportService>(); builder.Services.AddScoped<LibraryService>(); builder.Services.AddSingleton<LibraryThumbnails>(); builder.Services.AddScoped<SheetTemplateService>();
         builder.Services.AddScoped<GuildService>(); builder.Services.AddScoped<ProgressionService>(); builder.Services.AddScoped<NoticeService>();
-        builder.Services.AddScoped<SessionService>(); builder.Services.AddScoped<CharacterSheetService>(); builder.Services.AddSingleton<SessionSignals>(); builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddScoped<SessionService>(); builder.Services.AddScoped<CharacterSheetService>(); builder.Services.AddScoped<CharacterPortraitService>(); builder.Services.AddSingleton<SessionSignals>(); builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddHostedService<MailWorker>();
         builder.Services.AddSingleton<TemporaryImageRelay>();
         builder.Services.AddScoped<CampaignAssetsService>(); builder.Services.AddScoped<PrepWorkspaceService>(); builder.Services.AddScoped<DocumentVersionService>();

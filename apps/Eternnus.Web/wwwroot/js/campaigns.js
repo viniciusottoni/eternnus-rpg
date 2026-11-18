@@ -109,13 +109,14 @@ export function systemChoice(systems, campaign) {
   return systems.find((s) => s.id === FREE_SYSTEM_ID)?.id || systems[0]?.id || "keep";
 }
 function systemOptions(systems, campaign) {
-  const selected = campaign ? systemChoice(systems, campaign) : "";
+  // Na criação, o Sistema livre (ou o primeiro ativo) já vem escolhido; "keep" sem campanha = lista vazia.
+  const selected = systemChoice(systems, campaign);
   const keep =
     selected === "keep"
       ? `<option value="keep" selected>${esc(campaign?.system || "Sistema livre")}${campaign ? " (atual)" : ""}</option>`
       : "";
   return (
-    (campaign ? keep : '<option value="" selected>Escolha o sistema de RPG</option>') +
+    (campaign ? keep : selected === "keep" ? '<option value="" selected>Escolha o sistema de RPG</option>' : "") +
     systems
       .filter((s) => isGuid(s.id))
       .map((s) => `<option value="${s.id}" ${s.id === selected ? "selected" : ""}>${esc(s.name)}</option>`)
@@ -138,7 +139,7 @@ export async function loadSystems(c) {
       const suggested = chosen?.playMode && document.querySelector(`#campaign-form input[name=playMode][value="${chosen.playMode}"]`);
       if (suggested && !c) { suggested.checked = true; const h = $("#mode-help"); if (h) h.textContent = `Sugestão do sistema: ${suggested.closest("label").querySelector("strong").textContent}. Você pode mudar depois.`; }
       help.textContent = chosen
-        ? chosen.description
+        ? [chosen.description, c ? "" : "Você pode trocar depois."].filter(Boolean).join(" ")
         : select.value === "keep" && c
           ? "Sistema atual da campanha (não disponível para novas campanhas)."
           : "";
@@ -154,10 +155,12 @@ export async function loadSystems(c) {
     if (select.isConnected) select.disabled = false;
   }
 }
+/** Opção da aventura de exemplo (N1), comum à criação de campanha e de one-shot. Desmarcada por padrão. */
+export const starterField = () => `<div class="field"><label class="check"><input type="checkbox" name="starter" aria-describedby="starter-help"> Começar com uma aventura de exemplo</label>${helpButton("campanhas.criacao.aventura-exemplo", "Aventura de exemplo")}<small id="starter-help" class="form-help">Cria uma cena tática pronta, dois personagens do mestre, uma página de premissa e um objetivo. Tudo fica editável na Preparação.</small></div>`;
 export function campaignForm(c, onDone = load) {
   modal(
     c ? "Editar campanha" : "Uma nova história",
-    `<p class="muted small">Defina o essencial. O resto da lenda vocês escrevem juntos.</p><form id="campaign-form">${field("name", "Nome da campanha", c?.name || "", "text", 'required maxlength="100"')}<div class="field"><label for="f-system">Sistema de RPG</label><select id="f-system" name="rpgSystemId" aria-describedby="system-help"></select><small id="system-help" class="muted small" aria-live="polite"></small></div>${c ? "" : `<fieldset class="play-mode-choice"><legend>Como vocês vão jogar?${helpButton("campanhas.config.forma-de-jogar", "Forma de jogar")}</legend>${PLAY_MODES.map(([v, l, help]) => `<label class="check mode-option"><input type="radio" name="playMode" aria-describedby="mode-help" value="${v}" ${v === "tactical" ? "checked" : ""}><span><strong>${l}</strong><small>${help}</small></span></label>`).join("")}<small class="form-help" id="mode-help">O sistema sugere uma forma; você pode mudar depois, para a campanha ou só para uma sessão.</small></fieldset>`}<fieldset><legend>Como esta campanha começa aqui?${helpButton("campanhas.continuidade.origem", "Origem e continuidade")}</legend><div class="field"><label for="campaign-origin">Origem</label><select id="campaign-origin" name="origin"><option value="new" ${c?.origin !== "ongoing" ? "selected" : ""}>Nova, do zero</option><option value="ongoing" ${c?.origin === "ongoing" ? "selected" : ""}>Já está em andamento</option></select></div><details ${c?.origin === "ongoing" ? "open" : ""} id="campaign-continuity"><summary>Histórico e continuidade (opcional)</summary><div class="field"><label for="campaign-continuity-text">Onde paramos? (compartilhado com o grupo)</label><textarea id="campaign-continuity-text" name="continuity" maxlength="10000" rows="5">${esc(c?.continuity || "")}</textarea></div><div class="field"><label for="campaign-arc">Arco ou capítulo atual</label><input id="campaign-arc" name="currentArc" maxlength="120" value="${esc(c?.currentArc || "")}"></div><div class="field"><label for="campaign-first">Número mínimo da próxima sessão</label><input id="campaign-first" name="firstSessionNumber" type="number" min="1" max="1000000" required value="${c?.firstSessionNumber || 1}"></div><p class="form-help">Para continuar após 27 sessões, informe 28. Registros existentes conservam seus números; a próxima sessão também considera o maior número já registrado.</p><div class="field"><label for="campaign-original">Data de início original (opcional)</label><input id="campaign-original" name="originalStartDate" type="date" value="${esc(c?.originalStartDate || "")}"></div></details></fieldset>${c ? "" : "<details><summary>Premissa (opcional)</summary>"}<div class="field"><label for="description">Premissa e narrativa</label><textarea id="description" name="description" maxlength="10000" rows="4">${esc(c?.description || "")}</textarea></div>${c ? "" : "</details>"}${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">${c ? "Salvar alterações" : "Criar campanha"}</button></div></form>`,
+    `<p class="muted small">Defina o essencial. O resto da lenda vocês escrevem juntos.</p><form id="campaign-form">${field("name", "Nome da campanha", c?.name || "", "text", 'required maxlength="100"')}<div class="field"><label for="f-system">Sistema de RPG</label><select id="f-system" name="rpgSystemId" aria-describedby="system-help"></select><small id="system-help" class="muted small" aria-live="polite"></small></div>${c ? "" : `<fieldset class="play-mode-choice"><legend>Como vocês vão jogar?${helpButton("campanhas.config.forma-de-jogar", "Forma de jogar")}</legend>${PLAY_MODES.map(([v, l, help]) => `<label class="check mode-option"><input type="radio" name="playMode" aria-describedby="mode-help" value="${v}" ${v === "tactical" ? "checked" : ""}><span><strong>${l}</strong><small>${help}</small></span></label>`).join("")}<small class="form-help" id="mode-help">O sistema sugere uma forma; você pode mudar depois, para a campanha ou só para uma sessão.</small></fieldset>`}${c ? "" : '<details id="campaign-origin-more"><summary>Mais opções: campanha já em andamento</summary>'}<fieldset><legend>Como esta campanha começa aqui?${helpButton("campanhas.continuidade.origem", "Origem e continuidade")}</legend><div class="field"><label for="campaign-origin">Origem</label><select id="campaign-origin" name="origin"><option value="new" ${c?.origin !== "ongoing" ? "selected" : ""}>Nova, do zero</option><option value="ongoing" ${c?.origin === "ongoing" ? "selected" : ""}>Já está em andamento</option></select></div><details ${c?.origin === "ongoing" ? "open" : ""} id="campaign-continuity"><summary>Histórico e continuidade (opcional)</summary><div class="field"><label for="campaign-continuity-text">Onde paramos? (compartilhado com o grupo)</label><textarea id="campaign-continuity-text" name="continuity" maxlength="10000" rows="5">${esc(c?.continuity || "")}</textarea></div><div class="field"><label for="campaign-arc">Arco ou capítulo atual</label><input id="campaign-arc" name="currentArc" maxlength="120" value="${esc(c?.currentArc || "")}"></div><div class="field"><label for="campaign-first">Número mínimo da próxima sessão</label><input id="campaign-first" name="firstSessionNumber" type="number" min="1" max="1000000" required value="${c?.firstSessionNumber || 1}"></div><p class="form-help">Para continuar após 27 sessões, informe 28. Registros existentes conservam seus números; a próxima sessão também considera o maior número já registrado.</p><div class="field"><label for="campaign-original">Data de início original (opcional)</label><input id="campaign-original" name="originalStartDate" type="date" value="${esc(c?.originalStartDate || "")}"></div></details></fieldset>${c ? "" : `</details>${starterField()}`}${c ? "" : "<details><summary>Premissa (opcional)</summary>"}<div class="field"><label for="description">Premissa e narrativa</label><textarea id="description" name="description" maxlength="10000" rows="4">${esc(c?.description || "")}</textarea></div>${c ? "" : "</details>"}${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">${c ? "Salvar alterações" : "Criar campanha"}</button></div></form>`,
   );
   $("#campaign-origin").onchange = () => { if ($("#campaign-origin").value === "ongoing") $("#campaign-continuity").open = true; };
   loadSystems(c);
@@ -177,12 +180,15 @@ export function campaignForm(c, onDone = load) {
         rpgSystemId: chosen,
         system: chosen ? select.selectedOptions[0]?.textContent || "" : c?.system || "Sistema livre",
         revision: c?.revision || 0,
+        starter: c ? undefined : data.starter === "on",
       });
       $("#modal").close();
       toast(
         c
           ? "Campanha atualizada."
-          : "Seu mundo está pronto. Agora convide o grupo e comece quando quiser.",
+          : saved?.starterSceneId
+            ? "Seu mundo está pronto, com uma aventura de exemplo na Preparação. Convide o grupo e comece quando quiser."
+            : "Seu mundo está pronto. Agora convide o grupo e comece quando quiser.",
       );
       // Depois de criar: primeiros passos (convite, modelo sugerido e cenário opcional) na visão geral.
       if (!c && saved?.id) navigate(`campaign/${saved.id}/overview`);

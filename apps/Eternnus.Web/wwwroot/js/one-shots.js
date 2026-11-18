@@ -5,7 +5,7 @@ import { api } from "./api.js";
 import { newsSlot } from "./notices.js";
 import { shell } from "./layout.js";
 import { $, esc, button, field, formError, submitForm, modal, toast, empty, formatDate, navigate, liveBadge } from "./ui.js";
-import { loadSystems, limitText } from "./campaigns.js";
+import { loadSystems, limitText, starterField } from "./campaigns.js";
 import { isGuid } from "./session-policy.js";
 
 const RULES =
@@ -64,7 +64,7 @@ async function load() {
 function createModal() {
   modal(
     "Nova one-shot",
-    `<p class="muted small">Uma mesa rápida para jogar agora.</p><form id="one-shot-form">${field("name", "Nome da one-shot", "", "text", 'required maxlength="100"')}<div class="field"><label for="f-system">Sistema de RPG</label><select id="f-system" name="rpgSystemId" required aria-describedby="system-help"></select><small id="system-help" class="muted small" aria-live="polite"></small></div><div class="field"><label for="description">Premissa</label><textarea id="description" name="description" maxlength="10000" rows="3"></textarea></div><p class="notice-box">${RULES}</p>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">▶ Abrir one-shot</button></div></form>`,
+    `<p class="muted small">Uma mesa rápida para jogar agora.</p><form id="one-shot-form">${field("name", "Nome da one-shot", "", "text", 'required maxlength="100"')}<div class="field"><label for="f-system">Sistema de RPG</label><select id="f-system" name="rpgSystemId" required aria-describedby="system-help"></select><small id="system-help" class="muted small" aria-live="polite"></small></div><div class="field"><label for="description">Premissa</label><textarea id="description" name="description" maxlength="10000" rows="3"></textarea></div>${starterField()}<p class="notice-box">${RULES}</p>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">▶ Abrir one-shot</button></div></form>`,
   );
   loadSystems();
   $("#one-shot-form").onsubmit = (e) => {
@@ -77,9 +77,10 @@ function createModal() {
         description: data.description,
         rpgSystemId: data.rpgSystemId,
         system: select.selectedOptions[0]?.textContent || "",
+        starter: data.starter === "on",
       });
       $("#modal").close();
-      toast("Mesa aberta. Compartilhe o convite na página de preparo.");
+      toast(created.starterSceneId ? "Mesa aberta com a aventura de exemplo: a cena inicial já está no mapa." : "Mesa aberta. Compartilhe o convite na página de preparo.");
       navigate("table/" + created.campaignId);
     });
   };

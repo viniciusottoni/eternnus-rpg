@@ -2,7 +2,7 @@ import { helpButton } from "./help.js";
 import { api } from "./api.js";
 import { state } from "./state.js";
 import { shell } from "./layout.js";
-import { limitText } from "./campaigns.js";
+import { countMeter, storageMeter, formatBytes } from "./account-usage-policy.js";
 import { $, esc, field, formError, submitForm, button, toast } from "./ui.js";
 
 function updateProfile(user) {
@@ -15,6 +15,33 @@ function updateProfile(user) {
   if (name) name.textContent = user.name;
   $("#profile-name").textContent = user.name;
 }
+/** Medidores de uso: barra para quotas, contador com ∞ quando não há limite e armazenamento segmentado por tipo.
+ * Larguras via CSSOM: a CSP (`style-src 'self'`) bloqueia atributos `style` na marcação. */
+function usageMarkup(limits) {
+  const host = document.createElement("div");
+  host.className = "usage-list";
+  const meters = [
+    countMeter("Campanhas ativas", limits.activeCampaigns, limits.campaignLimit),
+    countMeter("Participações em one-shots", limits.oneShotParticipations, limits.oneShotLimit),
+  ];
+  const storage = storageMeter(limits.storage);
+  const bar = (label, spoken, used, max, extra = "") =>
+    `<div class="usage-bar${extra}" role="meter" aria-label="${esc(label)}" aria-valuemin="0" aria-valuemax="${max}" aria-valuenow="${Math.min(used, max)}" aria-valuetext="${esc(spoken)}">`;
+  const head = (label, display) => `<div class="usage-row"><span>${esc(label)}</span><strong>${esc(display)}</strong></div>`;
+  const counters = meters.map((m) => `<div class="usage-item" data-level="${m.level}">${head(m.label, m.display)}${
+    m.unlimited
+      ? `<p class="usage-note">Sem limite nesta conta. O contador continua para você acompanhar.</p>`
+      : `${bar(m.label, m.spoken, m.used, m.limit)}<span data-share="${m.ratio}"></span></div>`
+  }</div>`);
+  const segments = storage.parts.filter((p) => p.bytes).map((p) => `<span class="tone-${p.tone}" data-share="${p.share}"></span>`).join("");
+  const legend = storage.parts.map((p) => `<li><i class="tone-${p.tone}" aria-hidden="true"></i><span>${esc(p.label)}</span><b>${esc(p.text)}</b></li>`).join("");
+  const note = storage.campaigns
+    ? `${storage.campaigns} ${storage.campaigns === 1 ? "campanha mestrada" : "campanhas mestradas"}. Cada uma guarda até ${esc(formatBytes(storage.perCampaign))} de imagens e mapas; os demais tipos não têm limite próprio.`
+    : "Você ainda não mestra campanhas. O espaço aparece quando você cria uma.";
+  host.innerHTML = counters.join("") + `<div class="usage-item" data-level="${storage.level}">${head("Armazenamento", storage.display)}${bar("Armazenamento", storage.spoken, storage.used, storage.capacity, " usage-stack")}${segments}</div><ul class="usage-legend">${legend}</ul><p class="usage-note">${note}</p></div>`;
+  for (const part of host.querySelectorAll("[data-share]")) part.style.width = `${(Math.min(1, Number(part.dataset.share) || 0) * 100).toFixed(2)}%`;
+  return host;
+}
 export async function renderProfile() {
   shell("settings");
   const user = state.user;
@@ -26,14 +53,21 @@ export async function renderProfile() {
       toast("Nome atualizado.");
     });
   };
-  const limits = document.createElement("p");
-  limits.className = "form-help";
-  limits.setAttribute("role", "status");
-  limits.textContent = "Consultando limites da conta…";
+  const limits = document.createElement("section");
+  limits.className = "usage";
+  limits.setAttribute("aria-labelledby", "usage-title");
+  limits.setAttribute("aria-busy", "true");
+  limits.innerHTML = `<div class="usage-head"><h3 id="usage-title">Uso da conta</h3>${helpButton("conta.uso.limites", "Uso da conta")}</div><p class="form-help" role="status">Consultando limites da conta…</p>`;
   $("#profile-form").before(limits);
   api("/auth/limits").then((result) => {
-    if (limits.isConnected) limits.textContent = limitText(result);
-  }).catch(() => { if (limits.isConnected) limits.textContent = "Não foi possível consultar seus limites. Recarregue a conta para tentar novamente."; });
+    if (!limits.isConnected) return;
+    limits.removeAttribute("aria-busy");
+    limits.querySelector("[role=status]").replaceWith(usageMarkup(result));
+  }).catch(() => {
+    if (!limits.isConnected) return;
+    limits.removeAttribute("aria-busy");
+    limits.querySelector("[role=status]").textContent = "Não foi possível consultar seus limites. Recarregue a conta para tentar novamente.";
+  });
   if (user.role === "admin") {
     const security = document.createElement("p");
     security.className = "form-help";

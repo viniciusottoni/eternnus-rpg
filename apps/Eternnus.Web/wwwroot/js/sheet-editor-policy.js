@@ -1,5 +1,6 @@
 // Regras puras do editor de fichas-modelo (sem DOM, sem rede). Espelham os limites do servidor apenas para UX;
 // o servidor (SheetTemplateService) reaplica tudo ao salvar e ao publicar.
+import { validate } from "./formula.js";
 
 export const NAME_PATTERN = /^[a-z][a-z0-9_]{0,39}$/;
 export const LIMITS = Object.freeze({
@@ -17,6 +18,7 @@ export const LIMITS = Object.freeze({
   textLength: 10000,
   pdfBytes: 25 * 1024 * 1024,
   undo: 100,
+  roll: 120,
 });
 export const A4 = Object.freeze({ width: 595.28, height: 841.89 });
 
@@ -275,6 +277,9 @@ export function compactField(f) {
   }
   if (f.type === "select" && Array.isArray(f.options) && f.options.length) out.options = f.options.slice();
   if (f.type !== "computed") delete out.formula;
+  // ADR-099: null (automático) é omitido; false e "" (não rolar) são escolhas explícitas e vão ao servidor.
+  if (supportsNotes(f.type) && typeof f.notes === "boolean") out.notes = f.notes;
+  if (supportsRoll(f.type) && typeof f.roll === "string") out.roll = f.roll.trim();
   return out;
 }
 export function compactAction(a) {
@@ -312,6 +317,8 @@ export function normalizeField(f) {
     options: Array.isArray(f.options) ? f.options.slice() : [],
     fontSize: f.fontSize ?? 10,
     align: f.align ?? "left",
+    notes: typeof f.notes === "boolean" ? f.notes : null,
+    roll: typeof f.roll === "string" ? f.roll : null,
   };
 }
 /** Novo campo criado por arrasto. Tipo e tamanho de fonte sugeridos pela altura. */
@@ -344,6 +351,50 @@ export function duplicateField(field, fields) {
   return { ...normalizeField(field), options: [...(field.options || [])], name, role: null, ...rect };
 }
 export const numericNames = (fields) => fields.filter((f) => f.type === "number" || f.type === "computed").map((f) => f.name);
+
+// ---------- Descrições por item e rolagem ao clicar (ADR-099) ----------
+// notes: true/false/null (automático pelo nome em item-notes-policy.js). roll: null = automático, "" = não rolar, texto = fórmula própria.
+
+export const supportsNotes = (type) => type === "text" || type === "textarea";
+export const supportsRoll = (type) => type === "number" || type === "computed";
+export const NOTES_MODES = Object.freeze([
+  { value: "auto", label: "Automático (pelo nome)" },
+  { value: "yes", label: "Sim, lista com descrições" },
+  { value: "no", label: "Não" },
+]);
+export const ROLL_MODES = Object.freeze([
+  { value: "auto", label: "Automático" },
+  { value: "none", label: "Não rolar" },
+  { value: "custom", label: "Fórmula própria" },
+]);
+/** Opção do seletor "Descrições por item" para o valor gravado. */
+export const notesMode = (field) => (field?.notes === true ? "yes" : field?.notes === false ? "no" : "auto");
+/** Valor gravado (true/false/null) para a opção escolhida. */
+export const notesFromMode = (mode) => (mode === "yes" ? true : mode === "no" ? false : null);
+/** Opção do seletor "Rolar ao clicar": texto vazio = não rolar; qualquer fórmula = própria. */
+export function rollMode(field) {
+  const roll = field?.roll;
+  if (typeof roll !== "string") return "auto";
+  return roll.trim() ? "custom" : "none";
+}
+/** Fórmula sugerida ao escolher "Fórmula própria" sem texto: 1d20 somando o próprio campo. */
+export const suggestedRoll = (field) => (NAME_PATTERN.test(field?.name || "") ? `1d20 + @${field.name}` : "1d20");
+/** Valor gravado para a opção escolhida. "Fórmula própria" mantém a fórmula atual ou sugere uma (nunca vazia, que significaria "não rolar"). */
+export function rollFromMode(mode, field) {
+  if (mode === "none") return "";
+  if (mode !== "custom") return null;
+  const current = typeof field?.roll === "string" ? field.roll.trim() : "";
+  return current || suggestedRoll(field);
+}
+/** Erro da fórmula de rolagem do campo (modo "roll", só @campos numéricos/calculados do modelo); null = sem fórmula ou válida. */
+export function rollFormulaError(field, fields = []) {
+  if (!supportsRoll(field?.type) || typeof field.roll !== "string") return null;
+  const expr = field.roll.trim();
+  if (!expr) return null;
+  if (expr.length > LIMITS.roll) return `A rolagem tem limite de ${LIMITS.roll} caracteres.`;
+  const check = validate(expr, "roll", numericNames(fields));
+  return check.ok ? null : check.error + (check.position != null ? ` (posição ${check.position + 1})` : "");
+}
 
 /** Problemas estruturais (mesmos limites do servidor ao salvar). Itens: { field?, action?, message }. */
 export function structuralIssues(doc) {
@@ -378,6 +429,7 @@ export function structuralIssues(doc) {
       add(`até ${LIMITS.options} opções, cada uma com 1 a ${LIMITS.optionLength} caracteres.`);
     else if (new Set(options).size !== options.length) add("opções repetidas.");
     if (!(f.fontSize >= LIMITS.minFont && f.fontSize <= LIMITS.maxFont)) add(`tamanho de fonte entre ${LIMITS.minFont} e ${LIMITS.maxFont}.`);
+    if (supportsRoll(f.type) && String(f.roll ?? "").trim().length > LIMITS.roll) add(`fórmula de rolagem com mais de ${LIMITS.roll} caracteres.`);
   });
   actions.forEach((a, i) => {
     const action = NAME_PATTERN.test(a.key) ? a.key : null;
@@ -410,6 +462,8 @@ export function publishIssues(doc) {
       if (f.type === "checkbox" && !["true", "false"].includes(f.default)) add("valor padrão da caixa deve ser marcado ou desmarcado.");
       if (f.type === "select" && !(f.options || []).includes(f.default)) add("valor padrão precisa ser uma das opções.");
     }
+    const rollError = String(f.roll ?? "").trim().length > LIMITS.roll ? null : rollFormulaError(f, fields);
+    if (rollError) add(`rolagem — ${rollError}`);
   });
   return issues;
 }
@@ -437,6 +491,9 @@ export function diffVersions(before, after) {
     if (norm(o.max) !== norm(f.max)) changes.push("max");
     if (norm(o.maxLength) !== norm(f.maxLength)) changes.push("maxLength");
     if (JSON.stringify(o.options || []) !== JSON.stringify(f.options || [])) changes.push("options");
+    // null (automático) difere de false/"" (escolha explícita).
+    if ((typeof o.notes === "boolean" ? o.notes : null) !== (typeof f.notes === "boolean" ? f.notes : null)) changes.push("notes");
+    if ((typeof o.roll === "string" ? o.roll : null) !== (typeof f.roll === "string" ? f.roll : null)) changes.push("roll");
     if (changes.length) result.changed.push({ name: f.name, changes });
     else if ((o.page ?? 0) !== (f.page ?? 0) || !same(o.x, f.x) || !same(o.y, f.y) || !same(o.w, f.w) || !same(o.h, f.h) || !same(o.fontSize ?? 10, f.fontSize ?? 10) || (o.align || "left") !== (f.align || "left"))
       result.moved.push(f.name);
@@ -463,6 +520,8 @@ export const CHANGE_LABELS = Object.freeze({
   max: "máximo",
   maxLength: "limite de caracteres",
   options: "opções",
+  notes: "descrições por item",
+  roll: "rolagem",
 });
 export const diffIsEmpty = (d) => Object.values(d).every((v) => !v.length);
 

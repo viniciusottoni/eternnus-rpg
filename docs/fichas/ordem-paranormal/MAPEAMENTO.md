@@ -28,7 +28,7 @@ NEX não usa o papel "nível" (o papel exige 1+ e NEX começa em 0%).
 3. Personagem e DT, e 6 fichas de ritual completas (nome, elemento, círculo, execução, alcance, alvo, duração, resistência, descrição).
 
 ## Limitações conhecidas
-- Listas de rituais e inventário da página 2 são áreas de texto (uma linha por item) para caber no limite de 300 campos; uma linha longa demais quebra e desalinha as colunas.
+- Listas de rituais e inventário da página 2 são áreas de texto (uma linha por item) para caber no limite de 300 campos. Desde o ADR-098 cada linha é um item sem quebra (o que não cabe termina em "…"), com descrição por item; custo, página, categoria e espaços seguem as mesmas linhas.
 - O nome da página 3 é um campo próprio.
 - Penalidade de carga (✦) e "somente treinada" (*) não são aplicadas automaticamente — use "outros".
 - A rolagem mostra no detalhe os ramos não usados da fórmula (por causa do `if` por atributo); o total está correto.

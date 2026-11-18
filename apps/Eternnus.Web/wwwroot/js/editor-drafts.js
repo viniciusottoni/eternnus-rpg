@@ -43,6 +43,20 @@ const putDraft = (record) => run("readwrite", (s) => s.put(record));
 const deleteDraft = (key) => run("readwrite", (s) => s.delete(key));
 const userDrafts = (user) => run("readonly", (s) => s.index("user").getAll(String(user))).then((r) => r || []);
 
+/**
+ * Armazenamento cru para telas fora do editor (ficha do jogador, ADR-099): mesmo banco, limites e limpeza ao sair.
+ * Nunca lança; sem IndexedDB devolve nulo.
+ */
+export const localDrafts = Object.freeze({
+  get: getDraft,
+  put: async (record) => {
+    const done = await putDraft(record);
+    if (done != null && record?.user) for (const k of pruneDrafts(await userDrafts(record.user), { user: record.user }).filter((k) => k !== record.key)) await deleteDraft(k);
+    return done;
+  },
+  remove: deleteDraft,
+});
+
 /** Apaga todos os rascunhos locais de um usuário (sair da conta). */
 export async function clearUserDrafts(user) {
   if (!user) return;

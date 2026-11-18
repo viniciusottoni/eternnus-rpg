@@ -112,7 +112,8 @@ try {
   await master(
     path + "/sessions",
     "POST",
-    { title: "", objective: "", mapKind: "tileset", mapKey: "crypt" },
+    // Nome é opcional (ADR-100, coberto em simplicity.mjs); acima de 120 caracteres continua inválido.
+    { title: "x".repeat(121), objective: "", mapKind: "tileset", mapKey: "crypt" },
     400,
   );
   await master(

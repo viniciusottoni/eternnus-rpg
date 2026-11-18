@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
@@ -18,7 +19,7 @@ public record FogEnabledInput(bool? Enabled);
 /// <c>Label</c>/<c>Side</c> nulos mantêm o atual; <c>TemplateId</c> vincula uma ficha a um marcador que ainda não tem.
 /// </summary>
 public record TokenSettingsInput(int? Light, int? Vision, int? Perception, string? Senses, bool Hidden, int? Dc, string? DetectSense, int? DetectRange,
-    string? Label = null, string? Side = null, Guid? TemplateId = null);
+    string? Label = null, string? Side = null, Guid? TemplateId = null, bool UnlinkSheet = false);
 /// <summary>Configuração da mesa: <c>scope</c> "session" (só esta sessão) ou "campaign" (campanha toda). Settings nulo volta ao nível de cima.</summary>
 public record TableSettingsInput(TableSettings? Settings, string Scope);
 /// <summary>Configuração da campanha; nulo volta ao padrão do sistema.</summary>
@@ -67,11 +68,54 @@ public partial class SessionService
         await CommitAsync(tx, a.Session, ct);
     }
 
-    public Task PaintFogAsync(Guid sessionId, FogPaintInput x, string user, CancellationToken ct)
+    public async Task PaintFogAsync(Guid sessionId, FogPaintInput x, string user, CancellationToken ct)
     {
         var cells = FogEdits.Cells(x.Cells);
         FogEdits.RequireTool(x.Tool);
-        return FogWriteAsync(sessionId, user, FogEdits.Describe(x.Tool), s => FogEdits.Paint(s.State, s.Map.Width, s.Map.Height, x.Tool, cells), ct);
+        if (x.Tool is not ("reveal" or "conceal"))
+        {
+            await FogWriteAsync(sessionId, user, FogEdits.Describe(x.Tool), s => FogEdits.Paint(s.State, s.Map.Width, s.Map.Height, x.Tool, cells), ct);
+            return;
+        }
+        // Revelar/cobrir pode ser desfeito (ADR-100): o evento guarda só as casas que mudaram, em faixas compactas.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var a = await LockAsync(sessionId, user, ct); RequireMaster(a);
+        var scene = await RequireSceneAsync(a, ct);
+        var size = scene.Map.Width * scene.Map.Height;
+        var before = Bits.Decode(scene.State.Revealed, size);
+        FogEdits.Paint(scene.State, scene.Map.Width, scene.Map.Height, x.Tool, cells);
+        var after = Bits.Decode(scene.State.Revealed, size);
+        var changed = Enumerable.Range(0, size).Where(i => before[i] != after[i]).ToList();
+        if (changed.Count == 0) { await tx.RollbackAsync(ct); return; }
+        Fog.Save(a.Campaign.Id, scene);
+        scene.Invalidate();
+        var ranges = FogEdits.Ranges(changed);
+        object data = ranges.Length <= FogEdits.MaxUndoRanges
+            ? new { tool = x.Tool, cells = ranges, mapKey = a.Session.MapKey, layerKey = a.Session.LayerKey, undoable = true }
+            : new { tool = x.Tool, count = changed.Count };
+        Event(a.Session, user, await NameAsync(user, ct), EventKinds.Map, FogEdits.Describe(x.Tool), data, masterOnly: true);
+        await DetectAsync(a, scene, user, ct);
+        await CommitAsync(tx, a.Session, ct);
+    }
+
+    /// <summary>Desfaz revelar/cobrir: só se o mapa for o mesmo e as casas ainda estiverem como a pintura deixou.</summary>
+    async Task UndoFogPaintAsync(Access a, TableEvent e, JsonElement d, string user, string author, CancellationToken ct)
+    {
+        var tool = d.GetProperty("tool").GetString();
+        if (d.GetProperty("mapKey").GetString() != a.Session.MapKey || (d.TryGetProperty("layerKey", out var lk) && lk.ValueKind == JsonValueKind.String ? lk.GetString() : null) != a.Session.LayerKey)
+            throw new RuleException(409, "O mapa mudou desde essa alteração; desfazer não se aplica a outro mapa.");
+        var scene = await RequireSceneAsync(a, ct);
+        var size = scene.Map.Width * scene.Map.Height;
+        var cells = FogEdits.ParseRanges(d.GetProperty("cells").GetString(), size);
+        var revealed = Bits.Decode(scene.State.Revealed, size);
+        var painted = tool == "reveal";
+        if (cells.Any(i => revealed[i] != painted)) throw new RuleException(409, "Essas casas mudaram depois; desfazer não sobrescreve a alteração mais recente.");
+        foreach (var i in cells) revealed[i] = !painted;
+        scene.State.Revealed = Bits.Encode(revealed);
+        Fog.Save(a.Campaign.Id, scene);
+        scene.Invalidate();
+        Event(a.Session, user, author, EventKinds.Map, $"{FogEdits.Describe(tool!)} (desfeito)", new { undoOf = e.Id, tool }, masterOnly: true);
+        await DetectAsync(a, scene, user, ct);
     }
 
     public Task ToggleDoorAsync(Guid sessionId, FogDoorInput x, string user, CancellationToken ct) =>
@@ -140,11 +184,14 @@ public partial class SessionService
         var scene = await RequireSceneAsync(a, ct);
         var token = scene.Raw.GetValueOrDefault(tokenId) ?? throw new RuleException(404, "Marcador não encontrado.");
         var creature = token.CharacterId == null;
-        if (!creature && ((label != null && label != token.Label) || (x.Side != null && x.Side != token.Side) || x.TemplateId != null))
+        if (!creature && ((label != null && label != token.Label) || (x.Side != null && x.Side != token.Side) || x.TemplateId != null || x.UnlinkSheet))
             throw new RuleException(409, "Nome, lado e ficha de personagem de jogador vêm da ficha do jogador.");
-        if (x.TemplateId != null && token.MasterCharacterId != null)
-            throw new RuleException(409, "Este marcador já tem ficha. Troque o modelo em “Ficha do elemento”.");
+        if (x.TemplateId != null && token.MasterCharacterId != null && !x.UnlinkSheet)
+            throw new RuleException(409, "Este marcador já tem ficha. Marque “Trocar ou remover a ficha” para escolher outra.");
         var before = token.Label;
+        // Trocar ou remover a ficha (ADR-100): o marcador deixa de apontar para ela; a ficha continua em Preparação › Personagens.
+        var unlinked = creature && x.UnlinkSheet && token.MasterCharacterId != null;
+        if (unlinked) token.MasterCharacterId = null;
         token.Light = x.Light; token.Vision = x.Vision; token.Perception = x.Perception; token.Senses = senses;
         if (creature)
         {
@@ -161,8 +208,10 @@ public partial class SessionService
                 if (TurnOrders.Relabel(order, "t:" + token.Id, token.Label)) a.Session.TurnOrder = TurnOrders.Serialize(order);
             }
         }
-        var text = token.Label != before ? $"Mestre renomeou {before} para {token.Label}" : x.TemplateId != null ? $"Mestre vinculou uma ficha a {token.Label}" : $"Mestre ajustou {token.Label}";
-        Event(a.Session, user, await NameAsync(user, ct), EventKinds.Token, text, x.TemplateId != null ? new { tokenId, masterCharacterId = token.MasterCharacterId } : null, masterOnly: true);
+        var text = token.Label != before ? $"Mestre renomeou {before} para {token.Label}"
+            : x.TemplateId != null ? (unlinked ? $"Mestre trocou a ficha de {token.Label}" : $"Mestre vinculou uma ficha a {token.Label}")
+            : unlinked ? $"Mestre desvinculou a ficha de {token.Label}" : $"Mestre ajustou {token.Label}";
+        Event(a.Session, user, await NameAsync(user, ct), EventKinds.Token, text, x.TemplateId != null || unlinked ? new { tokenId, masterCharacterId = token.MasterCharacterId, unlinked } : null, masterOnly: true);
         await RefreshFogAsync(a, user, ct);
         await CommitAsync(tx, a.Session, ct);
     }
@@ -310,7 +359,7 @@ public partial class SessionService
             throw new RuleException(404, "Jogador não encontrado nesta sessão.");
         var scene = await Fog.SceneAsync(a.Session, a.Campaign, false, ct) ?? throw new RuleException(409, "Névoa existe somente em mapas com grade.");
         var map = await LiveMapAsync(a.Session, ct);
-        var (boardMap, tokens, fog) = Board(scene, asUser, false, map, [], viewAs: true, portraits: await PortraitsAsync(sessionId, ct));
+        var (boardMap, tokens, fog) = Board(scene, asUser, false, map, [], viewAs: true, portraits: await PortraitsAsync(sessionId, asUser, false, ct));
         return new { a.Session.Revision, asUser, map = boardMap, tokens, fog };
     }
 }
@@ -331,6 +380,39 @@ public static class FogEdits
         return cells;
     }
     static void Inside(int width, int height, int x, int y) { if (x < 0 || y < 0 || x >= width || y >= height) throw new RuleException(400, "Casa fora do mapa."); }
+
+    /// <summary>Máximo de caracteres das faixas guardadas para desfazer (o evento inteiro cabe em 4.000).</summary>
+    public const int MaxUndoRanges = 3200;
+
+    /// <summary>Índices ordenados em faixas "a-b,c,d-e" (pinceladas contínuas ficam curtas).</summary>
+    public static string Ranges(IReadOnlyList<int> sorted)
+    {
+        var parts = new List<string>();
+        for (var i = 0; i < sorted.Count;)
+        {
+            var j = i;
+            while (j + 1 < sorted.Count && sorted[j + 1] == sorted[j] + 1) j++;
+            parts.Add(i == j ? sorted[i].ToString(CultureInfo.InvariantCulture) : $"{sorted[i].ToString(CultureInfo.InvariantCulture)}-{sorted[j].ToString(CultureInfo.InvariantCulture)}");
+            i = j + 1;
+        }
+        return string.Join(',', parts);
+    }
+
+    /// <summary>Lê as faixas de <see cref="Ranges"/>; índices fora de 0..size-1 ou texto inválido são recusados.</summary>
+    public static List<int> ParseRanges(string? text, int size)
+    {
+        var result = new List<int>();
+        foreach (var part in (text ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var bounds = part.Split('-');
+            if (bounds.Length is < 1 or > 2 || !int.TryParse(bounds[0], NumberStyles.None, CultureInfo.InvariantCulture, out var from)) throw new RuleException(400, "Registro inválido.");
+            var to = from;
+            if (bounds.Length == 2 && !int.TryParse(bounds[1], NumberStyles.None, CultureInfo.InvariantCulture, out to)) throw new RuleException(400, "Registro inválido.");
+            if (from > to || to >= size) throw new RuleException(409, "O mapa mudou de tamanho; desfazer não se aplica.");
+            for (var i = from; i <= to; i++) result.Add(i);
+        }
+        return result;
+    }
 
     public static void Paint(MapFogState state, int width, int height, string tool, IEnumerable<FogCellInput> cells)
     {

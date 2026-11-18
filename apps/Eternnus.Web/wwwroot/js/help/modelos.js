@@ -1,5 +1,21 @@
 // Texto público estático; catálogos avaliados sob demanda.
 const entries = {
+  "modelos.campo.descricoes-por-item": {
+    "title": "Descrições por item",
+    "summary": "Define se cada linha deste campo vira um item com descrição própria na ficha.",
+    "body": [
+      "Em Automático, o nome do campo decide (magias, poderes, habilidades, itens…). Sim força a lista com descrições; Não a desliga."
+    ],
+    "audience": "all"
+  },
+  "modelos.campo.rolar-ao-clicar": {
+    "title": "Rolar ao clicar",
+    "summary": "Define se clicar no valor deste campo rola dados na mesa.",
+    "body": [
+      "Automático segue o nome do campo em fichas no estilo d20. Não rolar desliga. Fórmula própria usa uma rolagem como 1d20 + @campo, que só pode citar campos numéricos ou calculados do modelo."
+    ],
+    "audience": "all"
+  },
   "modelos.campo.nome": {
     "title": "Nome nas fórmulas",
     "summary": "O nome identifica o campo em expressões com @.",

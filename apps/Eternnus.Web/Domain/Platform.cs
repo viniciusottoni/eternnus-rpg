@@ -222,6 +222,11 @@ public class SheetField
     [MaxLength(40)] public string? MaxField { get; set; }
     /// <summary>Seção na apresentação simples (modelos sem PDF).</summary>
     [MaxLength(60)] public string? Section { get; set; }
+    /// <summary>Somente texto/texto longo: true = lista com descrição por item; false = nunca; nulo = inferência automática pelo nome (cliente).</summary>
+    public bool? Notes { get; set; }
+    /// <summary>Somente número/calculado: fórmula de rolagem ao clicar (modo Roll, só @campos numéricos do modelo).
+    /// Nulo = inferência automática (cliente); "" = não rolar.</summary>
+    [MaxLength(120)] public string? Roll { get; set; }
 }
 public class SheetActionDefinition
 {

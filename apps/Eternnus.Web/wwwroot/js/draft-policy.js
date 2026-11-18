@@ -1,7 +1,7 @@
 // Regras puras dos rascunhos locais dos editores (ADR-083). Sem DOM, sem IndexedDB: testáveis com node --test.
 // Um rascunho guarda só o documento em edição (o mesmo instantâneo do histórico de desfazer), a revisão de origem e datas.
 
-export const DRAFT_KINDS = Object.freeze(["tilemap", "imagemap", "scene", "maplayer"]);
+export const DRAFT_KINDS = Object.freeze(["tilemap", "imagemap", "scene", "maplayer", "sheet"]);
 /** Limites por usuário: 30 rascunhos, 8 MiB cada (texto JSON), 30 dias. */
 export const MAX_DRAFTS = 30;
 export const MAX_DRAFT_CHARS = 8 * 1024 * 1024;

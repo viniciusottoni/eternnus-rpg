@@ -171,13 +171,25 @@ public partial class SessionService
     /// Imagens dos marcadores desta sessão (tokenId → endereço para o cliente): a imagem própria do marcador, escolhida pelo mestre,
     /// ou a do personagem do mestre representado. Personagens de jogadores só têm imagem quando o mestre escolhe uma.
     /// </summary>
-    async Task<Dictionary<Guid, string>> PortraitsAsync(Guid sessionId, CancellationToken ct) =>
-        (await (from t in db.SessionTokens.AsNoTracking().Where(t => t.SessionId == sessionId)
+    /// <summary>
+    /// Imagens dos marcadores: a do acervo (própria ou do personagem do mestre) e, sem ela, a imagem da ficha do jogador (ADR-099)
+    /// para quem pode ler a ficha (mestre, dono ou ficha compartilhada). Quem não pode vê o marcador sem imagem.
+    /// </summary>
+    async Task<Dictionary<Guid, string>> PortraitsAsync(Guid sessionId, string viewer, bool master, CancellationToken ct)
+    {
+        var result = (await (from t in db.SessionTokens.AsNoTracking().Where(t => t.SessionId == sessionId)
                 join m in db.MasterCharacters.AsNoTracking() on t.MasterCharacterId equals (Guid?)m.Id into ms
                 from m in ms.DefaultIfEmpty()
                 select new { t.Id, ImageUrl = t.ImageUrl ?? (m == null ? null : m.ImageUrl) })
             .Where(x => x.ImageUrl != null).ToListAsync(ct))
-        .ToDictionary(x => x.Id, x => PortraitUrl(sessionId, x.Id, x.ImageUrl)!);
+            .ToDictionary(x => x.Id, x => PortraitUrl(sessionId, x.Id, x.ImageUrl)!);
+        var sheets = await (from t in db.SessionTokens.AsNoTracking().Where(t => t.SessionId == sessionId && t.CharacterId != null && t.ImageUrl == null)
+                            join c in db.Characters.AsNoTracking() on t.CharacterId equals (Guid?)c.Id
+                            where c.PortraitVersion > 0 && (master || !c.Private || c.OwnerId == viewer)
+                            select new { t.Id, CharacterId = c.Id, c.PortraitVersion }).ToListAsync(ct);
+        foreach (var s in sheets) result.TryAdd(s.Id, $"/api/characters/{s.CharacterId}/portrait?v={s.PortraitVersion}");
+        return result;
+    }
 
     /// <summary>
     /// Imagem do acervo de um marcador no mapa (própria ou do personagem do mestre). Jogador só recebe se o marcador estiver visível

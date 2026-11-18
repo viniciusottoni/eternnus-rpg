@@ -19,6 +19,13 @@ Antes de alterar uma funcionalidade, leia `docs/ARQUITETURA.md`, `docs/GUIA_VISU
 - Manter os contratos de PWA em `docs/PWA.md`: cache somente de arquivos públicos explicitamente permitidos e shell estático. Nunca cachear API, callbacks OAuth, links com token, e-mails, perfil ou dados autenticados.
 - Ao alterar arquivos públicos controlados pelo service worker, atualizar sua versão de cache e revisar a lista permitida. Não forçar `skipWaiting` ou recarregar uma sessão ativa sem uma decisão explícita de atualização compatível.
 
+## Simplicidade (ADR-100)
+
+- Toda ferramenta nova entra em `TOOL_INVENTORY` (`js/scene-policy.js`) com `basic` decidido no ADR. A Básica respeita `BASIC_BUDGET`; aumentar o orçamento exige ADR justificando.
+- Toda funcionalidade nova declara as jornadas que afeta (criar campanha, preparar cena, abrir sessão, conduzir, jogador no celular) e não aumenta cliques obrigatórios sem justificativa no ADR.
+- Campo obrigatório novo precisa de valor padrão sensato ou justificativa no ADR. Preferir predefinições a números crus quando houver escolha comum.
+- Ações novas da mesa e dos editores entram na Busca de ações (`js/table-commands-policy.js` ou `tools` do `editor-core`).
+
 ## Backend e dados
 
 - Manter monólito modular e a separação `Domain`, `Application`, `Features`, `Infrastructure` e composição em `Program.cs`. Preferir a solução simples que cumpra as invariantes; não criar camadas genéricas sem uso concreto.

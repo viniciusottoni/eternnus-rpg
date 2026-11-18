@@ -19,6 +19,7 @@ import {
 import { campaignForm, confirmCampaign } from "./campaigns.js";
 import { isGuid, sessionLabel } from "./session-policy.js";
 import { mapChoices, mountMapChoices } from "./map-picker.js";
+import { readinessChecklist, startDefaults, startableScenes, startSceneKind, startPayload } from "./start-policy.js";
 import { guardAvatars } from "./sheet.js";
 import { renderCampaignLibrary } from "./campaign-assets.js";
 import { keepMasterPresence } from "./session-presence.js";
@@ -176,9 +177,7 @@ async function renderTab(d, tab, item = "") {
     await templateSettings(d, target);
     return;
   }
-  const firstSteps = d.isMaster && !d.isOneShot && !d.archived && !d.sessionCount
-    ? `<article class="first-steps metal"><h3>Primeiros passos</h3><ol><li><strong>Convide o grupo</strong> — envie o link abaixo.${inviteLink(d)}</li><li><strong>Ficha</strong> — as fichas nascem com o modelo sugerido pelo sistema. <a href="#campaign/${esc(d.id)}/settings">Trocar ou criar um modelo simples</a>.</li><li><strong>Capítulos</strong> — <a href="#campaign/${esc(d.id)}/journal">crie o primeiro capítulo, ato ou arco</a> para agrupar as sessões (opcional).</li><li><strong>Cenário (opcional)</strong> — <a href="#campaign/${esc(d.id)}/prep">prepare uma cena</a> ou comece direto.</li><li>${button("✦ Iniciar próxima sessão", "cp-start", d.id, "primary small")}</li></ol><p class="form-help">Configurações avançadas (névoa, luz, ordem de turnos) ficam disponíveis quando você precisar.</p></article>`
-    : "";
+  const firstSteps = d.isMaster && !d.isOneShot && !d.archived && !d.sessionCount ? readinessHtml(d) : "";
   const next = d.nextSessionAt ? `<article class="metal next-session"><h3>Próxima partida</h3><p><strong>${esc(new Date(d.nextSessionAt).toLocaleString("pt-BR", { weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit" }))}</strong></p><a class="text-button" href="#campaign/${esc(d.id)}/journal">${d.isMaster ? "Ver confirmações" : "Confirmar presença"} →</a></article>` : "";
   const search = await import("./campaign-search.js");
   target.innerHTML = `${search.searchForm(d)}${d.continuity || d.currentArc ? `<article class="metal overview-story"><h3>Onde paramos${d.currentArc ? " — " + esc(d.currentArc) : ""}</h3><p class="workspace-prose">${esc(d.continuity || "O resumo ainda será escrito.")}</p></article>` : ""}${firstSteps}${d.isMaster ? "" : `<a class="button primary" href="#character/new/${esc(d.id)}">+ Criar ficha com o modelo da campanha</a>`}${next}<div class="section-title"><h2>Visão geral</h2></div><article class="overview-story metal"><h3>Premissa</h3><p class="workspace-prose">${esc(d.description || "A premissa desta campanha ainda será escrita.")}</p></article>${
@@ -227,43 +226,54 @@ async function renderChapterBlock(d) {
 }
 
 async function startSessionModal(campaignId) {
-  const [maps, list, chapters, chapterUi] = await Promise.all([
-    api(`/campaigns/${campaignId}/maps`),
-    api(`/campaigns/${campaignId}/sessions?page=1`),
-    api(`/campaigns/${campaignId}/chapters`),
+  // Uma ida ao servidor (ADR-100): próximo número, mapas, cenas preparadas e capítulos.
+  const [{ context, chapters }, chapterUi] = await Promise.all([
+    api(`/campaigns/${campaignId}/sessions/start-context`),
     import("./campaign-chapters.js"),
   ]);
-  // Sugere o capítulo da sessão mais recente; sem capítulos, sugere criar o primeiro (sessão avulsa continua possível).
-  const lastChapter = list.items[0] ? list.items[0].chapterId || "" : chapters.items.at(-1)?.id;
-  const past = await api(`/campaigns/${campaignId}/workspace/past-sessions?page=1`);
-  const next = Math.max(state.campaign?.firstSessionNumber || 1, (list.items[0]?.number || 0) + 1, (past.items[0]?.number || 0) + 1);
-  const choices = maps.items;
-  const firstTileset = choices.find((m) => m.kind === "tileset") || choices[0];
+  const next = context.nextNumber;
+  const scenes = startableScenes(context.scenes);
+  const choice = startDefaults(context);
+  // Sugere o capítulo da sessão mais recente; sem sessões, o último capítulo criado (sessão avulsa continua possível).
+  const lastChapter = context.hasSessions ? context.lastChapterId || "" : chapters.items.at(-1)?.id || "";
+  const sceneOptions = scenes.length
+    ? `<fieldset class="start-choice"><legend>Começar por${helpButton("sessoes.abertura.cena", "Iniciar pela cena")}</legend>${scenes
+        .map((sc) => `<label class="check mode-option"><input type="radio" name="start" value="${esc(sc.id)}" ${choice.sceneId === sc.id ? "checked" : ""}><span><strong>${esc(sc.name)}</strong><small>${esc(startSceneKind(sc.kind))}${sc.kind === "text" ? " · usa o mapa escolhido abaixo" : " · abre com marcadores, névoa e texto preparados"}</small></span></label>`)
+        .join("")}<label class="check mode-option"><input type="radio" name="start" value="map" ${choice.mode === "map" ? "checked" : ""}><span><strong>Só um mapa</strong><small>Escolha o mapa abaixo; as cenas continuam na aba Cenas da mesa.</small></span></label></fieldset>`
+    : "";
+  const mapBlock = mapChoices(context.maps, choice.mapKey, scenes.length ? "Mapa (para “Só um mapa” e cenas de texto)" : "Mapa inicial da sessão");
   modal(
     "✦ Iniciar nova sessão",
-    `<p class="modal-lead">A campanha ficará online para os aventureiros convidados.</p><form id="start-session"><div class="field"><div class="field-label"><label for="f-title">Nome da sessão</label>${helpButton("sessoes.abertura.unica", "Uma sessão ativa")}</div><div class="title-field"><span aria-hidden="true">Sessão ${String(next).padStart(2, "0")} —</span><input id="f-title" name="title" required maxlength="120" placeholder="A Cripta dos Antigos" aria-describedby="title-help"></div><small id="title-help" class="form-help">O número da sessão é atribuído automaticamente.</small></div><div class="field"><label for="f-objective">Objetivo / nota inicial do mestre</label><textarea id="f-objective" name="objective" maxlength="2000" rows="3" placeholder="Visível apenas para você no histórico da sessão."></textarea></div>${chapterUi.chapterPicker(chapters.items, lastChapter, { allowNew: true, idPrefix: "f-chapter" })}${mapChoices(choices, firstTileset?.key, "Mapa inicial da sessão")}<p class="notice-box">✧ Ao confirmar, a sessão será aberta e a campanha mudará para <strong>ONLINE</strong>. Os jogadores entrarão diretamente na mesa.</p>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">▶ Iniciar sessão</button></div></form>`,
+    `<p class="modal-lead">A campanha ficará online para os aventureiros convidados.</p><form id="start-session">${sceneOptions}${scenes.length ? `<details class="start-map" ${choice.mode === "map" ? "open" : ""}><summary>Mapa</summary>${mapBlock}</details>` : mapBlock}<details class="start-more"><summary>Mais opções: nome, objetivo e capítulo</summary><div class="field"><div class="field-label"><label for="f-title">Nome da sessão (opcional)</label>${helpButton("sessoes.abertura.unica", "Uma sessão ativa")}</div><div class="title-field"><span aria-hidden="true">Sessão ${String(next).padStart(2, "0")} —</span><input id="f-title" name="title" maxlength="120" placeholder="A Cripta dos Antigos" aria-describedby="title-help"></div><small id="title-help" class="form-help">Sem nome, a sessão aparece como “Sessão ${String(next).padStart(2, "0")}”. O número é automático.</small></div><div class="field"><label for="f-objective">Objetivo / nota inicial do mestre</label><textarea id="f-objective" name="objective" maxlength="2000" rows="3" placeholder="Visível apenas para você no histórico da sessão."></textarea></div>${chapterUi.chapterPicker(chapters.items, lastChapter, { allowNew: true, idPrefix: "f-chapter" })}</details><p class="notice-box">✧ Ao confirmar, a sessão será aberta e a campanha mudará para <strong>ONLINE</strong>. Os jogadores entrarão diretamente na mesa.</p>${formError()}<div class="form-actions">${button("Cancelar", "modal-close", "", "subtle")}<button type="submit" class="primary">▶ Iniciar sessão</button></div></form>`,
   );
   $("#modal").classList.add("wide");
-  mountMapChoices($("#start-session"), choices);
-  chapterUi.mountChapterPicker($("#start-session"));
+  const form = $("#start-session");
+  mountMapChoices(form, context.maps);
+  chapterUi.mountChapterPicker(form);
+  // "Só um mapa" abre o seletor de mapa; uma cena o recolhe (continua enviado para cenas de texto).
+  form.addEventListener("change", (e) => {
+    if (e.target.name === "start" && form.querySelector(".start-map")) form.querySelector(".start-map").open = e.target.value === "map";
+  });
+  form.querySelector('button[type="submit"]').focus();
   const resolveChapter = chapterUi.chapterResolver(campaignId);
-  $("#f-title").focus();
-  $("#start-session").onsubmit = (e) => {
+  form.onsubmit = (e) => {
     e.preventDefault();
     submitForm(e.currentTarget, async (data) => {
-      const [mapKind, mapKey] = String(data.map || "").split("|");
-      await api(`/campaigns/${campaignId}/sessions`, "POST", {
-        title: data.title,
-        objective: data.objective,
-        mapKind,
-        mapKey,
-        chapterId: await resolveChapter(data),
-      });
+      await api(`/campaigns/${campaignId}/sessions`, "POST", startPayload(data, await resolveChapter(data)));
       $("#modal").close();
       toast("A campanha está online. Bem-vindo à mesa, mestre.");
       navigate("table/" + campaignId);
     });
   };
+}
+
+/** Checklist "Pronto para jogar?" (ADR-100): estado real do grupo, das fichas e das cenas, com o próximo passo de cada item. */
+function readinessHtml(d) {
+  const { items, ready } = readinessChecklist(d);
+  const action = { invite: inviteLink(d), sheets: "", scene: `<a class="text-button" href="#campaign/${esc(d.id)}/prep">${d.sceneCount ? "Abrir a Preparação" : "Preparar uma cena"}</a>` };
+  return `<article class="first-steps metal"><h3>Pronto para jogar?${helpButton("sessoes.inicio.checklist", "Pronto para jogar?")}</h3><ul class="readiness">${items
+    .map((i) => `<li class="${i.done ? "is-done" : ""}"><span class="readiness-mark" aria-hidden="true">${i.done ? "✔" : i.optional ? "○" : "•"}</span><div><strong>${esc(i.label)}</strong><span class="sr-only">${i.done ? " — concluído" : " — pendente"}</span><small>${esc(i.detail)}</small>${action[i.key]}</div></li>`)
+    .join("")}</ul><p class="form-help" role="status">${ready ? "Tudo certo para começar." : "Você pode começar mesmo assim: quem chegar depois entra direto na mesa."}</p>${button("✦ Iniciar sessão", "cp-start", d.id, "primary")}<p class="form-help">Modelo de ficha: <a href="#campaign/${esc(d.id)}/settings">trocar ou criar um modelo simples</a>. Névoa, luz e ordem de turnos ficam disponíveis quando você precisar.</p></article>`;
 }
 
 function resourceModal(campaignId) {

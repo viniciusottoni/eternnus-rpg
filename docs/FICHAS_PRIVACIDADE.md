@@ -15,3 +15,21 @@ Eventos `sheet` são privados independentemente de a ficha ser compartilhada. `M
 One-shots: o início registra presença do mestre; join e heartbeat renovam a data no banco dentro da transação. Sair ou encerrar como mestre remove campanha e dependências, preservando a ficha pessoal. Acesso a mesa expirada ou sem presença do mestre pelo prazo definido em `OneShotLifecycleService` responde 410 até a limpeza em segundo plano concluir.
 
 Entrada e vínculo manual conferem o sistema da versão do modelo da ficha. Fichas de outro sistema recebem 400 e não criam presença ou vínculo. O fallback livre permanece permitido quando a campanha não escolheu modelo e o sistema não possui modelo padrão ativo e publicado; a seleção da mesa apresenta somente fichas elegíveis.
+
+## Imagem do personagem (ADR-097)
+
+Cada ficha tem no máximo uma imagem (`CharacterPortraits`), mostrada num cartão ao lado do PDF, sem cobrir as páginas. A leitura segue a ficha: dono, mestre das campanhas vinculadas e, quando a ficha é compartilhada, os membros da mesa. Ficha privada esconde a imagem dos demais participantes. Só o dono envia, troca ou remove. A troca não altera `Revision`, não gera histórico de campo e não passa por `SessionService` (não é estado da mesa). Excluir a ficha exclui a imagem.
+
+## Descrições por item (ADR-098)
+
+Descrições de magias, poderes, habilidades e itens ficam em `Character.ItemNotes` e seguem exatamente a leitura e a edição da ficha: quem lê a ficha lê as descrições (inclusive na mesa, só leitura); dono e mestre autorizado editam e gravam com "Salvar ficha", com histórico por item (`@descricao`). Ficha privada esconde as descrições dos demais participantes.
+
+## Ficha em jogo, cópias e restauração (ADR-099)
+
+- **Imagem no marcador:** o marcador do personagem mostra a imagem da ficha só para quem pode ler a ficha (mestre, dono ou participantes quando a ficha é compartilhada). Ficha privada: os demais veem o marcador sem imagem.
+- **Rolar e usar:** rolagens com a ficha como escopo e o uso de itens (com custo) exigem o dono jogando com a ficha ou o mestre; o servidor confere a ficha na sessão. O gasto entra no histórico por campo como os demais ajustes da mesa.
+- **Condições com duração:** gravadas na ficha; os eventos ficam com o mestre e o dono, como as condições de texto.
+- **Visão do grupo:** só o mestre da campanha; mostra fichas privadas da própria campanha (que ele já lê) e nunca e-mails.
+- **Duplicar:** só o dono; a cópia não leva histórico nem vínculo com campanhas.
+- **Restaurar ao início de uma sessão:** só o dono, que vê o histórico completo; o mestre restaura valor a valor pelas linhas do histórico que já lê. Nada é gravado sem o "Salvar ficha".
+- **Rascunho local:** valores não salvos ficam no IndexedDB deste navegador, por usuário e ficha, e são apagados ao sair da conta.

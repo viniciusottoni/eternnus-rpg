@@ -260,4 +260,74 @@ public sealed class SessionServiceTests : IAsyncLifetime
         await workspace.DeleteChapter(campaign.Id, arc.Id, Master, arc.Revision, default);
         Assert.Null((await db.Sessions.AsNoTracking().SingleAsync(s => s.Id == id)).ChapterId);
     }
+
+    // ---------- ADR-100: início simplificado ----------
+
+    [Fact]
+    public async Task StartWithoutTitleUsesOnlyTheNumber()
+    {
+        var result = await service.StartAsync(campaign.Id, new(null, null, MapKinds.Tileset, "crypt"), Master, default);
+        var id = (Guid)result.GetType().GetProperty("Id")!.GetValue(result)!;
+        var session = await db.Sessions.AsNoTracking().SingleAsync(s => s.Id == id);
+        Assert.Equal("", session.Title);
+        var start = await db.Events.AsNoTracking().SingleAsync(e => e.SessionId == id && e.Kind == EventKinds.Start);
+        Assert.Equal("Sessão 01 iniciada", start.Content);
+        await Assert.ThrowsAsync<RuleException>(() => service.StartAsync(campaign.Id, new(new string('x', 121), "", MapKinds.Tileset, "crypt"), Master, default));
+    }
+
+    [Fact]
+    public async Task StartFromSceneOpensItsMapAndPlacesPreparedMarkers()
+    {
+        var scene = new Scene { CampaignId = campaign.Id, Name = "Portão", Kind = SceneKinds.Map, MapKey = "tavern", SharedText = "O salão fica em silêncio.", Prepared = [new() { Label = "Guarda", Side = "enemy", X = 3, Y = 3 }] };
+        db.Add(scene); await db.SaveChangesAsync();
+        var result = await service.StartAsync(campaign.Id, new("", "", MapKinds.Tileset, "crypt", null, scene.Id), Master, default);
+        var id = (Guid)result.GetType().GetProperty("Id")!.GetValue(result)!;
+        Assert.Equal(scene.Id, (Guid?)result.GetType().GetProperty("sceneId")!.GetValue(result));
+        var session = await db.Sessions.AsNoTracking().SingleAsync(s => s.Id == id);
+        Assert.Equal("tavern", session.MapKey);
+        Assert.Equal(scene.Id, session.SceneId);
+        Assert.Equal("O salão fica em silêncio.", session.SceneText);
+        Assert.Contains(await db.SessionTokens.AsNoTracking().Where(t => t.SessionId == id).Select(t => t.Label).ToListAsync(), l => l == "Guarda");
+        Assert.True(await db.Events.AnyAsync(e => e.SessionId == id && e.Kind == EventKinds.Scene));
+    }
+
+    [Fact]
+    public async Task StartFromForeignOrMissingSceneIsRejectedWithoutOpeningTheTable()
+    {
+        var other = new Campaign { OwnerId = Master, Name = "Outra" };
+        var foreign = new Scene { CampaignId = other.Id, Name = "Alheia", MapKey = "crypt" };
+        db.AddRange(other, foreign); await db.SaveChangesAsync();
+        var error = await Assert.ThrowsAsync<RuleException>(() => service.StartAsync(campaign.Id, new("", "", MapKinds.Tileset, "crypt", null, foreign.Id), Master, default));
+        Assert.Equal(404, error.Status);
+        Assert.False(await db.Sessions.AnyAsync(s => s.CampaignId == campaign.Id));
+        await Assert.ThrowsAsync<RuleException>(() => service.StartAsync(campaign.Id, new("", "", MapKinds.Tileset, "crypt", null, Guid.NewGuid()), Master, default));
+    }
+
+    [Fact]
+    public async Task TextSceneKeepsTheChosenMap()
+    {
+        var scene = new Scene { CampaignId = campaign.Id, Name = "Prólogo", Kind = SceneKinds.Text, SharedText = "Era uma vez." };
+        db.Add(scene); await db.SaveChangesAsync();
+        var result = await service.StartAsync(campaign.Id, new("", "", MapKinds.Tileset, "forest", null, scene.Id), Master, default);
+        var id = (Guid)result.GetType().GetProperty("Id")!.GetValue(result)!;
+        var session = await db.Sessions.AsNoTracking().SingleAsync(s => s.Id == id);
+        Assert.Equal("forest", session.MapKey);
+        Assert.Equal("Era uma vez.", session.SceneText);
+    }
+
+    [Fact]
+    public async Task StartContextIsMasterOnlyAndSuggestsNextNumber()
+    {
+        db.Add(new Scene { CampaignId = campaign.Id, Name = "Cena A", MapKey = "crypt" }); await db.SaveChangesAsync();
+        var ctx = await service.StartContextAsync(campaign.Id, Master, default);
+        Assert.Equal(1, (int)ctx.GetType().GetProperty("nextNumber")!.GetValue(ctx)!);
+        Assert.False((bool)ctx.GetType().GetProperty("hasSessions")!.GetValue(ctx)!);
+        var scenes = ((System.Collections.IEnumerable)ctx.GetType().GetProperty("scenes")!.GetValue(ctx)!).Cast<object>().ToList();
+        Assert.Single(scenes);
+        // O cliente (start-policy.js) espera a lista simples de mapas, não o envelope { items } de GET …/maps.
+        var maps = Assert.IsAssignableFrom<System.Collections.IEnumerable>(ctx.GetType().GetProperty("maps")!.GetValue(ctx)!).Cast<object>().ToList();
+        Assert.Contains(maps, m => (string?)m.GetType().GetProperty("key")?.GetValue(m) == "crypt");
+        await Assert.ThrowsAsync<RuleException>(() => service.StartContextAsync(campaign.Id, Player, default));
+        await Assert.ThrowsAsync<RuleException>(() => service.StartContextAsync(campaign.Id, Outsider, default));
+    }
 }

@@ -101,9 +101,10 @@ const WCOLS = [["nome", "arma", 45.5, 64, 40], ["regular", "regular", 120, 29, 6
 // ---------- Página 2: antecedentes ----------
 const BG = [["descricao_pessoal", "Descrição pessoal", 0, 87, 42], ["caracteristicas", "Características", 1, 87, 42],
   ["ideologias", "Ideologias/Crenças", 0, 147, 41], ["ferimentos", "Ferimentos e cicatrizes", 1, 147, 41],
-  ["pessoas", "Pessoas significativas", 0, 206, 41], ["fobias", "Fobias e manias", 1, 206, 41],
-  ["locais", "Locais importantes", 0, 265, 41], ["tomos", "Tomos arcanos, feitiços e artefatos", 1, 265, 41],
-  ["pertences", "Pertences queridos", 0, 326, 62], ["encontros", "Encontros com entidades estranhas", 1, 326, 62]];
+  // "_itens": o site trata como lista (um item por linha, com descrição por item; ADR-098).
+  ["pessoas_itens", "Pessoas significativas", 0, 206, 41], ["fobias_itens", "Fobias e manias", 1, 206, 41],
+  ["locais_itens", "Locais importantes", 0, 265, 41], ["tomos", "Tomos arcanos, feitiços e artefatos", 1, 265, 41],
+  ["pertences", "Pertences queridos", 0, 326, 62], ["encontros_itens", "Encontros com entidades estranhas", 1, 326, 62]];
 for (const [k, l, col, yy, hh] of BG) add(k, l, "textarea", 1, col ? 311 : 57, yy, k === "caracteristicas" ? 162 : (col ? 245 : 240), hh, 9, { maxLength: 3000 });
 add("equipamento_1", "Equipamento e pertences (coluna esquerda)", "textarea", 1, 53, 428, 140, 154, 9, { maxLength: 3000 });
 add("equipamento_2", "Equipamento e pertences (coluna direita)", "textarea", 1, 200, 428, 138, 154, 9, { maxLength: 3000 });

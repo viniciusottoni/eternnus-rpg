@@ -1004,3 +1004,132 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 **Alternativas rejeitadas:** manter a proporção da imagem (a área escolhida não corresponderia ao desenho); só visual, sem ocupar casas (o mestre pediu que a criatura grande conte para as regras); área centrada na casa no tático (não alinharia a criaturas de 2 casas).
 
 **Consequências:** migração aditiva `TokenImageSpan` (duas colunas anuláveis em `SessionTokens`); cenas guardam os campos no JSON do arranjo e marcadores antigos não mudam. Luz, visão e percepção da criatura continuam a partir da casa do canto, e as paredes entre casas da área não são conferidas no caminho; o destaque de alcance do jogador usa a área dos outros marcadores, mas o servidor decide. Marcador apenas percebido não revela a área.
+
+## ADR-093 — Linha do tempo em trechos recolhíveis e inserção pelo "+" na linha (17/11/2026)
+
+**Contexto:** com dezenas de acontecimentos a linha do tempo virou uma página enorme, e para inserir um ponto no meio o mestre precisava escolher a posição numa lista longa dentro do formulário.
+
+**Decisão:**
+
+- Acima de 10 acontecimentos a linha é dividida em trechos de 10 (`CHUNK`). Cada trecho tem um cabeçalho-botão (`aria-expanded`) com intervalo, primeiro → último título, faixa de “quando” e contagem (rascunhos só para o mestre). Recolhido, mostra apenas os números dos pontos, que abrem o relato direto. Cada trecho aberto tem a própria serpente; trechos recolhidos não montam SVG nem observador.
+- Navegador no topo: um botão por trecho (abre e rola até ele) e “Expandir tudo”/“Recolher tudo”. Sem preferência salva, abre só o último trecho. Os trechos abertos ficam em `localStorage` por campanha (só índices; nenhum dado da campanha).
+- O mestre insere pelo “+” desenhado sobre a linha entre dois pontos (curvas incluídas), na ponta aberta antes do primeiro ou depois do último ponto de um trecho. O formulário de criação não pergunta mais a posição; mostra onde o ponto entra. A lista “No início / Depois de …” fica só na edição, para mover. Depois de salvar, a página abre o trecho do novo ponto, rola até ele e devolve o foco.
+- Sem mudança de API: a lista continua inteira (até 300), a divisão é só de apresentação.
+
+**Consequências:** service worker `v69`. Ajuda `campanhas.acervo.linha-do-tempo` atualizada.
+
+## ADR-094 — Shift trava a proporção nas alças da composição (17/11/2026)
+
+**Contexto:** nas composições de cena e mapa de imagem, Shift soltava a proporção das imagens; arrastar o canto na diagonal somava o mesmo valor à largura e à altura e deformava a imagem, o contrário do que o mestre espera.
+
+**Decisão:** Shift sempre trava a proporção (elemento ou conjunto). Sem Shift, imagens (ou conjuntos com imagem) mantêm a proporção, salvo com “Manter proporção” desligado na barra da cena; formas e textos redimensionam livres.
+
+**Consequências:** ajuda e `docs/CENAS_EDITOR.md`/`docs/PREPARACAO_EDITOR.md` atualizados; service worker `v69`.
+
+## ADR-095 — Capa com miniatura e zoom no visualizador de imagens da Biblioteca (17/11/2026)
+
+**Contexto:** cartões de imagem mostravam só um ícone, e o visualizador exibia a imagem encaixada, sem como ver detalhes de mapas grandes. Carregar o arquivo original (até 25 MiB) em cada cartão pesaria demais.
+
+**Decisão:**
+
+- Nova rota `GET /api/library/{id}/thumbnail` (`LibraryThumbnails`, singleton): JPEG que cabe em 720×480 mantendo a proporção, gerado sob demanda com a política restritiva do ImageMagick dos avatares. JPEG grande é decodificado já reduzido (`jpeg:size`), então mapas acima de 4.096 px funcionam; PNG acima de 4.096 px e WebP não têm miniatura (`404`) e o cartão mantém o ícone. Cache em memória por arquivo (até 48 MiB, conteúdo de `StoredFile` é imutável), no máximo duas gerações simultâneas. Resposta `private, no-store`, como o arquivo.
+- A capa usa `object-fit: cover`: preenche a área sem distorcer; o tipo vira um selo. A miniatura só aparece após carregar (lazy).
+- Visualizador: módulo `js/image-zoom.js` (regras puras testadas). Roda/pinça aproximam no ponto indicado, arraste move, duplo clique alterna entre ajustar e tamanho real, teclado `+ − 0 1` e setas; barra com −, %, +, Ajustar e 100%. Escala de “ajustar” (sem ampliar) até 400%; a imagem nunca deixa vão nas bordas.
+- Na barra de filtros, “Buscar” passa para o fim, depois de Tipo.
+
+**Consequências:** service worker `v70` com `js/image-zoom.js` na lista pública. Ajuda `biblioteca.leitor.imagem`. Sem migração; a miniatura é refeita após reinício do processo.
+
+## ADR-096 — Medidores de uso em "Minha conta" (17/11/2026)
+
+**Contexto:** a conta mostrava os limites só como uma frase. Não havia visão do armazenamento usado, e contas da equipe (sem limite) não viam a própria contagem.
+
+**Decisão:**
+
+- `GET /auth/limits` passa a usar `AccountLimits.AccountAsync`, que acrescenta `storage`. As listagens de campanhas e one-shots continuam com `SummaryAsync`, sem somar bytes.
+- O armazenamento soma, com agregados no banco, o conteúdo das campanhas e one-shots que a pessoa **mestra**. Tipos: imagens e mapas (`CampaignMap`), anexos e atlas, versões salvas (documentos e páginas) e textos (estimativa por caracteres).
+- **Não há cota nova por conta.** A única regra aplicada continua sendo 250 MB de imagens por campanha. A capacidade exibida é `campanhas mestradas × 250 MB` e serve só de orientação. Os outros tipos aparecem para a pessoa entender o uso.
+- Tela da conta: quotas com barra (alerta em 80% e 100%). Sem limite, mostra `N / ∞` sem barra e continua contando. O armazenamento usa uma barra segmentada por cor, com legenda em texto (a cor não é a única pista) e `role="meter"`. As larguras são aplicadas via CSSOM por causa da CSP `style-src 'self'`. Regras puras em `js/account-usage-policy.js`.
+
+**Consequências:** service worker `v71`. Ajuda `conta.uso.limites`. Sem migração. As somas percorrem as tabelas de conteúdo das campanhas mestradas a cada abertura da conta; o custo não foi medido com volume real.
+
+## ADR-097 — Imagem do personagem fora da ficha (17/11/2026)
+
+**Contexto:** a ficha de jogador é o PDF do modelo com campos sobrepostos; não havia imagem do personagem. Retratos de NPC são do acervo da campanha, mas a ficha de jogador pertence à pessoa e pode estar em várias campanhas.
+
+**Decisão:**
+
+- Tabela `CharacterPortraits` (1:1 com a ficha, exclusão em cascata) com bytes reprocessados, tipo, dimensões, tamanho e SHA-256. `Character.PortraitVersion` (0 = sem imagem) serve de cache-buster e é alterado por `ExecuteUpdate`, sem tocar em `Revision`: trocar a imagem não conflita com quem edita a ficha.
+- Envio só do dono, só do aparelho (sem link https: links quebram e expõem o IP de quem abre a ficha). PNG/JPEG até 10 MB, com assinatura, antivírus quando configurado e `CampaignAssetsService.Normalize` (sem metadados, sem animação), agora com `maxSide` para reduzir a 1.024 px. PNG com transparência continua PNG. Sem moderação externa, como nos retratos de NPC.
+- Leitura igual à da ficha (`CharacterSheets.Readable`); resposta `private, no-store`. Não é estado da mesa, então não passa por `SessionService`.
+- Interface: cartão "Imagem do personagem" numa coluna própria à esquerda do PDF (fixo ao rolar); no celular vai para cima da ficha, com miniatura ao lado das ações. Clicar amplia no visualizador com zoom da Biblioteca. Na lista de Personagens a imagem ocupa a faixa do topo do cartão (140 px, `object-fit: cover`, ancorada no alto para mostrar o rosto, sem distorcer).
+- Armazenamento da conta (ADR-096) ganha o tipo "Retratos de personagens", das fichas da própria pessoa.
+
+**Consequências:** migração `CharacterPortraits`; service worker `v72`; ajuda `fichas.imagem.personagem`. O marcador do personagem na mesa ainda não usa a imagem (próxima etapa). Testes em SQLite; PostgreSQL real e envio pelo navegador contra o servidor não executados neste ambiente.
+
+## ADR-098 — Listas da ficha: um item por linha, "…" e descrição por item (17/11/2026)
+
+**Contexto:** em listas como "Habilidades de classe e poderes" (Tormenta20) um item longo quebrava em duas linhas e desalinhava das linhas impressas. Não havia onde guardar o que cada magia, poder ou item faz sem encher a ficha.
+
+**Decisão:**
+
+- **Campo de lista** é decidido no cliente (`item-notes-policy.js#isListField`), sem mudar modelos publicados: campos de texto/texto longo cujo nome tem um termo de lista (magia, feitiço, ritual, poder, habilidade, talento, vantagem, técnica, disciplina, perícia, item, equipamento, inventário, arma, ataque, golpe, ação, armadura, escudo…) e não começa nem termina com termo auxiliar (dano, custo, peso, descrição, bônus, especialização…). Conferido nos 12 modelos de `docs/fichas`; `field.notes` true/false força a escolha em modelos futuros. Descrição e Anotações continuam texto corrido, com quebra.
+- **Visual:** cada linha de um campo de lista é um item, sem quebra automática (`wrap="off"`). Fora da edição, uma camada de linhas mostra "…" no que não cabe e o tooltip padrão mostra o texto inteiro (`data-tip-full`, até 1.000 caracteres, caixa mais larga). Clicar numa linha edita o campo com o cursor nela. Campos de uma linha usam `text-overflow: ellipsis`.
+- **Linha a linha também nas colunas e no PDF:** texto longo com o mesmo começo de nome e as mesmas linhas de uma lista (mesma página e fonte, começando e terminando na mesma linha: `posses_custo` ao lado de `posses`, `cc_dano` ao lado de `cc_arma`) é desenhado como a lista, uma linha por item com "…", mas sem descrição própria (`lineFieldNames`, opção `isLines` do `renderSheet`, também no "Testar ficha"). Listas e colunas usam altura de linha 1,2 × fonte e a 1ª linha 1 pt abaixo do topo, igual ao PDF exportado, para cada item cair na linha impressa ao preencher, ler e exportar. O PDF exportado (`filled-pdf.js`) não quebra listas nem colunas: cada linha é cortada com "…" (`fitLine`). Modelos com lista fora do padrão de nomes ganham nova versão com nome reconhecível (ex.: cyberware do Cyberpunk RED).
+- **Descrição por item:** botão discreto no canto do campo (aparece no hover/foco; dourado com a contagem quando há descrições) abre o popup padrão (diálogo próprio com o mesmo cabeçalho, para abrir também sobre a ficha na mesa). Uma descrição de até 500 caracteres por item; linha descrita ganha um filete dourado. Na edição, aplicar marca a ficha como alterada e grava com "Salvar ficha"; na leitura (inclusive na mesa) mostra só os itens descritos. O formulário acessível tem o botão "Descrições" por campo de lista.
+- **Dados:** `Character.ItemNotes` (JSON `{ chave: texto }`, até 200 descrições). A chave é o texto do item normalizado, então a descrição acompanha o item quando ele muda de linha ou de campo e some se o item for renomeado ou apagado (o servidor descarta chaves de itens que não existem). `PUT …/sheet` recebe `notes` (substitui; nulo preserva), passa por `SessionService.WriteCharacterAsync` como o resto da ficha e registra cada mudança no histórico (`@descricao`).
+
+**Consequências:** migração `CharacterItemNotes`; service worker `v73` (`v74` com as colunas linha a linha). O PDF exportado passou a anexar as descrições em páginas finais (ADR-099). A inferência por nome pode errar em modelos novos com nomes fora do padrão (use `notes` no campo). Testes em SQLite; validação visual com o modelo Tormenta20 em páginas sem o PDF de fundo; PostgreSQL real não executado.
+
+## ADR-099 — Ficha em jogo: rolar, Resumo, usar item, condições com duração e ferramentas da ficha (17/11/2026)
+
+**Contexto:** a ficha era só um formulário sobre o PDF. Na mesa, o jogador abria o PDF inteiro para achar um valor e rolava à mão no construtor de dados; magias e poderes descritos (ADR-098) não tinham uso direto; condições não venciam; o mestre abria ficha por ficha. Fora da mesa faltavam busca, cópia, restauração e proteção contra perda de edição.
+
+**Decisão:**
+
+- **Rolar pela ficha:** `SheetField.roll` (modelo; texto = fórmula na linguagem das ações, `""` = não rolar) ou inferência conservadora no cliente (`sheet-roll-policy.js`) só em fichas d20 (≥ 4 atributos `_mod`): modificadores, perícias com componentes (`_atributo`, `_prof`, `_treino`), resistências, iniciativa e percepção rolam `1d20 + @campo`. Outros sistemas (d100, parada de dados, 3d6) rolam só com `roll` no modelo. `POST /rolls` aceita `characterId`: o servidor avalia os @campos naquela ficha (jogador só a própria; mestre qualquer ficha da sessão). Botão 🎲 discreto no campo da ficha completa da mesa e botões no Resumo.
+- **Resumo (ficha compacta):** `sheet-compact.js` mostra recursos (marcados, papel Vida ou reservas com par `_max`, como `pm_atual`/`pm_max`), destaques, testes e listas com descrições. Na página da ficha é uma alternativa à ficha completa (preferência local); na mesa é a aba padrão do modal da ficha, carregada sob demanda (`table-sheet.js`).
+- **Usar item:** "Usar" no Resumo e no popup de descrições abre um diálogo empilhado com sugestão tirada da descrição (primeira expressão de dados e "N SIGLA" casada com um recurso), sempre conferida pelo jogador. `POST /characters/{cid}/use-item` confere saldo (sem saldo 409, nada muda), desconta o custo (recurso marcado ou qualquer campo numérico editável, com histórico e evento desfazível) e rola com a ficha como escopo, numa transação e num registro.
+- **Condições com duração:** `Character.Effects` (JSON, até 12, nome ≤ 40, rodadas 1–99 ou sem prazo). Ao chegar o turno do personagem (inclusive membro de grupo), cada condição perde uma rodada; ao zerar sai com evento ao mestre e ao dono. Aparecem no grupo, na ficha resumida, no modal da ficha e como selo roxo com a contagem no marcador. As condições de texto livre continuam.
+- **Imagem no marcador:** marcador de personagem sem imagem própria usa a imagem da ficha (ADR-097) para quem lê a ficha.
+- **Visão do grupo:** botão do mestre na mesa; `GET /campaigns/{id}/party` resume todas as fichas vinculadas numa tabela.
+- **Restaurar pelo histórico:** "Voltar a este valor anterior" em cada linha e, para o dono, "voltar ao início de uma sessão" (`restore-points`). Os valores voltam ao formulário; a gravação passa pelo PUT comum.
+- **Rascunho local:** valores e descrições não salvos vão ao IndexedDB dos rascunhos (tipo `sheet`), oferecidos ao reabrir; salvar ou descartar apaga.
+- **Busca na ficha:** rótulo, valor, linha de lista e descrição, sem acentos; o resultado rola até o campo e destaca a linha.
+- **Duplicar:** `POST /characters/{id}/copy`, só o dono, sem histórico, campanhas, condições ou atalhos.
+- **PDF exportado:** anexa páginas finais "Descrições dos itens" (texto puro, fonte padrão, sem conteúdo ativo).
+- **Editor de modelos:** controles "Descrições por item" (Automático/Sim/Não → `notes`) e "Rolar ao clicar" (Automático/Não rolar/Fórmula própria → `roll`), validados no servidor com a mesma linguagem das ações. A normalização do modelo passa a preservar `track`, `maxField` e `section`, antes descartados ao salvar pelo editor.
+
+**Alternativas descartadas:** inferir rolagem em todos os sistemas pelo nome (erraria d100, paradas e 3d6); custo estruturado por item (mais um formulário por descrição — a sugestão conferida resolve sem novo dado); restaurar descrições pelo histórico (o histórico guarda "Item: texto", não a chave).
+
+**Consequências:** migrações `CharacterEffects` (coluna `Effects`, padrão `[]`) e `SheetFieldNotesRoll` (sem alteração de tabela; só o snapshot). Service worker `v75`. Testes em SQLite e regras puras; verificação visual com API simulada e o modelo Tormenta20 em páginas sem o PDF de fundo (a ficha da mesa foi verificada como componente isolado, não dentro da mesa completa). PostgreSQL real, corridas de turno com condições e o fluxo completo da mesa no navegador não foram executados. Assistente de subir de nível e cálculo de carga ficam fora.
+
+## ADR-100 — Criar → jogar sem atrito e condução simplificada (18/11/2026)
+
+**Contexto:** a auditoria de simplicidade ([AUDITORIA_SIMPLICIDADE.md](AUDITORIA_SIMPLICIDADE.md)) mostrou que o atrito estava nas costuras entre as etapas, não na falta de ferramentas. A cena era preparada, mas a sessão abria por um mapa; o nome da sessão era obrigatório; "Primeiros passos" não mostrava o estado real; luz e visão só aceitavam números; e não havia conteúdo de partida. A referência negativa foram as críticas recorrentes ao Roll20: preparação longa, luz difícil e interface carregada.
+
+**Decisão:**
+- **Início da sessão (J1, J5, J9):** o nome é opcional; sem nome, a sessão aparece só pelo número. O modal oferece "Começar por" com as cenas preparadas; a primeira vem marcada, e "Só um mapa" continua disponível. A cena escolhida é apresentada na mesma transação que abre a sessão (`ShowSceneAsync`, extraído de `PresentSceneAsync`). Objetivo e capítulo ficam em "Mais opções". O modal faz uma única consulta: `GET …/sessions/start-context`.
+- **Pronto para jogar? (J2):** o checklist da visão geral mostra jogadores que entraram, fichas vinculadas (x de y) e cenas prontas (opcional), com o próximo passo de cada item. Iniciar continua possível a qualquer momento.
+- **Criação (J3, J4, N1):** a origem ("já em andamento") fica recolhida. O sistema vem preenchido com o Sistema livre, com o aviso "Você pode trocar depois". "Começar com uma aventura de exemplo" cria, na mesma transação e depois da quota, a cena "O sino da cripta" (cenário oficial por chave), dois personagens do mestre sem ficha, a premissa e um objetivo privados. A descrição vazia recebe a premissa. Na one-shot, a mesa já abre apresentando a cena. Quota esgotada: `409` antes de gravar.
+- **Luz e visão (J6):** predefinições Vela, Tocha, Fogueira e Lanterna (raio/penumbra em casas) e visão no escuro curta/longa (`light-presets-policy.js`). A escolha só preenche os números que o servidor já valida; não presume regras de um sistema. Na Básica, o raio fica em "Personalizar".
+- **Mesa (J7, J8, N2, N3, N5):** a ficha do NPC pode ser trocada ou desvinculada na própria mesa e continua em Preparação. Na vez do jogador, o celular sai da Conversa para o Mapa (sem interromper digitação ou diálogo). "Personagens do mestre" no painel do grupo é arrastável para o mapa, com "Colocar" como alternativa por teclado e toque. O editor de cena já permitia arrastar personagens. "Colocar o grupo" leva os personagens presentes para a entrada; cada movimento é desfazível. O mestre desfaz marcador adicionado/removido e revelar/cobrir névoa por evento compensatório no `SessionService`, que revalida o estado atual (mudança posterior: `409`).
+- **Busca de ações (N4):** Ctrl+K ou "/" (fora de campos de texto), e o botão "⌕ Ações", na mesa e nos três editores (`editor-core.js`). Usa o mesmo despacho dos botões; na Básica, as ferramentas da Completa aparecem marcadas e trocam a interface ao escolher.
+- **Peso da cena (N6):** o editor avisa a partir de 80% dos limites que o servidor impõe (2.000 paredes, 100 luzes, 100 marcas, 60 marcadores). É um aviso de limite, não uma medição de desempenho.
+- **Governança (G1–G4):** `BASIC_BUDGET` em `scene-policy.js` limita a Básica (editor 12, mesa 9), validado em teste. Aumentar exige ADR. Regras em [AGENTS.md](../AGENTS.md).
+
+**Privacidade:** eventos de névoa desfazível são privados do mestre. O retrato do marcador removido fica só no evento do mestre; jogadores recebem uma cópia sem dados (`IsRecipientCopy`). `TableEvent.Data` continua abaixo de 4.000 caracteres: pinceladas grandes ficam sem desfazer, e o retrato só é guardado até 3.000 caracteres.
+
+**Alternativas descartadas:**
+- Apagar o evento original ao desfazer: perderia a auditoria.
+- Guardar névoa anterior em memória: violaria a regra de estado autoritativo no banco.
+- Terceiro modo de interface: conflita com G1.
+- Limites de desempenho inventados sem medição.
+
+**Consequências:**
+- Sem migração.
+- Service worker `v76` com seis módulos públicos novos sem dados.
+- Testes em SQLite e regras puras.
+- Validação posterior com PostgreSQL (Docker) e Chromium em `tests/simplicity.mjs` ([TESTES.md](TESTES.md)). Ela corrigiu três pontos:
+  - `GET …/sessions/start-context` devolvia `maps` no envelope `{ items }`, e o modal de início falhava com `items.filter is not a function`. Agora `maps` é a lista simples.
+  - O corpo comum de 64 KiB só comportava ~530 paredes no salvamento da camada, porque o editor reenvia `id`, `kind`, `open` e `hidden`. Isso deixava o limite do domínio (2.000) e o aviso "Cena pesada" inalcançáveis. `UploadLimits.LayerRequestBytes` (512 KiB) vale só para PUT `/api/campaigns/{id}/assets/layers` e POST `/api/sessions/{id}/fog/walls`; o servidor continua validando quantidade e geometria.
+  - A lista de NPCs da mesa, se aberta, recarrega quando a aba volta a ficar visível.

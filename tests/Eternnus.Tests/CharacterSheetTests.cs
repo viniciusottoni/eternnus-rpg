@@ -70,6 +70,44 @@ public sealed class CharacterSheetTests : IAsyncLifetime
     async Task<RuleException> Fails(Func<Task> action) => await Assert.ThrowsAsync<RuleException>(action);
 
     [Fact]
+    public async Task Item_notes_follow_items_are_validated_and_recorded_in_history()
+    {
+        var c = await CreateInCampaign();
+        static Dictionary<string, string?> Notes(params (string Key, string? Text)[] items) => items.ToDictionary(i => i.Key, i => i.Text);
+        var view = Json(await service.UpdateSheetAsync(c.Id, new(Values(("historia", "Golpe Divino\nCura  pelas mãos")), null, 1, null,
+            Notes(("GOLPE divino", "Causa dano extra."), ("inexistente", "x"), ("cura pelas mãos", "  "))), Player, default));
+        Assert.Equal("Causa dano extra.", view.GetProperty("notes").GetProperty("golpe divino").GetString());
+        Assert.Single(view.GetProperty("notes").EnumerateObject());
+        var history = await db.FieldChanges.AsNoTracking().Where(h => h.CharacterId == c.Id && h.Field == CharacterItemNotes.HistoryField).ToListAsync();
+        Assert.Equal("Golpe Divino: Causa dano extra.", Assert.Single(history).NewValue);
+
+        // Mestre da campanha lê as descrições junto com a ficha; acima de 500 caracteres é recusado.
+        Assert.Equal("Causa dano extra.", Json(await service.SheetAsync(c.Id, Master, default)).GetProperty("notes").GetProperty("golpe divino").GetString());
+        Assert.Equal(400, (await Fails(() => service.UpdateSheetAsync(c.Id, new(null, null, 2, null, Notes(("golpe divino", new string('a', 501)))), Player, default))).Status);
+
+        // Notes nulo preserva; o item some da lista e a descrição deixa de aparecer, saindo do banco no próximo envio.
+        db.ChangeTracker.Clear();
+        view = Json(await service.UpdateSheetAsync(c.Id, new(Values(("historia", "Cura pelas mãos")), null, 2), Player, default));
+        Assert.Empty(view.GetProperty("notes").EnumerateObject());
+        db.ChangeTracker.Clear();
+        await service.UpdateSheetAsync(c.Id, new(null, null, 3, null, Notes(("cura pelas mãos", "Recupera PV."))), Player, default);
+        var stored = CharacterItemNotes.Parse((await Load(c.Id)).ItemNotes);
+        Assert.Equal(["cura pelas mãos"], stored.Keys);
+    }
+
+    [Fact]
+    public void Item_note_keys_match_the_client_rule()
+    {
+        Assert.Equal("golpe divino", CharacterItemNotes.Key("  Golpe\tDivino  "));
+        Assert.Equal("élan", CharacterItemNotes.Key("E\u0301lan"));
+        Assert.Equal(200, CharacterItemNotes.Key(new string('x', 300)).Length);
+        var items = CharacterItemNotes.Items([new SheetField { Name = "poderes", Type = SheetFieldTypes.TextArea }, new SheetField { Name = "nivel", Type = SheetFieldTypes.Number }],
+            new Dictionary<string, string> { ["poderes"] = "Ataque\n\n ataque \nDefesa", ["nivel"] = "3" });
+        Assert.Equal(["ataque", "defesa"], items.Keys);
+        Assert.Equal("Ataque", items["ataque"]);
+    }
+
+    [Fact]
     public async Task Sheet_is_born_from_the_campaign_template_and_falls_back_to_the_free_template()
     {
         var c = await CreateInCampaign();

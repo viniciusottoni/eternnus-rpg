@@ -28,6 +28,21 @@ public sealed class UploadLimitsTests
     }
 
     [Theory]
+    [InlineData("PUT", "/api/campaigns/00000000-0000-4000-8000-000000000001/assets/layers", true)]
+    [InlineData("POST", "/api/sessions/00000000-0000-4000-8000-000000000001/fog/walls", true)]
+    [InlineData("POST", "/api/campaigns/00000000-0000-4000-8000-000000000001/assets/layers", false)]
+    [InlineData("GET", "/api/campaigns/00000000-0000-4000-8000-000000000001/assets/layers", false)]
+    [InlineData("PUT", "/api/campaigns/not-an-id/assets/layers", false)]
+    [InlineData("PUT", "/api/sessions/00000000-0000-4000-8000-000000000001/fog/walls", false)]
+    [InlineData("POST", "/api/sessions/00000000-0000-4000-8000-000000000001/fog/lights", false)]
+    [InlineData("POST", "/api/campaigns/00000000-0000-4000-8000-000000000001/fog/walls", false)]
+    public void Only_layer_and_wall_saves_receive_the_layer_body_cap(string method, string path, bool allowed)
+    {
+        var context = new DefaultHttpContext(); context.Request.Method = method; context.Request.Path = path;
+        Assert.Equal(allowed ? UploadLimits.LayerRequestBytes : (long?)null, UploadLimits.For(context.Request));
+    }
+
+    [Theory]
     [InlineData("POST", "/api/library", true)]
     [InlineData("PUT", "/api/library/00000000-0000-4000-8000-000000000001/file", true)]
     [InlineData("PUT", "/api/sheet-templates/00000000-0000-4000-8000-000000000001/versions/00000000-0000-4000-8000-000000000002/pdf", true)]

@@ -31,6 +31,17 @@ public partial class SessionService
         var a = await LockAsync(sessionId, user, ct); RequireMaster(a);
         var scene = await db.Scenes.SingleOrDefaultAsync(s => s.Id == x.SceneId && s.CampaignId == a.Campaign.Id, ct) ?? throw new RuleException(404, "Cena não encontrada.");
         if (a.Session.SceneId == scene.Id && !x.Restart) { await tx.RollbackAsync(ct); return; }
+        await ShowSceneAsync(a, scene, x.Restart, user, ct);
+        await CommitAsync(tx, a.Session, ct);
+    }
+
+    /// <summary>
+    /// Apresenta <paramref name="scene"/> na sessão bloqueada, dentro da transação do chamador (apresentar cena e iniciar sessão
+    /// pela cena — ADR-100). Não confirma a transação.
+    /// </summary>
+    async Task ShowSceneAsync(Access a, Scene scene, bool restart, string user, CancellationToken ct)
+    {
+        var x = new PresentSceneInput(scene.Id, restart);
         if (a.Session.SceneId is { } currentId && await db.Scenes.SingleOrDefaultAsync(s => s.Id == currentId && s.CampaignId == a.Campaign.Id, ct) is { } current)
             await SaveSceneStateAsync(a.Session, current, ct);
         if (scene.Kind != SceneKinds.Text && scene.MapKey.Length > 0)
@@ -63,7 +74,6 @@ public partial class SessionService
         Event(a.Session, user, await NameAsync(user, ct), EventKinds.Scene, x.Restart ? $"Cena reiniciada: {scene.Name}" : $"Cena: {scene.Name}",
             new { sceneId = scene.Id, name = scene.Name, kind = scene.Kind, sharedText = scene.SharedText, restart = x.Restart });
         await RefreshFogAsync(a, user, ct);
-        await CommitAsync(tx, a.Session, ct);
     }
 
     /// <summary>

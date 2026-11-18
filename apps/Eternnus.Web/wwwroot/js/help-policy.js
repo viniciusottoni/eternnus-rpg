@@ -10,6 +10,8 @@ export function validHelpKey(value) {
 export const validTip = (value) => plain(value, 80);
 /** Descrição curta exibida em letras menores abaixo do nome (ferramentas dos editores). */
 export const validTipDetail = (value) => plain(value, 240);
+/** Texto completo de uma linha cortada com "…" (fichas, ADR-098): texto puro, uma linha, até 1.000 caracteres. */
+export const validTipFull = (value) => plain(value, 1000);
 export function catalogModule(key) {
   return validHelpKey(key) ? `./help/${key.split('.')[0]}.js` : null;
 }
@@ -65,7 +67,9 @@ export const HELP_KEYS = Object.freeze({
   "conta.acesso.social": "all",
   "conta.acesso.autenticador": "all",
   "conta.perfil.avatar": "all",
+  "conta.uso.limites": "all",
   "conta.app.instalacao": "all",
+  "campanhas.criacao.aventura-exemplo": "master",
   "campanhas.continuidade.origem": "all",
   "campanhas.acervo.cadernos": "all",
   "campanhas.continuidade.historico": "all",
@@ -87,6 +91,8 @@ export const HELP_KEYS = Object.freeze({
   "campanhas.acervo.mapas": "master",
   "campanhas.acervo.movimentacao": "master",
   "sessoes.abertura.unica": "master",
+  "sessoes.abertura.cena": "master",
+  "sessoes.inicio.checklist": "master",
   "sessoes.historico.alteracoes": "master",
   "mesa.config.heranca": "master",
   "mesa.config.nevoa": "all",
@@ -112,6 +118,18 @@ export const HELP_KEYS = Object.freeze({
   "mesa.mapa.legenda": "all",
   "mesa.chat.comandos": "all",
   "mesa.imagens.temporarias": "master",
+  "fichas.imagem.personagem": "all",
+  "fichas.ficha.resumo": "all",
+  "fichas.ficha.busca": "all",
+  "fichas.ficha.duplicar": "all",
+  "fichas.ficha.rascunho": "all",
+  "fichas.historico.restaurar": "all",
+  "mesa.ficha.resumo": "all",
+  "mesa.ficha.usar": "all",
+  "mesa.condicoes.duracao": "all",
+  "mesa.grupo.visao": "master",
+  "modelos.campo.descricoes-por-item": "all",
+  "modelos.campo.rolar-ao-clicar": "all",
   "fichas.visibilidade.privacidade": "all",
   "fichas.versao.migracao": "all",
   "fichas.pdf.exportacao": "all",
@@ -126,6 +144,7 @@ export const HELP_KEYS = Object.freeze({
   "modelos.editor.atalhos": "all",
   "biblioteca.arquivos.verificacao": "all",
   "biblioteca.leitor.controles": "all",
+  "biblioteca.leitor.imagem": "all",
   "guilda.posts.util": "all",
   "guilda.denuncias.ocultacao": "all",
   "guilda.equipe.moderacao": "ambassador",
@@ -139,6 +158,7 @@ export const HELP_KEYS = Object.freeze({
   "admin.acoes.auditoria": "admin",
   "admin.musicas.catalogo": "admin",
   "mesa.interface.apresentacao": "master",
+  "mesa.luz.predefinicoes": "master",
   "mesa.trilha.compartilhada": "all",
   "mesa.trilha.ativar-audio": "all",
   "campanhas.cenas.preparacao": "master",

@@ -8,7 +8,12 @@ public static class CampaignEndpoints
         var api = app.MapGroup("/api/campaigns").RequireAuthorization("Verified");
         static string Id(ClaimsPrincipal u) => u.FindFirstValue(ClaimTypes.NameIdentifier)!;
         api.MapGet("", (string? search, string? sort, int? page, bool? oneShot, CampaignService service, ClaimsPrincipal u, CancellationToken ct) => service.ListAsync(Id(u), search, sort, page ?? 1, ct, oneShot));
-        api.MapPost("", async (CampaignInput x, CampaignService service, ClaimsPrincipal u, CancellationToken ct) => Results.Ok(new { id = await service.CreateAsync(x, Id(u), ct) }));
+        api.MapPost("", async (CampaignInput x, CampaignService service, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            var created = await service.CreateDetailedAsync(x, Id(u), ct);
+            // starterSceneId só aparece quando a aventura de exemplo foi pedida; sem ela a resposta continua { id }.
+            return created.StarterSceneId is { } scene ? Results.Ok(new { id = created.Id, starterSceneId = scene }) : Results.Ok(new { id = created.Id });
+        });
         api.MapPut("/{id:guid}", async (Guid id, CampaignInput x, CampaignService service, ClaimsPrincipal u, CancellationToken ct) => { await service.UpdateAsync(id, x, Id(u), ct); return Results.NoContent(); });
         api.MapPut("/{id:guid}/sheet-template", (Guid id, CampaignSheetTemplateInput input, CampaignService service, ClaimsPrincipal u, CancellationToken ct) => service.SetSheetTemplateAsync(id, input, Id(u), ct));
         api.MapDelete("/{id:guid}", async (Guid id, CampaignService service, ClaimsPrincipal u, CancellationToken ct) => { await service.DeleteAsync(id, Id(u), ct); return Results.NoContent(); });

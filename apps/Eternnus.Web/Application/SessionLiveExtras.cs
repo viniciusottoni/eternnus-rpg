@@ -20,7 +20,7 @@ public partial class SessionService
             var all = CharacterSheets.All(v.Fields, stored);
             var (resources, stats) = SheetSummary.Build(v.Fields, all);
             // armor: CA/Armadura para a bolha do marcador no mapa (nulo quando o modelo não define o papel).
-            result[c.Id] = new { resources = resources.Take(3), stats = stats.Take(3), conditions = c.Conditions, armor = SheetSummary.Armor(v.Fields, all) };
+            result[c.Id] = new { resources = resources.Take(3), stats = stats.Take(3), conditions = c.Conditions, effects = CharacterEffects.Parse(c.Effects), armor = SheetSummary.Armor(v.Fields, all) };
         }
         return result;
     }

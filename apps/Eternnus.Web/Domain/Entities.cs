@@ -35,6 +35,8 @@ public class Character
     [MaxLength(10000)] public string Notes { get; set; } = "";
     /// <summary>Condições e nota curta mostradas na ficha resumida (ex.: "Envenenado; sem munição").</summary>
     [MaxLength(300)] public string Conditions { get; set; } = "";
+    /// <summary>Condições com duração em rodadas (ADR-099): JSON de <see cref="CharacterEffect"/>, descontadas no turno do personagem.</summary>
+    [MaxLength(2000)] public string Effects { get; set; } = "[]";
     /// <summary>Atalhos pessoais (<see cref="CharacterShortcuts"/>, JSON). Preferência: não versiona a ficha nem altera regras.</summary>
     [MaxLength(4000)] public string Shortcuts { get; set; } = "";
     /// <summary>Ações criadas pelo jogador e usadas durante o próprio turno. Persistidas como JSON e versionadas com a ficha.</summary>
@@ -48,6 +50,10 @@ public class Character
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     /// <summary>Restringe a ficha ao dono e aos mestres das campanhas vinculadas.</summary>
     public bool Private { get; set; }
+    /// <summary>Versão do retrato (<see cref="CharacterPortrait"/>); 0 = sem imagem. Não altera <see cref="Revision"/> (ADR-097).</summary>
+    public int PortraitVersion { get; set; }
+    /// <summary>Descrições por item (ADR-098): JSON { chaveDoItem: texto até 500 }. Ver <see cref="CharacterItemNotes"/>.</summary>
+    [MaxLength(150000)] public string ItemNotes { get; set; } = "{}";
 }
 public class CharacterVersion
 {

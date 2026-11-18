@@ -22,6 +22,8 @@ import {
 import { mountImageDrop, listenPaste, splitImageFiles, baseName, readImageSize, assetListHtml, bindAssetList } from "./image-drop.js";
 import { MAP_ELEMENT, blankSceneComposition, loadSceneComposition, sceneSourceResolver, flattenPreview, flattenOverlay, createImageCache, createSceneComposer } from "./scene-composition.js";
 import * as CP from "./composition-policy.js";
+import { sceneWeight } from "./scene-weight-policy.js";
+import { LIGHT_PRESETS, CUSTOM, presetText, lightPresetOf, presetById } from "./light-presets-policy.js";
 import { LOOK_IMAGE, LOOK_ROUND, MIN_SIZE, MAX_SIZE, SIZE_STEP, DEFAULT_SIZE, clampSize, hasSpan, tokenSpan } from "./token-look.js";
 
 const SIDES = SCENE_SIDES;
@@ -1243,7 +1245,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const scope = `<p class="se-scope" role="note"><strong>Somente esta cena.</strong> As imagens ficam por cima do mapa “${esc(m.name)}”, que é compartilhado${m && (m.scenes?.length || 0) > 1 ? " com outras cenas" : ""} e não muda aqui.</p>`;
     if (!els.length) {
       const n = compElements();
-      return `<div class="se-panel"><h3>Composição da cena${helpButton("campanhas.cenas.composicao", "Composição da cena")}</h3>${scope}<p class="form-help">${n ? `${n} elemento(s) nesta cena. Clique numa imagem para mover, redimensionar (alças; Shift solta a proporção, Alt a partir do centro) e girar (alça de cima).` : "Arraste imagens do computador ou do painel Acervo, cole com Ctrl+V ou use Adicionar imagem. Cada imagem é um elemento independente."}</p>
+      return `<div class="se-panel"><h3>Composição da cena${helpButton("campanhas.cenas.composicao", "Composição da cena")}</h3>${scope}<p class="form-help">${n ? `${n} elemento(s) nesta cena. Clique numa imagem para mover, redimensionar (alças mantêm a proporção; Shift também trava; Alt a partir do centro) e girar (alça de cima).` : "Arraste imagens do computador ou do painel Acervo, cole com Ctrl+V ou use Adicionar imagem. Cada imagem é um elemento independente."}</p>
         <div class="form-actions">${button("Adicionar imagem…", "se-tool", "addImage", "primary")}${button("Abrir o mapa original…", "se-open-map", "", "subtle")}${n ? button("Criar mapa a partir da composição", "se-map-from-comp", "", "subtle") : ""}</div>
         <p class="form-help">“Ocultar” e “Bloquear” nas camadas valem só no editor. Para esconder dos jogadores, marque <strong>Só o mestre vê</strong>.</p></div>`;
     }
@@ -1789,7 +1791,13 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   const renderPanels = () => { renderLayers(); renderStructure(); renderCharacters(); renderHistory(); if (!mapOnly) renderAssets(); };
 
   // ---------- Renderização ----------
-  function renderStatus() {
+  /** Aviso de peso (ADR-100): perto dos limites do servidor para paredes, luzes, marcas e marcadores. */
+  function weightChip() {
+    if (!layer || !mapKind()) return "";
+    const w = sceneWeight({ walls: layer.walls?.length, lights: layer.lights?.length, marks: layer.marks?.length, tokens: draft.prepared?.length });
+    return w.heavy ? `<span class="ed-chip pending" role="note">${esc(w.text)}</span>` : "";
+  }
+    function renderStatus() {
     const presenting = live?.current;
     const pendingLive = presenting && (live.textPending || live.mapPending || meta?.pending);
     const dirty = sceneDirty || layerDirty;
@@ -1802,6 +1810,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
         !presenting && meta?.inUse ? '<span class="ed-chip pending">Este mapa está na mesa: salvar guarda a preparação sem mudar a partida.</span>' : "",
         composing() ? '<span class="ed-chip private">Composição: alterando só esta cena</span>' : "",
         mapOnly && meta ? '<span class="ed-chip pending">Preparação do mapa: vale para as cenas que o compartilham</span>' : "",
+        weightChip(),
       ].join(""),
     });
     q("#se-apply-slot").innerHTML = presenting && saved.id && (pendingLive || mapKind()) ? button(pendingLive ? "Aplicar à cena atual…" : "Aplicar preparação à cena atual…", "se-apply", "", "subtle", dirty ? 'aria-disabled="true" data-tip="Salve a preparação antes de aplicar."' : "") : "";
@@ -1920,10 +1929,37 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       <section class="se-subform"><h4>Personagem dos jogadores</h4>${free.length ? `<ul class="se-pick-list">${free.map((c) => `<li><span>${esc(c.name)}</span>${button("Colocar aqui", "se-add-character", c.id, "subtle small")}</li>`).join("")}</ul>` : `<p class="muted small">${characters.length ? "Todos os personagens da campanha já estão na cena." : "Nenhum personagem vinculado à campanha ainda."}</p>`}</section>
       <section class="se-subform"><h4>Personagem do mestre</h4>${npcs == null ? '<p class="loading-line" role="status">Carregando…</p>' : npcList.length ? `${placeLookField("add")}<ul class="se-pick-list">${npcList.map((n) => `<li><span>${esc(n.name)}<small>${esc(n.summary || "")}</small></span>${button("Colocar aqui", "se-add-npc", n.id, "subtle small")}</li>`).join("")}</ul><p class="form-help">Na mesa, “Cópia para o encontro” ajusta recursos sem alterar o original.</p>` : '<p class="muted small">Crie personagens do mestre na Preparação (pasta Personagens).</p>'}</section></div>`;
   }
+  /** Preenche raio e penumbra pela predefinição; "Personalizado" abre o campo do raio (Básica). */
+  function applyLightPreset(select) {
+    const form = select.form, p = presetById(LIGHT_PRESETS, select.value);
+    const hidden = form.querySelector("[data-light-dim]"), custom = form.querySelector("[data-light-custom]");
+    if (!p) { if (hidden) hidden.disabled = true; if (custom) { custom.open = true; form.querySelector("#se-radius")?.focus(); } return; }
+    form.querySelector("#se-radius").value = p.radius;
+    const dim = form.querySelector("#se-dim");
+    if (dim) dim.value = p.dim;
+    if (hidden) { hidden.value = p.dim; hidden.disabled = false; }
+  }
+  /** Editar o raio à mão vira "Personalizado" (a penumbra da predefinição deixa de ser enviada na Básica). */
+  function markLightCustom(form) {
+    const select = form.querySelector("[data-light-preset]"), hidden = form.querySelector("[data-light-dim]");
+    const radius = Number(form.querySelector("#se-radius").value);
+    const dim = form.querySelector("#se-dim")?.value ?? hidden?.value;
+    const match = lightPresetOf(radius, dim);
+    if (select) select.value = match;
+    if (hidden && match === CUSTOM) hidden.disabled = true;
+  }
   function lightPanel() {
     const light = layer.lights.find((l) => l.x === pick.x && l.y === pick.y);
     const advanced = mode === "complete" ? `<div class="field"><label for="se-dim">Penumbra até (casas)</label><input id="se-dim" name="dim" type="number" min="1" max="30" value="${light?.dim ?? ""}" placeholder="Sem penumbra"><p class="form-help">A luz cai aos poucos entre o raio e a penumbra. A penumbra também ilumina para as regras.</p></div><div class="field"><label for="se-color">Cor</label><input id="se-color" name="color" type="color" value="${esc(light?.color || "#ffbe64")}"></div><div class="field"><label for="se-intensity">Intensidade (10 a 100)</label><input id="se-intensity" name="intensity" type="number" min="10" max="100" value="${light?.intensity ?? 100}"></div><div class="field"><label for="se-anim">Animação</label><select id="se-anim" name="animation">${opt([["", "Fixa"], ["flicker", "Tremeluzir (tocha)"], ["pulse", "Pulsar (magia)"]], light?.animation || "")}</select><p class="form-help">Só visual. Quem pede menos movimento vê a luz fixa.</p></div>` : "";
-    return `<form class="se-panel" data-light-form><h3>Foco de luz · coluna ${pick.x + 1}, linha ${pick.y + 1}</h3><p class="form-help">${esc(HELP.light)}</p><div class="field"><label for="se-radius">Raio de luz plena (casas)</label><input id="se-radius" name="radius" type="number" min="1" max="30" required value="${light?.radius ?? 4}"></div>${advanced}<div class="form-actions">${light ? button("Apagar foco", "se-light-remove", "", "text-button") : ""}<button type="submit" class="primary">${light ? "Atualizar" : "Adicionar"}</button></div></form>`;
+    // Predefinições (ADR-100): a escolha preenche os números; "Personalizado" mostra o raio na Básica.
+    const presetId = light ? lightPresetOf(light.radius, light.dim) : "torch";
+    const initial = presetById(LIGHT_PRESETS, presetId);
+    const presets = `<div class="field"><div class="field-label"><label for="se-light-preset">Tipo de luz</label>${helpButton("mesa.luz.predefinicoes", "Tipos de luz")}</div><select id="se-light-preset" data-light-preset>${LIGHT_PRESETS.map((p) => `<option value="${p.id}" ${p.id === presetId ? "selected" : ""}>${esc(presetText(p))}</option>`).join("")}<option value="${CUSTOM}" ${presetId === CUSTOM ? "selected" : ""}>Personalizado</option></select></div>`;
+    const radiusField = `<div class="field"><label for="se-radius">Raio de luz plena (casas)</label><input id="se-radius" name="radius" type="number" min="1" max="30" required value="${light?.radius ?? 4}"></div>`;
+    const radius = mode === "complete"
+      ? radiusField
+      : `<details class="light-custom" data-light-custom ${presetId === CUSTOM ? "open" : ""}><summary>Personalizar</summary>${radiusField}</details><input type="hidden" name="dim" data-light-dim value="${initial?.dim ?? ""}" ${initial ? "" : "disabled"}>`;
+    return `<form class="se-panel" data-light-form><h3>Foco de luz · coluna ${pick.x + 1}, linha ${pick.y + 1}</h3><p class="form-help">${esc(HELP.light)}</p>${presets}${radius}${advanced}<div class="form-actions">${light ? button("Apagar foco", "se-light-remove", "", "text-button") : ""}<button type="submit" class="primary">${light ? "Atualizar" : "Adicionar"}</button></div></form>`;
   }
   function markPanel() {
     const mark = layer.marks.find((m) => m.x === pick.x && m.y === pick.y);
@@ -2361,6 +2397,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   }
   async function onChange(e) {
     const t = e.target;
+    if (t.matches?.("[data-light-preset]")) return applyLightPreset(t);
+    if ((t.id === "se-radius" || t.id === "se-dim") && t.form?.matches("[data-light-form]")) return markLightCustom(t.form);
     if (t.dataset.wallDraw || t.dataset.wallPatch || t.dataset.wallCoord) return onWallInput(t);
     if (t.id === "se-files") {
       const files = [...(t.files || [])];
@@ -2433,7 +2471,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       if (dim != null && !(dim >= radius && dim <= 30)) return say("A penumbra vai do raio da luz até 30 casas.");
       const intensity = data.intensity == null || data.intensity === "" ? old?.intensity ?? null : Math.round(Number(data.intensity));
       if (intensity != null && !(intensity >= 10 && intensity <= 100)) return say("A intensidade vai de 10 a 100.");
-      const visual = data.radius != null && "color" in data ? { dim: dim === radius ? null : dim, color: data.color && data.color.toLowerCase() !== "#ffbe64" ? data.color.toLowerCase() : null, intensity: intensity === 100 ? null : intensity, animation: data.animation || null } : {};
+      const visual = data.radius != null && "color" in data ? { dim: dim === radius ? null : dim, color: data.color && data.color.toLowerCase() !== "#ffbe64" ? data.color.toLowerCase() : null, intensity: intensity === 100 ? null : intensity, animation: data.animation || null }
+        // Básica com predefinição: só a penumbra da predefinição; cor, intensidade e animação ficam como estavam.
+        : data.dim !== undefined ? { dim: dim === radius ? null : dim } : {};
       lights.push({ ...(old || {}), x: pick.x, y: pick.y, radius, ...visual });
       change(old ? "Atualizar foco de luz" : "Foco de luz", () => { layer = { ...layer, lights }; });
       return refresh();

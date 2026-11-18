@@ -56,6 +56,11 @@ test("recursos sem teto e desfazer só do que é próprio", () => {
   assert.equal(p.canUndo({ kind: "move", mine: true }, { undoable: true }, false), true);
   assert.equal(p.canUndo({ kind: "move", mine: false }, { undoable: true }, false), false);
   assert.equal(p.canUndo({ kind: "roll", mine: true }, { undoable: true }, true), false);
+  // ADR-100: marcadores e névoa só pelo mestre.
+  assert.equal(p.canUndo({ kind: "token", mine: true }, { undoable: true }, true), true);
+  assert.equal(p.canUndo({ kind: "token", mine: true }, { undoable: true }, false), false);
+  assert.equal(p.canUndo({ kind: "map", mine: true }, { undoable: true }, true), true);
+  assert.equal(p.canUndo({ kind: "map", mine: true }, {}, true), false);
   assert.equal(p.unreadCount([{ id: 5, kind: "message", mine: false }, { id: 6, kind: "move" }, { id: 7, kind: "roll", mine: true }], 4), 1);
 });
 
@@ -126,4 +131,12 @@ test("bolhas de vida e armadura: só o que o servidor enviou, editável por dono
   const simpleArmor = p.tokenBubbles({ ...base, me: { isMaster: true }, play: { npcs: [{ tokenId: "t4", id: "n1", resources: [{ label: "CA", value: 14 }, { label: "Vida", value: 2, max: 4 }] }] } });
   assert.deepEqual(simpleArmor.get("t4").target, { kind: "npc", id: "n1", index: 1 });
   assert.equal(simpleArmor.get("t4").armor.value, "14");
+});
+
+test("ADR-100: na vez do jogador o celular sai da Conversa para o Mapa, sem interromper", async () => {
+  const p = await import("../apps/Eternnus.Web/wwwroot/js/play-policy.js");
+  assert.equal(p.viewOnMyTurn("chat", { compact: true, busy: false }), "map");
+  assert.equal(p.viewOnMyTurn("chat", { compact: true, busy: true }), "chat");
+  assert.equal(p.viewOnMyTurn("chat", { compact: false, busy: false }), "chat");
+  assert.equal(p.viewOnMyTurn("sheet", { compact: true, busy: false }), "sheet");
 });

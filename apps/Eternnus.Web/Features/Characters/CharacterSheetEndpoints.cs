@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http.Features;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 namespace Eternnus.Web;
@@ -29,6 +30,31 @@ public static class CharacterSheetEndpoints
         api.MapGet("/characters/{id:guid}/field-history", (Guid id, string? field, int? page, CharacterSheetService s, ClaimsPrincipal u, CancellationToken ct) => s.FieldHistoryAsync(id, field, page ?? 1, Me(u), ct));
         api.MapGet("/characters/{id:guid}/migration", (Guid id, CharacterSheetService s, ClaimsPrincipal u, CancellationToken ct) => s.MigrationPreviewAsync(id, Me(u), ct));
         api.MapPost("/characters/{id:guid}/migration", (Guid id, CharacterMigrationInput x, CharacterSheetService s, ClaimsPrincipal u, CancellationToken ct) => s.MigrateAsync(id, x, Me(u), ct));
+        // Imagem do personagem (ADR-097): fora do PDF; leitura como a ficha, escrita só do dono.
+        api.MapGet("/characters/{id:guid}/portrait", async (Guid id, HttpContext http, CharacterPortraitService s, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            var portrait = await s.GetAsync(id, Me(u), ct);
+            http.Response.Headers.CacheControl = "private, no-store";
+            http.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            return Results.File(portrait.Content, portrait.ContentType, enableRangeProcessing: false);
+        });
+        api.MapPost("/characters/{id:guid}/portrait", async (Guid id, HttpRequest request, DocumentFiles files, CharacterPortraitService s, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            if (!request.HasFormContentType) throw new RuleException(400, "Envie a imagem pelo formulário.");
+            IFormCollection form;
+            try { form = await request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = CampaignAssetsService.MaxImageBytes, ValueCountLimit = 4, KeyLengthLimit = 16, MultipartHeadersLengthLimit = 4096, MultipartHeadersCountLimit = 8 }, ct); }
+            catch (InvalidDataException) { throw new RuleException(413, "Formulário inválido ou imagem acima de 10 MB."); }
+            if (form.Files.Count != 1 || form.Files[0].Name != "file" || form.Keys.Count > 0) throw new RuleException(400, "Envie uma única imagem.");
+            if (form.Files[0].Length > CampaignAssetsService.MaxImageBytes) throw new RuleException(413, "Envie uma imagem de até 10 MB.");
+            var image = await files.ReadAsync(form.Files[0], new[] { DocumentKinds.Png, DocumentKinds.Jpeg }, ct);
+            return Results.Ok(await s.SaveAsync(id, Me(u), image, ct));
+        }).RequireRateLimiting("upload");
+        api.MapDelete("/characters/{id:guid}/portrait", async (Guid id, CharacterPortraitService s, ClaimsPrincipal u, CancellationToken ct) => Results.Ok(await s.DeleteAsync(id, Me(u), ct)));
+        // Ferramentas da ficha (ADR-099): duplicar (dono), pontos de restauração (dono) e visão do grupo (mestre).
+        api.MapPost("/characters/{id:guid}/copy", (Guid id, CharacterSheetService s, ClaimsPrincipal u, CancellationToken ct) => s.CopyAsync(id, Me(u), ct));
+        api.MapGet("/characters/{id:guid}/restore-points", (Guid id, CharacterSheetService s, ClaimsPrincipal u, CancellationToken ct) => s.RestorePointsAsync(id, Me(u), ct));
+        api.MapGet("/characters/{id:guid}/restore-points/{sessionId:guid}", (Guid id, Guid sessionId, CharacterSheetService s, ClaimsPrincipal u, CancellationToken ct) => s.RestorePointAsync(id, sessionId, Me(u), ct));
+        api.MapGet("/campaigns/{id:guid}/party", (Guid id, CharacterSheetService s, ClaimsPrincipal u, CancellationToken ct) => s.PartyAsync(id, Me(u), ct));
         api.MapGet("/campaigns/{id:guid}/sheet-template", (Guid id, CharacterSheetService s, ClaimsPrincipal u, CancellationToken ct) => s.CampaignSheetTemplateAsync(id, Me(u), ct));
     }
 }

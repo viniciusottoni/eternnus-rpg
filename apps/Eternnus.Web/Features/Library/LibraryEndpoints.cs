@@ -22,6 +22,17 @@ public static class LibraryEndpoints
             var (file, fileName) = await library.FileAsync(id, Id(u), ct);
             return DocumentFiles.Serve(http, file, fileName, Inline(http.Request, file.ContentType, inline is "1" or "true"));
         });
+        // Capa do cartão: miniatura JPEG sem distorção (ADR-095). 404 quando o arquivo não é imagem ou não pôde ser reduzido.
+        api.MapGet("/{id:guid}/thumbnail", async (Guid id, HttpContext http, LibraryService library, LibraryThumbnails thumbnails, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            var (fileId, contentType) = await library.ThumbnailSourceAsync(id, Id(u), ct);
+            var bytes = await thumbnails.GetAsync(fileId, contentType, ct);
+            if (bytes is null) return Results.NotFound();
+            http.Response.Headers["Content-Security-Policy"] = "sandbox; default-src 'none'";
+            http.Response.Headers.CacheControl = "private, no-store";
+            http.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            return Results.File(bytes, DocumentKinds.Jpeg);
+        });
         // GET nunca altera estado: o cliente registra o download por POST.
         api.MapPost("/{id:guid}/downloaded", async (Guid id, LibraryService library, CancellationToken ct) => { await library.MarkDownloadedAsync(id, ct); return Results.NoContent(); });
 

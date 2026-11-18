@@ -31,6 +31,7 @@ export const TOOL_INVENTORY = Object.freeze([
   { id: "add", label: "Adicionar personagem ou marcador", group: "elements", basic: true, where: ["editor", "table"] },
   { id: "npc", label: "Personagens do mestre e cópias de encontro", group: "elements", basic: true, where: ["editor", "table"] },
   { id: "hide", label: "Mostrar ou ocultar elemento", group: "elements", basic: true, where: ["editor", "table"] },
+  { id: "gather", label: "Colocar o grupo na entrada", group: "elements", basic: true, where: ["table"] },
   { id: "remove", label: "Remover marcador", group: "elements", basic: true, where: ["editor", "table"] },
   { id: "tokenSenses", label: "Luz, visão, sentidos e detecção do marcador", group: "light", basic: false, where: ["table"] },
   { id: "wall", label: "Parede", group: "walls", basic: false, where: ["editor", "table"] },
@@ -56,6 +57,12 @@ export const TOOL_INVENTORY = Object.freeze([
   { id: "tableSettings", label: "Configuração da mesa", group: "scene", basic: false, where: ["table"] },
   { id: "captureArrangement", label: "Guardar posições atuais como arranjo inicial", group: "elements", basic: false, where: ["table"] },
 ]);
+
+/**
+ * Orçamento da interface Básica por local (ADR-100, regra G1). Uma ferramenta nova na Básica que ultrapasse o número
+ * exige ADR justificando o aumento; o teste de scene-policy falha antes disso.
+ */
+export const BASIC_BUDGET = Object.freeze({ editor: 12, table: 9 });
 
 /** Ferramentas visíveis numa apresentação. A Completa sempre inclui todas as da Básica (mesmos nomes e ordem). */
 export function toolsFor(mode, where) {

@@ -3,6 +3,7 @@ import { state } from "./state.js";
 import { api } from "./api.js";
 import { $, esc, button, toast, modal, empty, formatDate } from "./ui.js";
 import { openSheetEditor, hpBar, paintBars } from "./sheet.js";
+import { portraitUrl } from "./character-portrait-policy.js";
 
 const titles = {
   characters: [
@@ -21,8 +22,13 @@ const VIEWS = Object.keys(titles);
 async function refresh() {
   state.characters = await api("/characters");
 }
+/** Imagem do personagem (ADR-097) como faixa do cartão (cobre sem distorcer, ancorada no alto) ou o brasão padrão. URL só com id validado. */
+function portraitThumb(c) {
+  const url = portraitUrl(c.id, c.portraitVersion);
+  return url ? `<img class="character-banner" src="${esc(url)}" alt="" loading="lazy" decoding="async">` : `<span class="crest" aria-hidden="true">♜</span>`;
+}
 function characterCard(c) {
-  return `<article class="card character-card metal"><div class="card-top"><span class="crest" aria-hidden="true">♜</span><span class="badge">Nível ${c.level}</span></div><div class="card-body"><span class="eyebrow">${esc(c.archetype || "Uma lenda em formação")}</span><h3>${esc(c.name)}</h3><div class="small muted">Vitalidade <span>${c.hp} / ${c.maxHp}</span></div>${hpBar(c.hp, c.maxHp)}<p class="small muted">${(c.actions || []).length} ${(c.actions || []).length === 1 ? "ação" : "ações"} na ficha</p><div class="card-actions">${button("Abrir ficha →", "character", c.id, "primary")}${button("◷ Versões", "history", c.id, "subtle")}</div></div></article>`;
+  return `<article class="card character-card metal"><div class="card-top${c.portraitVersion > 0 ? " has-portrait" : ""}">${portraitThumb(c)}<span class="badge">Nível ${c.level}</span></div><div class="card-body"><span class="eyebrow">${esc(c.archetype || "Uma lenda em formação")}</span><h3>${esc(c.name)}</h3><div class="small muted">Vitalidade <span>${c.hp} / ${c.maxHp}</span></div>${hpBar(c.hp, c.maxHp)}<p class="small muted">${(c.actions || []).length} ${(c.actions || []).length === 1 ? "ação" : "ações"} na ficha</p><div class="card-actions">${button("Abrir ficha →", "character", c.id, "primary")}${button("◷ Versões", "history", c.id, "subtle")}</div></div></article>`;
 }
 
 export async function renderGame() {

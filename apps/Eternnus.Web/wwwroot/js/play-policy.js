@@ -148,6 +148,8 @@ export function toLocalInput(iso) {
 /** Eventos que podem ser desfeitos por quem vê: o próprio movimento/ajuste (mestre: todos). */
 export function canUndo(event, data, isMaster) {
   if (!data?.undoable) return false;
+  // Marcadores do mestre e revelar/cobrir névoa (ADR-100): só o mestre desfaz.
+  if (["token", "map"].includes(event.kind)) return !!isMaster;
   if (!["move", "sheet"].includes(event.kind)) return false;
   return isMaster || !!event.mine;
 }
@@ -158,6 +160,14 @@ export function unreadCount(events, lastSeenId) {
 }
 
 /** Visões da navegação móvel da mesa. */
+/**
+ * Vista do celular quando começa a vez do jogador (ADR-100): sai da Conversa para o Mapa, sem interromper quem está
+ * digitando ou com um diálogo aberto. Ficha e Mapa são mantidos (a ficha também tem as ações do turno).
+ */
+export function viewOnMyTurn(current, { compact, busy }) {
+  return compact && !busy && current === "chat" ? "map" : current;
+}
+
 export const MOBILE_VIEWS = Object.freeze({
   player: [["map", "Mapa"], ["sheet", "Ficha"], ["chat", "Conversa"]],
   master: [["map", "Mapa"], ["party", "Grupo"], ["chat", "Conversa"]],
@@ -223,13 +233,14 @@ export function tokenBubbles(state) {
   const npcs = new Map((master ? state.play?.npcs || [] : []).map((n) => [n.tokenId, n]));
   for (const token of state.tokens) {
     if (token.perceived) continue;
-    let resource = null, armor = null, target = null, editable = false;
+    let resource = null, armor = null, target = null, editable = false, effects = 0;
     if (token.characterId) {
       const p = people.get(token.characterId);
       if (!p?.canView || !p.summary) continue;
       const r = p.summary.resources?.[0];
       if (r) { resource = r; target = { kind: "character", id: token.characterId, field: r.field }; }
       armor = p.summary.armor || (p.summary.stats || []).find((s) => ARMOR_LABEL.test(String(s.label).trim())) || null;
+      effects = (p.summary.effects || []).length;
       editable = master || (!!p.isMe && p.characterId === state.me?.characterId);
     } else if (master && token.masterCharacterId) {
       const n = npcs.get(token.id);
@@ -247,12 +258,14 @@ export function tokenBubbles(state) {
       }
       editable = true;
     }
-    if (!resource && !armor) continue;
+    if (!resource && !armor && !effects) continue;
     const value = Number(resource?.value) || 0, max = Number(resource?.max) || 0;
     out.set(token.id, {
       resource: resource ? { label: String(resource.label), value, max: max > 0 ? max : null, tone: bubbleTone(value, max) } : null,
       armor: armor ? { label: String(armor.label), value: String(armor.value).slice(0, 4) } : null,
       target: editable && resource ? target : null,
+      // Condições com duração (ADR-099): só a contagem vai ao marcador; os nomes ficam no grupo e na ficha.
+      effects,
     });
   }
   return out;

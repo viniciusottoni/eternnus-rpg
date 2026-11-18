@@ -140,7 +140,7 @@ O pacote framework-dependent exige runtime/Hosting Bundle ASP.NET Core 10 compat
 
 Os artefatos finais e resultados locais estão em IMPLEMENTACAO_ONDAS.md. Instalação em IIS real, OAuth/SMTP, scanners externos, aparelho físico e carga permanecem validações do destino.
 
-Mapas da campanha exigem a exceção de upload de 10 MiB + 64 KiB no proxy/IIS e ClamAV disponível. Imagens temporárias usam WebSocket de sinalização e WebRTC; habilitar upgrade WSS no proxy e configurar WebRtc:IceServers para redes que precisem de STUN/TURN. Não há serviço TURN pré-configurado. O relay atual pressupõe um processo; expansão exige estratégia de transporte compartilhado/afinidade documentada. Ver IMAGENS_TEMPORARIAS.md.
+Camada de névoa e paredes (PUT `/api/campaigns/{id}/assets/layers`, POST `/api/sessions/{id}/fog/walls`) exige corpo até 512 KiB no proxy/IIS. Mapas da campanha exigem a exceção de upload de 10 MiB + 64 KiB no proxy/IIS e ClamAV disponível. Imagens temporárias usam WebSocket de sinalização e WebRTC; habilitar upgrade WSS no proxy e configurar WebRtc:IceServers para redes que precisem de STUN/TURN. Não há serviço TURN pré-configurado. O relay atual pressupõe um processo; expansão exige estratégia de transporte compartilhado/afinidade documentada. Ver IMAGENS_TEMPORARIAS.md.
 
 ## Publicação automática no GitHub Actions — merge de PR na main
 

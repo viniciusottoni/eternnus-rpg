@@ -374,6 +374,66 @@ public sealed class SheetTemplateTests(ITestOutputHelper output) : IAsyncLifetim
         Assert.Contains(errors, e => e.Action == "golpe");
     }
 
+    /// <summary>ADR-099: descrições por item (Notes) e rolagem por campo (Roll) — normalização por tipo, preservação em rascunhos
+    /// e validação da fórmula com a mesma linguagem das ações ao publicar.</summary>
+    [Fact]
+    public async Task Field_notes_and_roll_are_normalized_preserved_and_validated()
+    {
+        var (template, draft) = await CreateAsync();
+        SheetField With(SheetField f, bool? notes = null, string? roll = null) { f.Notes = notes; f.Roll = roll; return f; }
+        var acrobacia = With(Field("acrobacia", SheetFieldTypes.Computed, y: 0.15), roll: "");
+        acrobacia.Formula = "@forca";
+        await SaveAsync(template, draft,
+            With(Field("forca"), roll: "  2d20kh1 + @forca  "),
+            acrobacia,
+            With(Field("pericias", SheetFieldTypes.TextArea, y: 0.2), notes: true),
+            With(Field("anotacoes", SheetFieldTypes.Text, y: 0.25), notes: false),
+            Field("vigor", y: 0.3),
+            With(Field("vida", y: 0.35), notes: true),
+            With(Field("nome", SheetFieldTypes.Text, y: 0.4), roll: "1d20"),
+            With(Field("marca", SheetFieldTypes.Checkbox, y: 0.45), notes: false, roll: ""));
+        var by = (await db.SheetTemplateVersions.AsNoTracking().SingleAsync(v => v.Id == draft)).Fields.ToDictionary(f => f.Name);
+        Assert.Equal("2d20kh1 + @forca", by["forca"].Roll);
+        Assert.Equal("", by["acrobacia"].Roll); // "" = não rolar, preservado
+        Assert.True(by["pericias"].Notes);
+        Assert.False(by["anotacoes"].Notes);
+        Assert.Equal((null, null), (by["vigor"].Notes, by["vigor"].Roll)); // automático
+        Assert.Null(by["vida"].Notes);
+        Assert.Null(by["nome"].Roll);
+        Assert.Equal((null, null), (by["marca"].Notes, by["marca"].Roll));
+
+        var tooLong = await Assert.ThrowsAsync<SheetValidationException>(() => SaveAsync(template, draft, With(Field("forca"), roll: "1d20 + " + new string('1', 120))));
+        Assert.Equal(400, tooLong.Status);
+        Assert.Equal("forca", Assert.Single(tooLong.Errors).Field);
+
+        // Publicação com o validador real (linguagem de fórmulas, modo Roll).
+        var real = new SheetTemplateService(db, new AuditService(db));
+        await real.PublishAsync(template, draft, await RevisionAsync(draft), Ambassador, default);
+        db.ChangeTracker.Clear();
+        var next = await NewDraftAsync(template); // a cópia herda Notes/Roll
+        var copied = (await db.SheetTemplateVersions.AsNoTracking().SingleAsync(v => v.Id == next)).Fields.ToDictionary(f => f.Name);
+        Assert.Equal(("2d20kh1 + @forca", "", (bool?)true, (bool?)false), (copied["forca"].Roll, copied["acrobacia"].Roll, copied["pericias"].Notes, copied["anotacoes"].Notes));
+
+        foreach (var bad in new[] { "1d20 + @inexistente", "1d20 + @nome", "1d20 + (" })
+        {
+            await SaveAsync(template, next, With(Field("forca"), roll: bad), Field("nome", SheetFieldTypes.Text, y: 0.4));
+            var rev = await RevisionAsync(next);
+            var ex = await Assert.ThrowsAsync<SheetValidationException>(() => real.PublishAsync(template, next, rev, Ambassador, default));
+            db.ChangeTracker.Clear();
+            Assert.Equal(400, ex.Status);
+            Assert.Contains(ex.Errors, e => e.Field == "forca" && e.Message.Contains("rolagem"));
+        }
+        await SaveAsync(template, next, With(Field("forca"), roll: "1d100 <= @forca"));
+        await real.PublishAsync(template, next, await RevisionAsync(next), Ambassador, default);
+        db.ChangeTracker.Clear();
+
+        var before = new SheetTemplateVersion { Number = 1, Pages = [new()], Fields = [Field("forca"), Field("pericias", SheetFieldTypes.TextArea)] };
+        var after = new SheetTemplateVersion { Number = 2, Pages = [new()], Fields = [With(Field("forca"), roll: ""), With(Field("pericias", SheetFieldTypes.TextArea), notes: false)] };
+        var diff = SheetTemplateService.Diff(before, after);
+        Assert.Equal(["roll"], diff.Changed.Single(c => c.Name == "forca").Changes);
+        Assert.Equal(["notes"], diff.Changed.Single(c => c.Name == "pericias").Changes);
+    }
+
     [Fact]
     public void Error_messages_are_mapped_to_the_mentioned_field()
     {
