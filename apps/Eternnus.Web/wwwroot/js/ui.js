@@ -1,5 +1,6 @@
 import { beginLoading } from "./loading.js";
 import { helpButton } from "./help.js";
+import { icon } from "./icons.js";
 export const $ = (s) => document.querySelector(s);
 export function navigate(route) {
   if (location.hash === "#" + route)
@@ -36,6 +37,11 @@ export function button(text, action, id = "", classes = "", extra = "") {
     if (label) extra += ` data-tip="${label}"`;
   }
   return `<button type="button" class="${classes}" data-action="${action}" data-id="${esc(id)}" ${extra}>${text}</button>`;
+}
+/** Botão só com ícone para ferramentas de barras longas (ADR-101). O rótulo vira nome acessível e tooltip;
+ *  `iconName` vem de `icons.js`. Ação primária e ações destrutivas de confirmação continuam com texto. */
+export function iconButton(iconName, label, action, id = "", classes = "subtle", extra = "") {
+  return button(icon(iconName), action, id, `${classes} tool-icon`.trim(), `aria-label="${esc(label)}" ${extra}`.trim());
 }
 /** Barra de ações com muitos botões: ferramentas à esquerda, ações principais à direita (primária por último).
  *  Recebe HTML já montado por `button()`. Dentro de modal fica fixa no rodapé da rolagem. */

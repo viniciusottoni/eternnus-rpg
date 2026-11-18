@@ -220,8 +220,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         await CopyOwnLayerAsync(db, s, copy, Now, ct);
         // Composição visual: a cópia recebe imagens próprias (independentes) e a mesma entrada.
         var added = await CampaignAssetsService.CopySceneAssetsAsync(db, s, copy, Now, ct);
-        if (added > 0 && await db.Set<CampaignMap>().Where(m => m.CampaignId == campaignId).SumAsync(m => (long)m.Content.Length, ct) + added > CampaignAssetsService.MaxStorage)
-            throw new RuleException(409, "Os mapas desta campanha excedem 250 MB.");
+        await AccountLimits.EnsureCampaignStorageAsync(db, campaignId, added, ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return new { copy.Id, copy.Revision };

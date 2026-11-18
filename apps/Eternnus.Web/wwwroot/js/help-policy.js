@@ -1,7 +1,7 @@
 // Regras puras: somente apresentação. Nenhuma função concede acesso a recursos.
 import { isAdmin, isStaff, isSafeSegment } from './policy.js';
 
-export const HELP_AREAS = Object.freeze(['conta', 'campanhas', 'sessoes', 'mesa', 'fichas', 'modelos', 'biblioteca', 'guilda', 'progresso', 'suporte', 'admin']);
+export const HELP_AREAS = Object.freeze(['conta', 'campanhas', 'sessoes', 'mesa', 'fichas', 'modelos', 'biblioteca', 'guilda', 'progresso', 'suporte', 'admin', 'loja']);
 const audiences = Object.freeze(['all', 'player', 'master', 'ambassador', 'admin']);
 const plain = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.length <= max && !/[<>\u0000-\u001f]/u.test(value);
 export function validHelpKey(value) {
@@ -154,9 +154,15 @@ export const HELP_KEYS = Object.freeze({
   "suporte.chamados.categorias": "all",
   "suporte.chamados.limite": "all",
   "admin.usuarios.papeis": "admin",
+  "admin.usuarios.planos": "admin",
   "admin.sistemas.identificador": "admin",
   "admin.acoes.auditoria": "admin",
   "admin.musicas.catalogo": "admin",
+  "admin.loja.link": "admin",
+  "admin.loja.recomendacao": "admin",
+  "admin.loja.metricas": "admin",
+  "loja.pagina.afiliados": "all",
+  "loja.pagina.personalizacao": "all",
   "mesa.interface.apresentacao": "master",
   "mesa.luz.predefinicoes": "master",
   "mesa.trilha.compartilhada": "all",

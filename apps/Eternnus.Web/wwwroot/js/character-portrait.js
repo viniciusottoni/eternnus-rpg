@@ -4,6 +4,8 @@ import { $, esc, button, modal, toast } from "./ui.js";
 import { helpButton } from "./help.js";
 import { mountImageZoom } from "./image-zoom.js";
 import { portraitUrl, initials, portraitFileError } from "./character-portrait-policy.js";
+import { state } from "./state.js";
+import { uploadLimit } from "./account-usage-policy.js";
 
 /**
  * Monta o cartão em `host`. `state`: { id, name, version, canChange, fresh }. `onChange(version)` recebe a nova versão.
@@ -55,7 +57,7 @@ export function mountCharacterPortrait(host, state, { onChange = () => {} } = {}
   }
 
   function upload(file) {
-    const problem = portraitFileError(file);
+    const problem = portraitFileError(file, uploadLimit(state.user));
     if (problem) { render(problem); return; }
     const data = new FormData();
     data.append("file", file);

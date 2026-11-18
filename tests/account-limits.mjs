@@ -85,5 +85,28 @@ try {
   for (let i = 0; i < 60 && sql(`SELECT count(*) FROM "Campaigns" WHERE "Id"='${shotId}'`) !== "0"; i++) await wait(250);
   check(sql(`SELECT count(*) FROM "Campaigns" WHERE "Id"='${shotId}'`), "0", "worker remove conteúdo vencido");
   check((await common("/api/auth/limits")).oneShotParticipations, 10, "exclusão não restitui quota vitalícia");
+  // Planos (ADR-102): última vaga da mesa e última ficha disputadas em paralelo.
+  // Sete cadastros novos: espera a janela do limitador "auth" (30/min por IP) reabrir em vez de afrouxá-lo.
+  await wait(61000);
+  const host = await env.verifiedClient("plan.host@example.test", "Mestre Basic");
+  const table = await host("/api/campaigns", "POST", campaign("Mesa cheia"));
+  const tableCode = (await host(`/api/campaigns/${table.id}`)).inviteCode;
+  const guests = [];
+  for (let i = 0; i < 6; i++) guests.push(await env.verifiedClient(`plan.guest${i}@example.test`, `Convidado ${i}`));
+  for (const guest of guests.slice(0, 4)) await guest("/api/campaigns/join", "POST", { code: tableCode });
+  const seats = await Promise.all(guests.slice(4).map((guest) => guest("/api/campaigns/join", "POST", { code: tableCode }, null, { raw: true })));
+  check(seats.map((r) => r.status).sort(), [200, 409], "última vaga do Basic (5 jogadores) vai para uma só entrada");
+  check(sql(`SELECT count(*) FROM "Members" WHERE "CampaignId"='${table.id}'`), "5");
+  const sheet = (name) => ({ name, archetype: "", level: 1, hp: 10, maxHp: 10, strength: 10, agility: 10, intellect: 10, notes: "", revision: 0 });
+  for (let i = 0; i < 4; i++) await host("/api/characters", "POST", sheet(`Herói ${i}`));
+  const sheets = await Promise.all([host("/api/characters", "POST", sheet("A"), null, { raw: true }), host("/api/characters", "POST", sheet("B"), null, { raw: true })]);
+  check(sheets.map((r) => r.status).sort(), [200, 409], "duas fichas concorrentes não passam de 5 no Basic");
+  const hostLimits = await host("/api/auth/limits");
+  check([hostLimits.plan, hostLimits.characters, hostLimits.characterLimit, hostLimits.maxFileBytes], ["basic", 5, 5, 20 * 1024 * 1024]);
+  const hostId = (await host("/api/auth/me")).id;
+  await admin(`/api/admin/users/${hostId}/plan`, "PUT", { plan: "pro", reason: "Assinatura Pro" }, 204);
+  check((await host("/api/auth/limits")).characterLimit, 20, "plano Pro vale na hora");
+  check(sql(`SELECT count(*) FROM "Audit" WHERE "Action"='user.plan' AND "TargetId"='${hostId}'`), "1", "troca de plano auditada");
+  await host(`/api/admin/users/${hostId}/plan`, "PUT", { plan: "max", reason: "Tentativa" }, 403);
   console.log(`Account limits + MFA PostgreSQL: ${env.count()} assertions passed.`);
 } finally { await env.stop(); }

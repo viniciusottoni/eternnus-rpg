@@ -5,6 +5,8 @@ import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
 import { helpButton } from "./help.js";
 
 import { safeImageUrl } from "./play-policy.js";
+import { state } from "./state.js";
+import { uploadLimit, formatBytes } from "./account-usage-policy.js";
 import { initials } from "./session-policy.js";
 export { safeImageUrl };
 
@@ -22,7 +24,7 @@ export function imageFields(prefix, current = "", assets = []) {
   return `<fieldset class="npc-image"><legend>Imagem (opcional)${helpButton("mesa.npcs.imagem", "Imagem de NPC ou criatura")}</legend>
     <div class="field"><label for="${prefix}-asset">Do acervo da campanha</label><select id="${prefix}-asset" name="imageAsset"><option value="">Nenhuma</option>${assets.map((a) => `<option value="${esc(a.value)}" ${isAsset && a.value === current ? "selected" : ""}>${esc(a.label)}</option>`).join("")}</select></div>
     <div class="field"><label for="${prefix}-link">Ou link https</label><input id="${prefix}-link" name="imageLink" type="url" inputmode="url" maxlength="500" placeholder="https://…" value="${isAsset ? "" : esc(current || "")}" aria-describedby="${prefix}-link-hint"><small class="form-help" id="${prefix}-link-hint">O site do link vê o endereço IP de quem abre a imagem e pode trocar o conteúdo depois. Prefira o acervo.</small></div>
-    <div class="field"><label for="${prefix}-file">Ou enviar do aparelho (PNG ou JPEG, até 10 MB)</label><input id="${prefix}-file" name="imageFile" type="file" accept="image/png,image/jpeg" aria-describedby="${prefix}-file-hint"><small class="form-help" id="${prefix}-file-hint">A imagem fica guardada no acervo da campanha, em Retratos de NPC (separada dos mapas), e pode ser usada de novo.</small></div>
+    <div class="field"><label for="${prefix}-file">Ou enviar do aparelho (PNG ou JPEG, até ${formatBytes(uploadLimit(state.user))})</label><input id="${prefix}-file" name="imageFile" type="file" accept="image/png,image/jpeg" aria-describedby="${prefix}-file-hint"><small class="form-help" id="${prefix}-file-hint">A imagem fica guardada no acervo da campanha, em Retratos de NPC (separada dos mapas), e pode ser usada de novo.</small></div>
   </fieldset>`;
 }
 
@@ -32,7 +34,7 @@ export function imageFields(prefix, current = "", assets = []) {
 export async function imageFromUpload(data, campaignId, name) {
   const file = data.imageFile;
   if (!(file instanceof File) || !file.size) return imageFromForm(data);
-  if (file.size > 10 * 1024 * 1024) throw new Error("Escolha uma imagem de até 10 MB.");
+  if (file.size > uploadLimit(state.user)) throw new Error(`Escolha uma imagem de até ${formatBytes(uploadLimit(state.user))} (limite do seu plano).`);
   const upload = new FormData();
   upload.append("name", `Imagem — ${String(name || "personagem").trim()}`.slice(0, 120));
   upload.append("folderId", ""); upload.append("file", file);

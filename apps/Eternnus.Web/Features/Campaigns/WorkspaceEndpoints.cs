@@ -16,22 +16,25 @@ public static class WorkspaceEndpoints
         api.MapPost("/pages", (Guid campaign, WorkspaceInput x, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.Save(campaign, null, User(u), x, ct));
         api.MapPut("/pages/{id:guid}", (Guid campaign, Guid id, WorkspaceInput x, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.Save(campaign, id, User(u), x, ct));
         api.MapGet("/pages/{id:guid}/attachments", (Guid campaign, Guid id, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) => s.Attachments(campaign, id, User(u), ct));
-        api.MapPost("/pages/{id:guid}/attachments", async (Guid campaign, Guid id, HttpRequest request, DocumentFiles files, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) =>
+        api.MapPost("/pages/{id:guid}/attachments", async (Guid campaign, Guid id, HttpRequest request, DocumentFiles files, GameDb db, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) =>
         {
             await s.EnsureEditor(campaign, id, User(u), ct);
             if (!request.HasFormContentType) throw new RuleException(400, "Envie um arquivo pelo formulário.");
+            // Limite do plano de quem envia (ADR-102).
+            var maxBytes = await AccountLimits.MaxFileBytesAsync(db, User(u), ct);
             IFormCollection form;
-            try { form = await request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = UploadLimits.DocumentBytes, ValueCountLimit = 1, ValueLengthLimit = 64 }, ct); }
-            catch (InvalidDataException) { throw new RuleException(413, "Formulário inválido ou arquivo acima de 25 MB."); }
+            try { form = await request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = maxBytes, ValueCountLimit = 1, ValueLengthLimit = 64 }, ct); }
+            catch (InvalidDataException) { throw new RuleException(413, $"Formulário inválido ou arquivo acima de {AccountPlans.Size(maxBytes)}, o limite do seu plano."); }
             if (form.Files.Count != 1 || form.Files[0].Name != "file" || form.Keys.Count() != 0) throw new RuleException(400, "Envie um único arquivo.");
-            var file = await files.ReadAsync(form.Files[0], DocumentKinds.Library, ct);
+            var file = await files.ReadAsync(form.Files[0], DocumentKinds.Library, ct, maxBytes);
             return Results.Ok(await s.Attach(campaign, id, User(u), file, ct));
         }).RequireRateLimiting("upload");
         // Imagem por link: o servidor baixa uma vez (RemoteImageFetcher) e guarda como anexo comum, com a mesma verificação do upload.
-        api.MapPost("/pages/{id:guid}/attachments/import", async (Guid campaign, Guid id, AttachmentLink x, RemoteImageFetcher remote, DocumentFiles files, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) =>
+        api.MapPost("/pages/{id:guid}/attachments/import", async (Guid campaign, Guid id, AttachmentLink x, RemoteImageFetcher remote, DocumentFiles files, GameDb db, WorkspaceService s, ClaimsPrincipal u, CancellationToken ct) =>
         {
             await s.EnsureEditor(campaign, id, User(u), ct);
-            var (bytes, fileName) = await remote.FetchAsync(x.Url, UploadLimits.LinkedImageBytes, ct);
+            // Download por link: o menor entre o limite fixo de imagens por link e o do plano.
+            var (bytes, fileName) = await remote.FetchAsync(x.Url, (int)Math.Min(UploadLimits.LinkedImageBytes, await AccountLimits.MaxFileBytesAsync(db, User(u), ct)), ct);
             var file = await files.CheckAsync(bytes, fileName, new[] { DocumentKinds.Png, DocumentKinds.Jpeg, DocumentKinds.WebP }, ct);
             return Results.Ok(await s.Attach(campaign, id, User(u), file, ct));
         }).RequireRateLimiting("upload");

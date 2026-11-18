@@ -28,6 +28,7 @@ try
     app.MapGuildEndpoints();
     app.MapProgressEndpoints();
     app.MapNoticeEndpoints();
+    app.MapStoreEndpoints();
     app.MapGet("/health", async (GameDb db, CancellationToken ct) =>
         await db.Database.CanConnectAsync(ct) ? Results.Ok(new { status = "ok" }) : Results.StatusCode(503));
     app.MapFallbackToFile("index.html");

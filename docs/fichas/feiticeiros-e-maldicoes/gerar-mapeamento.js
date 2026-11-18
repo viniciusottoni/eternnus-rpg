@@ -140,7 +140,8 @@ cell("bonus_acerto", "Bônus de acerto da técnica", "number", 2, 744, 242.75, 3
     .forEach(([k, l, dx]) => cell(`inv${n}_${k}`, `${L} — ${l}`, "number", 3, x0 + dx + 3, 125, 25, 31, 12, NUM(null, 0, 9999)));
   ruled(`inv${n}_atributos`, `${L} — atributos (FOR, DES, CON, INT, SAB, CAR)`, 3, x0 + 40, 189, 36, 7.9, 6, 7.5, 60);
   ruled(`inv${n}_modificadores`, `${L} — modificadores`, 3, x0 + 79, 189, 37, 7.9, 6, 7.5, 60);
-  ruled(`inv${n}_acoes`, `${L} — ações e características`, 3, x0 + 1, 245.5, 114.5, 7.875, 5, 7.5, 1000);
+  // "_itens": lista de ações da invocação (um item por linha, com descrição por item; ADR-098).
+  ruled(`inv${n}_acoes_itens`, `${L} — ações e características`, 3, x0 + 1, 245.5, 114.5, 7.875, 5, 7.5, 1000);
   ruled(`inv${n}_pericias`, `${L} — perícias (nome)`, 3, x0 + 1, 301.75, 36.5, 7.886, 12, 7.5, 600);
   ruled(`inv${n}_pericias_atributo`, `${L} — perícias (atributo)`, 3, x0 + 40, 301.75, 27.5, 7.886, 12, 7.5, 200);
   ruled(`inv${n}_pericias_bonus`, `${L} — perícias (bônus)`, 3, x0 + 89, 301.75, 27.5, 7.886, 12, 7.5, 200);

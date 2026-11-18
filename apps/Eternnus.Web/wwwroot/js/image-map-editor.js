@@ -9,8 +9,10 @@ import { addLayer, createHistory, isTypingTarget, moveLayer, patchLayer, removeL
 import * as P from "./composition-policy.js";
 import { createCompositionSurface, encodeFlat, flattenComposition, textHeight, textWidth } from "./composition-canvas.js";
 import { attachDrafts } from "./editor-drafts.js";
-import { mountImageDrop, listenPaste, splitImageFiles, baseName, assetListHtml, bindAssetList } from "./image-drop.js";
+import { mountImageDrop, listenPaste, splitImageFiles, baseName, assetListHtml, bindAssetList, maxImageBytes } from "./image-drop.js";
+import { formatBytes } from "./account-usage-policy.js";
 
+/** Alvo da imagem achatada gerada no navegador: abaixo do limite de arquivo de todos os planos (ADR-102). */
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const TYPE_LABEL = { image: "Imagem", text: "Texto", rect: "Retângulo", ellipse: "Elipse" };
 const TYPE_ICON = { image: "image", text: "text", rect: "rect", ellipse: "ellipse" };
@@ -1157,7 +1159,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
       title: "Adicionar imagem", submit: "", wide: true,
       body: `<div class="im-tabs" role="tablist" aria-label="Origem da imagem">${tab("device", "Do dispositivo", true)}${tab("url", "Por endereço", false)}${tab("campaign", "Da campanha", false)}</div>
         <div role="tabpanel" id="im-pane-device" aria-labelledby="im-tab-device" data-pane="device">
-          <div class="field"><label for="im-a-file">Arquivos <small>(PNG ou JPEG, até 10 MB cada; vários de uma vez)</small></label><input id="im-a-file" type="file" name="file" accept="image/png,image/jpeg" multiple></div>
+          <div class="field"><label for="im-a-file">Arquivos <small>(PNG ou JPEG, até ${formatBytes(maxImageBytes())} cada; vários de uma vez)</small></label><input id="im-a-file" type="file" name="file" accept="image/png,image/jpeg" multiple></div>
           <div class="field"><label for="im-a-name">Nome <small>(opcional)</small></label><input id="im-a-name" name="name" maxlength="120"></div>
           <p class="form-help">PNG com transparência continua transparente. Imagens maiores que a área visível são permitidas: a parte de fora fica na área externa.</p>
           <div class="form-actions"><button type="button" class="primary" data-add="device">Enviar e adicionar</button></div></div>
@@ -1207,7 +1209,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
       if (all.length > 1) { dlg.close(); addFiles(all, point); return null; }
       const file = all[0];
       if (!/^image\/(png|jpeg)$/.test(file.type)) throw new Error("Use PNG ou JPEG.");
-      if (file.size > MAX_IMAGE_BYTES) throw new Error("A imagem passa de 10 MB.");
+      if (file.size > maxImageBytes()) throw new Error(`A imagem passa de ${formatBytes(maxImageBytes())}, o limite do seu plano.`);
       const fd = new FormData();
       fd.append("file", file);
       fd.append("name", (form.elements.namedItem("name").value.trim() || file.name.replace(/\.[^.]+$/, "")).slice(0, 120));

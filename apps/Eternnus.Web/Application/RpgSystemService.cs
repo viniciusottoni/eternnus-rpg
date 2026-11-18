@@ -150,8 +150,9 @@ public partial class RpgSystemService(GameDb db, AuditService audit)
         if (id == RpgSystem.FreeSystemId) throw new RuleException(409, "O Sistema livre é protegido e não pode ser excluído.");
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var system = await db.RpgSystems.SingleOrDefaultAsync(s => s.Id == id, ct) ?? throw new RuleException(404, "Sistema não encontrado.");
-        if (await db.Campaigns.AnyAsync(c => c.RpgSystemId == id, ct) || await db.SheetTemplates.AnyAsync(t => t.RpgSystemId == id, ct) || await db.Library.AnyAsync(l => l.RpgSystemId == id, ct))
-            throw new RuleException(409, "Este sistema está em uso por campanhas, fichas-modelo ou materiais da biblioteca. Desative-o em vez de excluir.");
+        if (await db.Campaigns.AnyAsync(c => c.RpgSystemId == id, ct) || await db.SheetTemplates.AnyAsync(t => t.RpgSystemId == id, ct) || await db.Library.AnyAsync(l => l.RpgSystemId == id, ct)
+            || await db.StoreProductSystems.AnyAsync(p => p.RpgSystemId == id, ct))
+            throw new RuleException(409, "Este sistema está em uso por campanhas, fichas-modelo, materiais da biblioteca ou produtos da loja. Desative-o em vez de excluir.");
         db.RpgSystems.Remove(system);
         audit.Record(actor, "system.delete", "system", id.ToString(), $"Excluiu o sistema {system.Name}", new { before = new { system.Name, system.Slug, system.Description, system.Active } });
         await SaveAsync(ct);

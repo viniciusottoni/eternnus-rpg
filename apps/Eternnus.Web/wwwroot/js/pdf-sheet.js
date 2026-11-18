@@ -310,7 +310,11 @@ export function renderSheet(container, options = {}) {
     const value = String(computed[f.name] ?? "");
     const items = fieldItems(value);
     el.classList.add("ps-list");
-    if (f.type === "textarea") {
+    if (f.type === "textarea" && mode === "fill" && fitsRows(f, value)) {
+      el.querySelector(":scope > .ps-lines")?.remove();
+      syncRows(el, f, value);
+    } else if (f.type === "textarea") {
+      if (el.querySelector(":scope > .ps-rows")) { el.querySelector(":scope > .ps-rows").remove(); el.classList.remove("ps-has-rows"); }
       let lines = el.querySelector(":scope > .ps-lines");
       if (!lines) {
         lines = document.createElement("div");
@@ -351,6 +355,77 @@ export function renderSheet(container, options = {}) {
     button.setAttribute("aria-label", count > 0 ? `Descrições de ${name}: ${count} ${count === 1 ? "item descrito" : "itens descritos"}` : `Adicionar descrições em ${name}`);
     measureSoon();
   }
+  /** Linhas que cabem no campo: altura ÷ (1,2 × fonte), como no PDF exportado. */
+  function rowCount(f) {
+    const height = (Number(f.h) || 0) * (pages[f.page || 0]?.height || 841.89);
+    return Math.max(1, Math.floor((height - 1) / (1.2 * (Number(f.fontSize) || 10)) + 0.3));
+  }
+  /** Uma caixa por linha só quando o valor cabe; com mais linhas que o campo (dado antigo), fica o texto longo. */
+  function fitsRows(f, value) {
+    return value.replace(/\n+$/, "").split("\n").length <= rowCount(f);
+  }
+  /** Preenchimento de lista: uma caixa por linha impressa (como uma tabela de magias), todas no mesmo campo. */
+  function syncRows(el, f, value) {
+    let box = el.querySelector(":scope > .ps-rows");
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "ps-rows";
+      for (let i = 0, count = rowCount(f); i < count; i++) {
+        const row = document.createElement("input");
+        row.type = "text";
+        row.className = "ps-row";
+        row.autocomplete = "off";
+        row.dataset.line = String(i);
+        row.setAttribute("aria-label", `${fieldLabel(f)} — linha ${i + 1}`);
+        box.append(row);
+      }
+      const control = el.querySelector(".ps-control");
+      if (control) control.after(box);
+      else el.prepend(box);
+      el.classList.add("ps-has-rows");
+    }
+    const parts = value.split("\n");
+    for (const row of box.children) {
+      const text = parts[Number(row.dataset.line)] ?? "";
+      if (document.activeElement !== row && row.value !== text) row.value = text;
+      row.classList.toggle("has-note", isList(f) && !!noteText(noteKey(text)));
+    }
+  }
+  /** Valor do campo a partir das caixas: uma linha por caixa, sem linhas vazias no fim. */
+  function rowsValue(box, max) {
+    const value = [...box.children].map((row) => row.value.replace(/[\r\n]+/g, " ")).join("\n").replace(/\n+$/, "");
+    return max > 0 ? value.slice(0, max) : value;
+  }
+  /** Enter/↓ e ↑ andam entre as linhas; Backspace numa linha vazia volta para a anterior; colar várias linhas distribui. */
+  function onRowKey(event) {
+    const row = event.target.closest?.(".ps-row");
+    if (!row || mode !== "fill") return;
+    const rows = [...row.parentElement.children];
+    const index = rows.indexOf(row);
+    const go = (i) => { const target = rows[i]; if (!target) return; event.preventDefault(); target.focus(); const end = target.value.length; target.setSelectionRange(end, end); };
+    if (event.key === "Enter" || event.key === "ArrowDown") go(index + 1);
+    else if (event.key === "ArrowUp") go(index - 1);
+    else if (event.key === "Backspace" && !row.value && index > 0) go(index - 1);
+  }
+  function onRowPaste(event) {
+    const row = event.target.closest?.(".ps-row");
+    const text = event.clipboardData?.getData("text/plain") ?? "";
+    if (!row || mode !== "fill" || !/[\r\n]/.test(text)) return;
+    event.preventDefault();
+    const rows = [...row.parentElement.children];
+    const index = rows.indexOf(row);
+    const pasted = text.replace(/\r/g, "").replace(/\n+$/, "").split("\n");
+    const head = row.value.slice(0, row.selectionStart ?? row.value.length), tail = row.value.slice(row.selectionEnd ?? row.value.length);
+    pasted[0] = head + pasted[0];
+    pasted[pasted.length - 1] += tail;
+    const all = rows.map((r) => r.value);
+    all.splice(index, 1, ...pasted);
+    // O que passar da última linha vai junto na última caixa, para nada se perder.
+    const keep = all.slice(0, rows.length - 1).concat(all.slice(rows.length - 1).filter(Boolean).join(" · "));
+    rows.forEach((r, i) => { r.value = keep[i] ?? ""; });
+    rows[Math.min(index + pasted.length - 1, rows.length - 1)].focus();
+    row.dispatchEvent(new Event("input", { bubbles: true }));
+  }
   /** Botão discreto de rolar (ADR-099): só em campos com fórmula e valor; o clique chama opts.roll.run. */
   function rollButton(el, f) {
     const formula = typeof opts.roll?.formula === "function" ? opts.roll.formula(f) : null;
@@ -371,10 +446,10 @@ export function renderSheet(container, options = {}) {
     measureFrame = requestAnimationFrame(() => {
       measureFrame = 0;
       if (destroyed) return;
-      for (const node of root.querySelectorAll(".ps-line, .ps-list .ps-value.ps-ellipsis, .ps-list input.ps-control")) {
+      for (const node of root.querySelectorAll(".ps-line, .ps-row, .ps-list .ps-value.ps-ellipsis, .ps-list input.ps-control")) {
         const input = node.tagName === "INPUT";
         const text = (input ? node.value : node.textContent).trim();
-        const target = input ? node.parentElement : node;
+        const target = input && !node.classList.contains("ps-row") ? node.parentElement : node;
         if (text && node.scrollWidth > node.clientWidth + 1) target.dataset.tipFull = text;
         else delete target.dataset.tipFull;
       }
@@ -607,8 +682,10 @@ export function renderSheet(container, options = {}) {
   }
   function onInput(event) {
     if (mode !== "fill") return;
-    const control = event.target.closest?.(".ps-control");
+    const row = event.target.closest?.(".ps-row");
+    const control = row ? row.closest(".ps-field")?.querySelector("textarea.ps-control") : event.target.closest?.(".ps-control");
     if (!control || control.tagName === "OUTPUT") return;
+    if (row) control.value = rowsValue(row.parentElement, control.maxLength);
     const f = fields[Number(control.dataset.index)];
     if (!f) return;
     const value = control.type === "checkbox" ? String(control.checked) : control.value;
@@ -624,6 +701,8 @@ export function renderSheet(container, options = {}) {
   root.addEventListener("pointercancel", (e) => finishDrag(e, true), { signal });
   root.addEventListener("lostpointercapture", (e) => drag && e.pointerId === drag.id && finishDrag(e), { signal });
   root.addEventListener("keydown", onKeyDown, { signal });
+  root.addEventListener("keydown", onRowKey, { signal });
+  root.addEventListener("paste", onRowPaste, { signal });
   root.addEventListener("focusin", onFocusIn, { signal });
   root.addEventListener("dblclick", onDoubleClick, { signal });
   root.addEventListener("click", (event) => {

@@ -136,6 +136,8 @@ try {
     await m.locator('#close-modal').click();
     await go(m,`campaign/${fresh.id}/sessions`,'[data-action=cp-start]');
     await m.locator('[data-action=cp-start]').first().click();
+    // ADR-100: nome, objetivo e capítulo (com a ajuda de sessão única) ficam em "Mais opções".
+    await m.locator('#modal details.start-more > summary').click();
     await help(m,'sessoes.abertura.unica',`sessoes-${suffix}`,true);
     await m.locator('#close-modal').click();
     await go(m,`campaign/${campaign.id}/prep/scenes`,'.px-item');

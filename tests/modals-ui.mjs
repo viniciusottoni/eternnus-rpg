@@ -2,7 +2,7 @@
 // Abre cada modal em desktop (1440×900) e celular (390×844), mede problemas de layout e gera capturas + folha de contato.
 import { chromium } from '../artifacts/qa-runtime/node_modules/playwright/index.mjs';
 import { startEnvironment } from './support/harness.mjs';
-import { formAlignmentIssues, focusClipIssues, choiceControlIssues } from './support/form-alignment.mjs';
+import { formAlignmentIssues, focusClipIssues, choiceControlIssues, buttonRowIssues } from './support/form-alignment.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
@@ -32,8 +32,9 @@ try {
   browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true });
   const clients = { m: master, p: player, ad: admin };
   const playerId = (await admin('/api/admin/users?q=modal.player')).items[0].id;
-  async function pageFor(client, mobile) {
-    const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 }, reducedMotion: 'reduce', serviceWorkers: 'block', hasTouch: mobile, isMobile: mobile });
+  // A mesa no celular é usada deitada (ADR-056): em retrato mostra só o aviso para virar o aparelho.
+  async function pageFor(client, mobile, landscape = false) {
+    const context = await browser.newContext({ viewport: mobile ? (landscape ? { width: 844, height: 390 } : { width: 390, height: 844 }) : { width: 1440, height: 900 }, reducedMotion: 'reduce', serviceWorkers: 'block', hasTouch: mobile, isMobile: mobile });
     await context.addCookies(client.cookieHeader().split('; ').filter(Boolean).map((s) => { const i = s.indexOf('='); return { name: s.slice(0, i), value: s.slice(i + 1), url: env.origin }; }));
     const page = await context.newPage();
     page.on('pageerror', (e) => errors.push(e.message));
@@ -50,12 +51,12 @@ try {
     ['m', `campaign/${offline.id}/sessions`, '[data-action=cp-start]', ['[data-action=cp-start]'], 'sessao-iniciar'],
     ['m', `campaign/${C}/journal`, '[data-action=jr-schedule]', ['[data-action=jr-schedule]'], 'diario-data'],
     ['m', `campaign/${C}/journal`, '[data-action=jr-new]', ['[data-action=jr-new]'], 'diario-pista'],
-    ['m', `campaign/${C}/prep`, '[data-action=pp-npc]', ['[data-action=pp-npc]'], 'npc-novo'],
-    ['m', `campaign/${C}/prep`, '[data-action=pp-scene]', ['[data-action=pp-scene]'], 'editor-cena'],
+    // Preparação unificada (ADR-081): criação pelo botão Novo da barra; pasta nova e renomear são inline (sem modal).
+    ['m', `campaign/${C}/prep/characters`, '[data-px=new]', ['[data-px=new]'], 'npc-novo'],
+    ['m', `campaign/${C}/prep/scenes`, '[data-px=new]', ['[data-px=new]'], 'cena-nova'],
     ['m', `campaign/${C}/players`, '.page-tabs', ['[data-action=cp-remove]'], 'jogador-remover'],
-    ['m', `campaign/${C}/maps`, '[data-action=ca-folder]', ['[data-action=ca-folder]'], 'pasta-nova'],
-    ['m', `campaign/${C}/maps`, '.fx-folder-tile', ['.fx-folder-tile', '[data-action=ca-folder-rename]'], 'pasta-renomear'],
-    ['m', `campaign/${C}/maps`, '[data-action=ca-upload]', ['[data-action=ca-upload]'], 'mapa-enviar'],
+    ['m', `campaign/${C}/prep/maps`, '[data-px=new]', ['[data-px=new]'], 'mapa-novo'],
+    ['m', `campaign/${C}/prep/maps`, '[data-px=import]', ['[data-px=import]', '.ed-menu-item:has-text("Imagem por link")'], 'mapa-enviar'],
     ['m', `campaign/${C}/settings`, '.page-tabs', ['[data-action=cp-template-new]'], 'modelo-simples'],
     ['m', `campaign/${offline.id}/settings`, '[data-action=cp-delete]', ['[data-action=cp-delete]'], 'campanha-excluir'],
     ['m', 'one-shot', '[data-action=os-create]', ['[data-action=os-create]'], 'oneshot-nova'],
@@ -82,8 +83,9 @@ try {
     const pages = {};
     for (const [who, route, sel, opens, name, only] of steps) {
       if (only && only !== vp) continue;
-      pages[who] ||= await pageFor(clients[who], mobile);
-      const page = pages[who];
+      const land = mobile && route.startsWith('table/'), key = land ? `${who}-mesa` : who;
+      pages[key] ||= await pageFor(clients[who], mobile, land);
+      const page = pages[key];
       try {
         if (page.url() === 'about:blank') await page.goto(`${env.origin}/#${route}`); else await page.evaluate((r) => { location.hash = r; }, route);
         await page.locator(sel).first().waitFor({ timeout: 15000 }); await ready(page);
@@ -112,7 +114,7 @@ try {
           };
         });
         await page.keyboard.press('Shift');
-        const alignment = [...await page.evaluate(formAlignmentIssues, '#modal-body'), ...await page.evaluate(choiceControlIssues, '#modal-body'), ...await page.evaluate(focusClipIssues, '#modal')];
+        const alignment = [...await page.evaluate(formAlignmentIssues, '#modal-body'), ...await page.evaluate(choiceControlIssues, '#modal-body'), ...await page.evaluate(focusClipIssues, '#modal'), ...(mobile ? [] : await page.evaluate(buttonRowIssues, '#modal-body'))];
         const problems = [...alignment, ...Object.entries({ 'rolagem no diálogo': metrics.dialogScroll, 'transbordo horizontal': metrics.bodyHorizontal, 'fora da tela': !metrics.fitsViewport, 'fieldset padrão do navegador': metrics.defaultFieldsets > 0, 'ⓘ grande': metrics.bigHelp > 0, 'tooltip no X': metrics.closeTip, 'botão Fechar duplicado': metrics.fechar > 0, [`elemento fora da borda (${metrics.outside.join(', ')})`]: metrics.outside.length > 0 }).filter(([, v]) => v).map(([k]) => k)];
         await page.locator('#modal').screenshot({ path: `${dir}/${name}-${vp}.png` });
         results.push({ name, vp, problems });

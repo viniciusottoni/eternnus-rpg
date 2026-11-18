@@ -86,9 +86,7 @@ public sealed partial class CampaignAssetsService
         var versionRefs = (await db.Set<DocumentVersion>().AsNoTracking().Where(v => v.CampaignId == campaign && v.Kind == DocumentVersionKinds.ImageMap && v.DocumentId == map.Id)
             .Select(v => v.Refs).ToListAsync(ct)).SelectMany(DocumentVersionModel.ParseRefs).ToHashSet();
         var removed = owned.Where(o => !sources.Contains(o.Id) && !versionRefs.Contains(o.Id)).ToList();
-        var stored = await Maps.Where(m => m.CampaignId == campaign).SumAsync(m => (long)m.Content.Length, ct);
-        if (stored - map.Content.Length + flat.Bytes.Length + (snapshot?.Content.Length ?? 0) - removed.Sum(o => (long)o.Size) > MaxStorage)
-            throw new RuleException(409, "Os mapas desta campanha excedem 250 MB.");
+        await AccountLimits.EnsureCampaignStorageAsync(db, campaign, flat.Bytes.Length - map.Content.Length + (snapshot?.Content.Length ?? 0) - removed.Sum(o => (long)o.Size), ct);
         if (!hasGrid && map.HasGrid)
         {
             var assetKey = "asset:" + map.Id;
@@ -168,8 +166,7 @@ public sealed partial class CampaignAssetsService
         if (!await Maps.AnyAsync(m => m.CampaignId == campaign && m.Id == mapId && m.Purpose == CampaignAssetPurposes.Map && m.TileData == null, ct)) throw Missing();
         if (await Maps.CountAsync(m => m.CampaignId == campaign && m.OwnerMapId == mapId && m.Purpose == CampaignAssetPurposes.Layer, ct) >= MapComposition.MaxSources)
             throw new RuleException(409, $"Limite de {MapComposition.MaxSources} imagens-fonte por mapa.");
-        if (await Maps.Where(m => m.CampaignId == campaign).SumAsync(m => (long)m.Content.Length, ct) + content.Length > MaxStorage)
-            throw new RuleException(409, "Os mapas desta campanha excedem 250 MB.");
+        await AccountLimits.EnsureCampaignStorageAsync(db, campaign, content.Length, ct);
         var source = new CampaignMap
         {
             CampaignId = campaign, OwnerMapId = mapId, Purpose = CampaignAssetPurposes.Layer, Name = name, HasGrid = false,

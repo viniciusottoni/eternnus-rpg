@@ -1,7 +1,10 @@
 // Regras puras da imagem do personagem (ADR-097). Sem dados de conta: só formatos, limites e URL.
+// O limite de tamanho vem do plano (ADR-102) e é passado pelo chamador.
+import { BASIC_FILE_BYTES, formatBytes } from "./account-usage-policy.js";
 
 export const PORTRAIT_TYPES = Object.freeze(["image/png", "image/jpeg"]);
-export const PORTRAIT_MAX_BYTES = 10 * 1024 * 1024;
+/** Limite usado sem plano informado: o do Basic. */
+export const PORTRAIT_MAX_BYTES = BASIC_FILE_BYTES;
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** URL da imagem com a versão como cache-buster; nulo sem imagem ou com id inválido (nunca interpolar sem validar). */
@@ -20,10 +23,10 @@ export function initials(name) {
 }
 
 /** Erro de validação local do arquivo escolhido, ou "" quando aceito. O servidor revalida tipo real, dimensões e conteúdo. */
-export function portraitFileError(file) {
+export function portraitFileError(file, maxBytes = PORTRAIT_MAX_BYTES) {
   if (!file || !file.size) return "Escolha uma imagem PNG ou JPEG.";
   if (!PORTRAIT_TYPES.includes(file.type)) return "Use uma imagem PNG ou JPEG.";
-  if (file.size > PORTRAIT_MAX_BYTES) return "Envie uma imagem de até 10 MB.";
+  if (file.size > maxBytes) return `Envie uma imagem de até ${formatBytes(maxBytes)} (limite do seu plano).`;
   return "";
 }
 

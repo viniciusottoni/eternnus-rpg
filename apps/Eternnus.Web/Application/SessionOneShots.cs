@@ -66,16 +66,20 @@ public partial class SessionService
         if (!campaign.IsOneShot) throw new RuleException(409, "Esta mesa já é uma campanha persistente.");
         OneShotLifecycleService.EnsureOpen(campaign, Now);
         var owner = await AccountLimits.LockUserAsync(db, user, ct);
-        if (!PlatformRoles.IsStaff(owner.Role) && await AccountLimits.CampaignCountAsync(db, user, ct) >= AccountLimits.Campaigns)
-            throw new RuleException(409, $"Sua conta já usa as {AccountLimits.Campaigns} campanhas permitidas. Saia de uma campanha antes de converter esta one-shot.");
+        var plan = AccountLimits.PlanOf(owner);
+        if (plan.Campaigns is { } campaignLimit && await AccountLimits.CampaignCountAsync(db, user, ct) >= campaignLimit)
+            throw new RuleException(409, $"Sua conta já usa as {campaignLimit} campanhas do plano {plan.Label}. Saia de uma campanha antes de converter esta one-shot.");
         var members = await db.Members.Where(m => m.CampaignId == campaignId).OrderBy(m => m.UserId).Select(m => m.UserId).ToListAsync(ct);
         var kept = 0; var removed = new List<string>();
         foreach (var member in members)
         {
             var account = await AccountLimits.LockUserAsync(db, member, ct);
-            if (PlatformRoles.IsStaff(account.Role) || await AccountLimits.CampaignCountAsync(db, member, ct) < AccountLimits.Campaigns) { kept++; continue; }
+            if (AccountLimits.PlanOf(account).Campaigns is not { } memberLimit || await AccountLimits.CampaignCountAsync(db, member, ct) < memberLimit) { kept++; continue; }
             removed.Add(member);
         }
+        // Campanhas do plano podem aceitar menos jogadores que one-shots (Basic: 5 contra 8): nada muda se não couberem todos.
+        if (plan.CampaignPlayers is { } playerLimit && kept > playerLimit)
+            throw new RuleException(409, $"Campanhas do plano {plan.Label} aceitam até {playerLimit} jogadores e esta one-shot tem {kept}. Remova jogadores antes de converter.");
         foreach (var member in removed)
         {
             await db.Members.Where(m => m.CampaignId == campaignId && m.UserId == member).ExecuteDeleteAsync(ct);

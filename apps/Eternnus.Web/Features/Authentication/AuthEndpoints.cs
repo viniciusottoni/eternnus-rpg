@@ -12,7 +12,7 @@ public static class AuthEndpoints
     static IResult Bad(string message) => Results.BadRequest(new { message });
     static bool Email(string? value) => value?.Length is > 0 and <= 200 && new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(value);
     static string? Decode(string? code) { try { return Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code ?? "")); } catch (FormatException) { return null; } }
-    public static object Profile(AppUser u) => new { u.Id, u.Email, name = u.DisplayName, u.AvatarUrl, verified = u.EmailConfirmed, role = u.Role, staff = PlatformRoles.IsStaff(u.Role), level = u.Level, xp = u.Xp, twoFactorEnabled = u.TwoFactorEnabled, oneShotParticipations = u.OneShotParticipations, interfaceMode = u.InterfaceMode };
+    public static object Profile(AppUser u) => new { u.Id, u.Email, name = u.DisplayName, u.AvatarUrl, verified = u.EmailConfirmed, role = u.Role, staff = PlatformRoles.IsStaff(u.Role), level = u.Level, xp = u.Xp, twoFactorEnabled = u.TwoFactorEnabled, oneShotParticipations = u.OneShotParticipations, interfaceMode = u.InterfaceMode, plan = AccountPlans.For(u.Plan, u.Role).Key, planLabel = AccountPlans.For(u.Plan, u.Role).Label, maxFileBytes = AccountPlans.For(u.Plan, u.Role).MaxFileBytes };
     public static void MapAuthEndpoints(this WebApplication app)
     {
         var api = app.MapGroup("/api/auth");

@@ -2,7 +2,7 @@ import { helpButton } from "./help.js";
 import { api } from "./api.js";
 import { state } from "./state.js";
 import { shell } from "./layout.js";
-import { countMeter, storageMeter, formatBytes } from "./account-usage-policy.js";
+import { countMeter, storageMeter, planFacts } from "./account-usage-policy.js";
 import { $, esc, field, formError, submitForm, button, toast } from "./ui.js";
 
 function updateProfile(user) {
@@ -23,6 +23,7 @@ function usageMarkup(limits) {
   const meters = [
     countMeter("Campanhas ativas", limits.activeCampaigns, limits.campaignLimit),
     countMeter("Participações em one-shots", limits.oneShotParticipations, limits.oneShotLimit),
+    countMeter("Fichas de personagem", limits.characters, limits.characterLimit),
   ];
   const storage = storageMeter(limits.storage);
   const bar = (label, spoken, used, max, extra = "") =>
@@ -35,10 +36,9 @@ function usageMarkup(limits) {
   }</div>`);
   const segments = storage.parts.filter((p) => p.bytes).map((p) => `<span class="tone-${p.tone}" data-share="${p.share}"></span>`).join("");
   const legend = storage.parts.map((p) => `<li><i class="tone-${p.tone}" aria-hidden="true"></i><span>${esc(p.label)}</span><b>${esc(p.text)}</b></li>`).join("");
-  const note = storage.campaigns
-    ? `${storage.campaigns} ${storage.campaigns === 1 ? "campanha mestrada" : "campanhas mestradas"}. Cada uma guarda até ${esc(formatBytes(storage.perCampaign))} de imagens e mapas; os demais tipos não têm limite próprio.`
-    : "Você ainda não mestra campanhas. O espaço aparece quando você cria uma.";
-  host.innerHTML = counters.join("") + `<div class="usage-item" data-level="${storage.level}">${head("Armazenamento", storage.display)}${bar("Armazenamento", storage.spoken, storage.used, storage.capacity, " usage-stack")}${segments}</div><ul class="usage-legend">${legend}</ul><p class="usage-note">${note}</p></div>`;
+  const note = "Soma o conteúdo das campanhas e one-shots que você mestra e as imagens das suas fichas. Ao chegar ao limite, novos envios ficam bloqueados; nada é apagado.";
+  const plan = `<div class="usage-plan"><p class="usage-row"><span>Plano</span><strong>${esc(limits.planLabel || "Basic")}</strong></p><dl class="usage-facts">${planFacts(limits).map((f) => `<div><dt>${esc(f.label)}</dt><dd>${esc(f.value)}</dd></div>`).join("")}</dl></div>`;
+  host.innerHTML = plan + counters.join("") + `<div class="usage-item" data-level="${storage.level}">${head("Armazenamento", storage.display)}${bar("Armazenamento", storage.spoken, storage.used, storage.capacity, " usage-stack")}${segments}</div><ul class="usage-legend">${legend}</ul><p class="usage-note">${note}</p></div>`;
   for (const part of host.querySelectorAll("[data-share]")) part.style.width = `${(Math.min(1, Number(part.dataset.share) || 0) * 100).toFixed(2)}%`;
   return host;
 }

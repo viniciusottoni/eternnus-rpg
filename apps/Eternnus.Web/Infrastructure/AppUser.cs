@@ -13,6 +13,8 @@ public class AppUser : IdentityUser
     public int Xp { get; set; }
     public int Level { get; set; } = 1;
     public int OneShotParticipations { get; set; }
+    /// <summary>Plano da conta (basic | plus | pro | max), ADR-102. Alterado só pelo admin; equipe usa Max. Ver <see cref="AccountPlans"/>.</summary>
+    [MaxLength(10)] public string Plan { get; set; } = AccountPlans.Basic;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastSeenAt { get; set; }
     /// <summary>Código de convite guardado enquanto a conta aguarda verificação ou login; nunca concede acesso por si só.</summary>

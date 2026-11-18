@@ -1,7 +1,7 @@
-// Medidores de "Minha conta" (ADR-096): regras puras.
+// Medidores de "Minha conta" (ADR-096/102): regras puras.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { countMeter, storageMeter, formatBytes, level, STORAGE_PARTS } from "../apps/Eternnus.Web/wwwroot/js/account-usage-policy.js";
+import { countMeter, storageMeter, formatBytes, level, STORAGE_PARTS, uploadLimit, planFacts, BASIC_FILE_BYTES } from "../apps/Eternnus.Web/wwwroot/js/account-usage-policy.js";
 
 const MB = 1024 * 1024;
 
@@ -31,7 +31,7 @@ test("valores inválidos viram zero", () => {
 });
 
 test("armazenamento soma tipos e segmenta na ordem fixa", () => {
-  const s = storageMeter({ campaigns: 2, capacity: 500 * MB, perCampaign: 250 * MB, images: 100 * MB, attachments: 20 * MB, versions: 5 * MB, texts: 1024 });
+  const s = storageMeter({ campaigns: 2, capacity: 500 * MB, images: 100 * MB, attachments: 20 * MB, versions: 5 * MB, texts: 1024 });
   assert.equal(s.used, 125 * MB + 1024);
   assert.deepEqual(s.parts.map((p) => p.key), STORAGE_PARTS.map((p) => p.key));
   assert.ok(Math.abs(s.parts[0].share - 0.2) < 1e-9);
@@ -46,12 +46,20 @@ test("segmentos nunca passam de 100% mesmo acima da capacidade", () => {
   assert.ok(s.parts.reduce((sum, p) => sum + p.share, 0) <= 1 + 1e-9);
 });
 
-test("sem campanhas mestradas: só o total, sem capacidade", () => {
+test("sem capacidade informada: só o total", () => {
   const s = storageMeter({ campaigns: 0, capacity: 0 });
   assert.equal(s.capacity, 0);
   assert.equal(s.display, "0 B");
   assert.equal(level(0, 0), "ok");
-  assert.match(storageMeter().spoken, /nenhuma campanha/);
+  assert.equal(storageMeter().spoken, "Armazenamento: 0 B");
+});
+
+test("plano: maior arquivo com padrão Basic e jogadores por mesa", () => {
+  assert.equal(uploadLimit(null), BASIC_FILE_BYTES);
+  assert.equal(uploadLimit({ maxFileBytes: 60 * MB }), 60 * MB);
+  assert.equal(uploadLimit({ maxFileBytes: -1 }), BASIC_FILE_BYTES);
+  assert.deepEqual(planFacts({ campaignPlayerLimit: 5, oneShotPlayerLimit: 8, maxFileBytes: 20 * MB }).map((f) => f.value), ["Até 5", "Até 8", "20 MB"]);
+  assert.deepEqual(planFacts({ campaignPlayerLimit: null, oneShotPlayerLimit: null, maxFileBytes: 100 * MB }).map((f) => f.value), ["Sem limite", "Sem limite", "100 MB"]);
 });
 
 test("formata bytes em pt-BR", () => {

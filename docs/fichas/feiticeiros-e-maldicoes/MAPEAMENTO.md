@@ -1,7 +1,7 @@
 # Feiticeiros e Maldições v2.0 — mapeamento da ficha oficial
 
 - **Sistema:** Feiticeiros e Maldições (`feiticeiros-e-maldicoes`), id `2219d683-4676-4985-b607-0a1294c09eeb`
-- **Modelo:** Ficha oficial Feiticeiros e Maldições, id `c03bbdf9-3d65-455e-8fcb-cd46dcaf891e`, **v2 publicada** (versão `273fe728-7704-4033-8f00-1ec5741ab39c`) e **padrão do sistema**. A v1 continua publicada para fichas que ainda não migraram.
+- **Modelo:** Ficha oficial Feiticeiros e Maldições, id `c03bbdf9-3d65-455e-8fcb-cd46dcaf891e`, **v3 publicada** (versão `6a885b66-d907-4970-b0d6-41742a589a68`) e **padrão do sistema**; as versões anteriores continuam publicadas para fichas que ainda não migraram. Documento: `feiticeiros-e-maldicoes-ficha-v3.json`.
 - **PDF:** `Feiticeiros e Maldicoes v2 - Ficha Limpa.pdf` (modelo de Setsugiri, compatível com o Livro Básico 2.0; 6 páginas A4 paisagem, 842 × 595 pt), sha256 `651f9a550920a45aa4dc483e8ec2c45480032afd7aa4f5f8d6afe16b8fa459d0`
 - **Conteúdo:** 290 campos (o limite da plataforma é 300) e 29 ações. O formato é o mesmo do editor (compactDoc).
 - **Arquivos:** `gerar-mapeamento.js` (gerador), `feiticeiros-e-maldicoes-ficha-v2.json` (documento publicado na v2), `feiticeiros-e-maldicoes-ficha-v1.json` (v1) e `previa-exportacao.png` (simulação das páginas 1 e 3).
@@ -96,4 +96,11 @@ Os 11 treinos são listas de "etapas concluídas" (1 a 4). A opção escolhida e
 - **Listas:** cada linha é um item, sem quebra; o que não cabe termina em "…" e o texto inteiro aparece no tooltip. Cada item pode ter uma descrição própria (botão no canto do campo). As colunas da mesma tabela (dados, atual, custo…) também ficam uma linha por linha, sem descrição própria.
 - **Altura de linha:** listas e colunas usam 1,2 × fonte na tela e no PDF exportado, por isso cada item cai na linha impressa.
 - **Verificação:** campos e ações da v2 no servidor batem 100% com o gerador. Nenhuma ficha de jogador usava a v1, então a renomeação não descartou valores.
+
+## v3 (18/11/2026): mais listas (ADR-098)
+
+- **O que mudou:** só nomes de campo, para o site tratar como lista: `inv1_acoes` … `inv5_acoes` (ações e características das invocações) passaram a `inv1_acoes_itens` … `inv5_acoes_itens`. Posição, fonte, ações e PDF são os mesmos da v2.
+- **Como fica:** no preenchimento, uma caixa por linha impressa (como as linhas de magias), todas no mesmo campo; cada linha é um item com descrição própria; o que não cabe termina em "…".
+- **Fichas existentes:** Nenhuma ficha de jogador usava a v2.
+- **Verificação:** campos e ações da v3 no servidor batem 100% com o gerador.
 

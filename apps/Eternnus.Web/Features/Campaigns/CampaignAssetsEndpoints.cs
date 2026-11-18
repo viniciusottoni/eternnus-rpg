@@ -7,14 +7,14 @@ public static class CampaignAssetsEndpoints
 {
     static int Offset(string text) => text.Length == 0 ? 0 : int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : throw new RuleException(400, "Deslocamento da grade inválido.");
 
-    /// <summary>Formulário multipart com uma imagem (até 10 MB) e campos curtos; <paramref name="valueLimit"/> é o maior campo aceito.</summary>
-    static async Task<IFormCollection> ReadImageFormAsync(HttpRequest request, int valueLimit, CancellationToken ct)
+    /// <summary>Formulário multipart com uma imagem (até o limite do plano de quem envia, ADR-102) e campos curtos; <paramref name="valueLimit"/> é o maior campo aceito.</summary>
+    static async Task<IFormCollection> ReadImageFormAsync(HttpRequest request, int valueLimit, long maxBytes, CancellationToken ct)
     {
         if (!request.HasFormContentType) throw new RuleException(400, "Envie a imagem pelo formulário.");
         IFormCollection form;
-        try { form = await request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = CampaignAssetsService.MaxImageBytes, ValueLengthLimit = valueLimit, ValueCountLimit = 16, KeyLengthLimit = 32, MultipartHeadersLengthLimit = 4096, MultipartHeadersCountLimit = 8 }, ct); }
-        catch (InvalidDataException) { throw new RuleException(413, "Formulário inválido ou imagem acima de 10 MB."); }
-        if (form.Files.Count == 1 && form.Files[0].Length > CampaignAssetsService.MaxImageBytes) throw new RuleException(413, "Envie imagem de até 10 MB.");
+        try { form = await request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = maxBytes, ValueLengthLimit = valueLimit, ValueCountLimit = 16, KeyLengthLimit = 32, MultipartHeadersLengthLimit = 4096, MultipartHeadersCountLimit = 8 }, ct); }
+        catch (InvalidDataException) { throw new RuleException(413, $"Formulário inválido ou imagem acima de {AccountPlans.Size(maxBytes)}, o limite do seu plano."); }
+        if (form.Files.Count == 1 && form.Files[0].Length > maxBytes) throw AccountLimits.FileTooLarge(maxBytes);
         return form;
     }
 
@@ -36,16 +36,12 @@ public static class CampaignAssetsEndpoints
         api.MapPost("/folders", (Guid campaignId, CampaignFolderInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.CreateFolderAsync(campaignId, Id(u), x, ct));
         api.MapPut("/folders/{id:guid}", (Guid campaignId, Guid id, CampaignFolderNameInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.RenameFolderAsync(campaignId, id, Id(u), x, ct));
         api.MapDelete("/folders/{id:guid}", async (Guid campaignId, Guid id, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeleteFolderAsync(campaignId, id, Id(u), ct); return Results.NoContent(); });
-        api.MapPost("/maps", async (Guid campaignId, HttpRequest request, DocumentFiles files, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
+        api.MapPost("/maps", async (Guid campaignId, HttpRequest request, DocumentFiles files, GameDb db, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
         {
             await s.EnsureMasterAsync(campaignId, Id(u), ct);
-            if (!request.HasFormContentType) throw new RuleException(400, "Envie a imagem pelo formulário.");
-            IFormCollection form;
-            try { form = await request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = CampaignAssetsService.MaxImageBytes, ValueLengthLimit = 512, ValueCountLimit = 16, KeyLengthLimit = 32, MultipartHeadersLengthLimit = 4096, MultipartHeadersCountLimit = 8 }, ct); }
-            catch (InvalidDataException) { throw new RuleException(413, "Formulário inválido ou imagem acima de 10 MB."); }
+            var form = await ReadImageFormAsync(request, 512, await AccountLimits.MaxFileBytesAsync(db, Id(u), ct), ct);
             string[] fields = ["name", "folderId", "gridPixels", "scaleMeters", "hasGrid", "gridOffsetX", "gridOffsetY", "purpose", "freeMovement", "summary", "sourceKey"];
             if (form.Files.Count != 1 || form.Files[0].Name != "file" || form.Keys.Any(k => !fields.Contains(k))) throw new RuleException(400, "Envie uma imagem e os campos do mapa.");
-            if (form.Files[0].Length > CampaignAssetsService.MaxImageBytes) throw new RuleException(413, "Envie imagem de até 10 MB.");
             Guid? folder = null;
             if (form["folderId"].ToString() is { Length: > 0 } folderText) folder = Guid.TryParse(folderText, out var f) ? f : throw new RuleException(400, "Pasta inválida.");
             if (!int.TryParse(form["gridPixels"], out var grid) || !decimal.TryParse(form["scaleMeters"], NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var scale)) throw new RuleException(400, "Grade ou escala inválida.");
@@ -57,19 +53,19 @@ public static class CampaignAssetsEndpoints
             string? Optional(string key) => form.ContainsKey(key) ? form[key].ToString() : null;
             return Results.Ok(await s.SaveMapAsync(campaignId, null, Id(u), new(form["name"].ToString(), folder, grid, scale, 0, hasGrid, Offset(form["gridOffsetX"].ToString()), Offset(form["gridOffsetY"].ToString()), CampaignAssetPurposes.Normalize(form["purpose"].ToString()), freeMovement, Optional("summary"), Optional("sourceKey")), document, ct));
         }).RequireRateLimiting("upload");
-        api.MapPost("/maps/import", async (Guid campaignId, CampaignMapImportInput x, RemoteImageFetcher remote, DocumentFiles files, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
+        api.MapPost("/maps/import", async (Guid campaignId, CampaignMapImportInput x, RemoteImageFetcher remote, DocumentFiles files, GameDb db, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
         {
             await s.EnsureMasterAsync(campaignId, Id(u), ct); // autoriza antes de qualquer acesso à rede
-            var (bytes, fileName) = await remote.FetchAsync(x.Url, CampaignAssetsService.MaxImageBytes, ct);
+            var (bytes, fileName) = await remote.FetchAsync(x.Url, (int)await AccountLimits.MaxFileBytesAsync(db, Id(u), ct), ct);
             var document = await files.CheckAsync(bytes, fileName, new[] { DocumentKinds.Png, DocumentKinds.Jpeg }, ct);
             return Results.Ok(await s.SaveMapAsync(campaignId, null, Id(u), new(x.Name, x.FolderId, x.GridPixels, x.ScaleMeters, 0, x.HasGrid, x.GridOffsetX, x.GridOffsetY, null, x.FreeMovement, x.Summary, x.SourceKey), document, ct));
         }).RequireRateLimiting("upload");
         // Mapa de imagem editável (ADR-081 §4): composição + imagem achatada no navegador, numa única escrita.
         api.MapGet("/maps/{id:guid}/composition", (Guid campaignId, Guid id, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.CompositionAsync(campaignId, id, Id(u), ct));
-        api.MapPut("/maps/{id:guid}/composition", async (Guid campaignId, Guid id, HttpRequest request, DocumentFiles files, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
+        api.MapPut("/maps/{id:guid}/composition", async (Guid campaignId, Guid id, HttpRequest request, DocumentFiles files, GameDb db, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
         {
             await s.EnsureMasterAsync(campaignId, Id(u), ct);
-            var form = await ReadImageFormAsync(request, MapComposition.MaxLength, ct);
+            var form = await ReadImageFormAsync(request, MapComposition.MaxLength, await AccountLimits.MaxFileBytesAsync(db, Id(u), ct), ct);
             string[] fields = ["composition", "revision", "name", "summary", "gridPixels", "scaleMeters", "hasGrid", "gridOffsetX", "gridOffsetY", "freeMovement"];
             if (form.Files.Count != 1 || form.Files[0].Name != "file" || form.Keys.Any(k => !fields.Contains(k))) throw new RuleException(400, "Envie a imagem achatada e os campos do mapa.");
             if (!int.TryParse(form["revision"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var revision)
@@ -81,18 +77,18 @@ public static class CampaignAssetsEndpoints
             return Results.Ok(await s.SaveCompositionAsync(campaignId, id, Id(u), input, document, ct));
         }).RequireRateLimiting("upload");
         // Imagens-fonte do mapa: só o mestre lê os bytes (rota /maps/{id}/image); não contam no limite de mapas.
-        api.MapPost("/maps/{id:guid}/sources", async (Guid campaignId, Guid id, HttpRequest request, DocumentFiles files, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
+        api.MapPost("/maps/{id:guid}/sources", async (Guid campaignId, Guid id, HttpRequest request, DocumentFiles files, GameDb db, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
         {
             await s.EnsureMasterAsync(campaignId, Id(u), ct);
-            var form = await ReadImageFormAsync(request, 512, ct);
+            var form = await ReadImageFormAsync(request, 512, await AccountLimits.MaxFileBytesAsync(db, Id(u), ct), ct);
             if (form.Files.Count != 1 || form.Files[0].Name != "file" || form.Keys.Any(k => k != "name")) throw new RuleException(400, "Envie uma imagem e, se quiser, o nome.");
             var document = await files.ReadAsync(form.Files[0], new[] { DocumentKinds.Png, DocumentKinds.Jpeg }, ct);
             return Results.Ok(await s.AddSourceAsync(campaignId, id, Id(u), form["name"].ToString(), document, ct));
         }).RequireRateLimiting("upload");
-        api.MapPost("/maps/{id:guid}/sources/import", async (Guid campaignId, Guid id, MapSourceImportInput x, RemoteImageFetcher remote, DocumentFiles files, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
+        api.MapPost("/maps/{id:guid}/sources/import", async (Guid campaignId, Guid id, MapSourceImportInput x, RemoteImageFetcher remote, DocumentFiles files, GameDb db, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
         {
             await s.EnsureMasterAsync(campaignId, Id(u), ct); // autoriza antes de qualquer acesso à rede
-            var (bytes, fileName) = await remote.FetchAsync(x.Url, CampaignAssetsService.MaxImageBytes, ct);
+            var (bytes, fileName) = await remote.FetchAsync(x.Url, (int)await AccountLimits.MaxFileBytesAsync(db, Id(u), ct), ct);
             var document = await files.CheckAsync(bytes, fileName, new[] { DocumentKinds.Png, DocumentKinds.Jpeg }, ct);
             return Results.Ok(await s.AddSourceAsync(campaignId, id, Id(u), x.Name, document, ct));
         }).RequireRateLimiting("upload");
@@ -116,18 +112,18 @@ public static class CampaignAssetsEndpoints
 
         // Composição visual própria da cena (mestre): imagens-fonte da cena e composição + camada achatada para os jogadores.
         var scenes = app.MapGroup("/api/campaigns/{campaignId:guid}/scenes/{sceneId:guid}").RequireAuthorization("Verified");
-        scenes.MapPost("/sources", async (Guid campaignId, Guid sceneId, HttpRequest request, DocumentFiles files, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
+        scenes.MapPost("/sources", async (Guid campaignId, Guid sceneId, HttpRequest request, DocumentFiles files, GameDb db, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
         {
             await s.EnsureMasterAsync(campaignId, Id(u), ct);
-            var form = await ReadImageFormAsync(request, 512, ct);
+            var form = await ReadImageFormAsync(request, 512, await AccountLimits.MaxFileBytesAsync(db, Id(u), ct), ct);
             if (form.Files.Count != 1 || form.Files[0].Name != "file" || form.Keys.Any(k => k != "name")) throw new RuleException(400, "Envie uma imagem e, se quiser, o nome.");
             var document = await files.ReadAsync(form.Files[0], new[] { DocumentKinds.Png, DocumentKinds.Jpeg }, ct);
             return Results.Ok(await s.AddSceneSourceAsync(campaignId, sceneId, Id(u), form["name"].ToString(), document, ct));
         }).RequireRateLimiting("upload");
-        scenes.MapPut("/composition", async (Guid campaignId, Guid sceneId, HttpRequest request, DocumentFiles files, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
+        scenes.MapPut("/composition", async (Guid campaignId, Guid sceneId, HttpRequest request, DocumentFiles files, GameDb db, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
         {
             await s.EnsureMasterAsync(campaignId, Id(u), ct);
-            var form = await ReadImageFormAsync(request, MapComposition.MaxLength, ct);
+            var form = await ReadImageFormAsync(request, MapComposition.MaxLength, await AccountLimits.MaxFileBytesAsync(db, Id(u), ct), ct);
             // Sem arquivo = nada da composição para os jogadores; composição vazia remove a composição da cena.
             if (form.Files.Count > 1 || (form.Files.Count == 1 && form.Files[0].Name != "file") || form.Keys.Any(k => k is not ("composition" or "revision")))
                 throw new RuleException(400, "Envie a composição, a revisão da cena e, se houver, a camada achatada.");

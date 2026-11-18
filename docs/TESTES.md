@@ -1,5 +1,21 @@
 # Validação
 
+## Loja do Aventureiro: afiliados e recomendações (ADR-104) — 18 de novembro de 2026
+
+| Verificação | Resultado |
+| --- | --- |
+| `dotnet build apps/Eternnus.Web` | 0 erros, 0 avisos |
+| `dotnet ef migrations has-pending-model-changes` | Nenhuma alteração pendente depois da migração `AffiliateStore` |
+| `dotnet test --filter` StoreTests, AdminTests, GuildTests, RemoteImageFetcherTests, TextSearchTests | 120 passaram, 0 falharam. `StoreTests` (42, novo): cadastro nas três lojas com parâmetros preservados e auditoria sem link; links inválidos/estrangeiros/IP interno 400; imagem, preço sem conferência, preço anterior menor, tags e sistemas inválidos 400; revisão 409; preço vencido vira “Consultar preço”; produto multissistema e genérico; filtros combinados e paginação 24/6; inativos, excluídos e rascunhos fora do público (404 também no clique); busca sem acento, plural irregular, tags, sinônimos, categoria e nome do sistema; sistema da campanha acima de prioridade 100 e 5.000 cliques; campanha aberta vira o contexto; campanha alheia ignorada; genéricos preenchem lacunas; usuário sem campanhas recebe fallback; arquivadas pesam menos; palavras recorrentes reordenam só dentro do grupo; rotação estável na janela e sem cruzar grupos; diversidade de loja/categoria; filtros e ordenação explícitos prevalecem; vitrine oculta por desligamento, página, preferência e ausência de produtos/imagem; só conteúdo próprio, público e não moderado gera interesses; sem consentimento nada é analisado; revogar e apagar removem os dados; cliques deduplicados e agregados; categoria e sistema em uso não ficam órfãos; prévia da Amazon sem rede; prévia do Mercado Livre lê JSON-LD sem inventar preço anterior; redirecionamento para outro host recusado; palavras-chave, sensíveis e parser de metadados. Suíte completa não executada. |
+| `node --test` store-policy (10, novo), pwa, service-worker, frontend, help-catalog, help-policy, help-fields, free-move-policy, soundtrack-policy, token-look, command-palette-policy, data-table, loading | 88 passaram, 0 falharam |
+| `node tests/store-ui.mjs` (novo; PostgreSQL do harness com a migração aplicada + Chrome headless 1440×900, 960×900 e 390×844) | Passou: 401/403 e CSRF; taxonomia semeada; cadastro com parâmetro de afiliado preservado; prévia da Amazon sem leitura; auditoria sem link; rascunho fora do catálogo; ordem personalizada por Tormenta20; filtro explícito; vitrine nunca na mesa; menu Loja na lateral; vitrine com 3 colunas, cerca de 100 px, entre a barra e o título; 2 colunas com contêiner médio; sem vitrine na preparação, conta, loja e mesa; vitrine na visão geral da campanha; filtros, busca, selo de oferta, detalhe e clique por teclado; ocultar persistido no servidor; celular com 1 produto, Loja no “Mais”, quatro destinos na barra, alvo de 44 px, sem transbordo e filtros recolhíveis; painel admin com prévia, cadastro, categorias, configurações e indicadores; cliques por superfície; nenhum erro de JavaScript/CSP. Capturas em `artifacts/qa/loja/` |
+| `node tests/forms-ui.mjs` | 64 páginas (desktop + celular) sem desalinhamento nem foco cortado |
+| `node tests/guild.mjs` | 232 verificações passaram |
+
+Defeitos encontrados e corrigidos na verificação: a busca de produtos cancelava a consulta dos filtros (lista lateral vazia); labels dos filtros herdavam margem global; campo de preço máximo transbordava; altura da vitrine acima de 110 px; “na Mercado Livre” → “no Mercado Livre”; revisão das configurações não avançava na primeira gravação.
+
+Falhas fora do escopo da loja, observadas na mesma rodada: `tests/help-ui.mjs` para no editor de cenas (`[data-ed-tool=scenery]` não clicável) — `editor-core.js`/`scene-editor.js` já tinham alterações não commitadas antes deste trabalho e a vitrine não aparece na Preparação; `tests/admin.mjs` espera `stats` sem `storageBytes`, campo acrescentado pelo trabalho paralelo de Planos de conta (ADR-102). Não executado: APIs oficiais dos marketplaces (sem credenciais), leitura real de páginas das lojas (interceptada nos testes), leitor de tela real, aparelho físico e carga com milhares de produtos.
+
 ## Composição da cena, imagens soltas e posições iniciais (ADR-090) — 16 de novembro de 2026
 
 | Verificação | Resultado |

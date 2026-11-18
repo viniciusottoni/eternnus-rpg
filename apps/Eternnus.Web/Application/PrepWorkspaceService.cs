@@ -286,8 +286,7 @@ public sealed class PrepWorkspaceService(GameDb db)
                 added += await CampaignAssetsService.CopySceneAssetsAsync(db, s, copy, now, ct);
                 if (top) created.Add(new { type = SceneType, copy.Id });
             }
-            if (added > 0 && await Maps.Where(m => m.CampaignId == campaign).SumAsync(m => (long)m.Content.Length, ct) + added > CampaignAssetsService.MaxStorage)
-                throw new RuleException(409, "Os mapas desta campanha excedem 250 MB.");
+            await AccountLimits.EnsureCampaignStorageAsync(db, campaign, added, ct);
         }
         else if (category == PrepCategories.Maps)
         {
@@ -299,8 +298,7 @@ public sealed class PrepWorkspaceService(GameDb db)
                 throw new RuleException(409, $"Limite de {CampaignAssetsService.MaxMaps} mapas por campanha.");
             var family = Maps.Where(m => m.CampaignId == campaign && (mapIds.Contains(m.Id) || (m.OwnerMapId != null && mapIds.Contains(m.OwnerMapId.Value) && m.Purpose == CampaignAssetPurposes.Layer)));
             var adding = await family.SumAsync(m => (long)m.Content.Length, ct);
-            if (await Maps.Where(m => m.CampaignId == campaign).SumAsync(m => (long)m.Content.Length, ct) + adding > CampaignAssetsService.MaxStorage)
-                throw new RuleException(409, "Os mapas desta campanha excedem 250 MB.");
+            await AccountLimits.EnsureCampaignStorageAsync(db, campaign, adding, ct);
             var rows = await family.AsNoTracking().ToListAsync(ct);
             var keys = mapIds.Select(id => "asset:" + id).ToList();
             var fog = await db.Set<CampaignMapLayer>().AsNoTracking().Where(l => l.CampaignId == campaign && keys.Contains(l.MapKey))

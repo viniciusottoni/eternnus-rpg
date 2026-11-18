@@ -1,5 +1,7 @@
 # Ficha-modelo D&D 5e — mapeamento do PDF
 
+> **Versão atual:** **v2 publicada** (versão `9d58fdd0-b588-4101-872c-7dd3a2a9db25`) e **padrão do sistema**; as versões anteriores continuam publicadas para fichas que ainda não migraram. Documento: `dnd5e-ficha-v2.json`.
+
 **Publicada em produção em 10/11/2026** — rpg.eternnus.com:
 - Sistema criado: **Dungeons & Dragons 5ª Edição** (`f5c5b001-e5b7-4c0b-8efc-d759560fbaa7`, slug `dungeons-dragons-5e`).
 - Ficha-modelo **"Ficha oficial D&D 5e"** (`cfdc0cfb-b6ca-4cc0-a97b-aaf5dfa7ec51`, v1 `6c3c58da-1574-45d3-9572-f7c3053f1dde`), **padrão do sistema**.
@@ -32,3 +34,11 @@ Nome `personagem` · Nível `nivel` · PV `pv_atual` / `pv_max` · Armadura `cla
 - CD e bônus de ataque de magia são digitados (listas não entram em fórmulas).
 - Os círculos de "preparada" da página 3 não foram mapeados (limite de 300 campos); escreva "(P)" no nome se quiser.
 - Bônus fora das regras (talentos, itens) na iniciativa/perícias não têm campo próprio na folha.
+
+## v2 (18/11/2026): mais listas (ADR-098)
+
+- **O que mudou:** só nomes de campo, para o site tratar como lista: `idiomas_proficiencias` e `tesouro` passaram a `idiomas_proficiencias_itens` e `tesouro_itens`. Posição, fonte, ações e PDF são os mesmos da v1.
+- **Como fica:** no preenchimento, uma caixa por linha impressa (como as linhas de magias), todas no mesmo campo; cada linha é um item com descrição própria; o que não cabe termina em "…".
+- **Fichas existentes:** A ficha de jogador que usa a v1 continua nela até o dono migrar; ao migrar, o que estiver em idiomas/proficiências e em tesouro é descartado (o site casa campos pelo nome). Copie o texto antes, se quiser mantê-lo.
+- **Verificação:** campos e ações da v2 no servidor batem 100% com o gerador.
+

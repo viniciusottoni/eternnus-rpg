@@ -150,6 +150,8 @@ public class CampaignService(GameDb db, ProgressionService progression, AuditSer
         if (c.ArchivedAt != null) throw new RuleException(409, "Esta campanha está arquivada e não recebe novos jogadores.");
         if (c.OwnerId != user && !await db.Members.AnyAsync(x => x.CampaignId == id && x.UserId == user, ct))
         {
+            // Vaga na mesa (plano do mestre) antes da quota de quem entra; a campanha bloqueada serializa as entradas.
+            await AccountLimits.EnsurePlayerSlotAsync(db, c, ct);
             var account = await AccountLimits.LockUserAsync(db, user, ct);
             await AccountLimits.ReserveAsync(db, account, c, ct);
             db.Members.Add(new() { CampaignId = id, UserId = user }); c.LastActivityAt = DateTime.UtcNow; c.Revision++;

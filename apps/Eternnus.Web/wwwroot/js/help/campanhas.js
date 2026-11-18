@@ -45,10 +45,11 @@ const entries = {
   },
   "campanhas.conta.limites": {
     "title": "Limites da conta",
-    "summary": "Campanhas e one-shots usam quotas diferentes.",
+    "summary": "O plano da conta define campanhas, one-shots e jogadores por mesa.",
     "body": [
-      "Uma conta comum dispõe de três campanhas persistentes, somando as que mestra e as de que participa. Campanhas arquivadas continuam contando.",
-      "Você tem dez participações vitalícias em one-shots. Sair ou encerrar não devolve essa participação. Nível e XP não ampliam quotas. Administradores e Embaixadores não têm esses limites."
+      "Campanhas persistentes somam as que você mestra e as de que participa; arquivadas continuam contando. Basic: 3, Plus: 5, Pro: 10, Max: sem limite.",
+      "Participações em one-shots são vitalícias: sair ou encerrar não devolve a participação. Basic: 10, Plus: 15, Pro: 30, Max: sem limite. Nível e XP não ampliam quotas.",
+      "O plano de quem mestra limita os jogadores da mesa. Basic: 5 em campanhas e 8 em one-shots; Plus: 8; Pro: 15; Max: sem limite. Administradores e Embaixadores usam o Max. Veja tudo em Minha conta."
     ],
     "audience": "all"
   },

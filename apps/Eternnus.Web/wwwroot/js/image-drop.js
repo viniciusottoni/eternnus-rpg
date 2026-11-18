@@ -3,9 +3,12 @@
 // cada editor envia pelos próprios endpoints (api.js) e decide onde o elemento entra. Carregado sob demanda pelos editores.
 import { esc } from "./ui.js";
 import { isTypingTarget } from "./editor-policy.js";
+import { state } from "./state.js";
+import { uploadLimit, formatBytes } from "./account-usage-policy.js";
 
 export const IMAGE_TYPES = Object.freeze(["image/png", "image/jpeg"]);
-export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+/** Maior imagem que a conta envia (plano, ADR-102); sem conta carregada, o do Basic. */
+export const maxImageBytes = () => uploadLimit(state.user);
 /** Arquivos aceitos de uma vez (os demais são recusados com aviso). */
 export const MAX_FILES = 12;
 /** Tipo próprio do arrastar do painel Acervo (JSON `{ src, name, width, height }`; nunca aceita texto solto de fora). */
@@ -15,14 +18,14 @@ const SAFE_IMAGE = new RegExp(`^/api/campaigns/${G}/assets/maps/${G}/image$`);
 const ASSET = new RegExp(`^asset:${G}$`);
 const EXT = /\.(png|jpe?g)$/i;
 
-/** Recusa em texto ou "" — os mesmos limites do servidor: PNG ou JPEG de até 10 MB. */
+/** Recusa em texto ou "" — os mesmos limites do servidor: PNG ou JPEG até o limite do plano. */
 export function imageFileProblem(file) {
   const name = String(file?.name || "imagem").slice(0, 80);
   if (!file) return "Nenhum arquivo recebido.";
   const type = String(file.type || "").toLowerCase();
   if (!IMAGE_TYPES.includes(type) && !(type === "" && EXT.test(name))) return `“${name}” não é PNG nem JPEG.`;
   if (!(file.size > 0)) return `“${name}” está vazio.`;
-  if (file.size > MAX_IMAGE_BYTES) return `“${name}” passa de 10 MB.`;
+  if (file.size > maxImageBytes()) return `“${name}” passa de ${formatBytes(maxImageBytes())}, o limite do seu plano.`;
   return "";
 }
 
@@ -139,7 +142,7 @@ export function listenPaste(handler, { enabled = () => true, fallback = () => {}
   let timer = 0;
   const on = (e) => {
     if (!enabled() || isTypingTarget(e.target)) return;
-    // Qualquer imagem entra aqui; o editor valida (PNG/JPEG até 10 MB) e explica a recusa.
+    // Qualquer imagem entra aqui; o editor valida (PNG/JPEG até o limite do plano) e explica a recusa.
     const files = filesOf(e.clipboardData).filter((f) => String(f.type).startsWith("image/") || EXT.test(String(f.name || "")));
     if (!files.length) return;
     clearTimeout(timer); timer = 0;

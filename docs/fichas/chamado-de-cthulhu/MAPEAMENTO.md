@@ -1,10 +1,10 @@
 # Chamado de Cthulhu 7ª Edição — mapeamento da ficha oficial
 
 - **Sistema:** Chamado de Cthulhu 7ª Edição (`chamado-de-cthulhu-7e`), id `d6f86955-5733-4e55-80a7-967d5e198864`
-- **Modelo:** Ficha oficial Chamado de Cthulhu 7e, id `7fe81fd4-fbe8-4c17-8027-51b5367bff1f`, **v1 publicada** e **padrão do sistema**
+- **Modelo:** Ficha oficial Chamado de Cthulhu 7e, id `7fe81fd4-fbe8-4c17-8027-51b5367bff1f`, **v2 publicada** (versão `86dd9511-ef3f-4136-85a3-90165867c46c`) e **padrão do sistema**. As versões anteriores continuam publicadas para fichas que ainda não migraram.
 - **PDF:** `Chamado de Cthulhu 7e - Ficha em Branco.pdf` (2 páginas: pág. 1 A4 595,28 × 841,89 pt; pág. 2 Carta 612 × 792 pt), sha256 `f8ce6be119f48289ce5f5cb8e8efebaa3ae19b3f10056a172427df74e2c8b7b1`
 - **Conteúdo:** 295 campos e 3 ações. O formato é o mesmo do editor (compactDoc), e as coordenadas de cada página são normalizadas pelo tamanho dela.
-- **Arquivos:** `gerar-mapeamento.js` (gerador), `chamado-de-cthulhu-ficha-v1.json` (documento aplicado) e `previa-exportacao.png` (simulação da exportação).
+- **Arquivos:** `gerar-mapeamento.js` (gerador), `chamado-de-cthulhu-ficha-v2.json` (documento publicado na v2), `chamado-de-cthulhu-ficha-v1.json` (documento aplicado) e `previa-exportacao.png` (simulação da exportação).
 
 ## Página 1 — investigador
 
@@ -49,3 +49,11 @@
   - Com valores de exemplo, a ficha exportada mostrou MOV 6, PV 12, SAN máx. 96 e Corpo 0.
   - Os textos caíram nas linhas e caixas das duas páginas.
 - Em "Testar ficha" com valores de pior caso (90/99/88), nenhum campo de preenchimento ficou cortado, e os cálculos atualizaram ao digitar.
+
+## v2 (18/11/2026): mais listas (ADR-098)
+
+- **O que mudou:** só nomes de campo, para o site tratar como lista: `pessoas`, `fobias`, `locais` e `encontros` passaram a `pessoas_itens`, `fobias_itens`, `locais_itens` e `encontros_itens` (Pessoas significativas, Fobias e manias, Locais importantes, Encontros com entidades estranhas). Posição, fonte, ações e PDF são os mesmos da v1.
+- **Como fica:** no preenchimento, uma caixa por linha impressa (como as linhas de magias), todas no mesmo campo; cada linha é um item com descrição própria; o que não cabe termina em "…".
+- **Fichas existentes:** A ficha de jogador que usa a v1 continua nela até o dono migrar; ao migrar, o que estiver nesses quatro quadros é descartado (o site casa campos pelo nome). Copie o texto antes, se quiser mantê-lo.
+- **Verificação:** campos e ações da v2 no servidor batem 100% com o gerador.
+

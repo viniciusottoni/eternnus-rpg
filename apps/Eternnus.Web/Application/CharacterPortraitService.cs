@@ -36,6 +36,8 @@ public class CharacterPortraitService(GameDb db, TimeProvider clock)
         var (bytes, width, height) = await CampaignAssetsService.Normalize(image, ct, keepAlpha: true, maxSide: CharacterPortraitModel.MaxSide);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var portrait = await db.Set<CharacterPortrait>().SingleOrDefaultAsync(p => p.CharacterId == id, ct);
+        // Retrato ocupa o espaço da conta do dono da ficha (ADR-102); a troca conta só a diferença.
+        await AccountLimits.EnsureStorageAsync(db, user, bytes.LongLength - (portrait?.Size ?? 0), ct);
         if (portrait == null) db.Add(portrait = new CharacterPortrait { CharacterId = id });
         portrait.Content = bytes;
         portrait.ContentType = CampaignAssetsService.ImageType(bytes);

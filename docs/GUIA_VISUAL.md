@@ -232,6 +232,7 @@ Celular (≤ 900 px): o selo ocupa linha própria no topo; alvos de 44 px no sel
 - **Rótulo com margem:** `label` global tem `margin-bottom: 5px`. Em linha com `align-items: end`, zerar a margem do rótulo; senão botões e caixas descem 5 px abaixo do campo. Campos de texto/número/busca têm 44 px exatos (regra de especificidade zero em `styles.css`), iguais a selects e botões. Editor de tiles (`.tile-editor`) aplica o mesmo e centraliza “Mostrar grade” na altura de 44 px.
 - **Barras de filtro:** levam `role="search"`, alinham pela base e não recebem dicas automáticas. Os botões descem juntos quando não cabem.
 - **Quatro ou mais ações:** usar `actionBar(tools, main)` de `js/ui.js`. Ferramentas à esquerda; perigo e primária à direita, primária por último. Sem espaço, cada grupo vai para sua linha (nunca um botão órfão). Em modal, a barra fica fixa no rodapé da rolagem (ADR-071).
+- **Uma fila no desktop (ADR-101):** ferramentas secundárias usam `iconButton(ícone, rótulo, …)` de `js/ui.js` (ícones em `js/icons.js`): botão quadrado de 44 px, nome acessível e tooltip com o rótulo. Primária, alternância de modo e confirmação destrutiva continuam com texto. `buttonRowIssues` nos QAs de páginas e modais acusa barra com quatro ou mais botões em duas filas.
 - **Dicas automáticas:** só em campos obrigatórios, com mínimo, faixa numérica ou texto longo. Campo curto opcional não mostra “Até N caracteres”.
 - **Foco em campos de texto:** fica por dentro (borda clara + anel interno de 1 px). Nunca vaza nem é cortado.
 - **Foco em botões, links, caixas e opções:** contorno de 2 px colado (deslocamento de 2 px).
@@ -270,3 +271,11 @@ Editor no modal compartilhado: metadados e ferramentas acima, catálogo por grup
 - **Seleção**: contorno e alças douradas sobre o canvas; área fora da moldura do mapa escurecida.
 - **Celular/tablet**: ferramentas em faixa horizontal rolável, painéis como gaveta sobre o palco, janela de propriedades ancorada embaixo; áreas seguras respeitadas.
 - Estilos: `prep.css`, `editor.css` (núcleo), `editor-tiles.css`, `editor-image.css`, `editor-scene.css`.
+
+## Loja do Aventureiro e vitrine (ADR-104)
+
+- **Vitrine:** faixa entre a barra superior e o título, na largura útil do conteúdo (mesmas margens do `#main`). Fundo escuro translúcido, borda dourada a 20% e raio padrão; cerca de 100 px de altura no desktop. Cabeçalho em uma linha: “✦ Selecionados para sua aventura” (serifa dourada, 12 px), “Links de afiliado · preços podem variar”, “Ver mais na loja” e × para ocultar.
+- **Itens:** miniatura de 52 px sobre fundo claro (`object-fit: contain`), título em até duas linhas, preço ou “Consultar preço na loja”, selo textual da loja (pílula neutra, sem logotipo de terceiros) e “Ver oferta ↗” discreto. Hover só muda a borda; sem animação automática, carrossel ou slider.
+- **Colunas:** por container query da própria faixa — ≥ 860 px até 3, ≥ 520 px até 2, abaixo 1 —, limitadas pela configuração. No celular, alvos de 44 px.
+- **Página da loja:** cabeçalho padrão (`page-heading`), aviso de afiliado em texto auxiliar, busca com sugestões e ordenação, filtros laterais em painel `metal` (recolhível com `<details>` no celular) e grade de cartões `metal` com imagem quadrada, selo da loja, “Oferta” só com preços conferidos, sistemas e botão primário de oferta.
+- **Não fazer:** cores de marketplace, logotipos de terceiros, banners animados, contadores de urgência, percentuais de desconto estimados ou qualquer conteúdo comercial na mesa, nos editores e nas fichas.

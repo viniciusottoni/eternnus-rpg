@@ -15,7 +15,9 @@ public sealed partial class WorkspaceService
     public async Task<object> Attach(Guid campaign, Guid id, string user, UploadedDocument file, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct); await Lock(campaign, user, ct); await EnsureEditor(campaign, id, user, ct);
-        if (await db.Set<WorkspaceAttachment>().CountAsync(f => f.PageId == id, ct) >= 10 || (await db.Set<WorkspaceAttachment>().Where(f => Pages.Any(p => p.Id == f.PageId && p.CampaignId == campaign)).SumAsync(f => (long?)f.Size, ct) ?? 0) + file.Content.Length > 250L * 1024 * 1024) throw new RuleException(409, "Limite de dez anexos por página ou 250 MB por campanha.");
+        if (await db.Set<WorkspaceAttachment>().CountAsync(f => f.PageId == id, ct) >= 10) throw new RuleException(409, "Limite de dez anexos por página.");
+        // Anexos ocupam o espaço da conta de quem mestra a campanha (ADR-102).
+        await AccountLimits.EnsureCampaignStorageAsync(db, campaign, file.Content.LongLength, ct);
         var f = new WorkspaceAttachment { PageId = id, Name = file.FileName, ContentType = file.ContentType, Content = file.Content, Size = file.Content.LongLength };
         db.Add(f); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return new { f.Id, f.Name, f.Size, f.ContentType };
     }
