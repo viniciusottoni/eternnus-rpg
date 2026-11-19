@@ -61,6 +61,8 @@ const RENDER_STEP = 240;
 const ico = (name) => (LOCAL[name] ? `<svg class="ed-icon px-ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${LOCAL[name]}</svg>` : icon(name));
 const ROOT_ICON = { scenes: "scene", maps: "atlas", characters: "character" };
 const TYPE_ICON = { scene: "scene", map: "atlas", character: "character", folder: "folder" };
+// Ações secundárias do painel de detalhes (ADR-119). Sem ícone, a ação continua com texto.
+const PANEL_ICON = { configure: "settings", fog: "fog", "scene-from": "scene", show: "eye", hide: "eyeOff", edit: "edit", lore: "notes", "lore-open": "notes", encounter: "group", reveal: "folderOpen", duplicate: "copy", rename: "rename", delete: "trash" };
 
 // Estado que sobrevive à troca de aba: pastas expandidas e área de transferência interna (por campanha).
 const expandedByCampaign = new Map();
@@ -625,8 +627,17 @@ export async function renderPrepExplorer(d, target, { category = "" } = {}) {
     const max = { scenes: l.scenes, maps: l.maps, characters: l.characters }[category];
     return max ? `${n} de ${max}` : "";
   }
+  /** Ação principal com texto; as demais só com ícone, nome acessível e dica (ADR-119). Indisponível diz o motivo. */
   function panelButtons(sel) {
-    return actionsFor(sel).filter((a) => a.panel && !a.separator).map((a, i) => `<button type="button" class="${i === 0 ? "primary" : "subtle"} small" data-px-act="${esc(a.id)}"${a.disabled ? ` aria-disabled="true" data-tip="${esc(a.disabledReason || "")}"` : ""}>${esc(a.label)}</button>`).join("");
+    const actions = actionsFor(sel).filter((a) => a.panel && !a.separator);
+    return actions.map((a, i) => {
+      const off = a.disabled ? ` aria-disabled="true"` : "";
+      const iconName = i === 0 ? "" : PANEL_ICON[a.id];
+      if (!iconName) return `<button type="button" class="${i === 0 ? "primary" : "subtle"} small" data-px-act="${esc(a.id)}"${off}${a.disabled ? ` data-tip="${esc(a.disabledReason || "")}"` : ""}>${esc(a.label)}</button>`;
+      const label = a.label.replace(/…$/, "");
+      const tip = a.disabled && a.disabledReason ? `${label}: ${a.disabledReason}` : label;
+      return `<button type="button" class="subtle small tool-icon${a.danger ? " danger-text" : ""}" data-px-act="${esc(a.id)}" aria-label="${esc(label)}" data-tip="${esc(tip)}"${off}>${ico(iconName)}</button>`;
+    }).join("");
   }
 
   // ---------- Ações ----------

@@ -1,5 +1,18 @@
 # Validação
 
+## Ações em ícone, árvore de camadas, copiar/colar, limite do plano e descrição por linha (ADR-119 a 122) — 19 de novembro de 2026
+
+| Verificação | Resultado |
+| --- | --- |
+| `node --test` frontend, pwa, service-worker, editor-sidebar, editor-policy, editor-contexts, prep-explorer-policy, help-catalog, help-policy, help-fields, scene-editor-policy, scene-composition-policy, composition-policy, character-portrait-policy | Passaram, 0 falhas |
+| `node tests/editor-sidebar-ui.mjs` | 119 verificações: nome da camada legível com dica, camada fixa sem alfinete, opacidade no menu, Todos/Mestre e cadeado da composição fora do contexto Composição, Localizar como ícone, Ctrl+C/Ctrl+V com um PNG na área de transferência do sistema (cola o elemento, não o PNG) |
+| `node tests/sheet-line-notes-ui.mjs` (novo) | Passou: botão por linha, popup do item, aplicar e salvar |
+| `node tests/campaign-sessions.mjs`, `scene-editor.mjs`, `modals-ui.mjs`, `forms-ui.mjs`, `simplicity.mjs`, `library.mjs`, `guild.mjs`, `campaign-assets.mjs` (102), `campaign-workspace.mjs` | Passaram |
+| `node tests/campaign-timeline.mjs` | Falhou antes da correção (o modal abria focando a lixeira, a dica abria e o primeiro Escape só fechava a dica); passou depois de a dica por foco exigir `:focus-visible` |
+| `node tests/campaign-chapters.mjs` | Falhava antes desta entrega (seletor de capítulo dentro de "Mais opções", ADR-100); teste ajustado, passou |
+| `node tests/help-ui.mjs` | Falha em `[data-ed-tool=scenery]`: a ferramenta Cenário só aparece no contexto Cena (contextos/ADR-118); o teste é anterior a isso. Não corrigido nesta entrega |
+| `dotnet build` | Não executado: nenhum arquivo de servidor mudou |
+
 ## Barra lateral contextual dos editores e da mesa (ADR-118) — 19 de novembro de 2026
 
 | Verificação | Resultado |

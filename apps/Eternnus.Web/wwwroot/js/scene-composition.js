@@ -6,12 +6,13 @@ import * as P from "./composition-policy.js";
 import { createCompositionSurface, createImageCache, flattenComposition } from "./composition-canvas.js";
 import { publicComposition, hasPublicElements } from "./scene-policy.js";
 import * as MI from "./map-instance-policy.js";
+import { claimSystemClipboard, maxImageBytes } from "./image-drop.js";
+import { formatBytes } from "./account-usage-policy.js";
 
 export const MAP_ELEMENT = "scene-map";
 const G = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 const GUID = new RegExp(`^${G}$`);
 const SAFE_IMAGE = new RegExp(`^/api/campaigns/${G}/assets/maps/${G}/image$`);
-const MAX_OVERLAY_BYTES = 10 * 1024 * 1024;
 
 /** Documento vazio da composição no tamanho da imagem do mapa (camadas Fundo e Elementos). */
 export function blankSceneComposition(width, height) {
@@ -51,12 +52,13 @@ export async function flattenPreview(doc, cache) {
  * Sobreposição enviada ao servidor: PNG transparente do tamanho do mapa, só com o que os jogadores podem ver.
  * Null quando não há nada público (a mesa mostra só o mapa).
  */
-export async function flattenOverlay(doc, cache) {
+export async function flattenOverlay(doc, cache, maxBytes = maxImageBytes()) {
   if (!doc || !hasPublicElements(doc)) return null;
   const canvas = await flattenComposition(publicComposition(doc), cache, { transparent: true });
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
   if (!blob) throw new Error("O navegador não conseguiu gerar a imagem da composição.");
-  if (blob.size > MAX_OVERLAY_BYTES) throw new Error("A composição achatada passa de 10 MB. Use imagens menores ou menos elementos.");
+  // Mesmo limite que o servidor aplica (maior arquivo do plano, ADR-102). PNG obrigatório: a camada é transparente.
+  if (blob.size > maxBytes) throw new Error(`A composição achatada passa de ${formatBytes(maxBytes)}, o limite de arquivo do seu plano. Use imagens menores ou menos elementos.`);
   return blob;
 }
 
@@ -201,13 +203,13 @@ export function createSceneComposer(opts) {
   function copy() {
     const els = selected();
     if (!els.length) return opts.say("Selecione uma imagem para copiar.");
-    clipboard = P.clone(els); pasteCount = 0;
+    clipboard = P.clone(els); pasteCount = 0; claimSystemClipboard();
     opts.say(els.length === 1 ? "Elemento copiado." : `${els.length} elementos copiados.`);
   }
   function cut() {
     const els = editableSelection();
     if (!els.length) return opts.say("Selecione um elemento desbloqueado para recortar.");
-    clipboard = P.clone(els); pasteCount = 0;
+    clipboard = P.clone(els); pasteCount = 0; claimSystemClipboard();
     const ids = new Set(els.map((e) => e.id));
     opts.change("Recortar", () => { const d = doc(); d.elements = d.elements.filter((e) => !ids.has(e.id)); });
     selection = new Set(); surface.invalidate(); opts.onSelection?.();
@@ -217,7 +219,10 @@ export function createSceneComposer(opts) {
     if (!canAdd(clipboard.length)) return true;
     pasteCount++;
     let dx = 16 * pasteCount, dy = 16 * pasteCount;
-    if (at) { const b = P.unionBounds(clipboard); dx = at.x - (b.x + b.width / 2); dy = at.y - (b.y + b.height / 2); }
+    // Ponteiro em cima do original (acabou de clicar nele): a cópia nasceria sobreposta e pareceria que nada colou.
+    // Nesse caso vale o deslocamento em escada; fora dele, a cópia centraliza no ponteiro.
+    const b = P.unionBounds(clipboard);
+    if (at && !(at.x >= b.x && at.x <= b.x + b.width && at.y >= b.y && at.y <= b.y + b.height)) { dx = at.x - (b.x + b.width / 2); dy = at.y - (b.y + b.height / 2); }
     const d = doc();
     const copies = P.regroupCopies(P.cloneElements(clipboard, d.elements, dx, dy).map((e) => ({ ...e, layer: activeLayer, locked: false })), d.elements);
     opts.change("Colar", () => { doc().elements.push(...copies); });

@@ -5,7 +5,7 @@
 // renderOutline(host, spec) — pode ser chamada a cada mudança; preserva foco, rolagem e o ramo recolhido.
 // spec: {
 //   label, sections: [{ id, label?, note?, layers: [Layer] }], collapsed: iterável de chaves "seção:camada",
-//   complete (mostra opacidade numérica), empty: { text, action?: { label, run } },
+//   complete (modo Completa), empty: { text, action?: { label, run } },
 //   actions: [{ id, label, icon, reason?, run }]  (barra do topo: nova camada, localizar seleção…),
 //   onToggle(key, collapsed), onLayer(action, layerId, value, sectionId)  (select|visible|lock|opacity|players),
 //   layerMenu(layerId, sectionId) → itens do menu ⋯ da camada, onSelect(ids, mode, sectionId) (replace|toggle|range),
@@ -28,26 +28,27 @@ let dragging = null;
 const keyOf = (sectionId, layerId) => `${sectionId}:${layerId}`;
 const tip = (label, detail = "") => `data-tip="${esc(label)}"${detail ? ` data-tip-detail="${esc(detail)}"` : ""}`;
 
-function layerRow(section, l, open, complete) {
+function layerRow(section, l, open) {
   const key = keyOf(section.id, l.id), count = l.items?.length || 0;
   const controls = [];
   if (l.visible != null) controls.push(`<button type="button" class="ed-icon-button o-ctl${l.visible ? "" : " off"}" data-o-layer="visible" aria-pressed="${!l.visible}" aria-label="${l.visible ? "Ocultar no editor" : "Mostrar no editor"}: ${esc(l.name)}" ${tip(l.visible ? "Visível no editor" : "Oculta no editor", l.visibleTip || "Só muda o que você vê ao preparar.")}>${icon(l.visible ? "eye" : "eyeOff")}</button>`);
   if (l.locked != null) controls.push(`<button type="button" class="ed-icon-button o-ctl${l.locked ? " on" : ""}" data-o-layer="lock" aria-pressed="${!!l.locked}" aria-label="${l.locked ? "Desbloquear" : "Bloquear"}: ${esc(l.name)}" ${tip(l.locked ? "Bloqueada" : "Desbloqueada", l.locked ? "Elementos desta camada não podem ser selecionados nem movidos." : "Clique para impedir mudanças acidentais nesta camada.")}>${icon(l.locked ? "lock" : "unlock")}</button>`);
   if (l.players != null) {
     const master = l.players === "master";
-    controls.push(`<button type="button" class="o-players${master ? " master" : ""}" data-o-layer="players" aria-pressed="${master}" aria-label="${master ? "Só o mestre vê" : "Jogadores veem"}: ${esc(l.name)}. Alterna a visibilidade para os jogadores." ${tip(master ? "Só o mestre vê" : "Jogadores veem", l.playersTip || "Visibilidade para os jogadores na sessão. Diferente de ocultar no editor.")}>${icon(master ? "master" : "players")}<span>${master ? "Mestre" : "Todos"}</span></button>`);
+    controls.push(`<button type="button" class="ed-icon-button o-ctl o-players${master ? " master" : ""}" data-o-layer="players" aria-pressed="${master}" aria-label="${master ? "Só o mestre vê" : "Jogadores veem"}: ${esc(l.name)}. Alterna a visibilidade para os jogadores." ${tip(master ? "Só o mestre vê" : "Jogadores veem", l.playersTip || "Visibilidade para os jogadores na sessão. Diferente de ocultar no editor.")}>${icon(master ? "master" : "players")}</button>`);
   }
-  if (complete && l.opacity != null) controls.push(`<label class="o-opacity" ${tip("Opacidade no editor", "0 a 100%.")}><span class="sr-only">Opacidade de ${esc(l.name)} (%)</span><input type="number" min="0" max="100" step="5" value="${Number(l.opacity)}" data-o-layer="opacity" inputmode="numeric"><small aria-hidden="true">%</small></label>`);
   const flags = [
-    l.fixed ? `<span class="o-flag" ${tip("Camada fixa", "Não pode ser excluída nem reordenada.")} aria-label="Camada fixa">${icon("pin")}</span>` : "",
-    l.readonly ? `<span class="o-chip" ${tip("Somente leitura", l.note || "Não pode ser editada aqui.")}>Somente leitura</span>` : "",
-    !complete && l.opacity != null && l.opacity < 100 ? `<span class="o-chip">${Number(l.opacity)}%</span>` : "",
+    l.readonly ? `<span class="o-chip">Somente leitura</span>` : "",
+    l.opacity != null && l.opacity < 100 ? `<span class="o-chip" aria-label="opacidade ${Number(l.opacity)}%">${Number(l.opacity)}%</span>` : "",
   ].join("");
+  // Dica no nome (a coluna estreita corta): só no hover dele. `tabindex="-1"` evita que a ajuda crie parada de Tab
+  // e a dica não abre ao refocar a linha depois de cada redesenho.
+  const detail = [l.fixed ? "Camada fixa: não pode ser excluída nem reordenada." : "", l.readonly ? l.note || "Somente leitura: não pode ser editada aqui." : "", l.opacity != null ? `Opacidade no editor: ${Number(l.opacity)}% (menu ⋯).` : ""].filter(Boolean).join(" ");
   const ro = l.readonlyAction ? `<button type="button" class="subtle small o-ro-action" data-o-layer="readonly-action">${l.readonlyAction.icon ? icon(l.readonlyAction.icon) : ""}<span>${esc(l.readonlyAction.label)}</span></button>` : "";
   const expandable = count > 0 || l.emptyText;
-  return `<div class="o-layer-row${l.active ? " active" : ""}${l.visible === false ? " is-hidden" : ""}${l.readonly ? " readonly" : ""}" role="treeitem" aria-level="1" ${expandable ? `aria-expanded="${open}"` : ""} aria-selected="${!!l.active}" tabindex="-1" data-o-row="layer" data-o-key="${esc(key)}" data-o-section="${esc(section.id)}" data-o-layer-id="${esc(l.id)}">
+  return `<div class="o-layer-row${l.active ? " active" : ""}${l.visible === false ? " is-hidden" : ""}${l.readonly ? " readonly" : ""}" role="treeitem" aria-level="1" ${expandable ? `aria-expanded="${open}"` : ""} aria-selected="${!!l.active}" tabindex="-1"${l.fixed ? ' data-fixed="true"' : ""} data-o-row="layer" data-o-key="${esc(key)}" data-o-section="${esc(section.id)}" data-o-layer-id="${esc(l.id)}">
     <button type="button" class="o-twisty" data-o-toggle tabindex="-1" aria-hidden="true" ${expandable ? "" : "disabled"}>${expandable ? icon("chevron") : ""}</button>
-    <span class="o-layer-name" data-o-layer="select">${l.icon ? icon(l.icon) : ""}<span class="o-text">${esc(l.name)}</span>${count ? `<small class="o-count">${count}</small>` : ""}${flags}</span>
+    <span class="o-layer-name" data-o-layer="select">${l.icon ? icon(l.icon) : ""}<span class="o-text" tabindex="-1" ${tip(l.name, detail)}>${esc(l.name)}</span>${count ? `<small class="o-count">${count}</small>` : ""}${flags}</span>
     <span class="o-ctls">${controls.join("")}${ro}${l.menu === false ? "" : `<button type="button" class="ed-icon-button o-more" data-o-layer="menu" aria-haspopup="menu" aria-label="Ações da camada ${esc(l.name)}" ${tip("Ações da camada")}>${icon("dots")}</button>`}</span>
   </div>`;
 }
@@ -60,7 +61,7 @@ function itemRow(section, l, it) {
     it.outside ? `<span class="o-badge warn" ${tip(it.outside === "outside" ? "Fora da área visível" : "Parcialmente fora da área visível", "A parte de fora não aparece no resultado.")} aria-label="${it.outside === "outside" ? "fora da área visível" : "parcialmente fora"}">${icon("warning")}</span>` : "",
   ].join("");
   return `<li class="o-item${it.selected ? " selected" : ""}${it.hidden ? " is-hidden" : ""}" role="treeitem" aria-level="2" aria-selected="${!!it.selected}" tabindex="-1" data-o-row="item" data-o-item="${esc(it.id)}" data-o-section="${esc(section.id)}" data-o-layer-id="${esc(l.id)}" ${it.movable === false ? "" : 'draggable="true"'}>
-    ${icon(it.icon || "object")}<span class="o-text">${esc(it.label)}${it.meta ? `<small>${esc(it.meta)}</small>` : ""}</span>${badges}
+    ${icon(it.icon || "object")}<span class="o-text" tabindex="-1" ${tip(it.label)}>${esc(it.label)}${it.meta ? `<small>${esc(it.meta)}</small>` : ""}</span>${badges}
     <span class="o-item-acts"><button type="button" class="ed-icon-button" data-o-item-act="locate" tabindex="-1" aria-label="Localizar no mapa: ${esc(it.label)}" ${tip("Localizar no mapa", "Enquadra o item sem movê-lo.")}>${icon("target")}</button><button type="button" class="ed-icon-button" data-o-item-act="menu" tabindex="-1" aria-haspopup="menu" aria-label="Ações de ${esc(it.label)}">${icon("dots")}</button></span>
   </li>`;
 }
@@ -88,7 +89,7 @@ export function renderOutline(host, spec) {
   const body = sections.map((s) => `<div class="o-section" role="group" aria-label="${esc(s.label || spec.label || "Camadas")}">${s.label ? `<p class="o-section-label">${esc(s.label)}${s.note ? `<small>${esc(s.note)}</small>` : ""}</p>` : ""}${s.layers.map((l) => {
     const open = !collapsed.has(keyOf(s.id, l.id));
     const items = l.items || [];
-    return `<div class="o-layer" data-o-drop-layer="${esc(l.id)}" data-o-section="${esc(s.id)}">${layerRow(s, l, open, spec.complete)}${open ? (items.length ? `<ul class="o-items" role="group">${items.map((it) => itemRow(s, l, it)).join("")}</ul>` : l.emptyText ? `<p class="o-empty-layer">${esc(l.emptyText)}</p>` : "") : ""}</div>`;
+    return `<div class="o-layer" data-o-drop-layer="${esc(l.id)}" data-o-section="${esc(s.id)}">${layerRow(s, l, open)}${open ? (items.length ? `<ul class="o-items" role="group">${items.map((it) => itemRow(s, l, it)).join("")}</ul>` : l.emptyText ? `<p class="o-empty-layer">${esc(l.emptyText)}</p>` : "") : ""}</div>`;
   }).join("")}</div>`).join("");
   const empty = !total && spec.empty ? `<div class="o-empty"><p>${esc(spec.empty.text)}</p>${spec.empty.action ? `<button type="button" class="subtle small" data-o-empty>${esc(spec.empty.action.label)}</button>` : ""}</div>` : "";
   host.innerHTML = `${actions ? `<div class="o-toolbar" role="toolbar" aria-label="Ações da árvore">${actions}<span class="o-summary" aria-live="polite" data-text="${total ? `${total} ${total === 1 ? "elemento" : "elementos"}${selected.length ? ` · ${selected.length} selecionado${selected.length > 1 ? "s" : ""}` : ""}` : ""}">${total ? `${total} ${total === 1 ? "elemento" : "elementos"}${selected.length ? ` · ${selected.length} selecionado${selected.length > 1 ? "s" : ""}` : ""}` : ""}</span></div>` : ""}<div class="ed-outline" role="tree" aria-multiselectable="true" aria-label="${esc(spec.label || "Camadas e elementos")}">${body}</div>${empty}`;
@@ -176,7 +177,7 @@ function bind(host) {
     if (itemAct === "locate") { spec.onLocate?.(row.dataset.oItem, row.dataset.oSection); return; }
     if (itemAct === "menu") { itemMenu(host, row, e.target.closest("button")); return; }
     const ctl = e.target.closest("[data-o-layer]")?.dataset.oLayer;
-    if (ctl && ctl !== "select" && ctl !== "opacity") {
+    if (ctl && ctl !== "select") {
       const l = layerOf(spec, row.dataset.oSection, row.dataset.oLayerId);
       if (ctl === "menu") { layerMenu(host, row, e.target.closest("button")); return; }
       if (ctl === "readonly-action") { l?.readonlyAction?.run?.(); return; }
@@ -185,7 +186,6 @@ function bind(host) {
       spec.onLayer?.(ctl, row.dataset.oLayerId, undefined, row.dataset.oSection);
       return;
     }
-    if (e.target.closest("input")) return;
     selectRow(host, row, e);
   });
   host.addEventListener("dblclick", (e) => {
@@ -193,12 +193,6 @@ function bind(host) {
     if (row && !e.target.closest("button")) renameItem(host, row);
     const layer = e.target.closest('[data-o-row="layer"] .o-layer-name');
     if (layer) { const r = layer.closest("[data-o-row]"); const spec = specOf(host); const l = layerOf(spec, r.dataset.oSection, r.dataset.oLayerId); if (l && !l.readonly && !l.reasons?.rename) { const name = prompt("Nome da camada (até 40 caracteres)", l.name); if (name != null && name.trim()) spec.onLayer?.("rename", l.id, name.trim().slice(0, 40), r.dataset.oSection); } }
-  });
-  host.addEventListener("change", (e) => {
-    const t = e.target;
-    if (t.dataset.oLayer !== "opacity") return;
-    const row = t.closest("[data-o-row]");
-    specOf(host).onLayer?.("opacity", row.dataset.oLayerId, Math.max(0, Math.min(100, Math.round(Number(t.value) || 0))), row.dataset.oSection);
   });
   host.addEventListener("contextmenu", (e) => {
     const row = e.target.closest("[data-o-row]");

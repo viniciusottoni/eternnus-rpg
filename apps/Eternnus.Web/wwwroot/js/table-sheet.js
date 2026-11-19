@@ -2,7 +2,7 @@
 // ficha completa com o mesmo botão de rolar, condições com duração e a visão do grupo do mestre.
 // Toda escrita vai ao servidor (SessionService confere papel, dono e recurso); aqui só a apresentação.
 import { api } from "./api.js";
-import { esc, button, toast, formError, submitForm, modal, formatDate } from "./ui.js";
+import { esc, button, rowAction, toast, formError, submitForm, modal, formatDate } from "./ui.js";
 import { renderSheet } from "./pdf-sheet.js";
 import { renderCompactSheet } from "./sheet-compact.js";
 import { rollFormulas, rollLabel } from "./sheet-roll-policy.js";
@@ -92,7 +92,7 @@ export function useItemDialog({ c, base, item, resources }) {
 
 /** Condições com duração (rodadas descontadas no turno do personagem). Mestre ou dono. */
 export function effectsDialog({ base, characterId, name, effects, onSaved = () => {} }) {
-  const row = (e = {}, i = 0) => `<li class="effect-row"><div class="field"><label for="ef-name-${i}">Condição</label><input id="ef-name-${i}" data-ef="name" maxlength="40" value="${esc(e.name || "")}" placeholder="Ex.: Abalado"></div><div class="field"><label for="ef-rounds-${i}">Rodadas</label><input id="ef-rounds-${i}" data-ef="rounds" type="number" min="1" max="99" inputmode="numeric" value="${e.rounds ?? ""}" placeholder="sem prazo"></div>${button("Remover", "ef-remove", "", "subtle small", `aria-label="Remover condição ${esc(e.name || "")}"`)}</li>`;
+  const row = (e = {}, i = 0) => `<li class="effect-row"><div class="field"><label for="ef-name-${i}">Condição</label><input id="ef-name-${i}" data-ef="name" maxlength="40" value="${esc(e.name || "")}" placeholder="Ex.: Abalado"></div><div class="field"><label for="ef-rounds-${i}">Rodadas</label><input id="ef-rounds-${i}" data-ef="rounds" type="number" min="1" max="99" inputmode="numeric" value="${e.rounds ?? ""}" placeholder="sem prazo"></div>${rowAction("trash", "Remover condição", e.name || "", "ef-remove", "", "subtle small danger-text")}</li>`;
   const body = stackedDialog(`Condições de ${name}`, `<form class="effects-form"><p class="form-help">${helpButton("mesa.condicoes.duracao", "Condições com duração")} Cada condição perde uma rodada quando o turno chega ao personagem e sai ao chegar a zero. Sem rodadas, fica até alguém remover. Até ${EFFECT_MAX}.</p><ol class="effect-list">${(effects || []).map(row).join("")}</ol>${button("+ Adicionar condição", "ef-add", "", "subtle small")}${formError()}<div class="form-actions">${button("Cancelar", "ef-cancel", "", "subtle", "data-notes-close")}<button type="submit" class="primary">Salvar condições</button></div></form>`);
   const form = body.querySelector("form"), list = body.querySelector(".effect-list");
   let next = (effects || []).length;

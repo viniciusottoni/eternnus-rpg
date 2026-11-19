@@ -43,7 +43,7 @@ try {
   await page.locator('.tl-spot', { hasText: titles[0] }).click();
   await page.locator('#modal .workspace-prose').waitFor(); ok((await page.locator('#modal .workspace-prose').textContent()).includes('Com vários parágrafos.'), 'Relato completo no modal');
   await page.waitForTimeout(400); await page.screenshot({ path: `${out}/read-modal.png` });
-  await page.getByRole('button', { name: '+ Inserir depois', exact: true }).click();
+  await page.getByRole('button', { name: 'Inserir depois', exact: true }).click();
   await page.locator('#tl-title').fill('A ponte de cristal'); await page.locator('#tl-when').fill('Pouco depois da fundação'); await page.locator('#tl-summary').fill('Inserida pelo modal.');
   await page.locator('[name=published]').check(); await page.getByRole('button', { name: 'Salvar ponto', exact: true }).click();
   await page.locator('.tl-spot', { hasText: 'A ponte de cristal' }).waitFor();

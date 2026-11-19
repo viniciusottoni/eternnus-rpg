@@ -24,7 +24,8 @@ function ensureDialog() {
 export function openItemNotes({ label, value, notes = {}, editable = false, onApply = () => {}, onUse = null }) {
   const el = ensureDialog();
   const items = fieldItems(value);
-  el.querySelector("#notes-dialog-title").textContent = `Descrições: ${label}`;
+  // Aberto por uma linha (ADR-122): título com o próprio item.
+  el.querySelector("#notes-dialog-title").textContent = items.length === 1 ? `Descrição: ${items[0].label}` : `Descrições: ${label}`;
   const body = el.querySelector(".notes-dialog-body");
   if (!items.length) {
     body.innerHTML = `<p class="muted">Este campo ainda não tem itens. Escreva um item por linha na ficha para descrevê-lo.</p><div class="form-actions">${button("Fechar", "notes-close", "", "subtle", "data-notes-close")}</div>`;

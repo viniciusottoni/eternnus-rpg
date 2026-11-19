@@ -1,7 +1,7 @@
 // Tabela única de sessões (no Eternnus e antes dele) com busca, filtros, leitura e importação em lote.
 // Mestre e jogadores usam a mesma tela; o servidor filtra o que cada um pode ler.
 import { api } from "./api.js";
-import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
+import { $, esc, button, iconButton, iconLink, modal, formError, submitForm, toast } from "./ui.js";
 import { helpButton } from "./help.js";
 import { sessionLabel } from "./session-policy.js";
 import { chapterKindLabel } from "./campaign-chapters.js";
@@ -93,8 +93,9 @@ export async function openEntry(d, key, onChanged) {
   const live = s.source === "eternnus";
   const actions = master && !d.archived
     ? live
-      ? `<a class="button subtle small" href="#session/${esc(s.id)}/timeline">◷ Histórico</a><a class="button subtle small" href="#session/${esc(s.id)}/notes">✎ Notas</a>${button(s.published ? "Resumo publicado" : "✍ Resumo", "le-recap", "", "subtle small")}${button("❖ Capítulo", "le-chapter", "", "subtle small")}`
-      : `${button("Editar registro", "le-edit", "", "subtle small")}${button("Excluir registro", "le-delete", "", "danger small")}`
+      ? `${iconLink("history", "Histórico da sessão", `#session/${s.id}/timeline`)}${iconLink("notes", "Notas da sessão", `#session/${s.id}/notes`)}${iconButton("layers", "Capítulo", "le-chapter", "", "subtle small")}${button(s.published ? "Resumo publicado" : "✍ Resumo", "le-recap", "", "subtle small")}`
+      : `${iconButton("trash", "Excluir registro", "le-delete", "", "subtle small danger-text")}${button("Editar registro", "le-edit", "", "subtle small")}`
+
     : "";
   modal(sessionLabel(s.number, s.title), `<p class="muted small entry-meta">${meta}</p>${s.objective ? `<details class="entry-private"><summary>Objetivo inicial (só você vê)</summary><p class="workspace-prose">${esc(s.objective)}</p></details>` : ""}<h3 class="entry-heading">${live ? "Resumo" : "Resumo geral"}</h3>${s.text ? `<div class="workspace-prose entry-text">${esc(s.text)}</div>` : `<p class="muted small">${live ? "O resumo desta sessão ainda não foi escrito." : "Sem resumo geral."}</p>`}${scenes}<div class="form-actions entry-actions">${actions}${button("Fechar", "modal-close", "", "subtle small")}</div>`);
   $("#modal").classList.add("wide");

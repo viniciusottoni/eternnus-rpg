@@ -53,7 +53,7 @@ const entries = {
     "summary": "Cada ficha pode ter uma imagem, mostrada ao lado da ficha.",
     "body": [
       "A imagem fica fora do PDF: nada cobre os campos. Só o dono da ficha envia, troca ou remove; trocar a imagem não altera a ficha nem a revisão dela.",
-      "Aceita PNG ou JPEG de até 10 MB. O servidor confere o arquivo, remove metadados e reduz para até 1.024 px. PNG com transparência continua transparente.",
+      "Aceita PNG ou JPEG até o maior arquivo do seu plano (Minha conta mostra o valor). O servidor confere o arquivo, remove metadados e reduz para até 1.024 px. PNG com transparência continua transparente.",
       "Quem pode ler a ficha também vê a imagem: o mestre das campanhas vinculadas e, se a ficha for compartilhada, os participantes da mesa. A imagem conta no armazenamento da sua conta."
     ],
     "audience": "all"

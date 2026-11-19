@@ -6,7 +6,7 @@ import { helpButton } from "./help.js";
 import { api, ApiError } from "./api.js";
 import { state } from "./state.js";
 import { shell } from "./layout.js";
-import { $, esc, button, formError, modal, toast, empty, formatDate, navigate, submitForm } from "./ui.js";
+import { $, esc, button, iconButton, formError, modal, toast, empty, formatDate, navigate, submitForm } from "./ui.js";
 import { isAdmin } from "./policy.js";
 import { mountClientTable } from "./data-table.js";
 import { isGuid } from "./session-policy.js";
@@ -542,7 +542,7 @@ class Editor {
     this.isDraft
       ? `<label class="tpl-toggle"><input type="checkbox" id="ed-snap"> Encaixar na grade</label>
   ${button("+ Campo", "ed-add-field", "", "subtle")}
-  <div class="tpl-pdf" role="group" aria-label="PDF de fundo">${button(this.hasPdf ? "Trocar PDF" : "Enviar PDF", "ed-pdf", "", "subtle")}${this.hasPdf ? button("Remover PDF", "ed-pdf-remove", "", "subtle danger") : ""}<input type="file" id="ed-pdf-file" accept="application/pdf,.pdf" hidden></div>`
+  <div class="tpl-pdf" role="group" aria-label="PDF de fundo">${button(this.hasPdf ? "Trocar PDF" : "Enviar PDF", "ed-pdf", "", "subtle")}${this.hasPdf ? iconButton("trash", "Remover PDF", "ed-pdf-remove", "", "subtle danger-text") : ""}<input type="file" id="ed-pdf-file" accept="application/pdf,.pdf" hidden></div>`
       : ""
   }
 </div>
@@ -1079,7 +1079,7 @@ class Editor {
   <div class="field tpl-formula-field"><label for="ed-act-formula-${i}">Rolagem</label><div class="tpl-combo"><input id="ed-act-formula-${i}" data-act="formula" data-index="${i}" maxlength="300" spellcheck="false" value="${esc(a.formula)}" placeholder="Ex.: 1d20 + @forca_mod" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="ed-act-formula-${i}-list" aria-describedby="ed-act-formula-msg-${i}" ${ro}><ul class="tpl-suggest" id="ed-act-formula-${i}-list" role="listbox" hidden></ul></div>
     <p class="tpl-msg" id="ed-act-formula-msg-${i}" aria-live="polite">${esc(this.actionCheck(a).text)}</p></div>
   <div class="field"><label for="ed-act-desc-${i}">Descrição</label><input id="ed-act-desc-${i}" data-act="description" data-index="${i}" maxlength="300" value="${esc(a.description)}" ${ro}></div>
-  <div class="tpl-action-tools">${button("🎲 Testar rolagem", "ed-action-roll", i, "subtle small")}${this.isDraft ? button("Remover", "ed-action-remove", i, "subtle small danger") : ""}<output class="tpl-roll" id="ed-act-roll-${i}" aria-live="polite"></output></div>
+  <div class="tpl-action-tools">${button("🎲 Testar rolagem", "ed-action-roll", i, "subtle small")}${this.isDraft ? iconButton("trash", "Remover ação", "ed-action-remove", i, "subtle small danger-text") : ""}<output class="tpl-roll" id="ed-act-roll-${i}" aria-live="polite"></output></div>
 </fieldset>`;
         })
         .join("") +
@@ -1146,7 +1146,7 @@ class Editor {
     const pageInfo = this.hasPdf
       ? `<p>${plural(pages, "página", "páginas")} do PDF de fundo.</p>`
       : `<p>${plural(pages, "página em branco", "páginas em branco")} (${Math.round(this.doc.pages[0].width)} × ${Math.round(this.doc.pages[0].height)} pt).</p>${
-          this.isDraft ? `<div class="tpl-inline-actions">${button("+ Página", "ed-page-add", "", "subtle small", pages >= LIMITS.pages ? "disabled" : "")}${button("Remover última página", "ed-page-remove", "", "subtle small", pages <= 1 ? "disabled" : "")}</div>` : ""
+          this.isDraft ? `<div class="tpl-inline-actions">${button("+ Página", "ed-page-add", "", "subtle small", pages >= LIMITS.pages ? "disabled" : "")}${iconButton("trash", "Remover última página", "ed-page-remove", "", "subtle small danger-text", pages <= 1 ? "disabled" : "")}</div>` : ""
         }`;
     const issues = this.isDraft
       ? this.issues.length

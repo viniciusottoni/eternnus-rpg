@@ -43,6 +43,10 @@ export function button(text, action, id = "", classes = "", extra = "") {
 export function iconButton(iconName, label, action, id = "", classes = "subtle", extra = "") {
   return button(icon(iconName), action, id, `${classes} tool-icon`.trim(), `aria-label="${esc(label)}" ${extra}`.trim());
 }
+/** Link de navegação só com ícone, mesmo visual de `iconButton` (ADR-119). `href` deve ser rota interna montada pelo código. */
+export function iconLink(iconName, label, href, classes = "button subtle small") {
+  return `<a class="${classes} tool-icon" href="${esc(href)}" aria-label="${esc(label)}" data-tip="${esc(label)}">${icon(iconName)}</a>`;
+}
 /** Ação de linha de lista ou tabela: sempre ícone, para a coluna de ações não quebrar linha. A dica mostra só o
  *  verbo; o nome acessível inclui o item (`Excluir: Nome`). `extra` com `data-tip` próprio (motivo de indisponível) prevalece. */
 export function rowAction(iconName, verb, subject, action, id = "", classes = "subtle small", extra = "") {

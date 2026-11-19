@@ -1,11 +1,11 @@
 // Imagem do personagem (ADR-097): cartão ao lado da ficha, fora do PDF. Envio e remoção só do dono; leitura segue a ficha.
 import { api } from "./api.js";
-import { $, esc, button, modal, toast } from "./ui.js";
+import { $, esc, button, iconButton, modal, toast } from "./ui.js";
 import { helpButton } from "./help.js";
 import { mountImageZoom } from "./image-zoom.js";
 import { portraitUrl, initials, portraitFileError } from "./character-portrait-policy.js";
 import { state } from "./state.js";
-import { uploadLimit } from "./account-usage-policy.js";
+import { uploadLimit, formatBytes } from "./account-usage-policy.js";
 
 /**
  * Monta o cartão em `host`. `state`: { id, name, version, canChange, fresh }. `onChange(version)` recebe a nova versão.
@@ -23,7 +23,7 @@ export function mountCharacterPortrait(host, state, { onChange = () => {} } = {}
     const controls = current.fresh
       ? `<p class="form-help">Crie o personagem para adicionar uma imagem.</p>`
       : current.canChange
-        ? `<input id="cs-portrait-file" type="file" accept="image/png,image/jpeg" hidden><div class="cs-portrait-actions">${button(url ? "Trocar imagem" : "Adicionar imagem", "portrait-pick", "", "subtle")}${url ? button("Remover", "portrait-remove", "", "subtle") : ""}</div><p class="form-help">PNG ou JPEG, até 10 MB. A imagem é reduzida para até 1.024 px e fica fora do PDF.</p>`
+        ? `<input id="cs-portrait-file" type="file" accept="image/png,image/jpeg" hidden><div class="cs-portrait-actions">${button(url ? "Trocar imagem" : "Adicionar imagem", "portrait-pick", "", "subtle")}${url ? iconButton("trash", "Remover imagem", "portrait-remove", "", "subtle danger-text") : ""}</div><p class="form-help">PNG ou JPEG, até ${formatBytes(uploadLimit(state.user))} (limite do seu plano). A imagem é reduzida para até 1.024 px e fica fora do PDF.</p>`
         : url ? "" : `<p class="form-help">Sem imagem do personagem.</p>`;
     host.innerHTML = `<div class="cs-portrait-head"><h2>Imagem do personagem</h2>${helpButton("fichas.imagem.personagem", "Imagem do personagem")}</div>${frame}<p class="cs-portrait-name">${name}</p>${controls}<p class="form-help cs-portrait-status" role="status">${esc(message)}</p>`;
     const img = host.querySelector(".cs-portrait-frame img");

@@ -1441,3 +1441,60 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 **Invariantes preservadas:** documentos, contratos HTTP, validações de domínio, permissões, undo/redo (toda mudança passa por `change`/`compChange`/`commit`), seleção múltipla, atalhos, arrastar do acervo e de arquivos, estado não salvo, salvar/aplicar/apresentar/reiniciar. Preparação continua privada até Aplicar. Nada foi movido para o servidor.
 
 **Consequências:** `renderLayersPanel`/`renderStructurePanel` removidos do núcleo. Ícones novos em `icons.js` (`chevron`, `players`, `master`, `pin`, `inspect`). Chaves de ajuda `campanhas.editor.inspetor` e `campanhas.cenas.configurar`; `campanhas.editor.camadas` e `campanhas.editor.contextos` reescritas. Service worker `v95` (`editor-outline.js` na lista pública).
+
+## ADR-119 — Grupos de ação em painéis: principal com texto, secundárias em ícone; árvore de camadas sem quebra (19/11/2026)
+
+**Contexto:** painéis estreitos (detalhes da Preparação, inspetor e Configurar dos editores) e modais/listas ainda tinham grupos de botões de texto que quebravam um sob o outro, alinhados à direita pelo `.form-actions` global (`justify-content: flex-end`): "Editar preparação / Duplicar / Renomear / Excluir" nos detalhes da Preparação, "Adicionar imagem… / Abrir o mapa original…" na Composição da cena, camadas, marcadores, luz, marcas, linha do tempo, capítulos, biblioteca, guilda, ficha. Na árvore de camadas (ADR-118), olho + cadeado + pílula "Todos" + campo de opacidade + ⋯ deixavam ~40 px para o nome ("E", "F"), sem dica com o nome; o alfinete de camada fixa parecia um botão "fixar/desfixar" que não fazia nada; e Todos/Mestre, olho, cadeado e opacidade das camadas da composição gravavam o rascunho sem redesenhar a árvore fora do contexto Composição.
+
+**Decisão:**
+- Regra única (extensão das ADR-101/106 a todo o sistema): em grupo com duas ou mais ações, **uma** ação principal fica com texto; as secundárias viram `iconButton` (botão) ou `iconLink` (novo, para `<a>` de navegação) de `js/ui.js`, com nome acessível e dica. Linhas de lista/tabela usam `rowAction`. Excluir/remover vira lixeira em `danger-text`. Ficam com texto: ação principal, Cancelar/Salvar de formulário, confirmação destrutiva dentro do diálogo de confirmação e decisões de conflito.
+- Painéis laterais e inspetores (`.ed-panel-body`, `.ed-props`, `.px-details`, `.ed-cfg-card`): `.form-actions`/`.px-detail-actions` alinham à esquerda; a principal com texto ocupa o resto da fila e os ícones ficam ao lado. Nada empilhado à direita.
+- Detalhes da Preparação: `PANEL_ICON` mapeia cada ação do painel a um ícone (sem ícone, continua texto). Indisponível mantém `aria-disabled` e diz o motivo na dica ("Excluir: Apresente outra cena…").
+- Árvore de camadas (`editor-outline.js`): Todos/Mestre vira ícone (jogadores/coroa; dourado quando só o mestre vê), como olho e cadeado. A opacidade numérica sai da linha (continua no menu ⋯ e aparece como selo quando < 100%). O alfinete sai: camada fixa é dita na dica da linha e no motivo dos itens desabilitados do menu. O nome (`.o-text`, `tabindex="-1"`) leva `data-tip` com o nome completo e o detalhe (fixa, opacidade); a dica abre só no hover do nome, sem parada de Tab nova e sem abrir ao refocar a linha depois de cada redesenho.
+- `afterCompose()` do editor de cena redesenha a árvore sempre, não só no contexto Composição.
+- Dica por foco (`help.js`) só abre com foco de teclado (`:focus-visible`). Antes, um modal aberto por clique focava o primeiro controle — agora muitas vezes um ícone com dica — e o primeiro Escape só fechava a dica, não o modal (acusado por `campaign-timeline.mjs`). Teclado e hover continuam abrindo a dica; Escape continua dispensando.
+
+**Jornadas afetadas:** preparar cena (detalhes da Preparação, editor), conduzir (luz/marca na mesa), criar campanha (capítulos, sessões, linha do tempo). Nenhum clique obrigatório a mais: as mesmas ações, mesmo `data-action`. Nenhuma ferramenta nova (`TOOL_INVENTORY`/`BASIC_BUDGET` iguais), nenhum campo novo, nenhuma ação nova na Busca de ações.
+
+**Alternativas descartadas:** menu "Mais ações" para as secundárias (um clique a mais em Duplicar/Renomear); só reduzir fonte e padding (continuaria quebrando com rótulos longos); manter opacidade numérica na linha só na Completa (o nome continuaria ilegível na lateral padrão).
+
+**Consequências:** `campaign-chapters.mjs` passa a abrir "Mais opções" antes do seletor de capítulo do modal de abertura (falha anterior a esta entrega, da ADR-100). Testes ajustados aos novos nomes acessíveis ("Capítulo", "Inserir depois", "Editar: A Chegada a Valkaria"); `editor-sidebar-ui.mjs` passa a conferir camada fixa por `data-fixed` + dica, nome com largura útil, ausência de opacidade na linha e Todos/Mestre/cadeado fora da Composição. Sem migração; service worker `v96`.
+
+## ADR-120 — Ctrl+C/Ctrl+V de elementos nos editores vence imagem antiga do sistema (19/11/2026)
+
+**Contexto:** copiar uma imagem da composição (editor de cena) ou do editor de mapas e colar com Ctrl+V "não funcionava". Copiar só guardava o elemento na memória do editor; a área de transferência do sistema continuava com o que o usuário copiou antes (em geral um print). No Ctrl+V, o evento `paste` trazia essa imagem e o editor a enviava como imagem nova (ADR-090), em vez de colar o elemento. Na composição, a cópia ainda era centralizada no último ponto do ponteiro — logo depois de clicar no elemento, em cima do original —, então mesmo o colar interno parecia não acontecer.
+
+**Decisão:**
+- Ctrl+C/Ctrl+X do editor não bloqueiam mais o evento nativo: o núcleo (`editor-core.js`) intercepta `copy`/`cut` só nesse atalho e grava `EDITOR_CLIPBOARD_MARK` (`editor-policy.js`) como texto. "Copiar"/"Recortar" pelo menu usam `claimSystemClipboard()` (`image-drop.js`, `navigator.clipboard.writeText`; sem permissão, segue sem erro). Assim o Ctrl+V seguinte não encontra imagem e cai no colar interno; uma imagem copiada depois, fora do editor, continua sendo enviada normalmente (a mais recente vence).
+- Colar na composição: se o ponteiro está dentro da área do original, vale o deslocamento em escada (16 px por colagem); fora dela, a cópia centraliza no ponteiro.
+- Nada muda em campos de texto: copiar/colar texto continua nativo.
+
+**Jornadas:** preparar cena (composição, marcadores, editor de mapas). Nenhum clique a mais; nenhuma ferramenta, campo ou ação nova.
+
+**Limite:** colar o marcador fora do Eternnus cola o texto "[Eternnus] elementos copiados no editor". Não há colagem entre abas/janelas de elementos (a memória do editor é da página).
+
+**Verificação:** `editor-sidebar-ui.mjs` põe um PNG na área de transferência do sistema, seleciona a imagem da composição, Ctrl+C (confere o marcador), Ctrl+V (confere dois elementos) e desfaz. Service worker `v96`.
+
+## ADR-121 — Achatamento de composições e retrato seguem o maior arquivo do plano (19/11/2026)
+
+**Contexto:** o servidor já aceitava, nas rotas de composição (`PUT …/maps/{id}/composition`, `PUT …/scenes/{id}/composition`) e no retrato da ficha, o maior arquivo do plano de quem envia (ADR-102: Basic 20 MB, Plus 30 MB, Pro 60 MB, Max 100 MB). O cliente, porém, recusava antes de enviar com 10 MB fixos: "A composição achatada passa de 10 MB", o "Criar mapa a partir da composição", o achatamento do editor de mapas (que passava a JPEG acima de 10 MB) e a mensagem de 413. O retrato dizia "até 10 MB" embora validasse pelo plano.
+
+**Decisão:** todos esses pontos usam `maxImageBytes()` (`image-drop.js`, = `uploadLimit(state.user)`), o mesmo valor que o servidor aplica, e as mensagens dizem o valor com "o limite de arquivo do seu plano". `flattenOverlay(doc, cache, maxBytes)` e `encodeFlat(canvas, maxBytes)` recebem o limite (a camada da cena continua só PNG, por ser transparente). O texto do retrato e a ajuda `fichas` mostram o limite do plano.
+
+**Fora do escopo:** a redução automática da importação UVTT e das imagens temporárias da mesa (`IMAGE_LIMITS.maxBytes`, 10 MB) continua: ela encolhe a imagem no aparelho em vez de recusar, para a mesa carregar rápido em todos os jogadores.
+
+**Jornadas:** preparar cena (salvar composição grande). Nenhum clique, campo ou ferramenta nova. Servidor sem mudança (limite já era do plano); sem migração. Service worker `v96`.
+
+## ADR-122 — Descrição por linha nas listas da ficha (19/11/2026)
+
+**Contexto:** as descrições por item (ADR-098) já eram guardadas por linha (chave = texto do item), mas a ficha só oferecia um botão no canto do campo: numa lista de várias linhas (Habilidades de classe e poderes, Magias…) o contador "1" ficava no grupo e o popup abria todos os itens, sem dizer qual linha tinha descrição nem permitir descrever direto a linha.
+
+**Decisão:**
+- Em lista de texto longo que cabe no campo (`fitsRows`), `pdf-sheet.js` desenha uma faixa `.ps-line-notes` com a mesma grade das linhas (1,2 × fonte) e um botão por item: "+" (aparece no hover/foco do campo) para adicionar; "i" dourado fixo quando a linha tem descrição. Na leitura (inclusive na mesa), só as linhas descritas têm botão. O botão do canto sai desses campos; continua em listas de uma linha e quando o valor tem mais linhas que o campo (dado antigo, sem grade estável).
+- O botão abre o popup só com aquele item (título "Descrição: item"); na mesa, com "Usar". `opts.notes.open(f, valor)` recebe a linha; `character-sheet.js#openNotes(name, line)` passou a respeitar o valor recebido.
+- A faixa não recebe o ponteiro (só os botões) e as linhas ganham recuo à direita para o texto não ficar sob o botão. Nome acessível: "Adicionar descrição a {item} ({campo})" / "Descrição de {item} ({campo})".
+
+**Jornadas:** jogador no celular e preparar ficha: descrever um item passa a ser um clique na própria linha (antes: abrir o grupo e achar o item). Sem campo, ferramenta ou dado novo; contrato HTTP e `Character.ItemNotes` iguais. Service worker `v96`.
+
+**Verificação:** `tests/sheet-line-notes-ui.mjs` (novo; Chrome + PostgreSQL): um botão por item, sem botão de canto, linha descrita marcada, popup só do item, aplicar marca a linha e salvar grava as duas descrições.
+

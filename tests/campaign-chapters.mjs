@@ -45,6 +45,8 @@ try {
   await page.getByRole('button', { name: 'Criar capítulo', exact: true }).click();
   await page.getByRole('link', { name: 'A Chegada a Valkaria', exact: true }).waitFor();
   await page.getByRole('button', { name: '✦ Iniciar nova sessão', exact: true }).first().click();
+  // ADR-100: nome, objetivo e capítulo ficam em "Mais opções" do modal.
+  await page.locator('#modal .start-more > summary').click();
   await page.locator('#f-chapter-select').waitFor();
   const chapters = await master(path + '/chapters');
   check(await page.locator('#f-chapter-select').inputValue(), chapters.items[0].id);
@@ -78,7 +80,7 @@ try {
   await page.getByRole('link', { name: 'A Chegada a Valkaria', exact: true }).waitFor();
   await page.screenshot({ path: `${out}/journal-desktop.png`, fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: 'O portão', exact: true }).click();
-  await page.getByRole('button', { name: '❖ Capítulo', exact: true }).click();
+  await page.getByRole('button', { name: 'Capítulo', exact: true }).click();
   await page.locator('#sc-select').selectOption('');
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await page.locator('#modal').waitFor({ state: 'hidden' });
@@ -88,7 +90,7 @@ try {
   // Visibilidade (ADR-062): novos capítulos ficam ocultos; o mestre revela o ato pela interface e o jogador lê só ele.
   await master(path + '/chapters', 'POST', { title: 'Segredo do arco', kind: 'arc', summary: 'O rei trai.' });
   check((await player(path + '/chapters')).total, 0);
-  await page.getByRole('button', { name: 'Editar A Chegada a Valkaria', exact: true }).click();
+  await page.getByRole('button', { name: 'Editar: A Chegada a Valkaria', exact: true }).click();
   await page.locator('#chapter-form input[name=published]').check();
   await page.getByRole('button', { name: 'Salvar capítulo', exact: true }).click();
   await page.locator('#modal').waitFor({ state: 'hidden' });

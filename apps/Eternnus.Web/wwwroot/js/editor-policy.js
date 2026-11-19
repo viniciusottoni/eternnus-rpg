@@ -2,6 +2,11 @@
 // Sem DOM nem HTTP: usadas pelos editores de mapas e cenas e testadas em Node.
 
 /** Camadas obrigatórias, sempre nesta ordem (de baixo para cima). */
+// Texto posto na área de transferência do sistema ao copiar elementos de um editor (Ctrl+C/Ctrl+X ou menu Copiar):
+// substitui imagens copiadas antes (um print), para o Ctrl+V seguinte colar o elemento interno. Fora do Eternnus,
+// cola só este aviso.
+export const EDITOR_CLIPBOARD_MARK = "[Eternnus] elementos copiados no editor";
+
 export const REQUIRED_LAYERS = Object.freeze([
   Object.freeze({ id: "base", name: "Base", kind: "base" }),
   Object.freeze({ id: "elements", name: "Elementos", kind: "elements" }),

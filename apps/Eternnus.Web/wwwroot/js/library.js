@@ -5,7 +5,7 @@ import { helpButton } from "./help.js";
 import { api, ApiError } from "./api.js";
 import { state } from "./state.js";
 import { shell } from "./layout.js";
-import { $, esc, button, field, formError, modal, toast, empty, formatDate } from "./ui.js";
+import { $, esc, button, iconButton, field, formError, modal, toast, empty, formatDate } from "./ui.js";
 import { isStaff, isAdmin } from "./policy.js";
 import { isGuid } from "./session-policy.js";
 import { highlightIn } from "./data-table.js";
@@ -598,12 +598,12 @@ function manage(item) {
   ${deleted ? `<div><dt>Situação</dt><dd><span class="status-chip bad">Excluído em ${formatDate(item.deletedAt)}</span></dd></div>` : ""}
 </dl>
 <div class="lib-manage-actions">
-  ${button("Visualizar", "lib-view", item.id, "subtle")}
-  ${deleted ? "" : button("Editar dados", "lib-edit", item.id, "subtle")}
-  ${deleted ? "" : button("Substituir arquivo", "lib-replace", item.id, "subtle")}
-  ${button("Histórico", "lib-history", 1, "subtle")}
-  ${deleted && admin ? button("Restaurar material", "lib-restore", item.id, "primary") : ""}
-  ${deleted ? "" : button("Excluir", "lib-delete", item.id, "danger")}
+  ${deleted && admin ? button("Restaurar material", "lib-restore", item.id, "primary") : button("Visualizar", "lib-view", item.id, "subtle")}
+  ${deleted && admin ? iconButton("eye", "Visualizar", "lib-view", item.id) : ""}
+  ${deleted ? "" : iconButton("edit", "Editar dados", "lib-edit", item.id)}
+  ${deleted ? "" : iconButton("upload", "Substituir arquivo", "lib-replace", item.id)}
+  ${iconButton("history", "Histórico", "lib-history", 1)}
+  ${deleted ? "" : iconButton("trash", "Excluir", "lib-delete", item.id, "subtle danger-text")}
 </div>
 ${deleted && !admin ? '<p class="muted small">Somente um administrador pode restaurar um material excluído.</p>' : ""}`,
   );

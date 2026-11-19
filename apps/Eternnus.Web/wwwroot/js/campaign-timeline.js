@@ -2,7 +2,7 @@
 // direção e curvas ligam uma fileira à outra; no celular vira uma linha vertical. O mestre escreve; o grupo lê o que foi publicado.
 // Histórias longas são divididas em trechos recolhíveis, com um navegador no topo; o mestre insere pontos pelo "+" na própria linha.
 import { api } from "./api.js";
-import { $, esc, modal, button, formError, submitForm, toast, empty, actionBar } from "./ui.js";
+import { $, esc, modal, button, iconButton, formError, submitForm, toast, empty, actionBar } from "./ui.js";
 import { helpButton } from "./help.js";
 
 const base = (d) => `/campaigns/${d.id}/workspace/timeline`;
@@ -272,7 +272,7 @@ async function readSpot(d, data, id, reload) {
   const meta = [s.when, data.canEdit && !s.published ? "Rascunho — só você vê" : ""].filter(Boolean);
   const nav = `${button("‹ Anterior", "tl-step", prev?.id || "", "subtle", prev ? `aria-label="Ponto anterior: ${esc(prev.title)}"` : "disabled")}${button("Próximo ›", "tl-step", next?.id || "", "subtle", next ? `aria-label="Próximo ponto: ${esc(next.title)}"` : "disabled")}`;
   const edit = data.canEdit
-    ? `${button("Excluir", "tl-delete", "", "subtle")}${s.kind === "event" ? button("+ Inserir depois", "tl-after", "", "subtle") : ""}${button("Editar", "tl-edit", "", "primary")}`
+    ? `${iconButton("trash", "Excluir", "tl-delete", "", "subtle danger-text")}${s.kind === "event" ? iconButton("plus", "Inserir depois", "tl-after") : ""}${button("Editar", "tl-edit", "", "primary")}`
     : "";
   modal(spotName(s, number), `${meta.length ? `<p class="muted small">${meta.map(esc).join(" · ")}</p>` : ""}${s.summary ? `<p class="tl-lead">${esc(s.summary)}</p>` : ""}${s.details ? `<article class="workspace-prose">${esc(s.details)}</article>` : '<p class="muted small">Sem relato completo para este ponto.</p>'}${actionBar(nav, edit)}`);
   $("#modal-body").onclick = async (e) => {

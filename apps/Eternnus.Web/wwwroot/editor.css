@@ -379,8 +379,6 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 .o-layer-name > .ed-icon { width: 16px; height: 16px; flex: none; color: var(--gold, #c6a463); }
 .o-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .o-count { color: var(--muted, #9da492); font-size: .72rem; font-weight: 400; }
-.o-flag { display: inline-grid; flex: none; color: var(--muted, #9da492); }
-.o-flag .ed-icon { width: 13px; height: 13px; }
 .o-chip { display: inline-flex; flex: none; align-items: center; gap: 3px; padding: 0 6px; border: 1px solid var(--ed-line); border-radius: 999px; color: var(--muted, #9da492); font-size: .68rem; font-weight: 400; white-space: nowrap; }
 .o-chip.master { border-color: #6d5a33; color: #f0c977; }
 .o-chip .ed-icon { width: 12px; height: 12px; }
@@ -390,16 +388,8 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 .o-ctl.off { color: var(--muted, #9da492); }
 .o-ctl.on { color: var(--bright, #e6cf98); }
 .o-ctl[aria-pressed="true"] { border-color: transparent; background: transparent; }
-.o-players {
-  display: inline-flex; align-items: center; gap: 3px; min-height: 28px; padding: 0 7px; border: 1px solid var(--ed-line); border-radius: 999px;
-  background: transparent; color: #cfc9b6; font: inherit; font-size: .7rem; cursor: pointer;
-}
-.o-players .ed-icon { width: 14px; height: 14px; }
-.o-players:hover { border-color: #6d5a33; }
-.o-players.master { border-color: #f1d79c; background: linear-gradient(#e6cf98, #b8934f); color: #1b160b; }
-.o-opacity { display: inline-flex; align-items: center; gap: 1px; margin: 0 2px; }
-.o-opacity input { width: 48px; min-height: 28px; padding: 1px 3px; font-size: .78rem; }
-.o-opacity small { color: var(--muted, #9da492); font-size: .68rem; }
+/* Jogadores × só o mestre (ADR-119): só ícone, como olho e cadeado; dourado quando a camada é só do mestre. */
+.o-players.master { color: var(--bright, #e6cf98); background: #3a2f17; border-radius: 6px; }
 .o-ro-action { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 2px 8px; font-size: .74rem; }
 .o-ro-action .ed-icon { width: 14px; height: 14px; }
 .o-items { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 4px 10px; padding: 0 0 0 10px; border-left: 1px solid #2b2f24; list-style: none; }
@@ -471,8 +461,7 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 @media (pointer: coarse) {
   .o-item-acts { opacity: 1; }
   .o-layer-row, .o-item { min-height: 44px; }
-  .o-ctl, .o-more, .o-item-acts .ed-icon-button, .o-players, .o-twisty, .o-toolbar .ed-icon-button { min-width: 44px; min-height: 44px; }
-  .o-opacity input { min-height: 44px; }
+  .o-ctl, .o-more, .o-item-acts .ed-icon-button, .o-twisty, .o-toolbar .ed-icon-button { min-width: 44px; min-height: 44px; }
 }
 /* Recursos só da interface Completa dentro de painéis montados uma vez (a troca de modo não recria o DOM). */
 .ed-shell[data-interface="basic"] [data-complete-only] { display: none !important; }

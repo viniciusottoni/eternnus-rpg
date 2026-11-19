@@ -218,7 +218,7 @@ span.px-colhead { cursor: default; }
 .px-props div { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; }
 .px-props dt { color: var(--quiet); }
 .px-props dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
-.px-detail-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.px-detail-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .px-detail-actions button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 
 /* Diálogo de exclusão */
