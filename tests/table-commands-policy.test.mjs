@@ -55,3 +55,12 @@ test('câmera compartilhada, exibição externa e convidados (ADR-114/115)', asy
   assert.ok(player.some((c) => c.id === 'fitView'));
   assert.ok(!rankCommands(player, '', { role: 'player', mode: 'basic' }).some((c) => ['guests', 'showRegion', 'externalDisplay'].includes(c.id)));
 });
+
+test('réguas do mapa: mestre e jogador encontram por medida, exigem grade (ADR-117)', () => {
+  for (const role of ['master', 'player']) {
+    const list = tableCommands({ ...base, isMaster: role === 'master' });
+    assert.equal(rankCommands(list, 'metros', { role, mode: 'basic' })[0].id, 'rulers');
+  }
+  assert.equal(tableCommands(base).find((c) => c.id === 'rulers').disabled, null);
+  assert.match(tableCommands({ ...base, tiles: false }).find((c) => c.id === 'rulers').disabled, /grade/);
+});

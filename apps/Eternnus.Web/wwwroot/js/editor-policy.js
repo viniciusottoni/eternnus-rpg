@@ -352,7 +352,76 @@ export function normalizeLayoutPref(raw) {
   if (contexts) out.contexts = contexts;
   const order = maps(p.order, (v) => Array.isArray(v) && v.every((id) => PANEL_ID.test(String(id))));
   if (order) out.order = Object.fromEntries(Object.entries(order).map(([k, v]) => [k, [...new Set(v.map(String))].slice(0, 24)]));
+  // Barra lateral (ADR-118): área ativa, proporção do inspetor, ramos recolhidos da árvore e vistas internas por editor.
+  const area = maps(p.area, (v) => SIDE_AREA_IDS.includes(v));
+  if (area) out.area = area;
+  const split = maps(p.split, (v) => Number.isFinite(Number(v)) && Number(v) > 0 && Number(v) < 1);
+  if (split) out.split = Object.fromEntries(Object.entries(split).map(([k, v]) => [k, clampSplit(v)]));
+  const tree = maps(p.tree, (v) => Array.isArray(v));
+  if (tree) out.tree = Object.fromEntries(Object.entries(tree).map(([k, v]) => [k, [...new Set(v.map(String).filter((id) => TREE_ID.test(id)))].slice(0, 40)]));
+  const views = maps(p.views, (v) => v && typeof v === "object" && !Array.isArray(v));
+  if (views) {
+    const clean = Object.entries(views).map(([k, v]) => [k, Object.fromEntries(Object.entries(v).filter(([n, s]) => PANEL_ID.test(n) && typeof s === "string" && PANEL_ID.test(s)).slice(0, 12))]).filter(([, v]) => Object.keys(v).length);
+    if (clean.length) out.views = Object.fromEntries(clean);
+  }
   return out;
+}
+
+// ---------- Barra lateral dos editores (ADR-118) ----------
+/**
+ * Áreas da lateral: o inspetor (propriedades do selecionado) fica sempre no alto; abaixo, uma das três tarefas.
+ * O Histórico é secundário (botão próprio), não disputa espaço com as três áreas principais.
+ */
+export const SIDE_AREAS = Object.freeze([
+  Object.freeze({ id: "organize", label: "Organizar", icon: "layers", tip: "Camadas e elementos do documento: selecionar, ocultar no editor, bloquear e mover entre camadas." }),
+  Object.freeze({ id: "add", label: "Adicionar", icon: "plus", tip: "Recursos para inserir: imagens, mapas, personagens e marcadores. Clique para inserir ou arraste para o mapa." }),
+  Object.freeze({ id: "configure", label: "Configurar", icon: "settings", tip: "Propriedades gerais do documento: tamanho, grade, mapa de origem, visibilidade e preparação." }),
+]);
+export const HISTORY_AREA = "history";
+export const INSPECT_AREA = "inspect";
+const SIDE_AREA_IDS = [...SIDE_AREAS.map((a) => a.id), HISTORY_AREA];
+const TREE_ID = /^[a-zA-Z0-9_:.-]{1,48}$/;
+/** Fração da altura da lateral usada pelo inspetor (o restante vai para a área ativa). */
+export const INSPECT_SPLIT = Object.freeze({ min: 0.15, max: 0.8, initial: 0.42 });
+export const clampSplit = (v) => Math.max(INSPECT_SPLIT.min, Math.min(INSPECT_SPLIT.max, Math.round(Number(v) * 100) / 100));
+/** Área declarada de um painel; sem declaração (ou inválida), vai para Organizar. */
+export function panelArea(panel) {
+  const a = String(panel?.area || "");
+  return a === INSPECT_AREA || SIDE_AREA_IDS.includes(a) ? a : panel?.id === "history" ? HISTORY_AREA : "organize";
+}
+/** Áreas principais com algum painel declarado, na ordem fixa (Organizar, Adicionar, Configurar). */
+export function sideAreasFor(panels) {
+  const used = new Set((panels || []).map(panelArea));
+  return SIDE_AREAS.filter((a) => used.has(a.id));
+}
+/** Área inicial: a salva (se o editor a tiver), senão a declarada, senão a primeira disponível. */
+export function initialArea(panels, saved, declared) {
+  const ids = sideAreasFor(panels).map((a) => a.id);
+  const history = (panels || []).some((p) => panelArea(p) === HISTORY_AREA);
+  const ok = (id) => ids.includes(id) || (id === HISTORY_AREA && history);
+  return ok(saved) ? saved : ok(declared) ? declared : ids[0] || (history ? HISTORY_AREA : null);
+}
+
+/** Ids de `order` entre `anchor` e `target`, inclusive (Shift+clique na árvore). Sem âncora válida: só o alvo. */
+export function rangeIds(order, anchor, target) {
+  const list = (order || []).map(String);
+  const a = list.indexOf(String(anchor)), b = list.indexOf(String(target));
+  if (b < 0) return [];
+  if (a < 0) return [list[b]];
+  return list.slice(Math.min(a, b), Math.max(a, b) + 1);
+}
+/**
+ * Motivo para recusar soltar itens da árvore numa camada (null = permitido). `target`: { accepts, locked, readonly, name };
+ * `items`: [{ layer, movable }]. Camada técnica/somente leitura não recebe; bloqueada também não; item fixo não sai do lugar.
+ */
+export function outlineDropProblem(items, target) {
+  if (!target) return "Destino inválido.";
+  if (target.readonly || target.accepts === false) return `${target.name || "Esta camada"} não recebe elementos.`;
+  if (target.locked) return `${target.name || "A camada"} está bloqueada. Desbloqueie para mover elementos para ela.`;
+  const list = items || [];
+  if (!list.length) return "Nada para mover.";
+  if (list.some((i) => i.movable === false)) return "Um dos itens está bloqueado ou não pode mudar de camada.";
+  return null;
 }
 /** Ordem dos painéis: a salva primeiro (só ids conhecidos), depois os novos na ordem declarada. */
 export function panelOrder(declared, saved = []) {

@@ -55,33 +55,40 @@
 /* ---------- Painéis laterais: planos, com títulos de painel do editor ---------- */
 .table-shell :is(.party, .side-panel, #main.stage) { border: 0; border-radius: 0; box-shadow: none; }
 .table-shell :is(.party, .side-panel) { background: var(--ed-raised); }
+/* Títulos de grupo, seção e subgrupo no padrão comum dos editores (ADR-116, tokens em styles.css). */
 .table-shell .party h2 {
-  display: flex; align-items: center; gap: 6px; margin: 0; padding: 8px 10px; border: 0; border-bottom: 1px solid var(--ed-line); border-radius: 0;
-  background: #171a13; backdrop-filter: none; color: var(--gold, #c6a463);
-  font: 600 .78rem/1.2 system-ui, "Segoe UI", sans-serif; letter-spacing: .06em; text-transform: uppercase;
+  display: flex; align-items: center; gap: 6px; min-height: var(--group-title-height); margin: 0; padding: 8px var(--group-pad); border: 0; border-bottom: 1px solid var(--ed-line); border-radius: 0;
+  background: var(--group-title-bg); backdrop-filter: none; color: var(--gold, #c6a463);
+  font: var(--group-title-font); letter-spacing: var(--group-title-tracking); text-transform: uppercase;
 }
 .table-shell .party h2 .count-chip { margin-left: auto; text-transform: none; letter-spacing: 0; }
 .table-shell .npc-dock { border-top: 1px solid var(--ed-line); }
 .table-shell .npc-dock > summary {
-  min-height: 36px; padding: 8px 10px; background: #171a13; color: var(--gold, #c6a463); cursor: pointer;
-  font: 600 .78rem/1.2 system-ui, "Segoe UI", sans-serif; letter-spacing: .06em; text-transform: uppercase;
+  min-height: var(--group-title-height); padding: 8px var(--group-pad); background: var(--group-title-bg); color: var(--gold, #c6a463); cursor: pointer;
+  font: var(--group-title-font); letter-spacing: var(--group-title-tracking); text-transform: uppercase;
 }
 .table-shell .npc-dock > summary:hover { background: var(--ed-hover); color: var(--bright); }
+/* Dentro dos grupos: título de seção em sans 14 px (sem serifa nem tamanhos próprios por aba), subgrupo em caixa alta
+   dourada pequena e recolhível interno com a seta comum, como nos painéis dos editores. */
+.table-shell :is(.panel-body, .party) :is(h2, h3) { font: var(--section-title-font); letter-spacing: 0; text-transform: none; }
+.table-shell :is(.panel-body, .party) h4 { font: var(--subgroup-title-font); letter-spacing: var(--group-title-tracking); text-transform: uppercase; color: var(--gold, #c6a463); }
+.table-shell :is(.panel-body, .party) details:not(.npc-dock) > summary {
+  display: flex; align-items: center; min-height: var(--group-title-height); font: var(--subgroup-summary-font); color: var(--bright, #e6cf98);
+}
+.table-shell .party h2 { font: var(--group-title-font); letter-spacing: var(--group-title-tracking); text-transform: uppercase; }
+@media (pointer: coarse) {
+  .table-shell :is(.panel-body, .party) details > summary { min-height: 44px; }
+}
 
-/* Abas do painel como contextos do editor: ícone em todas, nome visível só na ativa (o nome segue no leitor e na dica). */
-.table-shell .panel-tabs {
-  gap: 2px; margin: 6px 8px 0; padding: 2px; border: 1px solid var(--ed-line); border-radius: 8px; background: #11130e;
-  overflow-x: auto; scrollbar-width: none;
+/* Abas do painel no padrão da barra lateral dos editores (ADR-118): mesma faixa, mesma aba ativa com linha dourada.
+   Ícone em todas; nome visível só na ativa (o nome segue no leitor de tela e na dica). */
+.table-shell .side-panel > .ed-side-nav { padding: 4px 6px 0; }
+.table-shell .panel-tabs.ed-side-tabs { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; overflow: hidden; }
+.table-shell .panel-tabs .ed-side-tab { flex: 0 0 auto; min-width: 40px; padding: 4px 9px; font: inherit; font-size: .8rem; box-shadow: none; }
+.table-shell .panel-tabs .ed-side-tab[aria-selected="true"] {
+  flex: 1 0 auto; border-color: var(--ed-line); background: var(--ed-raised); color: var(--bright, #e6cf98); box-shadow: inset 0 2px 0 #c6a463;
 }
-.table-shell .panel-tabs .ed-context {
-  flex: 0 0 auto; justify-content: center; min-width: 40px; min-height: 36px; padding: 3px 9px; border-radius: 6px;
-  background: transparent; box-shadow: none; color: #cfc9b6; font: inherit; font-size: .82rem;
-}
-.table-shell .panel-tabs .ed-context:hover { background: var(--ed-hover); border-color: var(--ed-line); }
-.table-shell .panel-tabs .ed-context.active {
-  flex: 1 0 auto; color: var(--bright, #e6cf98); border-color: #8a6f3a; background: #2a2416; box-shadow: inset 0 -2px 0 #c6a463;
-}
-.table-shell .panel-tabs .ed-context:not(.active) > span {
+.table-shell .panel-tabs .ed-side-tab:not([aria-selected="true"]) > span {
   position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
 }
 .table-shell .chat-form { border-top: 1px solid var(--ed-line); }
@@ -198,14 +205,22 @@
   .table-shell .stage .fog-palette { top: 53px; left: 0; right: 0; padding: 4px 6px; }
   .table-shell .stage.has-dice .fog-palette { right: 0; }
   .table-shell .fog-palette .ed-tool { width: 44px; height: 44px; }
-  .table-shell .panel-tabs .ed-context { min-height: 44px; min-width: 44px; }
-  .table-shell .panel-tabs .ed-context.active > span {
+  .table-shell .panel-tabs .ed-side-tab { min-height: 44px; min-width: 44px; }
+  .table-shell .panel-tabs .ed-side-tab[aria-selected="true"] > span {
     position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
   }
 }
 
 /* ---------- Câmera compartilhada e convidados na mesa (ADR-114/115) ---------- */
 /* "Seguindo o mestre" e "Voltar a seguir": canto superior direito do palco, sem cobrir o trilho nem a dica. */
+/* Réguas do mapa (ADR-117, map-ruler.js): as mesmas dos editores (.ed-ruler), presas ao topo e à esquerda do tabuleiro.
+   O tabuleiro abre 18 px de margem para elas (nada cobre o mapa); o selo da cena desce para não tapar os números. */
+.table-shell { --map-ruler: 18px; }
+.table-shell .stage.has-rulers .board { margin: var(--map-ruler) 0 0 var(--map-ruler); }
+.table-shell .stage.has-rulers .stage-chip { top: calc(8px + var(--map-ruler)); }
+.table-shell .map-ruler, .table-shell .map-ruler-corner { position: absolute; z-index: 1; }
+.table-shell .map-ruler[hidden], .table-shell .map-ruler-corner[hidden] { display: none; }
+.table-shell .map-ruler-corner { cursor: default; }
 .table-shell .follow-chip { position: absolute; z-index: 3; top: 8px; right: 8px; display: flex; align-items: center; gap: 6px; }
 .table-shell .follow-chip[hidden] { display: none; }
 .table-shell .follow-chip .follow-on { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid #a07b3a99; border-radius: 999px; background: #0d0c0ad9; color: #ead6a8; font-size: 12px; }
@@ -215,3 +230,8 @@
 .table-shell .party-guests-title { width: 100%; color: var(--gold, #c6a463); }
 .table-shell .guest-chip { padding: 2px 8px; border: 1px solid #ffffff1f; border-radius: 999px; }
 .table-shell .guest-chip.online { border-color: #7cc35b88; color: #d8e8cf; }
+/* Altura muito baixa (celular deitado com teclado): abas mais compactas para a conversa caber acima do rodapé (ADR-118). */
+@media (max-height: 300px) and (pointer: fine) {
+  .table-shell .side-panel > .ed-side-nav { padding-top: 2px; }
+  .table-shell .panel-tabs .ed-side-tab { min-height: 32px; padding: 2px 8px; }
+}

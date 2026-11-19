@@ -161,7 +161,7 @@ try {
   await manual.waitForFunction(() => Math.abs(document.querySelector('.table-shell').getBoundingClientRect().height - 240) < 1);
   const messageBox = await manual.locator('#t-message').boundingBox();
   const navBox = await manual.locator('.table-bottom').boundingBox();
-  check(messageBox.y + messageBox.height <= navBox.y, 'campo de conversa cabe acima do rodapé com altura reduzida');
+  check(messageBox.y + messageBox.height <= navBox.y, `campo de conversa cabe acima do rodapé com altura reduzida (campo termina em ${Math.round(messageBox.y + messageBox.height)}, rodapé começa em ${Math.round(navBox.y)}; abas ${Math.round((await manual.locator('#t-tabs').boundingBox())?.height ?? -1)} px)`);
   await manual.setViewportSize({width:844,height:390});
   check(await manual.locator('#t-message').inputValue() === 'Rascunho preservado', 'redimensionar preserva rascunho');
   await shot(manual,'10-manual');

@@ -104,7 +104,7 @@ Componentes reutilizados pelos três editores:
 - `createHistory`: desfazer/refazer por instantâneos com rótulo; `begin/commit` agrupa um arraste numa única entrada; limite de 100 etapas; painel "Histórico" da sessão de edição.
 - `openContextMenu`: menu de contexto acessível (setas, Enter, Esc, Tab fecha), posicionado dentro da janela.
 - `openPropertiesDialog`: janela flutuante (não modal, arrastável) com apenas os campos do elemento; Aplicar/OK/Cancelar.
-- `renderLayersPanel`: lista de camadas (olho, cadeado, opacidade, renomear, ordem, nova, duplicar, excluir extras, mover elemento para camada).
+- `renderOutline` (`editor-outline.js`, ADR-118): árvore unificada de camadas e elementos (olho, cadeado, opacidade, Todos/Mestre, renomear, ordem, nova, duplicar, excluir extras, arrastar entre camadas, localizar). Substitui os antigos painéis Camadas e Estrutura.
 - `bindEditorKeys`: atalhos (Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y, Ctrl+C/X/V, Ctrl+D, Ctrl+S, Delete, Esc, Ctrl+0, Ctrl+1, Ctrl+±, letras das ferramentas) que nunca disparam dentro de campos de texto, exceto Ctrl+S e Esc.
 
 Navegação: roda do mouse = zoom centrado no cursor; espaço + arrastar e botão do meio = mover a vista; pinça no toque; ferramenta Mão. O tabuleiro da mesa (`createBoard`, opção `editor`) e a superfície de composição (`js/composition-canvas.js`) implementam a mesma navegação. A câmera nunca muda as coordenadas dos elementos.
@@ -138,6 +138,29 @@ API para outros editores: `shell.contextBar.show({ key, title, icon, fields, act
 **Editor de imagem — ferramentas profissionais**: seleção por clique, Shift/Ctrl (soma) e retângulo; com dois ou mais selecionados e desbloqueados, as alças do retângulo de limites redimensionam (Shift trava a proporção; imagens já a mantêm por padrão; Alt a partir do centro) e giram o conjunto (Shift em passos de 15°), com dimensões e porcentagem durante o arraste (`scaleGroup`, `rotateGroup`). Elementos girados fora de múltiplos de 90° escalam de forma uniforme para não deformar. **Grupos**: `group` opcional no elemento (a-z, 0-9 e hífen, até 24; validado também no servidor; composições antigas não mudam); Ctrl+G agrupa elementos da mesma camada, Ctrl+Shift+G desagrupa; clicar num membro no canvas seleciona o grupo e a Estrutura escolhe um só; cópias (colar/duplicar) ganham grupo novo. **Guias magnéticas**: além da área visível e da grade, bordas e centros dos outros elementos visíveis (Exibir › Encaixar em objetos; Ctrl ao arrastar ignora). Alinhar, distribuir, bloquear, edição numérica e setas (1 px; Shift 10 px) já existiam e continuam.
 
 Desempenho medido (Node 24, `composition-policy.js`, 200 elementos girados): `hitTest` 0,03 ms por consulta; linhas de encaixe calculadas uma vez por arraste em 0,6 ms; `snapMove` 0,05 ms por movimento. Com o limite de 200 elementos por mapa, um índice espacial não traria ganho perceptível e não foi adotado.
+
+### 6.2 Barra lateral contextual (ADR-118, 19/11/2026)
+
+A lateral é igual nos três editores (e a mesa ao vivo usa as mesmas abas):
+
+| Região | Conteúdo | Observações |
+| --- | --- | --- |
+| Cabeçalho | Nome, tipo, selos (Salvo / Não salvo / Na mesa / Não aplicado / Ensaio), mapa original, menu ⋯ | `shell.setSideHeader({ name, kind, chips, origin, menu })`. No celular, o X fecha a gaveta. |
+| Inspetor | Painéis `area: "inspect"` (Propriedades) | Sempre no alto; divisor horizontal ajusta a altura (setas no teclado). Recolher o painel devolve a altura às áreas. |
+| Organizar | Árvore unificada (`renderOutline`) | Camadas como ramos; elementos como folhas. A seleção do palco destaca e abre o ramo; só "Localizar" move a câmera. |
+| Adicionar | Acervo, paleta de tiles, Personagens (cena) | Clique insere no centro da vista; arrastar solta no ponto. Busca e vista ficam como estavam ao voltar. |
+| Configurar | Documento (imagem), Mapa e pintura (tiles), Cena (cena) | Itens abrem o formulário existente no inspetor. |
+| Histórico | Ícone ao lado das abas | Secundário; clicar de novo volta à área anterior. |
+
+API: painéis declaram `area` (`inspect`, `organize`, `add`, `configure`, `history`); `shell.setArea(id)`, `shell.area`, `shell.revealPanel(id)` (abre a lateral, vai à área e expande — `togglePanel(id, true)` faz o mesmo), `shell.views.get/set(nome)` e `views.collapsed()/setCollapsed(chave, on)` para preferências visuais do editor. Contexto pode declarar `area` (para onde a lateral vai quando a área atual fica vazia nele); área sem painel no contexto mostra um estado vazio com botões para os contextos que a preenchem. Regras puras em `editor-policy.js`: `SIDE_AREAS`, `panelArea`, `sideAreasFor`, `initialArea`, `INSPECT_SPLIT`/`clampSplit`, `rangeIds`, `outlineDropProblem`.
+
+| Editor | Inspetor | Organizar | Adicionar | Configurar |
+| --- | --- | --- | --- | --- |
+| Imagem | Documento, camada, elemento (com Manter proporção) ou vários | Camadas › elementos; arrastar move de camada ou reordena | Enviar imagem, Texto, formas (Completa), acervo Imagens/Mapas/Recentes/Favoritos | Área visível e externa, recorte, grade e escala, fundo, propriedades, névoa e luz |
+| Tiles | — (sem objetos selecionáveis) | Camadas | Paleta de tiles | Mapa e pintura (casa inspecionada, camada automática, piso da borracha) |
+| Cena | Marcador, vários, camada de marcadores, imagem ou camada da composição, formulários de configuração | Marcadores, Composição desta cena (Todos/Mestre), Preparação do mapa (Completa), Mapa de origem (somente leitura) | Personagens (Em cena / Disponíveis / Reservados) e Acervo (Imagens/Mapas/Recentes/Favoritos) | Cena, Mapa de origem, Composição, Preparação do mapa, Área de entrada |
+
+Preferências novas no mesmo armazenamento de layout (por conta e tipo de editor): `area`, `split`, `tree`, `views`. Nunca entram no documento; valores inválidos são descartados.
 
 ## 7. Fluxos
 

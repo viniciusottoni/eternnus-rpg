@@ -101,3 +101,11 @@
 .se-instance p { margin: 0; }
 .se-blank-custom { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .se-blank-custom input { min-height: 44px; }
+
+/* Barra lateral (ADR-118): inspetor, acervo e documento */
+.im-quick .check { margin: 6px 0 0; }
+.im-quick .field { margin: 6px 0; }
+.im-add-actions { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 10px; }
+.im-add-actions button { display: inline-flex; align-items: center; gap: 4px; }
+.im-add-actions .ed-icon { width: 16px; height: 16px; }
+.im-swatch { display: inline-block; width: 14px; height: 14px; border: 1px solid var(--ed-line, #3a3f31); border-radius: 3px; vertical-align: -2px; }

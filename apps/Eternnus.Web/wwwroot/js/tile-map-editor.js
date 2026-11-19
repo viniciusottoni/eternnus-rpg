@@ -6,7 +6,8 @@ import { esc, toast } from "./ui.js";
 import { helpButton } from "./help.js";
 import { createBoard } from "./table-map.js";
 import { drawTile } from "./tile-art.js";
-import { createEditorShell, openContextMenu, openPropertiesDialog, renderHistoryPanel, renderLayersPanel } from "./editor-core.js";
+import { createEditorShell, openContextMenu, openPropertiesDialog, renderHistoryPanel } from "./editor-core.js";
+import { renderOutline } from "./editor-outline.js";
 import { addLayer, createHistory, ensureLayers, isRequiredLayer, moveLayer, patchLayer, removeLayer } from "./editor-policy.js";
 import * as P from "./tile-map-policy.js";
 import { attachDrafts } from "./editor-drafts.js";
@@ -117,12 +118,15 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
     commonTools: ["hand", "zoom", "grid"],
     defaultContext: "elements",
     onContext: (id) => { const target = id === "terrain" ? "base" : "elements"; if (active !== target && layerById(target)) layerAction("select", target); },
+    // Barra lateral (ADR-118): Organizar (camadas), Adicionar (paleta de tiles) e Configurar (mapa e pintura).
+    // Sem objetos selecionáveis, o editor de tiles não usa o inspetor: a casa inspecionada aparece em Configurar.
     panels: [
-      { id: "layers", title: "Camadas", help: ["campanhas.editor.camadas", "Camadas"] },
-      { id: "palette", title: "Paleta" },
-      { id: "props", title: "Propriedades" },
-      { id: "history", title: "Histórico", basic: false },
+      { id: "layers", title: "Camadas", area: "organize", help: ["campanhas.editor.camadas", "Camadas"] },
+      { id: "palette", title: "Paleta de tiles", area: "add" },
+      { id: "props", title: "Mapa e pintura", area: "configure" },
+      { id: "history", title: "Histórico", basic: false, area: "history" },
     ],
+    defaultArea: "add",
     actions: `<button type="button" class="subtle small tme-current" data-tme-action="palette" aria-label="Tile escolhido: abrir a paleta"><canvas width="24" height="24" aria-hidden="true" data-tme-current-art></canvas><span data-tme-current-name></span></button><span class="ed-save-state" data-tme-save-state aria-live="polite"></span><button type="button" class="primary small tme-save" data-tme-action="save">Salvar</button>`,
     menus,
     keys: {
@@ -318,11 +322,38 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
     shell.setTitle("Editor de mapa de tiles", doc.name || "Novo mapa");
     renderLayers(); renderInfo(); renderHistory(); syncSaveState();
   }
+  /** Camadas na árvore comum (ADR-118). Tiles não são objetos: cada camada é uma linha, sem filhos. */
   function renderLayers() {
-    renderLayersPanel(shell.panel("layers"), {
-      layers: doc.layers, active, complete: false,
-      visibilityNote: "O olho da Base só esconde no editor. Elementos e camadas extras ocultos ficam fora das regras e da mesa.",
-      onAction: layerAction,
+    const full = doc.layers.length >= 8;
+    renderOutline(shell.panel("layers"), {
+      label: "Camadas do mapa, da mais alta para a mais baixa",
+      sections: [{ id: "tiles", layers: [...doc.layers].reverse().map((l) => {
+        const fixed = isRequiredLayer(l.id);
+        return {
+          id: l.id, name: l.name, icon: l.id === "base" ? "fill" : "layers", active: l.id === active, fixed,
+          visible: l.visible !== false, locked: !!l.locked, opacity: null,
+          visibleTip: l.id === "base" ? "Só esconde no editor: o terreno continua nas regras e na mesa." : "Oculta fica fora das regras e da mesa (os jogadores não veem estes tiles).",
+          items: [],
+        };
+      }) }],
+      actions: [
+        { id: "add-layer", label: "Nova camada", icon: "plus", reason: full ? "Use até 8 camadas." : "", run: () => layerAction("add") },
+        { id: "palette", label: "Abrir a paleta de tiles", icon: "brush", run: () => { shell.revealPanel("palette"); palette.querySelector('[data-tile][tabindex="0"]')?.focus(); } },
+      ],
+      onLayer: (action, id, value) => layerAction(action, id, value),
+      layerMenu: (id) => {
+        const l = layerById(id), fixed = isRequiredLayer(id), index = doc.layers.findIndex((x) => x.id === id);
+        if (!l) return [];
+        return [
+          { label: "Renomear…", run: () => { const name = prompt("Nome da camada (até 40 caracteres)", l.name); if (name?.trim()) layerAction("rename", id, name.trim().slice(0, 40)); } },
+          { label: "Nova camada acima", run: () => { active = id; layerAction("add"); }, disabled: full, disabledReason: "Use até 8 camadas." },
+          { label: "Duplicar camada", run: () => layerAction("duplicate", id), disabled: full, disabledReason: "Use até 8 camadas." },
+          { label: "Subir camada", run: () => layerAction("up", id), disabled: fixed || index >= doc.layers.length - 1, disabledReason: fixed ? "Base e Elementos são fixas e ficam sempre embaixo." : "Já é a camada mais alta." },
+          { label: "Descer camada", run: () => layerAction("down", id), disabled: fixed || index <= 2, disabledReason: fixed ? "Base e Elementos são fixas e ficam sempre embaixo." : "Camadas extras ficam acima de Elementos." },
+          { separator: true },
+          { label: "Excluir camada", danger: true, run: () => layerAction("delete", id), disabled: fixed, disabledReason: "Base e Elementos são camadas fixas: não podem ser excluídas." },
+        ];
+      },
     });
   }
   function renderHistory() { if (!closed) renderHistoryPanel(shell.panel("history"), history); }
@@ -354,6 +385,17 @@ export async function openTileMapEditor(campaign, { item = null, source = null, 
     state.classList.toggle("dirty", isDirty && !busy);
     button.disabled = busy;
     button.setAttribute("aria-busy", String(busy));
+    shell.setSideHeader({
+      name: doc.name || "Novo mapa", kind: `Mapa de tiles · ${width()} × ${height()} casas`,
+      chips: [busy ? { text: "Salvando…" } : isDirty ? { text: "Não salvo", tone: "dirty", tip: "Há alterações não salvas. Ctrl+S salva." } : mapId ? { text: "Salvo", tone: "ok" } : { text: "Novo mapa" }],
+      menu: () => [
+        { label: "Salvar", shortcut: "mod+s", run: () => save(), disabled: busy },
+        { label: "Propriedades do mapa…", run: () => documentProperties() },
+        { label: "Tamanho do mapa…", run: () => sizeDialog() },
+        { separator: true },
+        { label: "Restaurar layout padrão", run: () => shell.resetLayout(), hint: "O documento não muda" },
+      ],
+    });
     shell.setStatus({
       size: `${width()} × ${height()} casas · ${meters(doc.scaleMeters)} m/casa`,
       state: isDirty ? '<span class="ed-chip dirty">Alterações não salvas</span>' : mapId ? '<span class="ed-chip ok">Salvo</span>' : '<span class="ed-chip">Novo mapa</span>',

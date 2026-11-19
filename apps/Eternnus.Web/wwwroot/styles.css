@@ -131,13 +131,15 @@ summary:focus-visible {
 }
 
 /* Seções recolhíveis: todo <summary> mostra a mesma seta (fechada aponta para a direita, aberta para baixo).
-   Títulos com display:flex perdiam o marcador nativo e não pareciam clicáveis; a seta própria vale para todos. */
+   Títulos com display:flex perdiam o marcador nativo e não pareciam clicáveis; a seta própria vale para todos.
+   Botões que abrem e fecham um grupo (títulos de painel dos editores) usam `.disclosure` + aria-expanded e recebem
+   a mesma seta: não há outro glifo de abrir/fechar nos editores nem na mesa (ADR-116). */
 summary {
   cursor: pointer;
   list-style: none;
 }
 summary::-webkit-details-marker { display: none; }
-summary::before {
+summary::before, .disclosure::before {
   content: "";
   display: inline-block;
   flex: none;
@@ -150,10 +152,27 @@ summary::before {
   vertical-align: .12em;
   transition: transform .15s ease;
 }
-details[open] > summary::before { transform: rotate(45deg); }
+details[open] > summary::before, .disclosure[aria-expanded="true"]::before { transform: rotate(45deg); }
 summary:hover { color: var(--bright); }
 @media (prefers-reduced-motion: reduce) {
-  summary::before { transition: none; }
+  summary::before, .disclosure::before { transition: none; }
+}
+
+/* Grupos dos painéis manipuláveis (editor de cena, editores de mapa e mesa ao vivo, ADR-116): três níveis de título.
+   1. Título do grupo/painel (recolhível ou não): caixa alta dourada sobre faixa escura, seta à esquerda, ações à direita.
+   2. Título de seção dentro do grupo: frase curta em sans 14 px.
+   3. Subgrupo: caixa alta dourada pequena; recolhível interno usa a seta comum com o texto em 13 px.
+   O conteúdo de cada grupo tem o mesmo recuo lateral e o mesmo espaçamento entre blocos. */
+:root {
+  --group-title-font: 600 .78rem/1.2 system-ui, "Segoe UI", sans-serif;
+  --group-title-tracking: .06em;
+  --group-title-bg: #171a13;
+  --group-title-height: 36px;
+  --group-pad: 10px;
+  --group-gap: 10px;
+  --section-title-font: 700 14px/1.3 "Segoe UI", system-ui, sans-serif;
+  --subgroup-title-font: 600 .74rem/1.3 system-ui, "Segoe UI", sans-serif;
+  --subgroup-summary-font: 600 13px/1.3 "Segoe UI", system-ui, sans-serif;
 }
 button:disabled,
 button[aria-disabled="true"] {

@@ -29,15 +29,15 @@
 .scene-editor[data-tool="zoom"] .ed-stage canvas { cursor: zoom-in; }
 
 /* Propriedades: formulários contextuais da preparação (mesmos campos de antes), sem moldura dupla dentro do painel. */
-.se-panel { display: grid; gap: 12px; }
+.se-panel { display: grid; gap: var(--group-gap); }
 .se-panel > * { margin: 0; }
-.se-panel h3 { margin: 0; font-size: 15px; line-height: 1.3; display: flex; align-items: center; gap: 4px; }
+.se-panel h3 { margin: 0; font: var(--section-title-font); display: flex; align-items: center; gap: 4px; }
 .se-panel .field { margin: 0; }
 .se-panel textarea { width: 100%; }
 .se-panel fieldset { display: grid; gap: 2px; min-width: 0; margin: 0; padding: 6px 10px 8px; border: 1px solid #a07b3a44; border-radius: var(--radius, 6px); }
-.se-panel fieldset > legend { padding: 0 6px; color: var(--gold, #c6a463); font-size: 12px; }
+.se-panel fieldset > legend { padding: 0 6px; font: var(--subgroup-title-font); letter-spacing: var(--group-title-tracking); text-transform: uppercase; color: var(--gold, #c6a463); }
 .se-subform { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid #a07b3a33; }
-.se-subform h4 { margin: 0; font-size: 13px; color: var(--gold, #c6a463); }
+.se-subform h4 { margin: 0; font: var(--subgroup-title-font); letter-spacing: var(--group-title-tracking); text-transform: uppercase; color: var(--gold, #c6a463); }
 .se-pick-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .se-place-look { display: grid; gap: 2px; margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--line, #494337); border-radius: 6px; }
 .se-place-look legend { padding: 0 4px; font-size: .8rem; color: var(--muted, #9da492); }
@@ -61,7 +61,7 @@
 .se-scenery .map-picker-tools .field { margin: 0; }
 .se-scenery .map-picker-tools .form-help { max-width: none; margin: 0; }
 .se-scenery .map-group { gap: 8px; margin: 0; }
-.se-panel .map-group-title { margin: 0; color: var(--gold, #c6a463); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.se-panel .map-group-title { margin: 0; font: var(--subgroup-title-font); letter-spacing: var(--group-title-tracking); text-transform: uppercase; color: var(--gold, #c6a463); }
 .se-scenery .map-group-list { grid-template-columns: 1fr; gap: 8px; }
 .se-scenery .map-choice { grid-template-columns: 88px minmax(0, 1fr); align-items: stretch; min-height: 78px; }
 .se-scenery .map-preview { aspect-ratio: auto; height: 100%; min-height: 78px; border-right: 1px solid #6c5a3b66; }
@@ -72,11 +72,10 @@
 .se-scenery .map-choice-state { margin-top: 2px; }
 
 /* Camadas e personagens */
-.scene-editor .se-layer-help { display: flex; align-items: center; gap: 4px; margin: 6px 0 0; font-size: .78rem; color: var(--muted, #9da492); }
 .scene-editor .se-empty-note { margin: 0; }
 .se-char-search { margin-bottom: 8px; }
 .se-char-search input { width: 100%; }
-.se-char-head { margin: 10px 0 4px; font-size: .74rem; letter-spacing: .05em; text-transform: uppercase; color: var(--gold, #c6a463); }
+.se-char-head { margin: 10px 0 4px; font: var(--subgroup-title-font); letter-spacing: var(--group-title-tracking); text-transform: uppercase; color: var(--gold, #c6a463); }
 .se-char { padding: 3px 4px 3px 6px; border: 1px solid transparent; border-radius: 6px; cursor: grab; }
 .se-char:hover, .se-char:focus-within { background: var(--ed-hover, #262a20); border-color: var(--ed-line, #3a3f31); }
 .se-char[draggable="true"]:active { cursor: grabbing; }
@@ -127,7 +126,6 @@
 .se-start-option svg { width: 22px; height: 22px; color: var(--gold, #c6a463); }
 .se-scope { margin: 0 0 10px; padding: 8px 10px; border-left: 3px solid var(--gold, #c6a463); background: #c6a46312; font-size: .86rem; }
 .se-comp-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
-.se-secret-layers { margin-top: 10px; display: grid; gap: 4px; }
 .se-char.placed { border-color: #c6a46340; }
 .se-char-actions { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
 .se-entry { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line, #494337); }
@@ -187,3 +185,19 @@
   .scene-editor .se-chip, .se-slot-name, .se-quick-item button, .scene-editor .se-sim-actions button, .se-slot .tool-icon { min-height: 44px; }
   .se-slot .tool-icon { min-width: 44px; }
 }
+
+/* Barra lateral (ADR-118): personagens em três vistas, criação de reservados, inspetor de camadas e Configurar */
+.se-slot-create { display: flex; align-items: center; gap: 4px; margin: 0 0 4px; }
+.se-slot-create .se-slot-add { flex: 1; justify-content: center; }
+.se-slot-archetypes { margin: 0 0 8px; }
+.se-slot-archetypes > summary { cursor: pointer; font-size: .8rem; }
+.se-slot-archetypes[open] > summary { margin-bottom: 6px; }
+.se-char-views { margin-top: 4px; }
+.se-char-search { margin-bottom: 6px; }
+.se-marker-add { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; }
+.se-marker-add .ed-icon { width: 16px; height: 16px; }
+.scene-editor .se-vis { margin: 8px 0; padding: 6px 8px; border: 1px solid var(--ed-line, #3a3f31); border-radius: 6px; }
+.scene-editor .se-vis legend { padding: 0 4px; color: var(--gold, #c6a463); font-size: .74rem; letter-spacing: .04em; text-transform: uppercase; }
+.ed-cfg-card .se-entry { margin-top: 0; padding-top: 0; border-top: 0; }
+.ed-cfg-card .ed-cfg-list { margin-top: 4px; }
+@media (max-width: 900px), (max-width: 1200px) and (pointer: coarse) { .se-slot-archetypes > summary { min-height: 44px; display: flex; align-items: center; } .se-slot-create .se-slot-add, .se-char-actions button { min-height: 44px; } }

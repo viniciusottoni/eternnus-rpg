@@ -650,7 +650,11 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | Selos "favorito", "incompleta: …", "não usado" e estrela | Texto visível no selo (não só cor); estrela com `aria-pressed` e nome "Adicionar/Remover dos favoritos" |
 | Novo mapa (do zero / a partir de modelo) | ⓘ `campanhas.mapas.novo` no diálogo de escolha |
 | Nova cena (do zero / a partir de mapa) | ⓘ `campanhas.cenas.nova` no diálogo de escolha |
-| Painel Camadas (olho, cadeado, opacidade, ordem, obrigatórias) | ⓘ `campanhas.editor.camadas` no título do painel |
+| Árvore de Organizar (camadas e elementos: olho, cadeado, opacidade, Todos/Mestre, alfinete de camada fixa, arrastar, localizar) — ADR-118 | ⓘ `campanhas.editor.camadas` no título do painel; dicas curtas em cada controle (visível no editor × jogadores veem), motivo nos itens indisponíveis do menu ⋯, destino recusado explicado no resumo da árvore durante o arraste |
+| Barra lateral (cabeçalho, abas Organizar/Adicionar/Configurar, Histórico, divisores) — ADR-118 | ⓘ `campanhas.editor.contextos` no topo; abas com nome acessível e dica com o que cada área contém; divisores com `role="separator"` e valor anunciado; área vazia no contexto explica e oferece os contextos que a preenchem |
+| Inspetor de propriedades (documento, camada, elemento, vários) — ADR-118 | ⓘ `campanhas.editor.inspetor` no título Propriedades; nota curta sob os campos só quando a regra muda o resultado (camada oculta fora da imagem salva, bloqueio) |
+| Configurar a cena (mapa de origem, composição, preparação, entrada) — ADR-118 | ⓘ `campanhas.cenas.configurar` no título do painel Cena; "Abrir mapa original…" com dica de que oferece salvar antes |
+| Personagens em três vistas e "+ Personagem reservado" — ADR-118 | ⓘ `campanhas.cenas.posicoes` no título; `campanhas.cenas.reservados` ao lado da ação; estados vazios com a próxima ação (Ver disponíveis, Ver reservados) |
 | Atalhos de teclado e mouse do editor | ⓘ `campanhas.editor.atalhos` na barra de estado |
 | Camadas da cena (só organização no editor) | ⓘ `campanhas.cenas.camadas` + nota visível no painel |
 | Composição da cena (contexto Composição, início "Como deseja começar?", primeira imagem, Tornar jogável) — ADR-090 | ⓘ `campanhas.cenas.composicao` no painel Propriedades, no formulário da primeira imagem e no painel Acervo; texto visível "Somente esta cena" e explicação de Ajustar/Preencher/Tamanho original; "Só o mestre vê" com rótulo explícito (olho de camada = só editor) |
@@ -742,3 +746,4 @@ A área `loja` entra em `HELP_AREAS`, no índice `HELP_KEYS` e na lista pública
 | Mostrar esta região e exibição externa — ADR-115 | ⓘ `mesa.exibicao.externa` (mestre); confirmação em aviso curto ao enviar |
 | Convidados da mesa (ligar, convites, lugares, controle de token) — ADR-114 | ⓘ `mesa.convidados.gerenciar` (mestre); aviso visível "Quem tiver o link entra; revogue quando terminar" |
 | Entrada e mesa do convidado — ADR-114 | ⓘ `mesa.convidado.entrar` e `mesa.convidado.mesa` (todos); fim de acesso explicado em tela própria |
+| Réguas da mesa — ADR-117 | Réguas decorativas (`aria-hidden`). O canto mostra a unidade com tooltip (`data-tip`) e texto para leitor de tela: "Régua em metros: cada casa da grade representa N m." Liga e desliga em "Mostrar réguas" (menu do mapa) e na Busca de ações. Sem chave ⓘ: o texto do canto já diz a escala. |

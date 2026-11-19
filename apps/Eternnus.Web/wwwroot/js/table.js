@@ -18,6 +18,7 @@ import {
   liveBadge,
 } from "./ui.js";
 import { createBoard } from "./table-map.js";
+import { mountMapRulers } from "./map-ruler.js";
 import { icon } from "./icons.js";
 import { mountTemporaryImages } from "./temporary-images.js";
 import { mountSoundtrack } from "./table-soundtrack.js";
@@ -182,7 +183,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     <header class="table-top"><a class="table-brand" href="#campaign/${esc(campaignId)}" aria-label="Voltar à campanha"><img src="/assets/eternnus-logo.webp" alt="Eternnus RPG"></a><div class="table-title"><h1><span id="t-campaign">Mesa</span> <span class="online-badge" data-tip="A sessão está ativa; presenças aparecem no grupo." id="t-online"><i aria-hidden="true"></i>ONLINE</span></h1><p id="t-sub">Conectando à sessão…</p></div><div class="table-top-scroll" role="group" aria-label="Comandos da sessão — deslize para ver mais"><button type="button" id="t-fullscreen" class="subtle tool-icon" hidden></button><div class="table-top-actions" id="t-top"></div><div class="session-audio-host" id="t-audio" hidden></div><div class="music-dock"></div></div></header>
     <aside class="party" aria-labelledby="party-title" tabindex="-1"><h2 id="party-title"><span aria-hidden="true">⚔</span> Aventureiros <span class="count-chip" id="t-count">0 online</span></h2>${isMaster ? button("Visão do grupo", "t-party-view", "", "subtle small party-view-button") : ""}<ul id="t-party" class="party-list"></ul>${isMaster ? `<details class="npc-dock" id="t-npc-dock"><summary>Personagens do mestre</summary><p class="form-help">Arraste para o mapa ou use “Colocar” e escolha a casa.</p><ul class="npc-dock-list" id="t-npc-dock-list"></ul></details>` : ""}<p class="party-caption">Avatares conectados e estado atual${helpButton("mesa.mapa.legenda", "Marcadores, vida e presença")}</p></aside>
     <main class="stage" id="main" tabindex="-1" aria-label="Mapa da sessão"><div class="stage-chip" id="t-chip"></div><div class="stage-tools" id="t-tools" role="toolbar" aria-label="Ferramentas do mapa" aria-orientation="vertical"></div><div class="fog-palette" id="t-fog" role="toolbar" aria-label="Névoa e luz" hidden></div><div class="play-banner" id="t-banner" role="status" hidden></div><div class="pending-banner" id="t-pending" role="status" hidden></div><div class="board" id="t-board"></div><div class="follow-chip" id="t-follow-chip" hidden></div><div class="turn-herald" id="t-herald" aria-hidden="true"><span></span></div><div class="roll-spotlight" id="t-spot" role="status" aria-live="polite" hidden></div><div class="dice-tray" id="t-dice" role="toolbar" aria-label="Dados rápidos"></div><div class="drop-veil" id="t-drop" hidden><p><strong>Solte para usar como mapa</strong><span>Imagem PNG, JPEG ou WebP, ou arquivo UVTT (.dd2vtt, .uvtt, .df2vtt)</span></p></div><input type="file" id="t-map-file" accept="image/png,image/jpeg,image/webp,.dd2vtt,.uvtt,.df2vtt" hidden><p class="stage-hint" id="t-hint" role="status"></p></main>
-    <section class="side-panel" aria-label="Registros da mesa"><div class="panel-tabs" role="tablist" id="t-tabs"></div><div class="panel-body" id="t-panel" role="tabpanel" tabindex="0"></div><form id="t-chat" class="chat-form" autocomplete="off"><div class="field-label"><label class="sr-only" for="t-message">Mensagem para a mesa</label>${helpButton("mesa.chat.comandos", "Conversa e dados")}</div><input id="t-message" name="content" maxlength="2000" placeholder="Escrever mensagem… (/r 1d20+3 para rolar)" required><button type="submit" class="primary icon-send" aria-label="Enviar">➤</button></form></section>
+    <section class="side-panel" aria-label="Registros da mesa"><div class="ed-side-nav"><div class="panel-tabs ed-side-tabs" role="tablist" aria-label="Painel da mesa" id="t-tabs"></div></div><div class="panel-body" id="t-panel" role="tabpanel" tabindex="0"></div><form id="t-chat" class="chat-form" autocomplete="off"><div class="field-label"><label class="sr-only" for="t-message">Mensagem para a mesa</label>${helpButton("mesa.chat.comandos", "Conversa e dados")}</div><input id="t-message" name="content" maxlength="2000" placeholder="Escrever mensagem… (/r 1d20+3 para rolar)" required><button type="submit" class="primary icon-send" aria-label="Enviar">➤</button></form></section>
     <div class="table-bottom"><footer class="turn-bar" id="t-turn" aria-live="polite"></footer><nav class="table-view-switch" id="t-views" aria-label="Alternar entre mapa, ficha e conversa"></nav></div>
     <div class="ended-veil" id="t-ended" hidden></div>
   </div>`;
@@ -198,6 +199,14 @@ function mountTable(campaignId, sessionId, isMaster) {
     onCancel: () => setMode("none"),
     onContext: (at) => openTableMenu(at),
     onUserCamera: () => follow?.userMoved(),
+  });
+  // Réguas do mapa (ADR-117): as mesmas dos editores, 0 no canto do mapa e metros pela escala da grade.
+  // Só em mapa com grade e fora do layout compacto; cada pessoa liga ou desliga para si (Busca de ações e menu do mapa).
+  const rulers = mountMapRulers($("#main"), $("#t-board"), () => {
+    if (!live || live.map.kind !== "tileset") return null;
+    const r = board.camera.cellRect({ x: 0, y: 0 });
+    const meters = Number(live.map.scaleMeters) > 0 ? Number(live.map.scaleMeters) : 1.5;
+    return r.size > 0 ? { x: r.x, y: r.y, cellPx: r.size, cellUnits: meters, unit: "m" } : null;
   });
   // Câmera compartilhada (ADR-115): jogador escolhe seguir o mestre (desligado por padrão, lembrado nesta aba).
   // O mestre nunca segue; a câmera de quem não segue nunca é movida.
@@ -302,6 +311,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     clearTimeout(spotTimer);
     clearInterval(beat);
     document.removeEventListener("visibilitychange", onVisible);
+    rulers.destroy();
     board.destroy();
     disposeViewport();
     temporaryImages.dispose();
@@ -679,12 +689,12 @@ function mountTable(campaignId, sessionId, isMaster) {
           ["soundtrack", "Trilha", "music"],
         ];
     if (!tabs.some(([k]) => k === tab)) tab = "chat";
-    // Contextos no padrão dos editores (ADR-105): ícone em todas as abas e o nome visível só na ativa, numa fila sem rolagem.
+    // Abas no mesmo padrão da barra lateral dos editores (ADR-105/117): ícone em todas, nome visível só na ativa, sem rolagem.
     // O nome continua no leitor de tela (texto oculto) e na dica.
     const html = tabs
       .map(
         ([key, label, name]) =>
-          `<button type="button" role="tab" id="tab-${key}" aria-selected="${key === tab}" class="ed-context${key === tab ? " active" : ""}" data-action="t-tab" data-id="${key}" data-tip="${esc(label)}">${icon(name)}<span>${esc(label)}</span></button>`,
+          `<button type="button" role="tab" id="tab-${key}" aria-selected="${key === tab}" tabindex="${key === tab ? 0 : -1}" class="ed-side-tab" data-action="t-tab" data-id="${key}" data-tip="${esc(label)}">${icon(name)}<span>${esc(label)}</span></button>`,
       )
       .join("");
     if ($("#t-tabs").innerHTML !== html) $("#t-tabs").innerHTML = html;
@@ -1564,6 +1574,7 @@ function mountTable(campaignId, sessionId, isMaster) {
       renderTools();
       board.setView(boardView());
     }
+    if (action === "t-rulers") rulers.setEnabled(!rulers.enabled());
     if (action === "t-tool-bubbles") {
       bubbles = !bubbles;
       renderTools();
@@ -1657,7 +1668,8 @@ function mountTable(campaignId, sessionId, isMaster) {
     const i = tabs.findIndex((t) => t.dataset.id === tab);
     const next =
       tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
-    command("t-tab", next.dataset.id);
+    e.preventDefault();
+    Promise.resolve(command("t-tab", next.dataset.id)).then(() => $(`#tab-${next.dataset.id}`)?.focus()).catch(() => {});
   });
   shell.addEventListener("submit", async (e) => {
     const form = e.target;
@@ -1768,6 +1780,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     items.push(
       { label: "Desfazer a última alteração", shortcut: "mod+z", disabled: !undo || !!ended, disabledReason: ended || "Nada para desfazer agora.", run: run("t-undo", undo ? String(undo.id) : "") },
       { label: "Mostrar grade", checked: gridShown(), disabled: !tiles, disabledReason: "Exige um mapa com grade.", run: run("t-tool-grid") },
+      { label: "Mostrar réguas", checked: rulers.enabled(), disabled: !tiles, disabledReason: "Exige um mapa com grade.", run: run("t-rulers") },
       { label: "Busca de ações…", shortcut: "mod+k", run: run("t-palette") },
     );
     return items;

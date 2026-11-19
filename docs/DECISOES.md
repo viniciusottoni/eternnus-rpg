@@ -1390,3 +1390,54 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 **Simplicidade (ADR-100):** nenhuma ferramenta nova na barra da Básica; ações novas vivem no menu de contexto, no painel e na Busca de ações. A jornada "preparar cena" perde passos (Acervo no contexto Personagens; predefinições de tamanho em vez de números).
 
 **Consequências:** o progresso do envio é por arquivo ("k de n"), não por bytes (`fetch` não informa envio). A importação por link no editor de cenas usa `prompt()` simples.
+
+## ADR-116 — Títulos de grupo padronizados nos editores e na mesa (19/11/2026)
+
+**Contexto:** a seta de abrir/fechar dos grupos manipuláveis variava. Os painéis do editor de cena e dos editores de mapa usavam o glifo "▸", com título centralizado e em caixa mista (o estilo global de `button` centralizava e anulava a caixa alta). A mesa ao vivo usava a seta CSS do ADR-109, em caixa alta e alinhada à esquerda. O seletor do editor também punha um "▸" no botão de ajuda do título ("Acervo rápido"). Os títulos internos usavam 11–16 px, com serifa em algumas abas da mesa e caixa alta em tamanhos diferentes (`.se-char-head`, `.tme-group-title`, `.tme-sub`, `.ed-props-heading`, `.map-group-title`).
+
+**Decisão:**
+- **Seta única:** a seta CSS do `<summary>` (`styles.css`) vale também para botões `.disclosure` com `aria-expanded`. O botão de título dos painéis do núcleo (`editor-core.js`) passa a usar `.disclosure`. Não há outro glifo de abrir/fechar nos editores nem na mesa.
+- **Três níveis de título**, com tokens em `styles.css`:
+  1. título do grupo/painel (`.ed-panel-title`, "Aventureiros", "Personagens do mestre"): 600 .78rem, caixa alta dourada sobre faixa escura, 36 px, seta à esquerda, ajuda e menu à direita;
+  2. título de seção dentro do grupo: sans 14 px negrito;
+  3. subgrupo (h4, legendas, cabeçalhos de lista): 600 .74rem em caixa alta dourada. Um recolhível interno usa a seta comum com texto 600 13 px.
+- **Organização interna:** recuo lateral (`--group-pad`, 10 px) e espaçamento entre blocos (`--group-gap`, 10 px) iguais nos painéis. No toque, títulos e recolhíveis têm 44 px.
+
+**Simplicidade (ADR-100):** só apresentação. Não muda `TOOL_INVENTORY`, `BASIC_BUDGET` nem a Busca de ações. Nenhum clique ou campo novo.
+
+**Consequências:** diálogos de propriedades e telas fora da mesa e dos editores mantêm seus títulos. Service worker `v92`.
+
+## ADR-117 — Réguas do mapa também na mesa ao vivo (19/11/2026)
+
+**Contexto:** só os editores tinham réguas. Na mesa, mestre e jogadores não tinham referência visual das dimensões do mapa: quanto mede uma sala, a que distância está uma criatura.
+
+**Decisão:**
+- **Mesmas réguas:** o desenho saiu de `editor-core.js` para `js/map-ruler.js` (`paintRuler`, `rulerScaleText`) e vale nos editores e na mesa. A régua superior e a esquerda medem em metros pela escala da grade (`map.scaleMeters`, padrão 1,5 m). O 0 fica no canto do mapa, com a unidade ("0 m"). Uma linha dourada acompanha o cursor. O canto mostra a unidade e, na dica e no leitor de tela, quanto vale cada casa.
+- **Sem cobrir o mapa:** com réguas, o tabuleiro abre uma margem de 18 px no topo e à esquerda (`.stage.has-rulers`). O selo da cena desce para não tapar os números.
+- **Quando aparecem:** só em mapa com grade e fora do layout compacto, na mesma faixa em que os editores escondem as suas (≤ 900 px ou toque ≤ 1200 px). Ficam ligadas por padrão. Cada pessoa liga ou desliga para si no menu do mapa ("Mostrar réguas") e na Busca de ações ("Mostrar ou ocultar as réguas"). A escolha não é gravada.
+- **Desempenho:** redesenho só quando a vista, o tamanho ou o cursor mudam. O laço por `requestAnimationFrame` para em aba oculta e é descartado ao sair da mesa.
+
+**Simplicidade (ADR-100):** não é ferramenta do trilho; nada muda em `TOOL_INVENTORY` ou `BASIC_BUDGET`. Nenhum clique a mais em jornada alguma: as réguas já vêm ligadas. A ação nova entra na Busca de ações (`table-commands-policy.js`).
+
+**Consequências:** a exibição externa e a mesa do convidado continuam sem réguas. Service worker `v94` (`map-ruler.js` entra na lista pública; módulo sem dados).
+
+## ADR-118 — Barra lateral contextual dos editores e da mesa (19/11/2026)
+
+**Contexto:** a lateral dos editores de cenas, de mapas de imagem e de tiles empilhava Propriedades, Camadas, Estrutura, Personagens, Acervo e Histórico numa rolagem longa. Camadas e Estrutura mostravam os mesmos elementos em lugares diferentes; personagens apareciam em três listas (painel Personagens e categorias Grupo/Reservados/NPCs do Acervo); "ocultar no editor" e "esconder dos jogadores" ficavam lado a lado sem distinção visual; a entrada de imagens dependia de achar o painel certo.
+
+**Decisão:**
+- **Estrutura comum (`editor-core.js`):** cabeçalho do documento (nome, tipo, selos de estado, referência ao mapa original, menu ⋯), **inspetor** fixo no alto (painéis `area: "inspect"`), divisor de altura e três áreas em abas — **Organizar**, **Adicionar**, **Configurar** — com rolagem própria. O **Histórico** é ação secundária (ícone), não uma quarta aba. Cada painel declara `area`; o DOM do painel é montado uma vez e só muda de visibilidade (busca, foco e estado temporário sobrevivem); a rolagem de cada área é guardada ao alternar. Os contextos do topo continuam escolhendo a **tarefa**; a lateral mostra **informação e recursos** dela. Contexto sem painel numa área mostra estado vazio com atalho para o contexto que preenche; contexto pode declarar `area` para a qual a lateral vai quando a atual fica vazia.
+- **Árvore unificada (`editor-outline.js`):** substitui `renderLayersPanel` e `renderStructurePanel`. Camadas como ramos (recolher/expandir), elementos como folhas; clique, Ctrl+clique, Shift+clique (intervalo), duplo clique/F2 renomeia, menu de contexto, teclado (setas, Home/End, ←/→), localizar no mapa (só ação explícita: a seleção comum não mexe na câmera), arrastar entre camadas e reordenar (imagem) com destino validado por `outlineDropProblem` (camada bloqueada, somente leitura ou item bloqueado recusam). A seleção do canvas destaca o item e abre o ramo. Camadas fixas levam alfinete (sem a palavra "obrigatória"); controles indisponíveis explicam o motivo.
+- **Visibilidade separada:** o olho é sempre "visível no editor" (com a semântica de cada documento na dica: no mapa de imagem a camada oculta sai da imagem salva; nos tiles, camada extra oculta sai das regras e da mesa; na cena vale só para o mestre). "Para os jogadores" é outro controle: botão Todos/Mestre na camada da composição (substitui o grupo de caixas "Na sessão") e selo "Mestre" nos marcadores ocultos. O inspetor da camada da composição separa "Na sessão" de "No editor".
+- **Inspetor contextual:** sem seleção, resumo do documento e ações; camada; um elemento (nome, posição, tamanho, rotação, opacidade, camada, ordem, bloqueio, proporção nas imagens); vários (só campos comuns, alinhar, distribuir, agrupar). Cena: inspetor de camada de marcadores e de camada da composição; marcador com "Oculto para os jogadores" e "Localizar no mapa".
+- **Adicionar:** imagem — enviar, texto, formas e acervo com categorias Imagens/Mapas/Recentes/Favoritos (recentes e favoritos da Preparação, helpers em `image-drop.js`); cena — **Personagens** em três vistas (Em cena, Disponíveis, Reservados), "+ Personagem reservado" como ação principal e arquétipos recolhidos; o Acervo da cena deixa de listar Grupo/Reservados/NPCs (sem listas concorrentes). "Posicionar na cena" sem casa escolhida usa o centro da vista. Rótulos: "Mostrar" → "Localizar no mapa", "Colocar" → "Posicionar na cena"; "Remover posição" continua distinto de excluir personagem.
+- **Configurar:** imagem — área visível, recorte, grade e escala, fundo, propriedades e preparação técnica; tiles — mapa e pintura; cena — cena (texto compartilhado, notas, cenário), **mapa de origem** (somente leitura, "Abrir mapa original…" protege alterações não salvas), **composição desta cena** e **preparação do mapa** (visibilidade, alcance, grade, névoa, recomeçar exploração) e a área de entrada (saiu do painel Personagens). Cada item abre o formulário existente no inspetor.
+- **Mesa ao vivo:** as abas do painel lateral usam a mesma faixa e a mesma aba ativa (`.ed-side-nav`/`.ed-side-tab`, linha dourada) dos editores; nome visível só na ativa; setas trocam a aba e mantêm o foco.
+- **Preferências** (por conta, neste navegador; `normalizeLayoutPref` aceita e limpa): área ativa, altura do inspetor (`split`), ramos recolhidos (`tree`) e vistas internas (`views`, ex.: vista de personagens e categoria do acervo), por tipo de editor. Preferência antiga ou inválida é descartada sem quebrar o layout.
+- **Responsivo:** até 900 px (ou toque até 1200 px) a lateral é gaveta sobre o mapa com botão fechar; abas e controles da árvore com 44 px; lateral estreita mostra só ícones nas abas (container query).
+
+**Jornadas (ADR-100):** criar campanha e abrir sessão não mudam. Preparar cena: inserir a primeira imagem fica a um clique (Adicionar), personagens a um clique (Adicionar › Personagens); nenhum clique obrigatório a mais — a seleção continua no palco e a árvore só soma caminhos. Conduzir: mesma navegação de abas, só visual. Jogador no celular: inalterado. Nenhuma ferramenta nova em `TOOL_INVENTORY`; `BASIC_BUDGET` igual; nenhum campo obrigatório novo. A Busca de ações ganha "Barra lateral: Organizar/Adicionar/Configurar/Histórico".
+
+**Invariantes preservadas:** documentos, contratos HTTP, validações de domínio, permissões, undo/redo (toda mudança passa por `change`/`compChange`/`commit`), seleção múltipla, atalhos, arrastar do acervo e de arquivos, estado não salvo, salvar/aplicar/apresentar/reiniciar. Preparação continua privada até Aplicar. Nada foi movido para o servidor.
+
+**Consequências:** `renderLayersPanel`/`renderStructurePanel` removidos do núcleo. Ícones novos em `icons.js` (`chevron`, `players`, `master`, `pin`, `inspect`). Chaves de ajuda `campanhas.editor.inspetor` e `campanhas.cenas.configurar`; `campanhas.editor.camadas` e `campanhas.editor.contextos` reescritas. Service worker `v95` (`editor-outline.js` na lista pública).

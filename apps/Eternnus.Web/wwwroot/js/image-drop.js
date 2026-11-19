@@ -5,6 +5,24 @@ import { esc } from "./ui.js";
 import { isTypingTarget } from "./editor-policy.js";
 import { state } from "./state.js";
 import { uploadLimit, formatBytes } from "./account-usage-policy.js";
+import { normalizeUserPrefs, touchRecent, userPrefsKey } from "./prep-explorer-policy.js";
+
+/**
+ * Favoritos e recentes da Preparação (mesmo armazenamento local por conta e campanha; só chaves `tipo:id`), lidos pelos
+ * acervos dos editores (ADR-118). Armazenamento indisponível: listas vazias, sem erro.
+ */
+export function quickPrefsOf(userId, campaignId) {
+  try { return normalizeUserPrefs(JSON.parse(localStorage.getItem(userPrefsKey(userId, campaignId)) || "{}")); }
+  catch { return normalizeUserPrefs({}); }
+}
+/** Registra um uso recente (a chave vai ao topo). Preserva favoritos e coleções já guardados. */
+export function touchQuickPref(userId, campaignId, key) {
+  try {
+    const k = userPrefsKey(userId, campaignId);
+    const raw = JSON.parse(localStorage.getItem(k) || "{}");
+    localStorage.setItem(k, JSON.stringify({ ...raw, recents: touchRecent(normalizeUserPrefs(raw), key).recents }));
+  } catch { /* armazenamento indisponível: recentes valem só nesta visita */ }
+}
 
 export const IMAGE_TYPES = Object.freeze(["image/png", "image/jpeg"]);
 /** Maior imagem que a conta envia (plano, ADR-102); sem conta carregada, o do Basic. */
@@ -166,7 +184,8 @@ export function assetListHtml(items, { query = "", empty = "Nenhuma imagem no ac
   if (!list.length) return `<p class="muted small">${esc(q ? "Nenhum resultado." : empty)}</p>`;
   return `<ul class="ed-assets" role="list">${list.slice(0, 60).map((m) => {
     const data = esc(JSON.stringify({ src: m.key, name: String(m.name || "Imagem").slice(0, 80), width: m.pixelWidth || 0, height: m.pixelHeight || 0 }));
-    return `<li class="ed-asset" draggable="true" data-ed-asset="${data}"><img src="${esc(m.imageUrl)}" alt="" loading="lazy" decoding="async" width="56" height="42"><span>${esc(m.name || "Imagem")}${m.pixelWidth ? `<small>${Number(m.pixelWidth)} × ${Number(m.pixelHeight)} px</small>` : ""}</span><button type="button" class="subtle small" data-ed-asset-add>Adicionar<span class="sr-only"> ${esc(m.name || "imagem")}</span></button></li>`;
+    const sub = [m.kindLabel ? String(m.kindLabel) : "", m.pixelWidth ? `${Number(m.pixelWidth)} × ${Number(m.pixelHeight)} px` : ""].filter(Boolean).join(" · ");
+    return `<li class="ed-asset" draggable="true" data-ed-asset="${data}"><img src="${esc(m.imageUrl)}" alt="" loading="lazy" decoding="async" width="56" height="42"><span>${esc(m.name || "Imagem")}${sub ? `<small>${esc(sub)}</small>` : ""}</span><button type="button" class="subtle small" data-ed-asset-add>Adicionar<span class="sr-only"> ${esc(m.name || "imagem")}</span></button></li>`;
   }).join("")}</ul>`;
 }
 
