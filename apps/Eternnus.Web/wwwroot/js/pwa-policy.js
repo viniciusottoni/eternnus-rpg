@@ -113,6 +113,8 @@ export const STATIC_PATHS = Object.freeze([
     "icons",
     "editor-core",
     "editor-policy",
+    "editor-outline",
+    "map-ruler",
     "prep-explorer",
     "prep-explorer-policy",
     "prep-create",

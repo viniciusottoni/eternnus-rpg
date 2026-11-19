@@ -1,13 +1,16 @@
-// Núcleo gráfico compartilhado (ADR-081): janela do editor em tela cheia, menus, ferramentas, painéis, barra de estado,
-// menus de contexto, janela de propriedades, painel de camadas/estrutura/histórico e atalhos.
+// Núcleo gráfico compartilhado (ADR-081): janela do editor em tela cheia, menus, ferramentas, barra lateral (ADR-118:
+// cabeçalho, inspetor e áreas Organizar/Adicionar/Configurar/Histórico), barra de estado, menus de contexto,
+// janela de propriedades e atalhos.
 // Usado pelos editores de mapas de tiles, mapas de imagem e cenas. Não faz chamadas HTTP nem guarda estado de jogo.
 import { $, esc, modal, toast } from "./ui.js";
 import { helpButton } from "./help.js";
 import { interfaceMode, interfaceToggle, mountInterfaceToggle, onInterfaceChange, setInterfaceMode } from "./interface-mode.js";
 import { mountCommandPalette } from "./command-palette.js";
-import { FIELD_SAFE, clampMenu, isTypingTarget, isRequiredLayer, rulerLabel, rulerSteps, shortcutLabel, shortcutOf, zoomLabel,
+import { FIELD_SAFE, clampMenu, isTypingTarget, rulerSteps, shortcutLabel, shortcutOf, zoomLabel,
   normalizeContexts, toolInContext, panelInContext, availableContexts, toolAfterContext, contextShortcutIndex,
-  layoutPrefKey, normalizeLayoutPref, panelOrder, movePanel, PANEL_WIDTH } from "./editor-policy.js";
+  layoutPrefKey, normalizeLayoutPref, panelOrder, movePanel, PANEL_WIDTH,
+  SIDE_AREAS, HISTORY_AREA, INSPECT_AREA, INSPECT_SPLIT, clampSplit, panelArea, sideAreasFor, initialArea } from "./editor-policy.js";
+import { paintRuler, rulerScaleText } from "./map-ruler.js";
 import { state } from "./state.js";
 
 let shellSequence = 0;
@@ -196,81 +199,7 @@ export function openPropertiesDialog({ title, fields, onApply, onClose, live = f
 }
 
 // ---------- Painéis reutilizáveis ----------
-/**
- * Painel de camadas (topo primeiro, como em editores gráficos). `onAction(action, id, value)`:
- * select | visible | lock | opacity | rename | up | down | add | duplicate | delete | move-selection.
- */
-export function renderLayersPanel(host, { layers, active, complete = true, selectionCount = 0, lockedNote = "", visibilityNote = "", onAction }) {
-  const rows = [...layers].reverse().map((l) => {
-    const required = isRequiredLayer(l.id), current = l.id === active;
-    return `<li class="ed-layer${current ? " active" : ""}${l.visible ? "" : " hidden-layer"}" data-layer="${esc(l.id)}">
-      <button type="button" class="ed-icon-button" data-layer-action="visible" aria-pressed="${l.visible}" aria-label="${l.visible ? "Ocultar" : "Mostrar"} a camada ${esc(l.name)}">${icon(l.visible ? "eye" : "eyeOff")}</button>
-      <button type="button" class="ed-icon-button" data-layer-action="lock" aria-pressed="${l.locked}" aria-label="${l.locked ? "Desbloquear" : "Bloquear"} a camada ${esc(l.name)}">${icon(l.locked ? "lock" : "unlock")}</button>
-      <button type="button" class="ed-layer-name" data-layer-action="select" aria-pressed="${current}"><span>${esc(l.name)}</span><small>${required ? (l.id === "base" ? "obrigatória · base" : "obrigatória") : "extra"}${l.opacity < 100 ? ` · ${l.opacity}%` : ""}</small></button>
-      ${complete ? `<label class="ed-layer-opacity"><span class="sr-only">Opacidade de ${esc(l.name)}</span><input type="number" min="0" max="100" step="5" value="${l.opacity}" data-layer-action="opacity" aria-label="Opacidade de ${esc(l.name)} (%)"></label>` : ""}
-    </li>`;
-  }).join("");
-  const current = layers.find((l) => l.id === active);
-  const required = current && isRequiredLayer(current.id);
-  const index = layers.findIndex((l) => l.id === active);
-  host.innerHTML = `<ul class="ed-layers" aria-label="Camadas, da mais alta para a mais baixa">${rows}</ul>
-    <div class="ed-layer-tools" role="group" aria-label="Ações de camada">
-      <button type="button" class="ed-icon-button" data-layer-action="add" aria-label="Nova camada" ${layers.length >= 8 ? 'aria-disabled="true"' : ""}>${icon("plus")}</button>
-      <button type="button" class="ed-icon-button" data-layer-action="duplicate" aria-label="Duplicar camada ativa" ${!current || layers.length >= 8 ? 'aria-disabled="true"' : ""}>${icon("copy")}</button>
-      <button type="button" class="ed-icon-button" data-layer-action="up" aria-label="Subir camada ativa" ${required || index >= layers.length - 1 ? 'aria-disabled="true"' : ""}>${icon("up")}</button>
-      <button type="button" class="ed-icon-button" data-layer-action="down" aria-label="Descer camada ativa" ${required || index <= 2 ? 'aria-disabled="true"' : ""}>${icon("down")}</button>
-      <button type="button" class="ed-icon-button" data-layer-action="rename" aria-label="Renomear camada ativa">${icon("text")}</button>
-      <button type="button" class="ed-icon-button danger" data-layer-action="delete" aria-label="Excluir camada ativa" ${required ? 'aria-disabled="true" data-tip="Base e Elementos são obrigatórias."' : ""}>${icon("trash")}</button>
-    </div>
-    ${selectionCount ? `<label class="field ed-move-layer"><span>Mover ${selectionCount === 1 ? "seleção" : `${selectionCount} itens`} para</span><select data-layer-action="move-selection"><option value="">Escolha a camada…</option>${layers.filter((l) => l.id !== "base" || lockedNote !== "no-base").map((l) => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join("")}</select></label>` : ""}
-    ${visibilityNote ? `<p class="form-help">${esc(visibilityNote)}</p>` : ""}`;
-  host.onclick = (e) => {
-    const b = e.target.closest("[data-layer-action]");
-    if (!b || b.tagName === "INPUT" || b.tagName === "SELECT") return;
-    if (b.getAttribute("aria-disabled") === "true") { if (b.dataset.tip) toast(b.dataset.tip); return; }
-    const id = b.closest("[data-layer]")?.dataset.layer || active;
-    const action = b.dataset.layerAction;
-    if (action === "rename") {
-      const layer = layers.find((l) => l.id === id);
-      const name = prompt("Nome da camada (até 40 caracteres)", layer?.name || "");
-      if (name != null && name.trim()) onAction("rename", id, name.trim().slice(0, 40));
-      return;
-    }
-    onAction(action, id);
-  };
-  host.ondblclick = (e) => {
-    const row = e.target.closest(".ed-layer-name"); if (!row) return;
-    const id = row.closest("[data-layer]").dataset.layer, layer = layers.find((l) => l.id === id);
-    const name = prompt("Nome da camada (até 40 caracteres)", layer?.name || "");
-    if (name != null && name.trim()) onAction("rename", id, name.trim().slice(0, 40));
-  };
-  host.onchange = (e) => {
-    const t = e.target;
-    if (t.dataset.layerAction === "opacity") onAction("opacity", t.closest("[data-layer]").dataset.layer, Math.max(0, Math.min(100, Math.round(Number(t.value) || 0))));
-    if (t.dataset.layerAction === "move-selection" && t.value) onAction("move-selection", t.value);
-  };
-}
-
-/**
- * Árvore de estrutura (grupos → itens) para localizar e selecionar elementos.
- * Item: { id, label, meta, icon, hidden, locked, selected }. Clique seleciona (Ctrl/Shift soma); botão direito abre o menu do item.
- */
-export function renderStructurePanel(host, { groups, empty = "Nada nesta camada ainda.", onSelect, onContext }) {
-  const any = groups.some((g) => g.items.length);
-  host.innerHTML = any ? `<div class="ed-tree" role="tree" aria-label="Estrutura do documento">${groups.filter((g) => g.items.length || g.showEmpty).map((g) => `<div role="treeitem" aria-expanded="true" class="ed-tree-group"><span class="ed-tree-group-label">${esc(g.label)} <small>${g.items.length}</small></span><ul role="group">${g.items.map((it) => `<li role="treeitem" aria-selected="${!!it.selected}" class="ed-tree-item${it.selected ? " selected" : ""}${it.hidden ? " is-hidden" : ""}" data-item="${esc(it.id)}" tabindex="${it.selected ? 0 : -1}">${icon(it.icon || "object")}<span>${esc(it.label)}</span>${it.meta ? `<small>${esc(it.meta)}</small>` : ""}${it.locked ? icon("lock") : ""}</li>`).join("")}</ul></div>`).join("")}</div>` : `<p class="muted small">${esc(empty)}</p>`;
-  const first = host.querySelector('.ed-tree-item[tabindex="0"]') || host.querySelector(".ed-tree-item");
-  if (first) first.tabIndex = 0;
-  host.onclick = (e) => { const it = e.target.closest("[data-item]"); if (it) onSelect(it.dataset.item, e.ctrlKey || e.metaKey || e.shiftKey); };
-  host.oncontextmenu = (e) => { const it = e.target.closest("[data-item]"); if (!it || !onContext) return; e.preventDefault(); onSelect(it.dataset.item, false); onContext(it.dataset.item, { x: e.clientX, y: e.clientY }); };
-  host.onkeydown = (e) => {
-    const items = [...host.querySelectorAll("[data-item]")], i = items.indexOf(document.activeElement);
-    if (i < 0) return;
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); const n = items[Math.max(0, Math.min(items.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))]; items.forEach((x) => (x.tabIndex = -1)); n.tabIndex = 0; n.focus(); }
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(items[i].dataset.item, e.ctrlKey || e.shiftKey); }
-    if ((e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) && onContext) { e.preventDefault(); const r = items[i].getBoundingClientRect(); onContext(items[i].dataset.item, { x: r.left + 20, y: r.bottom }); }
-  };
-}
-
+// Camadas e elementos ficam na árvore unificada (editor-outline.js, ADR-118); aqui fica o Histórico.
 /** Painel Histórico: lista as etapas desta sessão de edição; clicar volta/avança até ela. */
 export function renderHistoryPanel(host, history) {
   const entries = history.entries();
@@ -301,7 +230,23 @@ export function createEditorShell(opts) {
   const kind = /^[a-z][a-z0-9-]{0,23}$/.test(String(opts.kind || "")) ? opts.kind : "editor";
   const contexts = normalizeContexts(opts.contexts);
   const commonTools = (opts.commonTools || []).map(String);
-  modal(opts.title, `<div class="ed-shell" data-interface="${mode}" data-panels="open" data-kind="${esc(kind)}"${opts.contextBar ? ' data-contextbar="top"' : ""}>
+  // Barra lateral (ADR-118): cabeçalho do documento, inspetor fixo no alto e uma das áreas Organizar / Adicionar /
+  // Configurar abaixo (o Histórico é secundário). Os painéis declaram `area`; o DOM de cada painel é montado uma vez
+  // e só muda de visibilidade, então buscas, foco e estado temporário sobrevivem à troca de área.
+  const areas = sideAreasFor(opts.panels);
+  const hasHistory = opts.panels.some((p) => panelArea(p) === HISTORY_AREA);
+  const hasInspect = opts.panels.some((p) => panelArea(p) === INSPECT_AREA);
+  const panelHtml = (p) => `<section class="ed-panel" data-panel="${esc(p.id)}" data-area="${panelArea(p)}" data-basic="${p.basic !== false}" data-open="${p.open !== false}"><h2 class="ed-panel-title"><button type="button" class="disclosure" data-ed-panel-toggle="${esc(p.id)}" aria-expanded="${p.open !== false}">${esc(p.title)}</button>${p.help ? helpButton(p.help[0], p.help[1]) : ""}<button type="button" class="ed-icon-button ed-panel-menu" data-ed-panel-menu="${esc(p.id)}" aria-haspopup="menu" aria-label="Opções do painel ${esc(p.title)}">${icon("dots")}</button></h2><div class="ed-panel-body" data-panel-body="${esc(p.id)}"></div></section>`;
+  const areaPanels = (id) => opts.panels.filter((p) => panelArea(p) === id);
+  function sideHtml() {
+    const tabs = areas.map((a) => `<button type="button" role="tab" class="ed-side-tab" id="ed-${uid}-tab-${a.id}" data-ed-area-tab="${a.id}" aria-controls="ed-${uid}-area-${a.id}" aria-selected="false" tabindex="-1" data-tip="${esc(a.label)}" data-tip-detail="${esc(a.tip)}">${icon(a.icon)}<span>${esc(a.label)}</span></button>`).join("");
+    const history = hasHistory ? `<button type="button" class="ed-icon-button ed-side-history" data-ed-area-tab="${HISTORY_AREA}" aria-pressed="false" aria-controls="ed-${uid}-area-${HISTORY_AREA}" aria-label="Histórico desta edição" data-tip="Histórico" data-tip-detail="Etapas desta edição. Clique numa etapa para voltar até ela; Ctrl+Z e Ctrl+Shift+Z também funcionam.">${icon("history")}</button>` : "";
+    const body = [...areas.map((a) => a.id), ...(hasHistory ? [HISTORY_AREA] : [])].map((id) => `<div class="ed-area" id="ed-${uid}-area-${id}" data-ed-area="${id}" ${id === HISTORY_AREA ? 'role="region" aria-label="Histórico"' : `role="tabpanel" aria-labelledby="ed-${uid}-tab-${id}"`} hidden>${areaPanels(id).map(panelHtml).join("")}<div class="ed-area-empty" data-ed-area-empty hidden></div></div>`).join("");
+    return `<header class="ed-side-head" data-ed-side-head><div class="ed-side-doc"><strong data-ed-side-name></strong><small data-ed-side-kind></small></div><div class="ed-side-chips" data-ed-side-chips></div><button type="button" class="subtle small ed-side-origin" data-ed-side-origin hidden></button><button type="button" class="ed-icon-button" data-ed-side-menu aria-haspopup="menu" aria-label="Opções do documento" data-tip="Opções do documento" hidden>${icon("dots")}</button><button type="button" class="ed-icon-button ed-side-close" data-ed="side-close" aria-label="Fechar a barra lateral">${icon("close")}</button></header>
+      ${hasInspect ? `<div class="ed-inspect" data-ed-inspect>${areaPanels(INSPECT_AREA).map(panelHtml).join("")}</div><div class="ed-split" role="separator" aria-orientation="horizontal" aria-label="Altura do inspetor" tabindex="0" aria-valuemin="${Math.round(INSPECT_SPLIT.min * 100)}" aria-valuemax="${Math.round(INSPECT_SPLIT.max * 100)}" data-ed-split></div>` : ""}
+      ${areas.length || hasHistory ? `<div class="ed-side-nav"><div class="ed-side-tabs" role="tablist" aria-label="Barra lateral">${tabs}</div>${history}</div><div class="ed-areas" data-ed-areas>${body}</div>` : ""}`;
+  }
+  modal(opts.title,`<div class="ed-shell" data-interface="${mode}" data-panels="open" data-kind="${esc(kind)}"${opts.contextBar ? ' data-contextbar="top"' : ""}>
     <header class="ed-top">
       <div class="ed-brand"><strong class="ed-title" data-ed-title></strong><small class="ed-sub" data-ed-sub></small></div>
       <nav class="ed-menubar" role="menubar" aria-label="Menus do editor" data-ed-menubar></nav>
@@ -322,8 +267,8 @@ export function createEditorShell(opts) {
         <canvas class="ed-ruler ed-ruler-y" aria-hidden="true" data-ed-ruler="y"></canvas>
         <section class="ed-stage" aria-label="Área de edição" data-ed-stage></section>
       </div>
-      <div class="ed-resizer" role="separator" aria-orientation="vertical" aria-label="Largura dos painéis" tabindex="0" aria-valuemin="220" aria-valuemax="520" data-ed-resizer></div>
-      <aside class="ed-panels" aria-label="Painéis" data-ed-panels>${opts.panels.map((p) => `<section class="ed-panel" data-panel="${esc(p.id)}" data-basic="${p.basic !== false}" data-open="${p.open !== false}"><h2 class="ed-panel-title"><button type="button" data-ed-panel-toggle="${esc(p.id)}" aria-expanded="${p.open !== false}">${esc(p.title)}</button>${p.help ? helpButton(p.help[0], p.help[1]) : ""}<button type="button" class="ed-icon-button ed-panel-menu" data-ed-panel-menu="${esc(p.id)}" aria-haspopup="menu" aria-label="Opções do painel ${esc(p.title)}">${icon("dots")}</button></h2><div class="ed-panel-body" data-panel-body="${esc(p.id)}"></div></section>`).join("")}</aside>
+      <div class="ed-resizer" role="separator" aria-orientation="vertical" aria-label="Largura da barra lateral" tabindex="0" aria-valuemin="${PANEL_WIDTH.min}" aria-valuemax="${PANEL_WIDTH.max}" data-ed-resizer></div>
+      <aside class="ed-panels" aria-label="Barra lateral" data-ed-panels>${sideHtml()}</aside>
     </div>
     <footer class="ed-status" data-ed-status>
       <div class="ed-zoom" role="group" aria-label="Zoom"><button type="button" class="ed-icon-button" data-ed-zoom="out" aria-label="Afastar (Ctrl −)">−</button><button type="button" class="ed-zoom-value" data-ed-zoom="fit" aria-label="Ajustar à tela (Ctrl 0)"><span data-ed-zoom-label>100%</span></button><button type="button" class="ed-icon-button" data-ed-zoom="in" aria-label="Aproximar (Ctrl +)">+</button><button type="button" class="subtle small" data-ed-zoom="actual">100%</button></div>
@@ -360,27 +305,148 @@ export function createEditorShell(opts) {
     const host = q("[data-ed-panels]");
     for (const id of panelOrder(opts.panels.map((p) => p.id), pref.order?.[kind])) {
       const section = host.querySelector(`[data-panel="${CSS.escape(id)}"]`);
-      if (section) host.append(section);
+      if (section) section.parentElement.insertBefore(section, section.parentElement.querySelector(":scope > [data-ed-area-empty]"));
     }
   }
+  const areaOfId = (id) => panelArea(opts.panels.find((p) => p.id === id));
+  /** Reordena dentro da mesma área (a ordem só faz sentido entre vizinhos visíveis juntos). */
   function shiftPanel(id, delta) {
-    const order = movePanel(panelOrder(opts.panels.map((p) => p.id), pref.order?.[kind]), id, delta);
-    pref.order = { ...(pref.order || {}), [kind]: order }; savePref();
+    const all = panelOrder(opts.panels.map((p) => p.id), pref.order?.[kind]), area = areaOfId(id);
+    const moved = movePanel(all.filter((x) => areaOfId(x) === area), id, delta);
+    let k = 0;
+    pref.order = { ...(pref.order || {}), [kind]: all.map((x) => (areaOfId(x) === area ? moved[k++] : x)) }; savePref();
     applyPanelOrder();
     q(`[data-ed-panel-menu="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
   }
-  /** Restaura o layout padrão: largura, painéis abertos e ordem, réguas, barra de propriedades e maximização. */
+  /** Restaura o layout padrão: largura, painéis abertos e ordem, área, inspetor, réguas, barra de propriedades e maximização. */
   function resetLayout() {
     pref = {}; savePref();
     root.style.removeProperty("--ed-panel-width");
     for (const p of opts.panels) togglePanel(p.id, !defaultClosed.includes(p.id), false);
     applyPanelOrder();
+    setSplit(INSPECT_SPLIT.initial, false);
+    setArea(initialArea(opts.panels, null, opts.defaultArea), { persist: false });
     setMaximized(false);
     setRulers(true);
     if (opts.contextBar) root.dataset.contextbar = "top";
     setPanels(!matchMedia("(max-width: 900px)").matches);
+    opts.onLayoutReset?.();
     message("Layout padrão restaurado. O documento não mudou.");
   }
+
+  // ---------- Áreas da barra lateral (ADR-118) ----------
+  let sideArea = null;
+  const scrollOf = new Map(); // área → posição de rolagem (display:none zera a rolagem; restauramos ao voltar)
+  const areaEl = (id) => q(`[data-ed-area="${CSS.escape(String(id))}"]`);
+  /** Mostra uma área. `persist` grava a escolha para este tipo de editor; `focus` leva o foco à aba. */
+  function setArea(id, { persist = true, focus = false, notify = true } = {}) {
+    if (!id || !areaEl(id)) return;
+    if (sideArea && sideArea !== id) { const cur = areaEl(sideArea); if (cur) scrollOf.set(sideArea, cur.scrollTop); }
+    sideArea = id;
+    for (const el of root.querySelectorAll("[data-ed-area]")) el.hidden = el.dataset.edArea !== id;
+    for (const tab of root.querySelectorAll("[data-ed-area-tab]")) {
+      const on = tab.dataset.edAreaTab === id;
+      if (tab.getAttribute("role") === "tab") { tab.setAttribute("aria-selected", String(on)); tab.tabIndex = on || (id === HISTORY_AREA && tab === root.querySelector('[role="tab"]')) ? 0 : -1; }
+      else tab.setAttribute("aria-pressed", String(on));
+    }
+    root.dataset.area = id;
+    const el = areaEl(id);
+    el.scrollTop = scrollOf.get(id) || 0;
+    if (persist) { pref.area = { ...(pref.area || {}), [kind]: id }; savePref(); }
+    if (focus) root.querySelector(`[data-ed-area-tab="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+    if (notify) opts.onArea?.(id);
+  }
+  /** Abre a lateral e mostra o painel: troca para a área dele e o expande. Usado por ações como "Abrir a paleta". */
+  function revealPanel(id) {
+    const section = q(`[data-panel="${CSS.escape(id)}"]`);
+    if (!section) return;
+    setPanels(true);
+    const a = section.dataset.area;
+    if (a !== INSPECT_AREA && a !== sideArea) setArea(a, { persist: false });
+    togglePanel(id, true);
+  }
+  /** Área sem painel visível no contexto atual: explica e oferece os contextos que a preenchem. */
+  function updateAreaEmpty() {
+    const label = contexts.find((c) => c.id === context)?.label || "";
+    for (const el of root.querySelectorAll("[data-ed-area]")) {
+      const empty = el.querySelector(":scope > [data-ed-area-empty]");
+      const list = [...el.querySelectorAll(":scope > .ed-panel")];
+      const visible = list.filter((s) => s.dataset.ctxHidden !== "true" && (mode === "complete" || s.dataset.basic !== "false"));
+      el.dataset.single = String(visible.length === 1);
+      if (visible.length || !list.length) { empty.hidden = true; empty.innerHTML = ""; continue; }
+      const targets = shownContexts().filter((c) => list.some((s) => panelInContext(opts.panels.find((p) => p.id === s.dataset.panel), c.id, contexts) && (mode === "complete" || s.dataset.basic !== "false")));
+      const what = SIDE_AREAS.find((a) => a.id === el.dataset.edArea)?.label || "Esta área";
+      empty.hidden = false;
+      empty.innerHTML = `<p>${esc(what)} não tem itens no contexto ${esc(label)}.</p>${targets.length ? `<div class="ed-area-empty-actions">${targets.map((c) => `<button type="button" class="subtle small" data-ed-context="${esc(c.id)}">Ir para ${esc(c.label)}</button>`).join("")}</div>` : mode !== "complete" ? '<p class="muted small">Mais recursos aparecem na interface Completa.</p>' : ""}`;
+    }
+  }
+  // Divisor horizontal entre o inspetor e a área ativa (fração da altura da lateral; fica salvo por tipo de editor).
+  const splitEl = q("[data-ed-split]");
+  function setSplit(v, persist = true) {
+    const value = clampSplit(v);
+    root.style.setProperty("--ed-split", String(value));
+    splitEl?.setAttribute("aria-valuenow", String(Math.round(value * 100)));
+    splitEl?.setAttribute("aria-valuetext", `Inspetor com ${Math.round(value * 100)}% da altura`);
+    if (persist) { pref.split = { ...(pref.split || {}), [kind]: value }; savePref(); }
+  }
+  setSplit(pref.split?.[kind] ?? opts.split ?? INSPECT_SPLIT.initial, false);
+  if (splitEl) {
+    let drag = null;
+    const height = () => { const side = q("[data-ed-panels]"), head = q("[data-ed-side-head]"); return Math.max(1, side.clientHeight - head.offsetHeight); };
+    splitEl.addEventListener("pointerdown", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      drag = { y: e.clientY, start: Number(getComputedStyle(root).getPropertyValue("--ed-split")) || INSPECT_SPLIT.initial, id: e.pointerId, h: height() };
+      splitEl.setPointerCapture(e.pointerId);
+    });
+    splitEl.addEventListener("pointermove", (e) => { if (drag && e.pointerId === drag.id) setSplit(drag.start + (e.clientY - drag.y) / drag.h, false); });
+    const end = (e) => { if (!drag || e.pointerId !== drag.id) return; drag = null; setSplit(Number(getComputedStyle(root).getPropertyValue("--ed-split")) || INSPECT_SPLIT.initial); };
+    splitEl.addEventListener("pointerup", end);
+    splitEl.addEventListener("pointercancel", end);
+    splitEl.addEventListener("keydown", (e) => {
+      const cur = Number(getComputedStyle(root).getPropertyValue("--ed-split")) || INSPECT_SPLIT.initial;
+      const step = { ArrowUp: -0.05, ArrowDown: 0.05, Home: -1, End: 1 }[e.key];
+      if (step == null) return;
+      e.preventDefault();
+      setSplit(cur + step);
+    });
+  }
+  // Cabeçalho do documento na lateral: nome, tipo, estado (salvo, apresentado), referência ao original e menu.
+  let sideHead = {}, sideSig = "";
+  function setSideHeader(spec = {}) {
+    sideHead = spec;
+    const chips = (spec.chips || []).filter((c) => c?.text);
+    const sig = JSON.stringify([spec.name, spec.kind, chips, spec.origin?.label, spec.origin?.tip, !!spec.menu]);
+    if (sig === sideSig) return;
+    sideSig = sig;
+    q("[data-ed-side-name]").textContent = spec.name || "";
+    q("[data-ed-side-kind]").textContent = spec.kind || "";
+    q("[data-ed-side-chips]").innerHTML = chips.map((c) => `<span class="ed-chip${c.tone ? ` ${esc(c.tone)}` : ""}"${c.tip ? ` data-tip="${esc(c.tip)}"` : ""}>${esc(c.text)}</span>`).join("");
+    const origin = q("[data-ed-side-origin]");
+    origin.hidden = !spec.origin;
+    if (spec.origin) { origin.innerHTML = `${icon("scenery")}<span>${esc(spec.origin.label)}</span>`; origin.dataset.tip = spec.origin.tip || spec.origin.label; }
+    q("[data-ed-side-menu]").hidden = !spec.menu;
+  }
+  q("[data-ed-side-origin]").addEventListener("click", () => sideHead.origin?.run?.());
+  q("[data-ed-side-menu]").addEventListener("click", (e) => { const items = sideHead.menu?.() || []; if (items.length) openContextMenu(e.currentTarget, items, { label: "Opções do documento" }); });
+  root.querySelector(".ed-side-tabs")?.addEventListener("keydown", (e) => {
+    const all = [...root.querySelectorAll('.ed-side-tabs [role="tab"]')], i = all.indexOf(document.activeElement);
+    if (i < 0 || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    const n = e.key === "Home" ? 0 : e.key === "End" ? all.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + all.length) % all.length;
+    setArea(all[n].dataset.edAreaTab, { focus: true });
+  });
+  setArea(initialArea(opts.panels, pref.area?.[kind], opts.defaultArea), { persist: false, notify: false });
+  /** Preferências visuais de um editor (vista interna de um painel, ramos recolhidos da árvore). Nunca entram no documento. */
+  const views = {
+    get: (name) => pref.views?.[kind]?.[name] || null,
+    set: (name, value) => { pref.views = { ...(pref.views || {}), [kind]: { ...(pref.views?.[kind] || {}), [name]: String(value) } }; savePref(); },
+    collapsed: () => new Set(pref.tree?.[kind] || []),
+    setCollapsed: (key, on) => {
+      const set = new Set(pref.tree?.[kind] || []);
+      on ? set.add(key) : set.delete(key);
+      pref.tree = { ...(pref.tree || {}), [kind]: [...set].slice(-40) }; savePref();
+    },
+  };
 
   // Topo sem cortes: mede o transbordo e compacta em etapas (ícones nos contextos → ações compactas → segunda linha).
   // Recalcula a cada redimensionamento e quando o conteúdo do topo muda (ações, contextos, título).
@@ -408,6 +474,7 @@ export function createEditorShell(opts) {
     const next = open ?? section.dataset.open !== "true";
     section.dataset.open = String(next);
     section.querySelector("[data-ed-panel-toggle]").setAttribute("aria-expanded", String(next));
+    if (section.dataset.area === INSPECT_AREA) q("[data-ed-panels]").dataset.inspectOpen = String(next);
     if (!persist) return;
     const closedSet = new Set(pref.closed || []);
     next ? closedSet.delete(id) : closedSet.add(id);
@@ -446,6 +513,7 @@ export function createEditorShell(opts) {
       section.dataset.ctxHidden = String(!!panel && !panelInContext(panel, context, contexts));
     }
     root.dataset.context = context || "";
+    updateAreaEmpty();
   }
   /** Troca o contexto. `user` = escolha explícita (fica salva para este tipo de editor). Mantém a ferramenta se ela continua visível. */
   function setContext(id, { user = true, keepTool = false } = {}) {
@@ -460,6 +528,8 @@ export function createEditorShell(opts) {
       if (next !== tool) { tool = next; opts.onTool?.(next, false); }
     }
     renderTools();
+    const wantedArea = (opts.contexts || []).find((x) => x.id === context)?.area;
+    if (wantedArea && areaEl(wantedArea) && areaEl(sideArea)?.querySelector(":scope > [data-ed-area-empty]:not([hidden])")) setArea(wantedArea, { persist: false });
     opts.onContext?.(context);
     if (user) message(`Contexto: ${c.label}. Seleção, zoom e alterações continuam como estavam.`);
   }
@@ -480,6 +550,7 @@ export function createEditorShell(opts) {
     const items = [{ separator: true }];
     if (contexts.length) items.push({ label: "Contexto de trabalho", items: shownContexts().map((c, i) => ({ label: c.label, shortcut: `alt+${i + 1}`, checked: c.id === context, run: () => setContext(c.id) })) });
     items.push({ label: "Maximizar área de edição", shortcut: "mod+\\", checked: root.dataset.maximized === "on", run: toggleMaximize });
+    if (areas.length || hasHistory) items.push({ label: "Barra lateral", items: [...areas.map((a) => ({ label: a.label, checked: sideArea === a.id, run: () => { setPanels(true); setArea(a.id, { focus: true }); } })), ...(hasHistory ? [{ label: "Histórico", checked: sideArea === HISTORY_AREA, run: () => { setPanels(true); setArea(HISTORY_AREA, { persist: false, focus: true }); } }] : [])] });
     if (opts.contextBar) items.push({ label: "Barra de propriedades", items: [["top", "Acima da área de edição"], ["bottom", "Abaixo da área de edição"], ["off", "Oculta"]].map(([v, label]) => ({ label, checked: root.dataset.contextbar === v, run: () => { root.dataset.contextbar = v; pref.bar = v; savePref(); rulerSig = ""; } })) });
     items.push({ label: "Restaurar layout padrão", run: resetLayout, hint: "Painéis, larguras e barras; o documento não muda" });
     return items;
@@ -565,9 +636,17 @@ export function createEditorShell(opts) {
   root.addEventListener("click", (e) => {
     const toggle = e.target.closest("[data-ed-panel-toggle]");
     if (toggle) togglePanel(toggle.dataset.edPanelToggle);
+    const tab = e.target.closest("[data-ed-area-tab]");
+    if (tab) {
+      const id = tab.dataset.edAreaTab;
+      // O Histórico é secundário: clicar de novo volta à última área principal.
+      setArea(id === HISTORY_AREA && sideArea === HISTORY_AREA ? (pref.area?.[kind] && pref.area[kind] !== HISTORY_AREA ? pref.area[kind] : areas[0]?.id) : id, { persist: id !== HISTORY_AREA });
+    }
+    const ctxButton = e.target.closest(".ed-area-empty [data-ed-context]");
+    if (ctxButton) setContext(ctxButton.dataset.edContext);
     const panelMenu = e.target.closest("[data-ed-panel-menu]");
     if (panelMenu) {
-      const id = panelMenu.dataset.edPanelMenu, order = panelOrder(opts.panels.map((p) => p.id), pref.order?.[kind]);
+      const id = panelMenu.dataset.edPanelMenu, order = panelOrder(opts.panels.map((p) => p.id), pref.order?.[kind]).filter((x) => areaOfId(x) === areaOfId(id));
       const open = q(`[data-panel="${CSS.escape(id)}"]`)?.dataset.open === "true", i = order.indexOf(id);
       openContextMenu(panelMenu, [
         { label: open ? "Recolher" : "Expandir", run: () => togglePanel(id, !open) },
@@ -580,6 +659,7 @@ export function createEditorShell(opts) {
     const action = e.target.closest("[data-ed]")?.dataset.ed;
     if (action === "maximize") toggleMaximize();
     if (action === "panels") setPanels(root.dataset.panels !== "open");
+    if (action === "side-close") { setPanels(false); q('.ed-top [data-ed="panels"]')?.focus({ preventScroll: true }); }
     if (action === "fullscreen") toggleFullscreen();
     if (action === "close") requestClose();
     if (action === "size") opts.onSize?.();
@@ -704,55 +784,15 @@ export function createEditorShell(opts) {
   const forgetPointer = () => { pointer = null; };
   stage.addEventListener("pointermove", trackPointer, { passive: true });
   stage.addEventListener("pointerleave", forgetPointer);
-  function paintRuler(canvas, rect, axis, origin, steps, cursor, unit = "") {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = Math.max(1, Math.round(rect.width * dpr)), h = Math.max(1, Math.round(rect.height * dpr));
-    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-    const g = canvas.getContext("2d");
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, rect.width, rect.height);
-    const len = axis === "x" ? rect.width : rect.height, thick = axis === "x" ? rect.height : rect.width;
-    const line = (pos, size) => { const p = Math.round(pos) + 0.5; if (axis === "x") { g.moveTo(p, thick); g.lineTo(p, thick - size); } else { g.moveTo(thick, p); g.lineTo(thick - size, p); } };
-    g.strokeStyle = "rgba(216,208,180,.28)"; g.lineWidth = 1; g.beginPath();
-    if (steps.minorPx > 0) {
-      const first = Math.ceil(-origin / steps.minorPx), last = Math.floor((len - origin) / steps.minorPx);
-      for (let i = first; i <= last; i++) line(origin + i * steps.minorPx, thick * 0.28);
-    }
-    g.stroke();
-    g.strokeStyle = "rgba(216,208,180,.5)"; g.beginPath();
-    const first = Math.floor(-origin / steps.majorPx), last = Math.ceil((len - origin) / steps.majorPx);
-    for (let i = first; i <= last; i++) line(origin + i * steps.majorPx, thick * 0.62);
-    g.stroke();
-    g.fillStyle = "rgba(216,208,180,.62)"; g.font = "9px system-ui, sans-serif"; g.textBaseline = "top";
-    for (let i = first; i <= last; i++) {
-      const pos = origin + i * steps.majorPx;
-      if (pos < -40 || pos > len + 4) continue;
-      // O zero leva a unidade ("0 m"): deixa claro que a régua mede distância no mapa, não pixels da tela.
-      const label = i === 0 && unit ? `0 ${unit}` : rulerLabel(i * steps.majorUnits);
-      if (axis === "x") g.fillText(label, Math.round(pos) + 3, 2);
-      else { g.save(); g.translate(2, Math.round(pos) - 3); g.rotate(-Math.PI / 2); g.textAlign = "left"; g.fillText(label, 0, 0); g.restore(); }
-    }
-    if (cursor != null && cursor >= 0 && cursor <= len) {
-      g.strokeStyle = "rgba(241,215,156,.95)"; g.beginPath(); line(cursor, thick); g.stroke();
-    }
-  }
   // Escala da régua: o canto e a barra de estado dizem a unidade e quanto vale cada casa; clicar abre o ajuste do editor.
   const scaleButton = q("[data-ed-scale]");
   let scaleInfo = null, scaleSig = "";
-  function scaleText(info) {
-    if (!info) return { short: "", long: "" };
-    if (info.unit === "m") {
-      const v = rulerLabel(Number(info.cellUnits) || 0);
-      return { short: `Régua em metros · 1 casa = ${v} m`, long: `Régua em metros: cada casa da grade representa ${v} m.` };
-    }
-    return { short: `Régua em ${info.unit || "unidades"}`, long: `Régua em ${info.unit === "px" ? "pixels da imagem (sem grade)" : info.unit || "unidades"}.` };
-  }
   function updateScale(info) {
     scaleInfo = info;
     const sig = info ? [info.unit, info.cellUnits, !!info.onScale, info.scaleReason || ""].join("|") : "";
     if (sig === scaleSig) return;
     scaleSig = sig;
-    const { short, long } = scaleText(info);
+    const { short, long } = rulerScaleText(info);
     const how = info?.onScale ? "Clique para mudar a escala." : info?.scaleReason || "";
     scaleButton.hidden = !info;
     scaleButton.textContent = short;
@@ -851,17 +891,23 @@ export function createEditorShell(opts) {
   // Busca de ações (ADR-100): as ferramentas do editor por nome; as da Completa trocam a interface ao escolher.
   const disposePalette = mountCommandPalette(root, {
     getContext: () => ({ role: "master", mode }),
-    getCommands: () => opts.tools.filter((t) => !t.hidden?.()).map((t) => ({
+    getCommands: () => [...opts.tools.filter((t) => !t.hidden?.()).map((t) => ({
       id: t.id, label: t.label, group: (opts.groups || []).find((g) => g.id === t.group)?.label || "Ferramentas", keywords: [t.tip || "", t.key ? `tecla ${t.key}` : ""],
       basic: t.basic !== false, disabled: t.disabled?.() || null,
-    })),
-    onRun: (c) => { if (c.needsComplete) setInterfaceMode("complete"); useTool(c.id); },
+    })), ...[...areas, ...(hasHistory ? [{ id: HISTORY_AREA, label: "Histórico", tip: "Etapas desta edição" }] : [])].map((a) => ({
+      id: `area:${a.id}`, label: `Barra lateral: ${a.label}`, group: "Barra lateral", keywords: [a.tip, "painel", "lateral"], basic: true, disabled: null,
+    }))],
+    onRun: (c) => {
+      if (String(c.id).startsWith("area:")) { const id = c.id.slice(5); setPanels(true); setArea(id, { persist: id !== HISTORY_AREA, focus: true }); return; }
+      if (c.needsComplete) setInterfaceMode("complete"); useTool(c.id);
+    },
   });
   const stopMode = onInterfaceChange((next) => {
     mode = next; root.dataset.interface = next;
     const current = opts.tools.find((t) => t.id === tool);
     if (current && next !== "complete" && current.basic === false) tool = opts.tools.find((t) => t.basic !== false && !t.action)?.id || tool;
     renderTools();
+    updateAreaEmpty();
     opts.onModeChange?.(next);
   });
   dialog.addEventListener("close", () => {
@@ -903,11 +949,19 @@ export function createEditorShell(opts) {
     contextBar,
     toggleMaximize, resetLayout,
     panel: (id) => q(`[data-panel-body="${CSS.escape(id)}"]`),
+    /** Barra lateral (ADR-118): área ativa, troca de área, revelar um painel, cabeçalho do documento e preferências visuais. */
+    get area() { return sideArea; },
+    setArea: (id, o) => { setPanels(true); setArea(id, o); },
+    revealPanel,
+    setSideHeader,
+    views,
     setTool: (id) => { const t = opts.tools.find((x) => x.id === id); if (t) revealTool(t); tool = id; renderTools(); },
     useTool,
     refreshTools: renderTools,
     refreshMenus: renderMenus,
-    togglePanel, setPanels, setTitle, setStatus, message,
+    /** `open === true` revela o painel (abre a lateral e vai à área dele); false recolhe; sem valor alterna. */
+    togglePanel: (id, open) => (open === true ? revealPanel(id) : togglePanel(id, open)),
+    setPanels, setTitle, setStatus, message,
     /** Último salvamento / rascunho local (texto simples, ADR-083). */
     setDraftStatus: (text) => { q("[data-ed-draft]").textContent = text || ""; },
     /** Item de menu "Réguas" (Exibir), igual nos três editores. */

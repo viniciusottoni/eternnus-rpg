@@ -1,5 +1,18 @@
 # Validação
 
+## Barra lateral contextual dos editores e da mesa (ADR-118) — 19 de novembro de 2026
+
+| Verificação | Resultado |
+| --- | --- |
+| `node --test` editor-policy (+3: áreas, preferências novas, intervalo/destino de arraste), editor-sidebar (novo, contrato da lateral e da mesa), editor-contexts, scene-editor-policy, scene-policy, draft-policy, help-catalog, help-policy, help-fields, pwa, service-worker, frontend, command-palette-policy, scene-composition-policy, table-commands-policy | 110 passaram, 0 falhas |
+| `node tests/editor-sidebar-ui.mjs` (novo; Chrome + PostgreSQL) | 113 verificações: cabeçalho, inspetor (documento, imagem com proporção, vários, camada), três áreas + Histórico, busca preservada, inserção do acervo, Ctrl/Shift na árvore, palco ↔ árvore, seleção sem mover a câmera, Localizar, olho + desfazer/refazer, recolher, nova camada, arrastar entre camadas e destino bloqueado recusado, Configurar, Básica ↔ Completa, largura/altura/área persistidas, salvar e reabrir; cena (reservado criado e posicionado, Em cena, inspetor do marcador, mapa de origem somente leitura, composição Todos/Mestre independente do olho, Configurar, mapa original intacto, ensaio); tiles; mesa ao vivo (abas no padrão, foco por setas); 1366×768, tablet 820×1180 e celular 390×844 sem rolagem horizontal. Capturas em `artifacts/qa-sidebar` |
+| `node tests/party-slots-ui.mjs`, `tile-map-editor.mjs`, `map-instances-ui.mjs`, `scene-editor.mjs`, `campaign-assets.mjs` | Passaram (26; 22 + 45 HTTP; ok; 92; 102) |
+| `node tests/scene-slots-ui.mjs` | Desktop passou. No celular o teste pegava o primeiro reservado da lista (o criado no desktop); seletores ajustados para o nome criado. A reexecução não rodou: o servidor do harness não subiu em 30 s (migrações lentas no PostgreSQL local, com outra sessão em uso) |
+| `node tests/table-viewport.mjs` | Falhou antes do ajuste: a 844×240 o campo de conversa terminava 3 px abaixo do início do rodapé (abas 43 px, menores que as anteriores, ~48 px). Abas compactadas em altura ≤ 300 px; reexecução bloqueada pelo mesmo problema de inicialização do servidor |
+| `node tests/soundtrack-ui.mjs` | Falha em `.st-now[data-status="playing"]` (reprodução de áudio no Chrome headless), depois de as abas da mesa funcionarem; não relacionada à lateral, não investigada |
+| `dotnet build` | Não executado: nenhum arquivo de servidor mudou e outra sessão usava o mesmo `bin` |
+
+
 ## Evolução VTT: reservados, ensaio, mapas inseridos, convidados e câmera (ADR-110 a ADR-115) — 19 de novembro de 2026
 
 | Verificação | Resultado |

@@ -67,7 +67,7 @@ Texto funcional usa fontes do sistema. O produto não depende de serviço extern
 | Listas e tabelas | `js/data-table.js` / `sessions.css` | Cabeçalho com título e o botão de adicionar dourado (“+ …”, `primary small`); texto curto de orientação; barra `controlsHtml` (busca, filtros, “Buscar” secundário; nunca “Limpar”); tabela logo abaixo, sem contagem entre as duas; paginação de 20 com o total; termos da busca em negrito dourado (`highlightIn`, `mark.search-hit`). No celular, `.stack-table` vira cartões. (ADR-067, ADR-073) |
 | Shell | `js/layout.js` | Renderiza menu, perfil, contexto, `#main` e rodapé. Uma funcionalidade não deve criar outro menu. |
 | Navegação inferior móvel | `js/layout.js` / `styles.css` | Barra fixa com ícone e nome do destino, estado ativo e bloqueio coerente com a conta. Reserva espaço no conteúdo e respeita a área segura. |
-| Seção recolhível | `<details>`/`<summary>` / `styles.css` | Seta própria antes do título: direita fechada, para baixo aberta; cursor de mão e destaque no hover. Não esconder o indicador nem criar marcador por tela; o título diz o que abre. (ADR-109) |
+| Seção recolhível | `<details>`/`<summary>` ou botão `.disclosure` com `aria-expanded` / `styles.css` | Seta própria antes do título: direita fechada, para baixo aberta; cursor de mão e destaque no hover. Não esconder o indicador nem criar marcador ou glifo por tela; o título diz o que abre. (ADR-109, ADR-116) |
 | Instalação PWA | `js/pwa.js` | Ação discreta: usa o prompt capturado quando disponível e oferece instruções manuais nos demais casos, incluindo iPhone. Não bloquear a navegação nem repetir prompts forçadamente. |
 | Superfície `.metal` | `styles.css` | Bordas de ouro/metal e relevo discreto; ornamentos ficam fora da área de leitura. |
 | Botão/link de ação | `ui.button`, `.button`, `.primary`, `.subtle`, `.danger` | Botões para comandos, links para navegação. Estado disabled deve impedir ação e ter motivo quando relevante. |
@@ -273,11 +273,13 @@ Editor no modal compartilhado: metadados e ferramentas acima, catálogo por grup
 - **Seleção**: contorno e alças douradas sobre o canvas; área fora da moldura do mapa escurecida.
 - **Celular/tablet**: ferramentas em faixa horizontal rolável, painéis como gaveta sobre o palco, janela de propriedades ancorada embaixo; áreas seguras respeitadas.
 - Estilos: `prep.css`, `editor.css` (núcleo), `editor-tiles.css`, `editor-image.css`, `editor-scene.css`.
+- **Títulos dos grupos (ADR-116), iguais nos editores e na mesa:** título do painel em 600 .78rem, caixa alta dourada sobre faixa escura (36 px, 44 px no toque), seta comum à esquerda, ajuda e menu à direita. Título de seção em sans 14 px negrito. Subgrupo em 600 .74rem caixa alta dourada. Recolhível interno com a seta comum e texto 13 px. Recuo lateral e espaço entre blocos de 10 px (`--group-pad`, `--group-gap`).
 
 ## Mesa no padrão dos editores (ADR-105)
 
 - **Estrutura:** topo em faixa única (gradiente do editor, título com reticências, ações com largura natural), painéis planos separados por linhas de 1 px, títulos de painel em caixa alta dourada, palco com fundo quadriculado neutro e barra de turno como barra de estado. Estilos em `table-shell.css`, sobre os componentes de `editor.css`.
 - **Trilho:** cartão de 56 px à esquerda do mapa, solto a 10 px das bordas do palco, com moldura dourada e cantos de 10 px (não encosta no painel de aventureiros), com `.ed-tool` de 44 px (ativo em dourado) e grupos separados por linha: Básica no topo, grupos da Completa depois e ações do marcador selecionado no fim. Jogador usa o mesmo trilho.
+- **Réguas (ADR-117):** as mesmas dos editores (`map-ruler.js`), no topo e à esquerda do mapa com grade, em metros pela escala da grade, com 0 no canto do mapa e linha do cursor. O tabuleiro abre 18 px para elas. Somem no layout compacto. Cada pessoa liga ou desliga no menu do mapa ou na Busca de ações.
 - **Barra contextual:** névoa, paredes, luz e exploração numa faixa acima do mapa (título, aviso "Ao vivo", Concluir, ferramentas só com ícone e o nome da escolhida); o mapa encolhe, nada o cobre.
 - **Menu de contexto e atalhos (ADR-107):** botão direito, Menu ou Shift+F10 no mapa abrem o menu do núcleo (`.ed-menu`) com as ações do marcador ou da casa; Delete remove a criatura selecionada, Enter edita, Esc desmarca e Ctrl+Z desfaz.
 - **Dados:** bandeja em cartão de 54 px à direita do mapa, centrada na vertical, a 10 px da borda e com a mesma moldura do trilho (separada do chat).
@@ -292,3 +294,10 @@ Editor no modal compartilhado: metadados e ferramentas acima, catálogo por grup
 - **Colunas:** por container query da própria faixa — ≥ 860 px até 3, ≥ 520 px até 2, abaixo 1 —, limitadas pela configuração. No celular, alvos de 44 px.
 - **Página da loja:** cabeçalho padrão (`page-heading`), aviso de afiliado em texto auxiliar, busca com sugestões e ordenação, filtros laterais em painel `metal` (recolhível com `<details>` no celular) e grade de cartões `metal` com imagem quadrada, selo da loja, sistemas e botão primário “Comprar na/no {loja}”. Com dois preços conferidos e anterior maior, selo de desconto “−N%” no canto superior direito da imagem (vermelho escuro sólido, texto claro, sem animação; N arredondado para baixo); abaixo de 1%, só a pílula “Oferta”. No detalhe, o mesmo “−N%” fica na pílula ao lado da loja.
 - **Não fazer:** cores de marketplace, logotipos de terceiros, banners animados, contadores de urgência, percentuais de desconto estimados (o “−N%” vem só dos dois preços conferidos) ou qualquer conteúdo comercial na mesa, nos editores e nas fichas.
+
+## Barra lateral única: editores e mesa (ADR-118)
+
+- **Mesma cara:** editores de cena, mapa de imagem, tiles e a mesa ao vivo usam a mesma faixa de abas (`.ed-side-nav`, `.ed-side-tab`): fundo escuro, aba ativa na cor da superfície com linha dourada de 2 px no alto, ícone em todas e nome visível quando há espaço (na mesa, só na ativa). Títulos de grupo seguem o ADR-116.
+- **Hierarquia:** 1) ação principal (botão primário único por área, ex.: Enviar imagem, + Personagem reservado); 2) o selecionado (inspetor no alto); 3) navegação e organização (abas, árvore); 4) ações secundárias (ícones ⋯, Localizar); 5) ajuda e metadados (ⓘ, textos pequenos). Sem cartões aninhados além de `.ed-cfg-card` em Configurar.
+- **Árvore:** camadas com fundo levemente mais escuro e borda dourada só na ativa; somente leitura com borda tracejada; selos de texto (Mestre, Somente leitura, %) em pílulas discretas — o dourado cheio fica reservado ao estado "Só o mestre vê" ligado.
+- **Toque:** abas, linhas e controles da árvore com 44 px; lateral vira gaveta sobre o mapa com X; sem rolagem horizontal.

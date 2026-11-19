@@ -41,6 +41,7 @@ export function tableCommands(ctx = {}) {
     { id: "roll", label: "Montar rolagem", group: "Dados", keywords: ["dados", "rolar", "d20"], action: "t-roll-builder" },
     { id: "undo", label: "Desfazer a última alteração", group: "Sessão", keywords: ["voltar", "ctrl z"], action: "t-undo", arg: ctx.undoId != null ? String(ctx.undoId) : "", disabled: ctx.undoId != null ? null : "Nada para desfazer agora." },
     { id: "grid", label: "Mostrar ou ocultar a grade", group: "Mapa", keywords: ["quadriculado"], action: "t-tool-grid", disabled: grid },
+    { id: "rulers", label: "Mostrar ou ocultar as réguas", group: "Mapa", keywords: ["regua", "medida", "metros", "distancia", "dimensao", "escala"], action: "t-rulers", disabled: grid },
     { id: "focusBoard", label: "Usar o mapa pelo teclado", group: "Mapa", keywords: ["acessibilidade", "setas"], action: "t-focus-board", disabled: grid },
   ];
   if (!ctx.isMaster) {

@@ -10,7 +10,8 @@ import { createBoard } from "./table-map.js";
 import { FOG_TOOLS, MARK_KINDS, WALL_KINDS, WALL_UNIT, paintLocal, toggleDoorLocal, sharedPreview } from "./fog-policy.js";
 import { layerDiff, diffSummary, snapPoint, constrainAngle, hitWall, polylineWalls, addWalls, moveVertex, splitWall, removeVertex, joinCollinear, translateWalls, copyWalls, wallsInBox, patchWalls, cellsToWalls, diagnose, diagnosticLayers } from "./wall-policy.js";
 import { interfaceMode, setInterfaceMode } from "./interface-mode.js";
-import { createEditorShell, openContextMenu, openPropertiesDialog, renderLayersPanel, renderStructurePanel, renderHistoryPanel, icon } from "./editor-core.js";
+import { createEditorShell, openContextMenu, openPropertiesDialog, renderHistoryPanel, icon } from "./editor-core.js";
+import { renderOutline } from "./editor-outline.js";
 import { attachDrafts } from "./editor-drafts.js";
 import { addLayer, removeLayer, moveLayer, patchLayer, createHistory, isRequiredLayer, isTypingTarget, MAX_HISTORY } from "./editor-policy.js";
 import {
@@ -208,22 +209,24 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     menus, tools, groups: GROUPS, initialTool: "select",
     // Contextos de trabalho (ADR-086), pelos grupos de TOOL_INVENTORY. Só reorganizam a interface; nada muda na preparação.
     kind: mapOnly ? "map-prep" : "scene",
+    // Barra lateral (ADR-118): inspetor (Propriedades) no alto; Organizar (árvore unificada), Adicionar (personagens e
+    // acervo) e Configurar (cena, mapa de origem, preparação). Os contextos continuam escolhendo a tarefa no topo.
     contexts: [
-      ...(mapOnly ? [] : [{ id: "compose", tools: ["addImage"], panels: ["props", "layers", "assets"], defaultTool: "select" }]),
-      { id: "elements", label: mapOnly ? "Elementos" : "Personagens", groups: ["elements"], tools: ["add", "entry"], panels: ["props", "layers", "structure", "characters", ...(mapOnly ? [] : ["assets"])], defaultTool: "select" },
-      { id: "walls", groups: ["walls"], panels: ["props", "structure"], defaultTool: "wall" },
-      { id: "light", groups: ["light"], panels: ["props", "structure"], defaultTool: "light" },
-      { id: "explore", groups: ["explore"], tools: ["visibility", "reveal", "conceal"], panels: ["props", "structure"], defaultTool: "select" },
-      { id: "scene", groups: ["grid", "scene"], tools: ["scenery", "text", "notes"], panels: ["props"], defaultTool: "select" },
+      ...(mapOnly ? [] : [{ id: "compose", tools: ["addImage"], panels: ["props", "structure", "assets", "config"], defaultTool: "select", area: "add" }]),
+      { id: "elements", label: mapOnly ? "Elementos" : "Personagens", groups: ["elements"], tools: ["add", "entry"], panels: ["props", "structure", "characters", "config", ...(mapOnly ? [] : ["assets"])], defaultTool: "select", area: "add" },
+      { id: "walls", groups: ["walls"], panels: ["props", "structure", "config"], defaultTool: "wall", area: "organize" },
+      { id: "light", groups: ["light"], panels: ["props", "structure", "config"], defaultTool: "light", area: "organize" },
+      { id: "explore", groups: ["explore"], tools: ["visibility", "reveal", "conceal"], panels: ["props", "structure", "config"], defaultTool: "select", area: "organize" },
+      { id: "scene", groups: ["grid", "scene"], tools: ["scenery", "text", "notes"], panels: ["props", "structure", "config"], defaultTool: "select", area: "configure" },
     ],
     commonTools: ["select", "hand", "zoom"],
     panels: [
-      { id: "props", title: "Propriedades" },
-      ...(mapOnly ? [] : [{ id: "layers", title: "Camadas" }]),
-      { id: "structure", title: "Estrutura" },
-      ...(mapOnly ? [] : [{ id: "characters", title: "Personagens e posições iniciais", help: ["campanhas.cenas.posicoes", "Posições iniciais e área de entrada"] }]),
-      ...(mapOnly ? [] : [{ id: "assets", title: "Acervo rápido", help: ["campanhas.cenas.acervo-rapido", "Acervo rápido"] }]),
-      { id: "history", title: "Histórico", basic: false },
+      { id: "props", title: "Propriedades", area: "inspect", help: ["campanhas.editor.inspetor", "Inspetor de propriedades"] },
+      { id: "structure", title: mapOnly ? "Preparação do mapa" : "Elementos da cena", area: "organize", help: ["campanhas.cenas.camadas", "Camadas da cena"] },
+      ...(mapOnly ? [] : [{ id: "characters", title: "Personagens", area: "add", help: ["campanhas.cenas.posicoes", "Posições iniciais e área de entrada"] }]),
+      ...(mapOnly ? [] : [{ id: "assets", title: "Acervo", area: "add", help: ["campanhas.cenas.acervo-rapido", "Acervo rápido"] }]),
+      { id: "config", title: mapOnly ? "Mapa" : "Cena", area: "configure", help: ["campanhas.cenas.configurar", "Configurar a cena"] },
+      { id: "history", title: "Histórico", basic: false, area: "history" },
     ],
     onContext: (id) => onWorkContext(id),
     actions: `${nameField}${button(`${icon("eye")}<span>Ensaiar cena</span>`, "se-preview", "", "subtle", 'aria-pressed="false" data-tip="Ensaiar cena" data-tip-detail="Veja como jogador e teste posições, luz e visão sem alterar a mesa."')}${button("Salvar preparação", "se-save", "", "primary")}<span id="se-apply-slot"></span>`,
@@ -1018,7 +1021,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     return n ? placeToken({ masterCharacterId: n.id, label: n.name.slice(0, 40), side: n.side || "enemy", hidden: false, appearance }, cell, "Colocar personagem do mestre") : false;
   }
   function placeAtCursor(ref) {
-    const cell = hover || lastCell;
+    // Sem casa sob o cursor nem casa recente: o centro da área visível (ADR-118: iniciante posiciona com um clique).
+    const view = !hover && !lastCell ? board?.camera?.visibleCells?.() : null;
+    const cell = hover || lastCell || (view ? { x: view.x + Math.floor(view.w / 2), y: view.y + Math.floor(view.h / 2) } : null);
     if (!cell) return say("Escolha uma casa no mapa (clique ou setas e Enter) e tente de novo.");
     placeRef(ref, cell);
   }
@@ -1308,7 +1313,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       begin: (label) => { commitTyping(); history.begin(label); if (!draft.composition) { draft.composition = compDoc(); pendingBlank = null; } },
       commit: () => { history.commit(); recomputeDirty(); afterCompose(); },
       cancel: () => { history.cancel(); composer?.invalidate(); },
-      onSelection: () => { if (composing()) { renderSide(); renderLayers(); } },
+      onSelection: () => { if (composing()) { if (composer?.selection.size) compLayerFocus = false; renderSide(); renderLayers(); } },
       onLive: () => syncComposeBar(),
       onContext: (at, id, point) => composeMenu(at, id, point),
       onOpen: () => showProps(),
@@ -1557,6 +1562,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       return `<div class="se-panel"><h3>Composição da cena${helpButton("campanhas.cenas.composicao", "Composição da cena")}</h3><p class="form-help">A composição usa uma imagem da campanha como fundo. Esta cena usa “${esc(m?.name || "um cenário pronto")}” (${esc(mapTypeLabel(m))}), que não recebe imagens por cima.</p><div class="form-actions">${button("Usar uma imagem minha como fundo…", "se-replace-bg", "", "subtle")}${button("Escolher outro mapa", "se-tool", "scenery", "subtle")}</div></div>`;
     }
     const els = composer?.selected() || [];
+    if (!els.length && compLayerFocus) return compLayerPanel();
     const scope = `<p class="se-scope" role="note"><strong>Somente esta cena.</strong> As imagens ficam por cima do mapa “${esc(m.name)}”, que é compartilhado${m && (m.scenes?.length || 0) > 1 ? " com outras cenas" : ""} e não muda aqui.</p>`;
     if (!els.length) {
       const n = compElements();
@@ -1577,18 +1583,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       <div class="se-comp-actions" role="group" aria-label="Transformar">${iconButton("flipX", "Espelhar na horizontal", "se-comp", "flipX", "subtle small")}${iconButton("flipY", "Espelhar na vertical", "se-comp", "flipY", "subtle small")}${iconButton("rotate", "Girar 90°", "se-comp", "rotR", "subtle small")}${iconButton("copy", "Duplicar", "se-comp", "duplicate", "subtle small")}${iconButton("front", "Trazer para frente", "se-comp", "front", "subtle small")}${iconButton("back", "Enviar para trás", "se-comp", "back", "subtle small")}</div>
       <div class="form-actions se-danger-zone">${button("Excluir", "se-comp", "delete", "text-button")}</div></div>`;
   }
-  function renderCompLayers(host) {
-    const d = compDoc();
-    renderLayersPanel(host, {
-      layers: d.layers, active: composer?.activeLayer || "elements", complete: mode === "complete", selectionCount: composer?.editableSelection().length || 0,
-      visibilityNote: "Olho, cadeado e opacidade valem só no editor. Para esconder dos jogadores use “Só o mestre vê”.",
-      onAction: compLayerAction,
-    });
-    host.insertAdjacentHTML("beforeend", `<fieldset class="se-secret-layers"><legend>Na sessão</legend>${d.layers.map((l) => `<label class="check"><input type="checkbox" data-comp-secret="${esc(l.id)}" ${l.secret ? "checked" : ""}> ${esc(l.name)}: só o mestre vê</label>`).join("")}<p class="form-help">O mapa compartilhado fica no fundo da camada ${esc(d.layers[0].name)} e não pode ser movido aqui.</p></fieldset>`);
-  }
   function compLayerAction(action, id, value) {
     const d = compDoc(), current = d.layers.find((l) => l.id === id);
-    if (action === "select") { if (composer) composer.activeLayer = id; return renderLayers(); }
+    if (action === "select") { if (composer) composer.activeLayer = id; compLayerFocus = true; renderSide(); return renderLayers(); }
     if (action === "move-selection") { composer?.moveToLayer(id); return afterCompose(); }
     if (["visible", "lock", "opacity", "rename"].includes(action)) {
       if (!current) return;
@@ -1635,8 +1632,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     } catch { /* armazenamento indisponível: recentes valem só nesta visita */ }
   }
   function quickCategories() {
-    // Na composição só entram imagens e mapas; nos demais contextos, também personagens e criaturas.
-    return composing() ? QUICK_CATEGORIES.filter(([id]) => ["recent", "favorites", "maps", "images"].includes(id)) : QUICK_CATEGORIES;
+    // ADR-118: personagens, reservados e NPCs têm lugar próprio (Adicionar › Personagens); o acervo traz imagens e mapas.
+    // Recentes e favoritos continuam atalhos (podem incluir personagens do mestre, que vão ao mapa como marcadores).
+    return QUICK_CATEGORIES.filter(([id]) => ["images", "maps", "recent", "favorites"].includes(id));
   }
   function quickThumb(item) {
     if (item.kind === "slot") return slotPreviewHtml(campaign.id, slotStore.byId(item.ref.slice(5)));
@@ -1648,7 +1646,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const host = shell.panel("assets");
     if (!host) return;
     const cats = quickCategories();
-    if (!cats.some(([id]) => id === quickCat)) quickCat = composing() ? "images" : "party";
+    if (!cats.some(([id]) => id === quickCat)) quickCat = "images";
     if (!host.querySelector("[data-asset-q]")) {
       host.innerHTML = `<div class="se-quick"><div class="se-quick-cats" role="group" aria-label="Categorias do acervo" data-quick-cats></div><div class="field"><label for="se-asset-q">Buscar no acervo</label><input id="se-asset-q" type="search" data-asset-q maxlength="80" autocomplete="off" placeholder="Nome"></div><div data-asset-list></div><p class="form-help" data-quick-help></p></div>`;
       bindAssetList(host, { onAdd: (item) => { const m = mapOf(item.src); if (m?.id) touchQuick(`map:${m.id}`); addFromAsset(item, null); } });
@@ -1670,9 +1668,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       : failed ? `<p class="form-error" role="alert">${esc(slotStore.error)}</p>${button("Tentar de novo", "se-slot-retry", "", "subtle small")}`
       : items.length ? `<ul class="se-quick-list" role="list">${items.map((x) => (TOKEN_KINDS.has(x.kind) ? tokenRow(x) : assetRow(x))).join("")}</ul>`
       : `<p class="muted small">${esc(quickQuery ? "Nenhum resultado." : empty)}</p>`;
-    host.querySelector("[data-quick-help]").textContent = composing()
-      ? "Arraste para o palco ou use Inserir: a cena usa o mesmo arquivo, sem duplicar. Numa cena vazia, a imagem vira o fundo."
-      : "Arraste para o mapa ou use Colocar (vai para a casa sob o cursor). Imagens e mapas entram pela composição desta cena.";
+    host.querySelector("[data-quick-help]").textContent = items.length ? "" : composing()
+      ? "Numa cena vazia, a imagem vira o fundo. A cena usa o mesmo arquivo, sem duplicar."
+      : "Imagens e mapas entram pela composição desta cena (por referência, sem duplicar).";
   }
 
   // ---------- Imagens soltas, coladas ou escolhidas (ADR-090) ----------
@@ -2127,77 +2125,282 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     panel = id; pick = null; selection = []; applying = false; binding = null; imagePick = null;
     renderAll(); showProps();
   }
-  function renderLayers() {
-    const host = shell.panel("layers");
-    if (!host) return;
-    if (shell.context === "compose" && composable()) return renderCompLayers(host);
-    if (!mapKind()) { host.innerHTML = '<p class="muted small se-empty-note">Camadas organizam marcadores de cenas com mapa tático.</p>'; host.onclick = host.ondblclick = host.onchange = null; return; }
-    const mapName = meta?.name || mapOf(draft.mapKey)?.name || "sem cenário";
-    // A Base é a referência do mapa (somente leitura): aparece com o nome do mapa e travada.
-    const display = draft.layers.map((l) => (l.id === "base" ? { ...l, name: `Mapa: ${mapName}`, locked: true, visible: true, opacity: 100 } : l));
-    renderLayersPanel(host, { layers: display, active: activeLayer, complete: mode === "complete", selectionCount: editableSelection().length, lockedNote: "no-base", visibilityNote: LAYER_NOTE, onAction: layerAction });
-    host.insertAdjacentHTML("beforeend", `<p class="form-help">Novos marcadores entram na camada ativa (a Base envia para Elementos).</p><p class="se-layer-help">Camadas da cena${helpButton("campanhas.cenas.camadas", "Camadas da cena")} · Controles de camada${helpButton("campanhas.editor.camadas", "Camadas do editor")}</p>`);
+  // ---------- Organizar: árvore unificada (ADR-118) ----------
+  // Uma só hierarquia: marcadores por camada, a composição desta cena (imagens por cima do mapa), a preparação técnica do
+  // mapa (Completa) e o mapa de origem, somente leitura, com o atalho para o original. Selecionar aqui ou no palco dá o
+  // mesmo resultado; o item selecionado é destacado (e o ramo abre) sem mover a câmera — só "Localizar" enquadra.
+  let tokenLayerFocus = false, compLayerFocus = false;
+  function renderLayers() { renderStructure(); }
+  const tokenKind = (t) => (t.characterId ? "Personagem de jogador" : t.slotId ? "Reservado" : t.masterCharacterId ? "Personagem do mestre" : "Marcador");
+  const at = (t) => `coluna ${t.x + 1}, linha ${t.y + 1}`;
+  function treeSections() {
+    const sections = [], m = mapOf(draft.mapKey);
+    if (draft.kind === "text") return sections;
+    const groups = mapKind() && meta ? structureGroups({ tokens: draft.prepared, layers: draft.layers, selected: selection, layer, technical: mode === "complete", kinds: MARK_KINDS }) : [];
+    if (!mapOnly && mapKind() && meta) {
+      sections.push({ id: "tokens", label: "Marcadores", note: "personagens, criaturas e marcadores", layers: groups.filter((g) => !TECH_GROUPS.includes(g.id)).map((g) => {
+        const l = draft.layers.find((x) => x.id === g.id) || {};
+        return {
+          id: g.id, name: g.label, icon: "layers", active: g.id === activeLayer, fixed: isRequiredLayer(g.id),
+          visible: l.visible !== false, locked: !!l.locked, opacity: Number.isFinite(l.opacity) ? l.opacity : 100,
+          visibleTip: "Só no editor. Para esconder um marcador dos jogadores, marque “Oculto para os jogadores” nele.",
+          emptyText: g.id === activeLayer ? "Sem marcadores. Novos marcadores entram aqui (camada ativa)." : "Sem marcadores.",
+          items: g.items.map((it) => {
+            const i = Number(it.id.slice(1)), t = draft.prepared[i];
+            return {
+              id: it.id, label: t.label || "Marcador", icon: t.characterId || t.slotId || t.masterCharacterId ? "character" : "mark",
+              meta: `${tokenKind(t)} · ${at(t)}`, hidden: l.visible === false, playerHidden: !!t.hidden, locked: !!l.locked,
+              selected: selection.includes(i), movable: editable(i), renamable: !t.characterId && !t.slotId && !l.locked,
+            };
+          }),
+        };
+      }) });
+    }
+    if (composable()) {
+      const d = compDoc(), sel = composer?.selection || new Set();
+      sections.push({ id: "comp", label: "Composição desta cena", note: "imagens só desta cena; o mapa original não muda", layers: [...d.layers].reverse().map((l) => ({
+        id: l.id, name: l.name, icon: "image", active: composing() && (composer?.activeLayer || "elements") === l.id, fixed: isRequiredLayer(l.id),
+        visible: l.visible !== false, locked: !!l.locked, opacity: Number.isFinite(l.opacity) ? l.opacity : 100, players: l.secret ? "master" : "all",
+        visibleTip: "Só no editor. Para esconder dos jogadores, use o botão Todos/Mestre desta camada ou “Só o mestre vê” na imagem.",
+        playersTip: l.secret ? "Só o mestre vê esta camada na sessão. Clique para mostrar aos jogadores." : "Os jogadores veem esta camada na sessão. Clique para deixar só para o mestre.",
+        emptyText: l.id === d.layers[0].id ? "O mapa compartilhado fica no fundo desta camada." : "Sem imagens.",
+        items: d.elements.filter((e) => e.layer === l.id).reverse().map((e) => {
+          const status = CP.artboardStatus(e, d.artboard);
+          return {
+            id: e.id, label: e.name || (MI_isInstance(e) ? "Mapa inserido" : "Imagem"), icon: MI_isInstance(e) ? "scenery" : "image",
+            meta: `${MI_isInstance(e) ? "Mapa inserido" : "Imagem"} · ${Math.round(e.width)} × ${Math.round(e.height)} px`,
+            hidden: !e.visible || l.visible === false, playerHidden: !!e.secret || !!l.secret, locked: !!e.locked || !!l.locked,
+            selected: composing() && sel.has(e.id), outside: status === "outside" || status === "partial" ? status : "",
+            movable: !e.locked && !l.locked, renamable: !l.locked,
+          };
+        }),
+      })) });
+    }
+    if (meta && layer && mode === "complete") {
+      const empty = { lights: "Nenhum foco de luz.", marks: "Nenhuma marca oculta.", doors: "Nenhuma porta." };
+      sections.push({ id: "prep", label: "Preparação do mapa", note: meta.mode === "scene" ? "própria desta cena" : "compartilhada com as cenas deste mapa", layers: groups.filter((g) => TECH_GROUPS.includes(g.id)).map((g) => ({
+        id: g.id, name: g.label, icon: g.id === "lights" ? "light" : g.id === "marks" ? "mark" : "door", visible: null, locked: null, opacity: null, menu: false,
+        emptyText: empty[g.id], items: g.items.map((it) => ({ ...it, selected: false, movable: false })),
+      })) });
+    }
+    if (!mapOnly && draft.mapKey) {
+      const name = meta?.name || m?.name || "Cenário";
+      sections.push({ id: "origin", label: "Mapa de origem", layers: [{
+        id: "base", name, icon: "scenery", readonly: true, visible: null, locked: null, opacity: null, menu: false, items: [],
+        note: "Recurso da campanha, reutilizável. Edite no editor de mapas; a cena só põe coisas por cima.",
+        readonlyAction: m?.id ? { label: "Abrir original", icon: "scenery", run: () => openOriginalMap() } : null,
+      }] });
+    }
+    return sections;
   }
+  const TECH_GROUPS = ["lights", "marks", "doors"];
   function renderStructure() {
     const host = shell.panel("structure");
     if (!host) return;
-    if (!mapKind() || !meta) { host.innerHTML = '<p class="muted small se-empty-note">A estrutura lista marcadores e a preparação de mapas táticos.</p>'; host.onclick = host.oncontextmenu = host.onkeydown = null; return; }
-    let groups = structureGroups({ tokens: draft.prepared, layers: draft.layers, selected: selection, layer, technical: mode === "complete", kinds: MARK_KINDS });
-    if (mapOnly) groups = groups.filter((g) => ["lights", "marks", "doors"].includes(g.id));
-    renderStructurePanel(host, {
-      groups, empty: mapOnly ? "Nada preparado neste mapa ainda." : "Nenhum marcador nesta cena ainda.",
-      onSelect: (id, additive) => structureSelect(id, additive),
-      onContext: (id, at) => { if (id.startsWith("t")) tokenMenu(Number(id.slice(1)), at); },
+    if (draft.kind === "text") { host.innerHTML = '<div class="o-empty"><p>Cenas de texto não têm camadas nem marcadores. Use Configurar › Texto compartilhado.</p></div>'; return; }
+    const tokenCount = selection.length, compCount = composing() ? composer?.selection.size || 0 : 0;
+    renderOutline(host, {
+      label: mapOnly ? "Preparação do mapa" : "Elementos da cena",
+      complete: mode === "complete", collapsed: shell.views.collapsed(), sections: treeSections(),
+      actions: mapOnly ? [] : [
+        { id: "add-layer", label: "Nova camada de marcadores", icon: "plus", reason: !mapKind() || !meta ? "Camadas de marcadores valem para cenas com mapa tático." : draft.layers.length >= 8 ? "Use até 8 camadas." : "", run: () => layerAction("add", activeLayer) },
+        { id: "locate", label: "Localizar a seleção no mapa", icon: "target", reason: tokenCount || compCount ? "" : "Selecione algo para localizar.", run: () => (compCount ? locateComp([...composer.selection]) : locateToken(selection[0])) },
+      ],
+      empty: !draft.mapKey ? { text: "Cena sem cenário. Escolha um mapa ou envie uma imagem para começar.", action: { label: "Escolher cenário", run: () => shell.useTool("scenery") } }
+        : mapKind() && meta && !mapOnly ? { text: "Nenhum personagem ou marcador nesta cena ainda.", action: { label: "Adicionar personagens", run: () => { if (composing()) shell.setContext("elements"); shell.revealPanel("characters"); } } }
+        : null,
+      onToggle: (key, closedNow) => { shell.views.setCollapsed(key, closedNow); renderStructure(); },
+      onLayer: treeLayer,
+      layerMenu: treeLayerMenu,
+      onSelect: treeSelect,
+      itemMenu: (id, point, section) => {
+        if (section === "tokens") return tokenMenu(Number(id.slice(1)), point);
+        if (section === "comp" && composer) return composeMenu(point, id, composer.viewCenter());
+      },
+      onLocate: (id, section) => {
+        if (section === "tokens") { treeSelect([id], "replace", section); return locateToken(Number(id.slice(1))); }
+        if (section === "comp") { treeSelect([id], "replace", section); return locateComp([id]); }
+        if (section === "prep") { treeSelect([id], "replace", section); const [, x, y] = id.split(":"); return frameCells(Number(x), Number(y)); }
+      },
+      onMove: (ids, layerId, section) => {
+        if (section === "tokens") { selection = ids.map((id) => Number(id.slice(1))).filter(editable); moveSelectionToLayer(layerId); return say(`${selection.length === 1 ? "Marcador movido" : `${selection.length} marcadores movidos`} para outra camada. Ctrl+Z desfaz.`); }
+        if (section === "comp") { treeSelect(ids, "replace", section); composer?.moveToLayer(layerId); afterCompose(); }
+      },
+      onRename: (id, name, section) => {
+        if (section === "tokens") {
+          const i = Number(id.slice(1)), t = draft.prepared[i];
+          if (!t || t.characterId || t.slotId) return say("O nome de personagens vem da ficha ou do reservado.");
+          change("Renomear marcador", () => { draft.prepared[i] = { ...t, label: name.slice(0, 40) }; });
+          return refresh();
+        }
+        if (section === "comp") compChange("Renomear imagem", () => { const el = draft.composition.elements.find((e) => e.id === id); if (el) el.name = name.slice(0, 80); });
+      },
     });
+  }
+  /** Seleção pela árvore: leva ao contexto que edita aquele tipo de item (marcadores, composição ou preparação). */
+  function treeSelect(ids, how, section) {
+    if (simulate) return say("Saia do ensaio para editar a preparação.");
+    if (section === "tokens") {
+      if (composing()) shell.setContext("elements");
+      const wanted = ids.map((id) => Number(id.slice(1))).filter((i) => draft.prepared[i]);
+      const ok = wanted.filter(editable);
+      if (!ok.length) return say(wanted.length ? `“${draft.prepared[wanted[0]].label}” está numa camada oculta ou bloqueada.` : "");
+      if (how === "toggle") { const next = new Set(selection); for (const i of ok) next.has(i) ? next.delete(i) : next.add(i); selection = [...next]; }
+      else selection = ok;
+      const last = draft.prepared[ok.at(-1)];
+      lastCell = { x: last.x, y: last.y };
+      tokenLayerFocus = false;
+      panel = selection.length ? "token" : "overview";
+      refreshSelection();
+      return say(selection.length === 1 ? `${draft.prepared[selection[0]].label}: ${at(draft.prepared[selection[0]])}.` : `${selection.length} marcadores selecionados.`);
+    }
+    if (section === "comp") {
+      if (!composing()) shell.setContext("compose");
+      if (!composer) return;
+      compLayerFocus = false;
+      composer.select(ids, how === "toggle");
+      renderSide(); renderStructure();
+      return;
+    }
+    if (section === "prep") {
+      const kind = ids[0].split(":")[0];
+      if (composing()) shell.setContext(kind === "light" ? "light" : kind === "door" ? "walls" : "explore");
+      structureSelect(ids[0], false);
+    }
+  }
+  function treeLayer(action, id, value, section) {
+    if (section === "tokens") {
+      if (action === "select") { activeLayer = id; tokenLayerFocus = true; selection = []; panel = "layer"; if (composing()) shell.setContext("elements"); refreshSelection(); return; }
+      return layerAction(action, id, value);
+    }
+    if (section === "comp") {
+      if (action === "select") {
+        if (!composing()) shell.setContext("compose");
+        if (!composer) return;
+        composer.activeLayer = id; composer.select([], false); compLayerFocus = true;
+        renderSide(); renderStructure(); return;
+      }
+      if (action === "players") { const l = compDoc().layers.find((x) => x.id === id); return l && setCompSecret(id, !l.secret); }
+      return compLayerAction(action, id, value);
+    }
+  }
+  function setCompSecret(id, on) {
+    compChange(on ? "Camada só do mestre" : "Camada visível aos jogadores", () => { draft.composition.layers = draft.composition.layers.map((l) => { if (l.id !== id) return l; const n = { ...l }; if (on) n.secret = true; else delete n.secret; return n; }); });
+    say(on ? "Camada só do mestre: os jogadores não a recebem ao apresentar. Salve e aplique para valer na mesa." : "Camada visível aos jogadores ao apresentar. Salve e aplique para valer na mesa.");
+  }
+  function askOpacity(current, apply) {
+    const v = prompt("Opacidade da camada no editor (0 a 100%)", String(current ?? 100));
+    if (v == null || v.trim() === "" || !Number.isFinite(Number(v))) return;
+    apply(Math.max(0, Math.min(100, Math.round(Number(v)))));
+  }
+  function treeLayerMenu(id, section) {
+    const full = "Use até 8 camadas.", fixedWhy = "Base e Elementos são camadas fixas e ficam sempre embaixo.";
+    const list = section === "comp" ? compDoc().layers : draft.layers;
+    const l = list.find((x) => x.id === id), fixed = isRequiredLayer(id), i = list.findIndex((x) => x.id === id);
+    if (!l) return [];
+    const act = section === "comp" ? compLayerAction : layerAction;
+    const items = [
+      { label: "Renomear…", run: () => { const name = prompt("Nome da camada (até 40 caracteres)", l.name); if (name?.trim()) act("rename", id, name.trim().slice(0, 40)); } },
+      { label: "Nova camada acima", run: () => act("add", id), disabled: list.length >= 8, disabledReason: full },
+      { label: "Duplicar camada", run: () => act("duplicate", id), disabled: list.length >= 8, disabledReason: full },
+      { label: "Subir camada", run: () => act("up", id), disabled: fixed || i >= list.length - 1, disabledReason: fixed ? fixedWhy : "Já é a camada mais alta." },
+      { label: "Descer camada", run: () => act("down", id), disabled: fixed || i <= 2, disabledReason: fixed ? fixedWhy : "Camadas extras ficam acima de Elementos." },
+      { label: `Opacidade no editor… (${Number.isFinite(l.opacity) ? l.opacity : 100}%)`, run: () => askOpacity(l.opacity, (v) => act("opacity", id, v)) },
+    ];
+    if (section === "comp") items.push({ label: "Só o mestre vê (na sessão)", checked: !!l.secret, run: () => setCompSecret(id, !l.secret) });
+    items.push({ separator: true });
+    if (section === "tokens") {
+      items.push({ label: "Selecionar os marcadores da camada", run: () => selectLayer(id) });
+      items.push({ label: "Mover a seleção para esta camada", run: () => moveSelectionToLayer(id), disabled: !editableSelection().length || l.locked, disabledReason: l.locked ? "Camada bloqueada." : "Selecione marcadores antes." });
+    } else items.push({ label: "Mover a seleção para esta camada", run: () => { composer?.moveToLayer(id); afterCompose(); }, disabled: !composer?.editableSelection().length || l.locked, disabledReason: l.locked ? "Camada bloqueada." : "Selecione imagens antes." });
+    items.push({ separator: true }, { label: "Excluir camada", danger: true, run: () => act("delete", id), disabled: fixed, disabledReason: "Base e Elementos são camadas fixas: não podem ser excluídas." });
+    return items;
+  }
+  /** Localizar no mapa (ação explícita): enquadra sem mover o item. Seleções comuns nunca mexem na câmera. */
+  function frameCells(x, y, span = 1) {
+    if (!board?.camera?.frame) return;
+    const w = Math.min(width(), Math.max(9, span + 6)), h = Math.min(height(), Math.max(7, span + 4));
+    board.camera.frame({ x: Math.max(0, Math.min(width() - w, x - Math.floor((w - span) / 2))), y: Math.max(0, Math.min(height() - h, y - Math.floor((h - span) / 2))), w, h }, { animate: true });
+    shell.updateZoom();
+  }
+  function locateToken(i) {
+    const t = draft.prepared[i];
+    if (!t) return say("Selecione um marcador para localizar.");
+    if (composing()) shell.setContext("elements");
+    const span = tokenSpan(t);
+    frameCells(t.x, t.y, Math.max(span.w, span.h));
+    say(`${t.label || "Marcador"}: ${at(t)}.`);
+  }
+  function locateComp(ids) {
+    const d = compDoc();
+    const b = d && CP.unionBounds(d.elements.filter((e) => ids.includes(e.id)));
+    if (!b || !composer) return;
+    composer.surface.fitRect({ x: b.x - 16, y: b.y - 16, width: b.width + 32, height: b.height + 32 });
+    shell.updateZoom();
   }
   function structureSelect(id, additive) {
     if (simulate) return;
-    if (/^t\d+$/.test(id)) {
-      const i = Number(id.slice(1)), tok = draft.prepared[i];
-      if (!tok) return;
-      if (!editable(i)) return say(`“${tok.label}” está numa camada oculta ou bloqueada.`);
-      selection = additive ? (selection.includes(i) ? selection.filter((x) => x !== i) : [...selection, i]) : [i];
-      lastCell = { x: tok.x, y: tok.y };
-      panel = selection.length ? "token" : "overview";
-      refreshSelection();
-      return say(`${tok.label}: coluna ${tok.x + 1}, linha ${tok.y + 1}.`);
-    }
+    if (/^t\d+$/.test(id)) return treeSelect([id], additive ? "toggle" : "replace", "tokens");
     const [kindOf, x, y] = id.split(":");
     const cell = { x: Number(x), y: Number(y) };
     lastCell = cell;
     if (kindOf === "light" || kindOf === "mark") { pick = cell; panel = kindOf; selection = []; renderSide(); showProps(); return say(`Coluna ${cell.x + 1}, linha ${cell.y + 1}.`); }
     if (kindOf === "door") say(`Porta na coluna ${cell.x + 1}, linha ${cell.y + 1}. Use “Abrir ou fechar porta” (O) para alternar.`);
   }
+
+  // ---------- Adicionar › Personagens: Em cena, Disponíveis e Reservados (ADR-118) ----------
+  const CHAR_VIEWS = [["scene", "Em cena"], ["available", "Disponíveis"], ["reserved", "Reservados"]];
+  // Sem escolha salva: campanha sem jogadores abre em Reservados (é o que dá para preparar); com jogadores, em Disponíveis.
+  let charView = CHAR_VIEWS.some(([v]) => v === shell.views.get("charView")) ? shell.views.get("charView") : null;
+  function setCharView(id) {
+    if (!CHAR_VIEWS.some(([v]) => v === id)) return;
+    charView = id; shell.views.set("charView", id);
+    renderCharacterList();
+  }
   function renderCharacters() {
     const host = shell.panel("characters");
     if (!host) return;
     if (!mapKind() || !meta) {
-      host.innerHTML = `<p class="muted small se-empty-note">Personagens entram em cenas jogáveis (movimentação livre ou tática).${draft.kind === "image" && imageMap() ? "" : " Escolha um cenário com grade."}</p>${draft.kind === "image" && imageMap() ? button("Tornar esta imagem jogável…", "se-playable", "", "subtle small") : ""}`;
+      host.innerHTML = `<div class="o-empty"><p>Personagens entram em cenas jogáveis (movimentação livre ou tática).${draft.kind === "image" && imageMap() ? "" : " Escolha um cenário com grade em Configurar."}</p>${draft.kind === "image" && imageMap() ? button("Tornar esta imagem jogável…", "se-playable", "", "subtle small") : ""}</div>`;
       return;
     }
     if (!host.querySelector("[data-se-char-search]")) {
-      host.innerHTML = `<div class="field se-char-search"><label for="se-char-q">Buscar personagem</label><input id="se-char-q" type="search" data-se-char-search maxlength="60" autocomplete="off" placeholder="Nome"></div><div data-se-char-list></div><p class="form-help">Arraste para o mapa (arrastar de novo move o mesmo marcador) ou use “Colocar no cursor”. As posições ficam na preparação da cena e valem ao apresentá-la pela primeira vez ou ao reiniciá-la.</p>`;
+      host.innerHTML = `<div data-se-slot-create></div><div class="ed-seg se-char-views" role="group" aria-label="Personagens" data-se-char-views></div><div class="field se-char-search"><label class="sr-only" for="se-char-q">Buscar personagem</label><input id="se-char-q" type="search" data-se-char-search maxlength="60" autocomplete="off" placeholder="Buscar personagem"></div><div data-se-char-list></div>`;
     }
     renderCharacterList();
   }
+  let slotCreateKey = "";
   function renderCharacterList() {
     const host = shell.panel("characters");
     const list = host?.querySelector("[data-se-char-list]");
     if (!list) return;
+    if (!slotStore.loaded && !slotStore.loading && !slotStore.error) slotStore.load().then(() => { if (!closed) { renderCharacterList(); renderAssets(); redraw(); } });
     const query = plain(host.querySelector("[data-se-char-search]")?.value);
     const match = (s) => !query || plain(s).includes(query);
     const pos = new Map(draft.prepared.map((t, i) => [t.characterId, i]).filter(([id]) => id));
-    // Todos os personagens dos jogadores: posicionados (arrastar move o mesmo marcador) e sem posição (entram pela área de entrada).
-    const pcs = characters.filter((c) => match(c.name));
-    const masters = (npcs || []).filter((n) => !n.copy && match(`${n.name} ${n.summary || ""}`));
+    const ownNpcs = (npcs || []).filter((n) => !n.copy);
+    if (!charView) charView = characters.length ? "available" : "reserved";
+    const counts = { scene: draft.prepared.length, available: characters.filter((c) => !pos.has(c.id)).length + ownNpcs.length, reserved: slotStore.items.length };
+    const createKey = `${slotStore.items.length}|${slotBusy}`;
+    if (createKey !== slotCreateKey) { slotCreateKey = createKey; host.querySelector("[data-se-slot-create]").innerHTML = slotCreateHtml(); }
+    host.querySelector("[data-se-char-views]").innerHTML = CHAR_VIEWS.map(([id, label]) => `<button type="button" data-action="se-char-view" data-id="${id}" aria-pressed="${id === charView}">${esc(label)}<small>${counts[id]}</small></button>`).join("");
+    const empty = (text, action = "") => `<div class="o-empty"><p>${esc(query ? "Nenhum resultado." : text)}</p>${query ? "" : action}</div>`;
+    if (charView === "scene") {
+      const rows = draft.prepared.map((t, i) => [t, i]).filter(([t]) => match(t.label));
+      list.innerHTML = rows.length ? `<ul class="se-pick-list">${rows.map(([t, i]) => `<li class="se-char placed" data-se-char-token="${i}"><span>${esc(t.label || "Marcador")}<small>${esc(tokenKind(t))} · ${esc(at(t))}${t.hidden ? " · oculto para os jogadores" : ""}</small></span><span class="se-char-actions">${iconButton("target", `Localizar no mapa: ${t.label || "marcador"}`, "se-char-show", String(i), "subtle small")}${button(`${t.characterId || t.slotId ? "Remover posição" : "Remover da cena"}<span class="sr-only"> de ${esc(t.label)}</span>`, "se-char-unplace", String(i), "text-button small", `data-tip="${esc(t.characterId || t.slotId ? "Tira só a posição desta cena; o personagem continua na campanha." : "Tira o marcador desta cena.")}"`)}</span></li>`).join("")}</ul>${button(`${icon("mark")}<span>Marcador avulso</span>`, "se-tool", "add", "subtle small se-marker-add", 'data-tip="Marcador avulso" data-tip-detail="Clique numa casa livre do mapa para criar um marcador com nome e lado."')}`
+        : empty("Nenhum personagem nesta cena ainda. Posicione personagens disponíveis ou reservados.", button("Ver disponíveis", "se-char-view", "available", "subtle small"));
+      return;
+    }
+    if (charView === "reserved") { list.innerHTML = slotRowsHtml(match); return; }
     const area = sceneEntryArea(draft.entry, mapEntries);
-    const item = (ref, name, sub, placedAt = -1) => `<li class="se-char${placedAt >= 0 ? " placed" : ""}" draggable="true" data-se-char="${esc(ref)}"><span>${esc(name)}${sub ? `<small>${esc(sub)}</small>` : ""}</span><span class="se-char-actions">${placedAt >= 0 ? `${button(`Mostrar<span class="sr-only"> ${esc(name)}</span>`, "se-char-show", String(placedAt), "subtle small")}${button(`Remover posição<span class="sr-only"> de ${esc(name)}</span>`, "se-char-unplace", String(placedAt), "text-button small")}` : button(`Colocar <span class="sr-only">${esc(name)} </span>no cursor`, "se-place-cursor", ref, "subtle small")}</span></li>`;
-    const where = (i) => { const t = draft.prepared[i]; return `Posicionado · coluna ${t.x + 1}, linha ${t.y + 1}${t.hidden ? " · oculto" : ""}`; };
     const unplaced = area ? "Sem posição: entra pela área de entrada" : "Sem posição: entra pelo ponto padrão do mapa";
-    const missing = characters.filter((c) => !pos.has(c.id)).length;
-    list.innerHTML = `${slotsSection(match)}<h4 class="se-char-head">Personagens dos jogadores</h4>${pcs.length ? `<ul class="se-pick-list">${pcs.map((c) => item(`pc:${c.id}`, c.name, pos.has(c.id) ? where(pos.get(c.id)) : unplaced, pos.has(c.id) ? pos.get(c.id) : -1)).join("")}</ul>` : `<p class="muted small">${query ? "Nenhum resultado." : "Nenhum personagem vinculado à campanha ainda."}</p>`}
-      <h4 class="se-char-head">Personagens do mestre</h4>${npcs == null ? '<p class="loading-line" role="status">Carregando…</p>' : masters.length ? `${placeLookField("list")}<ul class="se-pick-list">${masters.map((n) => item(`npc:${n.id}`, n.name, n.summary || "")).join("")}</ul><p class="form-help">Marque “Oculto” no marcador para preparar NPCs e emboscadas que só você vê.</p>` : `<p class="muted small">${query ? "Nenhum resultado." : "Crie personagens do mestre na Preparação (pasta Personagens)."}</p>`}
-      ${entrySection(area, missing)}`;
+    const item = (ref, name, sub) => `<li class="se-char" draggable="true" data-se-char="${esc(ref)}"><span>${esc(name)}${sub ? `<small>${esc(sub)}</small>` : ""}</span><span class="se-char-actions">${button(`Posicionar<span class="sr-only"> ${esc(name)}</span> na cena`, "se-place-cursor", ref, "subtle small", 'data-tip="Posicionar na cena" data-tip-detail="Vai para a casa sob o cursor (ou a última casa usada). Também dá para arrastar para o mapa."')}</span></li>`;
+    const pcs = characters.filter((c) => !pos.has(c.id) && match(c.name));
+    const masters = ownNpcs.filter((n) => match(`${n.name} ${n.summary || ""}`));
+    list.innerHTML = `<h4 class="se-char-head">Personagens dos jogadores</h4>${pcs.length ? `<ul class="se-pick-list">${pcs.map((c) => item(`pc:${c.id}`, c.name, unplaced)).join("")}</ul>`
+        : characters.length ? `<p class="muted small">${query ? "Nenhum resultado." : "Todos os personagens dos jogadores já estão na cena."}</p>`
+        : empty("Nenhum jogador entrou na campanha ainda. Prepare a cena com personagens reservados e vincule depois.", button("Ver reservados", "se-char-view", "reserved", "subtle small"))}
+      <h4 class="se-char-head">NPCs e criaturas</h4>${npcs == null ? '<p class="loading-line" role="status">Carregando…</p>' : masters.length ? `${placeLookField("list")}<ul class="se-pick-list">${masters.map((n) => item(`npc:${n.id}`, n.name, n.summary || "")).join("")}</ul>` : `<p class="muted small">${query ? "Nenhum resultado." : "Crie personagens do mestre na Preparação (pasta Personagens)."}</p>`}`;
   }
   /** Área de entrada da cena: escolha entre os pontos do mapa, área própria e distribuição automática do grupo. */
   function entrySection(area, missing) {
@@ -2220,34 +2423,37 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     say(result.missing.length ? `${result.placed.length} posicionado(s); ${result.missing.length} sem espaço na área (entram pela regra automática ao apresentar).` : `${result.placed.length} personagem(ns) distribuído(s) na área de entrada. Ajuste à vontade.`);
   }
   // ---------- Personagens reservados (ADR-110) ----------
-  /** Seção do painel Personagens: criar (genérico ou por arquétipo), listar, colocar, renomear e ações do reservado. */
-  function slotsSection(match) {
-    if (!slotStore.loaded && !slotStore.loading && !slotStore.error) slotStore.load().then(() => { if (!closed) { renderCharacterList(); renderAssets(); redraw(); } });
-    const list = (simulate && rehearsal ? rehearsal.sandbox : draft.prepared);
+  /** Criar: uma ação principal (genérico, com renomear em linha) e os arquétipos recolhidos (ADR-118: sem chips sempre abertos). */
+  function slotCreateHtml() {
     const full = slotStore.items.length >= MAX_SLOTS;
     const limit = full ? `aria-disabled="true" data-tip="Use até ${MAX_SLOTS} personagens reservados por campanha."` : slotBusy ? 'aria-disabled="true" data-tip="Aguarde: criando o personagem reservado."' : "";
-    const create = `<div class="se-slot-create">${button(`${icon("plus")}<span>Personagem reservado</span>`, "se-slot-new", "", "subtle small se-slot-add", limit)}<div class="se-slot-chips" role="group" aria-label="Criar personagem reservado por arquétipo">${ARCHETYPES.map((a) => button(`${archetypeSvg(a.id)}<span>${esc(a.label)}</span>`, "se-slot-new", a.id, "subtle small se-chip", limit)).join("")}</div></div>`;
-    const items = slotStore.items.filter((s) => match(s.name));
+    return `<div class="se-slot-create">${button(`${icon("plus")}<span>Personagem reservado</span>`, "se-slot-new", "", "subtle small se-slot-add", `${limit} data-tip-detail="Personagem provisório para preparar a cena antes de os jogadores entrarem. Vincule à ficha depois."`)}${helpButton("campanhas.cenas.reservados", "Personagens reservados")}</div>
+      <details class="se-slot-archetypes"><summary>Criar por arquétipo</summary><div class="se-slot-chips" role="group" aria-label="Criar personagem reservado por arquétipo">${ARCHETYPES.map((a) => button(`${archetypeSvg(a.id)}<span>${esc(a.label)}</span>`, "se-slot-new", a.id, "subtle small se-chip", limit)).join("")}</div></details>`;
+  }
+  /** Vista Reservados: cada reservado com estado do vínculo, posição nesta cena e ações. */
+  function slotRowsHtml(match) {
+    const list = (simulate && rehearsal ? rehearsal.sandbox : draft.prepared);
     const row = (s) => {
       const at = slotIndex(list, s.id), bound = s.characterId ? list.findIndex((t) => t.characterId === s.characterId) : -1;
       const placedAt = at >= 0 ? at : bound;
       const t = list[placedAt];
       const scenes = Array.isArray(s.scenes) ? s.scenes.length : Number(s.scenes) || 0;
-      const state = s.characterId ? `Vinculado a ${s.characterName || "um personagem"}` : "Reservado";
+      const state = s.characterId ? `Vinculado a ${s.characterName || "um personagem"}` : "Aguardando vínculo";
       const where = t ? `coluna ${t.x + 1}, linha ${t.y + 1}` : "fora desta cena";
       const name = renaming === s.id
         ? `<input class="se-slot-name" data-slot-rename="${esc(s.id)}" maxlength="40" value="${esc(s.name)}" aria-label="Nome do personagem reservado" autocomplete="off">`
         : esc(s.name);
       const actions = placedAt >= 0
-        ? button(`Mostrar<span class="sr-only"> ${esc(s.name)}</span>`, simulate ? "se-rh-show" : "se-char-show", simulate ? list[placedAt].key : String(placedAt), "subtle small")
-        : button(`Colocar <span class="sr-only">${esc(s.name)} </span>no cursor`, "se-place-cursor", `slot:${s.id}`, "subtle small");
-      return `<li class="se-char se-slot${placedAt >= 0 ? " placed" : ""}" draggable="${renaming === s.id ? "false" : "true"}" data-se-char="slot:${esc(s.id)}">${slotPreviewHtml(campaign.id, s)}<span class="se-slot-text">${name}<small>${esc(state)} · ${esc(where)}${scenes ? ` · em ${scenes} cena(s)` : ""}</small></span><span class="se-char-actions">${actions}${iconButton("dots", `Ações de ${s.name}`, "se-slot-menu", s.id, "subtle small")}</span></li>`;
+        ? iconButton("target", `Localizar no mapa: ${s.name}`, simulate ? "se-rh-show" : "se-char-show", simulate ? list[placedAt].key : String(placedAt), "subtle small")
+        : button(`Posicionar<span class="sr-only"> ${esc(s.name)}</span> na cena`, "se-place-cursor", `slot:${s.id}`, "subtle small", 'data-tip="Posicionar na cena" data-tip-detail="Vai para a casa sob o cursor. Também dá para arrastar para o mapa."');
+      return `<li class="se-char se-slot${placedAt >= 0 ? " placed" : ""}" draggable="${renaming === s.id ? "false" : "true"}" data-se-char="slot:${esc(s.id)}">${slotPreviewHtml(campaign.id, s)}<span class="se-slot-text">${name}<small>${esc(state)} · ${esc(where)}${scenes ? ` · em ${scenes} cena(s)` : ""}</small></span><span class="se-char-actions">${actions}${iconButton("dots", `Ações de ${s.name}: renomear, aparência, vincular a personagem`, "se-slot-menu", s.id, "subtle small")}</span></li>`;
     };
+    const items = slotStore.items.filter((s) => match(s.name));
     const body = slotStore.loading && !slotStore.items.length ? '<p class="loading-line" role="status">Carregando…</p>'
       : slotStore.error && !slotStore.items.length ? `<p class="form-error" role="alert">${esc(slotStore.error)}</p>${button("Tentar de novo", "se-slot-retry", "", "subtle small")}`
       : items.length ? `<ul class="se-pick-list se-slot-list">${items.map(row).join("")}</ul>`
-      : `<p class="muted small">${slotStore.items.length ? "Nenhum resultado." : "Prepare a cena sem esperar os jogadores: crie personagens provisórios e vincule às fichas depois."}</p>`;
-    return `<section class="se-slots" aria-labelledby="se-slots-h"><h4 class="se-char-head" id="se-slots-h">Personagens reservados${helpButton("campanhas.cenas.reservados", "Personagens reservados")}</h4>${create}${body}</section>`;
+      : `<div class="o-empty"><p>${slotStore.items.length ? "Nenhum resultado." : "Prepare a cena sem esperar os jogadores: crie personagens reservados (acima) e vincule às fichas depois."}</p></div>`;
+    return `<section class="se-slots" aria-label="Personagens reservados">${body}</section>`;
   }
   async function createSlot(archetype) {
     if (slotBusy) return;
@@ -2260,6 +2466,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       if (closed) return;
       say(a ? `“${s.name}” criado. Arraste para o mapa ou use Colocar no cursor.` : `“${s.name}” criado. Digite um nome e Enter (ou só arraste para o mapa).`);
       if (!a) renaming = s.id;
+      if (charView !== "reserved") { charView = "reserved"; shell.views.set("charView", "reserved"); }
     } catch (e) { say(e.status === 409 ? `Use até ${MAX_SLOTS} personagens reservados por campanha.` : e.message); }
     finally {
       slotBusy = false;
@@ -2474,7 +2681,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const host = shell.panel("history");
     if (host) renderHistoryPanel(host, history);
   }
-  const renderPanels = () => { renderLayers(); renderStructure(); renderCharacters(); renderHistory(); if (!mapOnly) renderAssets(); };
+  const renderPanels = () => { renderStructure(); renderCharacters(); renderConfig(); renderHistory(); if (!mapOnly) renderAssets(); };
 
   // ---------- Renderização ----------
   /** Aviso de peso (ADR-100): perto dos limites do servidor para paredes, luzes, marcas e marcadores. */
@@ -2506,6 +2713,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     previewBtn.innerHTML = simulate ? "← Sair do ensaio" : `${icon("eye")}<span>Ensaiar cena</span>`;
     previewBtn.disabled = !mapKind() || !meta;
     q("[data-action=se-save]").disabled = busy || (!dirty && !!(saved.id || mapOnly));
+    sideHeader();
   }
   function renderStage() {
     const text = q("#se-text"), start = q("#se-start"), comp = q("#se-compose");
@@ -2610,11 +2818,106 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (panel === "resetExploration") return `<div class="se-panel"><h3>Recomeçar exploração</h3><p class="form-help">Ao salvar, apaga o que os jogadores já exploraram neste mapa e quem percebeu cada marca. Paredes, portas e luzes ficam.${meta?.inUse ? " Este mapa está na mesa agora: use “Reiniciar cena” ou “Recomeçar exploração” na mesa." : ""}</p><label class="check"><input type="checkbox" data-reset ${resetExploration ? "checked" : ""} ${meta?.inUse ? "disabled" : ""}> Recomeçar exploração ao salvar</label></div>`;
     if (panel === "gridAdjust") return gridPanel();
     if (panel === "hidden") return hiddenPanel();
+    if (panel === "layer" && tokenLayerFocus) return tokenLayerPanel();
     return overviewPanel();
   }
   function overviewPanel() {
     const m = mapOf(draft.mapKey);
-    return `<div class="se-panel"><h3>${esc(labelOf(tool))}${helpButton("mesa.nevoa.ferramentas", "Ferramentas de névoa")}</h3><p class="form-help">${esc(helpOf(tool) || "Escolha uma ferramenta à esquerda.")}</p><dl class="se-summary"><div><dt>Tipo</dt><dd>${esc(sceneKindLabel(draft.kind))}</dd></div>${draft.kind !== "text" ? `<div><dt>Cenário</dt><dd>${m ? `${esc(m.name)} <small>${esc(mapTypeLabel(m))}</small>` : "Nenhum escolhido"}</dd></div>` : ""}${mapKind() ? `<div><dt>Marcadores preparados</dt><dd>${draft.prepared.length}</dd></div><div><dt>Visibilidade</dt><dd>${esc((VISIBILITY_OPTIONS.find((v) => v[0] === (draft.visionMode || "")) || VISIBILITY_OPTIONS[0])[1])}</dd></div>` : ""}${meta && meta.mode === "map" && meta.sharedWith?.length ? `<div><dt>Preparação do mapa</dt><dd>Compartilhada com: ${meta.sharedWith.map((s) => esc(s.name)).join(", ")}</dd></div>` : meta?.mode === "scene" ? `<div><dt>Preparação do mapa</dt><dd>Própria desta cena</dd></div>` : ""}</dl><p class="form-help">Clique com o botão direito (ou Shift+F10) no mapa para ver as ações da casa ou do marcador.</p></div>`;
+    return `<div class="se-panel"><h3>${esc(labelOf(tool))}${helpButton("mesa.nevoa.ferramentas", "Ferramentas de névoa")}</h3><p class="form-help">${esc(helpOf(tool) || "Escolha uma ferramenta à esquerda.")}</p><dl class="se-summary"><div><dt>Tipo</dt><dd>${esc(sceneKindLabel(draft.kind))}</dd></div>${draft.kind !== "text" ? `<div><dt>Cenário</dt><dd>${m ? `${esc(m.name)} <small>${esc(mapTypeLabel(m))}</small>` : "Nenhum escolhido"}</dd></div>` : ""}${mapKind() ? `<div><dt>Marcadores preparados</dt><dd>${draft.prepared.length}</dd></div><div><dt>Visibilidade</dt><dd>${esc((VISIBILITY_OPTIONS.find((v) => v[0] === (draft.visionMode || "")) || VISIBILITY_OPTIONS[0])[1])}</dd></div>` : ""}${meta && meta.mode === "map" && meta.sharedWith?.length ? `<div><dt>Preparação do mapa</dt><dd>Compartilhada com: ${meta.sharedWith.map((s) => esc(s.name)).join(", ")}</dd></div>` : meta?.mode === "scene" ? `<div><dt>Preparação do mapa</dt><dd>Própria desta cena</dd></div>` : ""}</dl><p class="form-help">Clique com o botão direito (ou Shift+F10) no mapa para ver as ações da casa ou do marcador.</p>${mapOnly ? "" : `<div class="form-actions">${mapKind() && meta ? button("Adicionar personagens", "se-goto", "add", "subtle small") : ""}${button("Configurar a cena", "se-goto", "configure", "subtle small")}</div>`}</div>`;
+  }
+  /** Inspetor de uma camada de marcadores (clicada em Organizar): nome, tipo, editor e ações. */
+  function tokenLayerPanel() {
+    const l = draft.layers.find((x) => x.id === activeLayer);
+    if (!l || l.id === "base") return overviewPanel();
+    const count = draft.prepared.filter((t) => tokenLayerOf(t.layer, draft.layers) === l.id).length, fixed = isRequiredLayer(l.id);
+    return `<form class="se-panel" data-layer-form><div class="ed-insp-head">${icon("layers")}<strong>${esc(l.name)}</strong><small>${fixed ? "Camada fixa" : "Camada extra"} · ${count} marcador(es)</small></div>
+      <div class="field"><label for="se-l-name">Nome da camada</label><input id="se-l-name" data-layer-field="name" maxlength="40" value="${esc(l.name)}" autocomplete="off"></div>
+      ${mode === "complete" ? `<div class="field"><label for="se-l-op">Opacidade no editor (%)</label><input id="se-l-op" type="number" min="0" max="100" step="5" data-layer-field="opacity" value="${Number.isFinite(l.opacity) ? l.opacity : 100}"></div>` : ""}
+      <label class="check"><input type="checkbox" data-layer-field="visible" ${l.visible !== false ? "checked" : ""}> Visível no editor</label>
+      <label class="check"><input type="checkbox" data-layer-field="locked" ${l.locked ? "checked" : ""}> Bloqueada</label>
+      <p class="ed-insp-note">Visível e bloqueada valem só na preparação. Para esconder um marcador dos jogadores, marque “Oculto para os jogadores” no próprio marcador. Novos marcadores entram na camada ativa.</p>
+      <div class="form-actions">${button("Selecionar marcadores", "se-layer-select", l.id, "subtle small", count ? "" : 'aria-disabled="true" data-tip="Camada sem marcadores."')}${button("Nova camada acima", "se-layer-add", l.id, "subtle small", draft.layers.length >= 8 ? 'aria-disabled="true" data-tip="Use até 8 camadas."' : "")}${fixed ? "" : button("Excluir camada", "se-layer-delete", l.id, "text-button small")}</div></form>`;
+  }
+  /** Inspetor de uma camada da composição: visibilidade para os jogadores separada da visibilidade no editor. */
+  function compLayerPanel() {
+    const d = compDoc(), l = d?.layers.find((x) => x.id === (composer?.activeLayer || "elements"));
+    if (!l) return composePanelEmpty();
+    const count = d.elements.filter((e) => e.layer === l.id).length, fixed = isRequiredLayer(l.id);
+    return `<form class="se-panel" data-comp-layer-form><div class="ed-insp-head">${icon("image")}<strong>${esc(l.name)}</strong><small>Composição · ${count} imagem(ns)</small></div>
+      <div class="field"><label for="se-cl-name">Nome da camada</label><input id="se-cl-name" data-comp-layer-field="name" maxlength="40" value="${esc(l.name)}" autocomplete="off"></div>
+      <fieldset class="se-vis"><legend>Na sessão (jogadores)</legend><label class="check"><input type="checkbox" data-comp-layer-field="secret" ${l.secret ? "checked" : ""}> Só o mestre vê esta camada</label><p class="ed-insp-note">Muda o que os jogadores recebem ao apresentar ou aplicar a cena.</p></fieldset>
+      <fieldset class="se-vis"><legend>No editor (só para você)</legend><label class="check"><input type="checkbox" data-comp-layer-field="visible" ${l.visible !== false ? "checked" : ""}> Visível no editor</label><label class="check"><input type="checkbox" data-comp-layer-field="locked" ${l.locked ? "checked" : ""}> Bloqueada</label>${mode === "complete" ? `<div class="field"><label for="se-cl-op">Opacidade no editor (%)</label><input id="se-cl-op" type="number" min="0" max="100" step="5" data-comp-layer-field="opacity" value="${Number.isFinite(l.opacity) ? l.opacity : 100}"></div>` : ""}</fieldset>
+      ${l.id === d.layers[0].id ? '<p class="ed-insp-note">O mapa compartilhado fica no fundo desta camada e não pode ser movido aqui.</p>' : ""}
+      <div class="form-actions">${button("Nova camada acima", "se-comp-layer", `add:${l.id}`, "subtle small", d.layers.length >= 8 ? 'aria-disabled="true" data-tip="Use até 8 camadas."' : "")}${fixed ? "" : button("Excluir camada", "se-comp-layer", `delete:${l.id}`, "text-button small")}</div></form>`;
+  }
+  const composePanelEmpty = () => `<div class="se-panel"><p class="form-help">Clique numa imagem ou camada em Organizar.</p></div>`;
+  /** Campos dos inspetores de camada: cada mudança é uma entrada no histórico (as ações de camada já registram). */
+  function onLayerField(t, comp) {
+    const field = comp ? t.dataset.compLayerField : t.dataset.layerField;
+    const list = comp ? compDoc()?.layers || [] : draft.layers;
+    const id = comp ? composer?.activeLayer || "elements" : activeLayer;
+    const l = list.find((x) => x.id === id);
+    if (!l) return;
+    const act = comp ? compLayerAction : layerAction;
+    if (field === "name") { const v = t.value.replace(/\s+/g, " ").trim().slice(0, 40); if (v && v !== l.name) act("rename", id, v); else t.value = l.name; return; }
+    if (field === "opacity") { act("opacity", id, Math.max(0, Math.min(100, Math.round(Number(t.value) || 0)))); return; }
+    if (field === "visible" && (l.visible !== false) !== t.checked) return act("visible", id);
+    if (field === "locked" && !!l.locked !== t.checked) return act("lock", id);
+    if (field === "secret" && comp && !!l.secret !== t.checked) return setCompSecret(id, t.checked);
+  }
+
+  // ---------- Configurar: cena, mapa de origem, composição e preparação (ADR-118) ----------
+  // Mapa original (recurso reutilizável), composição da cena (só desta cena) e preparação do mapa (paredes, luz, névoa)
+  // ficam separados e nomeados. Cada item abre o formulário existente no inspetor (mesmas regras de antes).
+  function cfgItem(toolId, iconName, label, sub, value = "", completeOnly = false) {
+    const reason = toolProblem(toolId);
+    return `<li><button type="button" data-action="se-tool" data-id="${esc(toolId)}" ${reason ? `aria-disabled="true" data-tip="${esc(reason)}"` : ""} ${completeOnly ? "data-complete-only" : ""} ${panel === toolId ? 'aria-current="true"' : ""}>${icon(iconName)}<span>${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ""}</span><span class="ed-cfg-value">${esc(value)}</span></button></li>`;
+  }
+  let configKey = "";
+  function renderConfig() {
+    const host = shell.panel("config");
+    if (!host) return;
+    const m = mapOf(draft.mapKey), playable = mapKind() && !!meta;
+    const area = playable ? sceneEntryArea(draft.entry, mapEntries) : null;
+    const missing = playable ? characters.filter((c) => !draft.prepared.some((t) => t.characterId === c.id)).length : 0;
+    const visibility = (VISIBILITY_OPTIONS.find((v) => v[0] === (draft.visionMode || "")) || VISIBILITY_OPTIONS[0])[1];
+    const key = JSON.stringify([draft.kind, draft.mapKey, m?.name, meta?.mode, meta?.sharedWith?.length, compElements(), draft.visionMode, draft.entry, mapEntries.length, missing, mode, panel, layerLocked(), uploading, draft.sharedText?.length > 0, draft.privateNotes?.length > 0, mapOnly && meta?.entriesEditable]);
+    if (key === configKey && host.firstElementChild) return;
+    configKey = key;
+    if (mapOnly) {
+      host.innerHTML = `<section class="ed-cfg-card"><h3>${icon("scenery")}Mapa</h3><p>${esc(meta?.name || m?.name || "Mapa")}: a preparação vale para todas as cenas que usam este mapa.</p></section>
+        <ul class="ed-cfg-list">${cfgItem("fogState", "fog", "Névoa", "Estado inicial da névoa", "", true)}${cfgItem("resetExploration", "wand", "Recomeçar exploração", "Ao salvar, apaga o que já foi explorado", "", true)}${cfgItem("entry", "flag", "Entradas do grupo", "Pontos de chegada deste mapa")}</ul>`;
+      return;
+    }
+    const prepShared = meta?.mode === "map" ? (meta.sharedWith?.length ? `compartilhada com ${meta.sharedWith.length} outra(s) cena(s)` : "do mapa (vale para as cenas que o usam)") : meta?.mode === "scene" ? "própria desta cena" : "";
+    host.innerHTML = `<section class="ed-cfg-card"><h3>${icon("notes")}Cena</h3><p>${esc(sceneKindLabel(draft.kind))}. O nome fica no topo do editor.</p>
+        <ul class="ed-cfg-list">${cfgItem("text", "chat", "Texto compartilhado", "O que o grupo vê ao chegar", draft.sharedText ? "preenchido" : "vazio")}${cfgItem("notes", "notes", "Notas privadas", "Só você vê", draft.privateNotes ? "preenchidas" : "vazias")}${draft.kind === "text" ? "" : cfgItem("scenery", "scenery", "Cenário e tipo da cena", "Trocar o mapa ou a imagem de fundo", m?.name || "nenhum")}</ul></section>
+      ${draft.kind !== "text" && m ? `<section class="ed-cfg-card"><h3>${icon("scenery")}Mapa de origem</h3><p><strong>${esc(m.name)}</strong> <small>${esc(mapTypeLabel(m))}</small>. Recurso reutilizável da campanha: mudanças nele valem para todas as cenas que o usam. Nesta cena ele é somente leitura.</p><div class="form-actions">${m.id ? button("Abrir mapa original…", "se-open-map", "", "subtle small", 'data-tip="Abre o mapa no editor; oferece salvar esta cena antes."') : '<span class="muted small">Cenário pronto: não é editável.</span>'}</div></section>` : ""}
+      ${composable() ? `<section class="ed-cfg-card"><h3>${icon("image")}Composição desta cena</h3><p>${compElements() ? `${compElements()} imagem(ns) por cima do mapa, só nesta cena.` : "Nenhuma imagem por cima do mapa ainda."} O mapa original não muda.</p><div class="form-actions">${button("Editar composição", "se-tool", "addImage", "subtle small", 'data-tip="Contexto Composição: imagens desta cena."')}${compElements() ? button("Criar mapa a partir da composição", "se-map-from-comp", "", "subtle small") : ""}</div></section>` : ""}
+      ${playable ? `<section class="ed-cfg-card"><h3>${icon("light")}Preparação do mapa</h3><p>Paredes, portas, luz e névoa: ${esc(prepShared)}.</p><ul class="ed-cfg-list">${cfgItem("visibility", "eye", "Visibilidade dos jogadores", "Como o grupo enxerga o mapa", visibility)}${cfgItem("sceneSettings", "settings", "Alcance da preparação", "Compartilhada com o mapa ou própria da cena", meta?.mode === "scene" ? "própria" : "do mapa", true)}${cfgItem("gridAdjust", "measure", "Grade e escala", "Tamanho da casa e alinhamento", "", true)}${cfgItem("fogState", "fog", "Névoa", "Estado inicial da névoa", "", true)}${cfgItem("resetExploration", "wand", "Recomeçar exploração", "Ao salvar, apaga o que já foi explorado", "", true)}</ul></section>
+      <section class="ed-cfg-card">${entrySection(area, missing)}</section>` : ""}`;
+  }
+  function sideHeader() {
+    const presenting = live?.current, dirty = sceneDirty || layerDirty, m = mapOf(draft.mapKey);
+    const pendingLive = presenting && (live.textPending || live.mapPending || meta?.pending);
+    shell.setSideHeader({
+      name: mapOnly ? meta?.name || m?.name || "Mapa" : draft.name || "Cena sem nome",
+      kind: mapOnly ? "Preparação compartilhada do mapa" : `Cena · ${sceneKindLabel(draft.kind)}`,
+      chips: [
+        presenting ? { text: "Na mesa", tone: "live", tip: "Em apresentação: os jogadores estão vendo esta cena. Salvar não muda a mesa; use Aplicar." } : null,
+        busy ? { text: "Salvando…" } : dirty ? { text: "Não salvo", tone: "dirty", tip: "Há alterações não salvas. Ctrl+S salva a preparação (privada)." } : saved.id || mapOnly ? { text: "Salvo", tone: "ok" } : { text: "Nova cena" },
+        pendingLive && !dirty ? { text: "Não aplicado", tone: "pending", tip: "A preparação salva ainda não foi aplicada à cena em apresentação." } : null,
+        simulate ? { text: "Ensaio", tone: "private", tip: "Nada do ensaio vai para a mesa." } : null,
+      ].filter(Boolean),
+      origin: !mapOnly && m?.id && draft.kind !== "text" ? { label: `Mapa: ${m.name}`, tip: "Abrir o mapa original (nesta cena ele é somente leitura)", run: () => openOriginalMap() } : null,
+      menu: () => [
+        { label: "Salvar preparação", shortcut: "mod+s", run: () => save(), disabled: busy },
+        ...(mapOnly ? [] : [{ label: simulate ? "Sair do ensaio" : "Ensaiar cena (ver como jogador)", run: () => toggleSimulate(), disabled: !mapKind() || !meta, disabledReason: "O ensaio vale para cenas com mapa tático." }]),
+        ...(!mapOnly && m?.id ? [{ label: "Abrir mapa original…", run: () => openOriginalMap() }] : []),
+        { separator: true },
+        { label: "Restaurar layout padrão", run: () => shell.resetLayout(), hint: "O documento não muda" },
+      ],
+    });
   }
   /** Campo "Forma no mapa" do marcador: redondo ou a imagem; sem imagem, explica onde escolher uma. */
   function lookField(t) {
@@ -2631,8 +2934,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const slot = t.slotId ? slotStore.byId(t.slotId) : null;
     const bindReason = sceneDirty ? "Salve a cena antes de vincular." : !saved.id ? "Salve a cena antes de vincular." : "";
     const slotBox = slot ? `<div class="se-slot-note">${slotPreviewHtml(campaign.id, slot)}<p class="small">${slot.characterId ? `Personagem reservado vinculado a ${esc(slot.characterName || "um personagem")}.` : "Personagem reservado: renomeie no painel Personagens. Vincule a uma ficha quando o jogador chegar."}</p></div><div class="form-actions">${slot.characterId ? button("Desvincular", "se-slot-unbind", slot.id, "subtle small", bindReason ? `aria-disabled="true" data-tip="${esc(bindReason)}"` : "") : button("Vincular a personagem…", "se-slot-bind", slot.id, "subtle small", bindReason ? `aria-disabled="true" data-tip="${esc(bindReason)}"` : "")}${button("Trocar imagem…", "se-token-image", "", "subtle small")}</div>` : "";
-    if (slot && !isCharacter) return `<form class="se-panel" data-token-form><h3>${esc(t.label || "Reservado")}${helpButton("campanhas.cenas.reservados", "Personagens reservados")}</h3><p class="form-help">Coluna ${t.x + 1}, linha ${t.y + 1}. Arraste, use as setas ou o menu (botão direito) para mover e ajustar o tamanho.</p>${slotBox}<label class="check"><input type="checkbox" data-token="hidden" ${t.hidden ? "checked" : ""}> Oculto: só você vê até revelar</label>${layerSelect}<div class="form-actions se-danger-zone">${button("Mais propriedades…", "se-token-props", "", "subtle")}${button("Remover da cena", "se-token-remove", "", "text-button")}</div></form>`;
-    return `<form class="se-panel" data-token-form><h3>${esc(t.label || "Marcador")}</h3><p class="form-help">Coluna ${t.x + 1}, linha ${t.y + 1}. Para mover, clique numa casa livre, arraste ou use as setas com o mapa em foco.</p>${isCharacter ? `<p class="small">Personagem dos jogadores: entra nesta casa quando a cena for apresentada, se a pessoa estiver na mesa.</p>${slotBox}` : `<div class="field"><label for="se-t-label">Nome</label><input id="se-t-label" data-token="label" maxlength="40" required value="${esc(t.label)}"></div><div class="field"><label for="se-t-side">Lado</label><select id="se-t-side" data-token="side">${opt(SIDES, t.side || "enemy")}</select></div><label class="check"><input type="checkbox" data-token="hidden" ${t.hidden ? "checked" : ""}> Oculto: só você vê até revelar</label>${mode === "complete" ? `<div class="field"><label for="se-t-light">Luz que carrega (casas)</label><input id="se-t-light" data-token="light" type="number" min="0" max="30" value="${t.light ?? ""}" placeholder="Padrão da mesa"></div>` : ""}`}${layerSelect}<div class="form-actions se-danger-zone">${button("Mais propriedades…", "se-token-props", "", "subtle")}${button("Remover da cena", "se-token-remove", "", "text-button")}</div></form>`;
+    if (slot && !isCharacter) return `<form class="se-panel" data-token-form><h3>${esc(t.label || "Reservado")}${helpButton("campanhas.cenas.reservados", "Personagens reservados")}</h3><p class="form-help">Coluna ${t.x + 1}, linha ${t.y + 1}. Arraste, use as setas ou o menu (botão direito) para mover e ajustar o tamanho.</p>${slotBox}<label class="check"><input type="checkbox" data-token="hidden" ${t.hidden ? "checked" : ""}> Oculto para os jogadores (só você vê até revelar)</label>${layerSelect}<div class="form-actions se-danger-zone">${button("Localizar no mapa", "se-locate", "", "subtle")}${button("Mais propriedades…", "se-token-props", "", "subtle")}${button("Remover da cena", "se-token-remove", "", "text-button", 'data-tip="Tira o marcador desta cena; personagens continuam na campanha."')}</div></form>`;
+    return `<form class="se-panel" data-token-form><h3>${esc(t.label || "Marcador")}</h3><p class="form-help">Coluna ${t.x + 1}, linha ${t.y + 1}. Para mover, clique numa casa livre, arraste ou use as setas com o mapa em foco.</p>${isCharacter ? `<p class="small">Personagem dos jogadores: entra nesta casa quando a cena for apresentada, se a pessoa estiver na mesa.</p>${slotBox}` : `<div class="field"><label for="se-t-label">Nome</label><input id="se-t-label" data-token="label" maxlength="40" required value="${esc(t.label)}"></div><div class="field"><label for="se-t-side">Lado</label><select id="se-t-side" data-token="side">${opt(SIDES, t.side || "enemy")}</select></div><label class="check"><input type="checkbox" data-token="hidden" ${t.hidden ? "checked" : ""}> Oculto para os jogadores (só você vê até revelar)</label>${mode === "complete" ? `<div class="field"><label for="se-t-light">Luz que carrega (casas)</label><input id="se-t-light" data-token="light" type="number" min="0" max="30" value="${t.light ?? ""}" placeholder="Padrão da mesa"></div>` : ""}`}${layerSelect}<div class="form-actions se-danger-zone">${button("Localizar no mapa", "se-locate", "", "subtle")}${button("Mais propriedades…", "se-token-props", "", "subtle")}${button("Remover da cena", "se-token-remove", "", "text-button", 'data-tip="Tira o marcador desta cena; personagens continuam na campanha."')}</div></form>`;
   }
   function multiPanel() {
     const ids = editableSelection();
@@ -3068,7 +3371,14 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       case "se-open-map": return openOriginalMap();
       case "se-map-from-comp": return mapFromComposition();
       case "se-playable": startChoice = { playable: true }; renderSide(); return showProps();
-      case "se-char-show": { const i = Number(id); if (!draft.prepared[i]) return; if (shell.context !== "elements") shell.setContext("elements"); selection = [i]; panel = "token"; lastCell = { x: draft.prepared[i].x, y: draft.prepared[i].y }; return refreshSelection(); }
+      case "se-char-show": { const i = Number(id); if (!draft.prepared[i]) return; if (shell.context !== "elements") shell.setContext("elements"); selection = [i]; panel = "token"; tokenLayerFocus = false; lastCell = { x: draft.prepared[i].x, y: draft.prepared[i].y }; refreshSelection(); return locateToken(i); }
+      case "se-char-view": return setCharView(id);
+      case "se-goto": return shell.setArea(id);
+      case "se-locate": return selection.length && locateToken(selection[0]);
+      case "se-layer-select": return selectLayer(id);
+      case "se-layer-add": return layerAction("add", id);
+      case "se-layer-delete": return layerAction("delete", id);
+      case "se-comp-layer": { const [act, lid] = String(id).split(":"); return act === "players" ? setCompSecret(lid, !compDoc()?.layers.find((l) => l.id === lid)?.secret) : compLayerAction(act, lid); }
       case "se-char-unplace": { const i = Number(id); if (!draft.prepared[i]) return; return removeIndices([i], "Remover posição preparada"); }
       case "se-entry-clear": change("Usar a entrada do mapa", () => { draft.entry = null; }); return refresh();
       case "se-distribute": return distributeParty();
@@ -3198,6 +3508,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       return refresh();
     }
     if (t.dataset.compFlag) { commitTyping(); composer?.toggle(t.dataset.compFlag); return afterCompose(); }
+    if (t.dataset.layerField) return onLayerField(t, false);
+    if (t.dataset.compLayerField) return onLayerField(t, true);
     if (t.dataset.compSecret) {
       const id = t.dataset.compSecret, on = t.checked;
       compChange(on ? "Camada só do mestre" : "Camada visível aos jogadores", () => { draft.composition.layers = draft.composition.layers.map((l) => { if (l.id !== id) return l; const n = { ...l }; if (on) n.secret = true; else delete n.secret; return n; }); });

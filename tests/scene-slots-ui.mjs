@@ -47,6 +47,9 @@ try {
     const openPanel = (id) => page.evaluate((id) => {
       const root = document.querySelector(".scene-editor");
       if (root.dataset.panels !== "open") root.querySelector('[data-ed="panels"]')?.click();
+      // Barra lateral (ADR-118): o painel vive numa área (Organizar/Adicionar); a aba da área o mostra.
+      const area = root.querySelector(`[data-panel="${id}"]`)?.dataset.area;
+      if (area && area !== "inspect") root.querySelector(`[data-ed-area-tab="${area}"]`)?.click();
       const t = root.querySelector(`[data-ed-panel-toggle="${id}"]`);
       if (t && t.getAttribute("aria-expanded") !== "true") t.click();
     }, id);
@@ -62,7 +65,7 @@ try {
     await rename.waitFor();
     await rename.fill(`Batedor ${label}`);
     await rename.press("Enter");
-    const item = panel.locator(`[data-se-char^="slot:"]`).first();
+    const item = panel.locator(`[data-se-char^="slot:"]`, { hasText: `Batedor ${label}` }).first(); // o recém-criado (a campanha já tem o do desktop)
     await item.waitFor();
     await page.waitForFunction((name) => [...document.querySelectorAll('[data-panel="characters"] .se-slot')].some((li) => li.textContent.includes(name)), `Batedor ${label}`, { timeout: 10000 });
     ok(true, "reservado renomeado em linha");
@@ -78,12 +81,12 @@ try {
       await page.evaluate(() => document.querySelector("#se-board canvas").dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: innerWidth / 2, clientY: 200 })));
       await item.locator('[data-action="se-place-cursor"]').click();
     }
-    await page.waitForFunction(() => /coluna \d+/.test(document.querySelector('[data-panel="characters"] .se-slot')?.textContent || ""), null, { timeout: 10000 });
+    await page.waitForFunction((name) => [...document.querySelectorAll('[data-panel="characters"] .se-slot')].some((li) => li.textContent.includes(name) && /coluna \d+/.test(li.textContent)), `Batedor ${label}`, { timeout: 10000 });
     await page.screenshot({ path: join(shots, `${label}-placed.png`) });
 
-    // Ajustar tamanho pelo menu do token (botão direito no painel Estrutura evita depender da posição no canvas).
+    // Ajustar tamanho pelo menu do token (botão direito na árvore de Organizar evita depender da posição no canvas).
     await openPanel("structure");
-    const structureItem = editor.locator('[data-panel="structure"] [data-item^="t"]').first();
+    const structureItem = editor.locator('[data-panel="structure"] [data-o-item^="t"]').first();
     await structureItem.click({ button: "right" });
     // O submenu abre ao passar o ponteiro (e por cima do item pai).
     if (!(await page.locator('.ed-menu[aria-label="Ajustar tamanho"]').count())) await page.locator(".ed-menu-item", { hasText: "Ajustar tamanho" }).evaluate((b) => b.click());

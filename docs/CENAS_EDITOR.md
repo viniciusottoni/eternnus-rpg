@@ -212,3 +212,11 @@ Editor de cenas e preparação de mapas/cenários compartilham câmera com a mes
 ## Evolução de 19/11/2026 (ADR-110 a ADR-113)
 
 Personagens reservados no painel Personagens, **Ensaiar cena** (antes "Ver como jogador") com observadores sintéticos e perfis de teste, menu do token com trocar imagem/ajustar tamanho/vincular, Acervo rápido e mapas da campanha inseridos na grade da cena. Detalhes, fluxos e limites em [EVOLUCAO_VTT_TOKENS_MAPAS_UX.md](EVOLUCAO_VTT_TOKENS_MAPAS_UX.md).
+
+## Barra lateral da cena (ADR-118, 19/11/2026)
+
+- **Organizar** mostra numa só árvore os marcadores por camada, a **composição desta cena** (imagens por cima do mapa; botão Todos/Mestre por camada = o que os jogadores recebem), a **preparação do mapa** (focos de luz, marcas e portas, na Completa) e o **mapa de origem**, somente leitura, com "Abrir original". Clicar num item leva ao contexto que o edita (marcadores, Composição, Iluminação/Exploração/Paredes).
+- **Adicionar › Personagens** tem três vistas: **Em cena** (tudo que está posicionado; Localizar no mapa e Remover posição — que não exclui o personagem), **Disponíveis** (personagens dos jogadores sem posição e NPCs; "Posicionar na cena" usa a casa sob o cursor, a última casa usada ou o centro da vista) e **Reservados** (criar, renomear, aparência, vincular depois, estado do vínculo). "+ Personagem reservado" é a ação principal; arquétipos ficam em "Criar por arquétipo". Criar um reservado leva à vista Reservados.
+- **Adicionar › Acervo** traz Imagens, Mapas, Recentes e Favoritos (personagens não se repetem ali).
+- **Configurar** separa Cena (texto compartilhado, notas privadas, cenário), Mapa de origem, Composição desta cena e Preparação do mapa (visibilidade, alcance, grade, névoa, recomeçar exploração), além da Área de entrada.
+- O cabeçalho mostra "Na mesa", "Não aplicado" e "Ensaio"; Salvar continua privado e Aplicar continua sendo o único caminho para levar a preparação à cena em apresentação.

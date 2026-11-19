@@ -4,12 +4,14 @@
 import { api } from "./api.js";
 import { esc, toast } from "./ui.js";
 import { helpButton } from "./help.js";
-import { createEditorShell, openContextMenu, openPropertiesDialog, renderHistoryPanel, renderLayersPanel, renderStructurePanel, icon } from "./editor-core.js";
+import { createEditorShell, openContextMenu, openPropertiesDialog, renderHistoryPanel, icon } from "./editor-core.js";
+import { renderOutline } from "./editor-outline.js";
 import { addLayer, createHistory, isTypingTarget, moveLayer, patchLayer, removeLayer, clampMenu } from "./editor-policy.js";
 import * as P from "./composition-policy.js";
 import { createCompositionSurface, encodeFlat, flattenComposition, textHeight, textWidth } from "./composition-canvas.js";
 import { attachDrafts } from "./editor-drafts.js";
-import { mountImageDrop, listenPaste, splitImageFiles, baseName, assetListHtml, bindAssetList, maxImageBytes, mountUploadTray, uploadEach, httpsImageUrl } from "./image-drop.js";
+import { mountImageDrop, listenPaste, splitImageFiles, baseName, assetListHtml, bindAssetList, maxImageBytes, mountUploadTray, uploadEach, httpsImageUrl, quickPrefsOf, touchQuickPref } from "./image-drop.js";
+import { state as appState } from "./state.js";
 import { formatBytes } from "./account-usage-policy.js";
 
 /** Alvo da imagem achatada gerada no navegador: abaixo do limite de arquivo de todos os planos (ADR-102). */
@@ -92,17 +94,18 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     // Contextos (ADR-086): Elementos (criar e transformar) e Documento (recorte, grade, tamanho). Só apresentação.
     kind: "image", contextBar: true,
     contextBarHint: "Selecione um elemento para editar posição, tamanho, rotação, opacidade e camada aqui.",
+    // Barra lateral (ADR-118): inspetor no alto; Organizar (camadas e elementos), Adicionar (acervo) e Configurar (documento).
     contexts: [
-      { id: "elements", groups: ["edit", "create"], tools: ["grid"], panels: ["layers", "structure", "quick", "assets"], defaultTool: "select" },
-      { id: "scene", label: "Documento", tip: "Tamanho e recorte da área visível, grade, escala e fundo do mapa.", tools: ["grid"], panels: ["structure"], defaultTool: "crop" },
+      { id: "elements", groups: ["edit", "create"], tools: ["grid"], panels: ["quick", "structure", "assets", "document"], defaultTool: "select" },
+      { id: "scene", label: "Documento", tip: "Tamanho e recorte da área visível, grade, escala e fundo do mapa.", tools: ["grid"], panels: ["quick", "structure", "document"], defaultTool: "crop", area: "configure" },
     ],
     commonTools: ["select", "hand", "zoom"],
     panels: [
-      { id: "layers", title: "Camadas", help: ["campanhas.editor.camadas", "Camadas"] },
-      { id: "structure", title: "Estrutura", help: ["campanhas.mapas.area-visivel", "Área visível e área externa"] },
-      { id: "quick", title: "Propriedades" },
-      { id: "assets", title: "Acervo", help: ["campanhas.mapas.acervo-editor", "Imagens do acervo no editor"] },
-      { id: "history", title: "Histórico", basic: false },
+      { id: "quick", title: "Propriedades", area: "inspect", help: ["campanhas.editor.inspetor", "Inspetor de propriedades"] },
+      { id: "structure", title: "Camadas e elementos", area: "organize", help: ["campanhas.editor.camadas", "Camadas"] },
+      { id: "assets", title: "Acervo", area: "add", help: ["campanhas.mapas.acervo-editor", "Imagens do acervo no editor"] },
+      { id: "document", title: "Documento", area: "configure", help: ["campanhas.mapas.area-visivel", "Área visível e área externa"] },
+      { id: "history", title: "Histórico", basic: false, area: "history" },
     ],
     actions: '<button type="button" class="primary small im-save" data-im="save">Salvar</button>',
     keys: {
@@ -148,7 +151,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     tool: () => shell.tool,
     options: () => ({ showGrid: view.showGrid && meta.hasGrid, snap: view.snap, snapObjects: view.snapObjects, hideOutside: view.hideOutside, grid: meta.hasGrid ? { size: meta.gridPixels, offsetX: meta.gridOffsetX, offsetY: meta.gridOffsetY } : null }),
     resolveSrc,
-    // No canvas, clicar num membro seleciona o grupo inteiro; a Estrutura continua escolhendo um elemento só.
+    // No canvas, clicar num membro seleciona o grupo inteiro; a árvore (Organizar) continua escolhendo um elemento só.
     select: (ids, additive) => select(P.expandGroups(doc, ids), additive),
     begin: (label) => { flushNudge(); history.begin(label); },
     changed: () => liveUpdate(),
@@ -214,12 +217,14 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     return true;
   }
 
-  // ---------- Interface (painéis, estado, menus) ----------
-  let uiQueued = false;
+  // ---------- Interface (barra lateral, estado, menus) ----------
+  // Barra lateral (ADR-118): inspetor contextual no alto (documento, camada, elemento ou vários), árvore unificada em
+  // Organizar, acervo em Adicionar e documento em Configurar. Cada mudança continua passando por change() (histórico).
+  let uiQueued = false, inspectLayer = false, ratioLock = true;
   function scheduleUi() { if (uiQueued) return; uiQueued = true; queueMicrotask(() => { uiQueued = false; renderUi(); }); }
   function renderUi() {
     if (!shell.root.isConnected) return;
-    renderLayers(); renderStructure(); renderQuick(); renderContextBar(); renderAssets();
+    renderTree(); renderInspector(); renderContextBar(); renderAssets(); renderDocument();
     renderHistoryPanel(shell.panel("history"), history);
     updateStatus(); updateAria();
     shell.setTitle("Editor de mapa de imagem", meta.name);
@@ -229,10 +234,21 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     return m.hasGrid ? P.gridCount(width, height, m.gridPixels, m.gridOffsetX, m.gridOffsetY) : null;
   }
   function updateStatus() {
-    const ab = doc.artboard, g = gridInfo();
+    const ab = doc.artboard, g = gridInfo(), dirty = isDirty();
     const size = `${int(ab.width)} × ${int(ab.height)} px${g ? (g.valid ? ` · ${g.columns} × ${g.rows} casas` : " · grade inválida") : " · sem grade"}`;
-    const state = saving ? '<span class="ed-chip">Salvando…</span>' : isDirty() ? '<span class="ed-chip dirty">Alterações não salvas</span>' : '<span class="ed-chip ok">Salvo</span>';
+    const state = saving ? '<span class="ed-chip">Salvando…</span>' : dirty ? '<span class="ed-chip dirty">Alterações não salvas</span>' : '<span class="ed-chip ok">Salvo</span>';
     shell.setStatus({ size, state });
+    shell.setSideHeader({
+      name: meta.name || "Mapa sem nome", kind: `Mapa de imagem · ${int(ab.width)} × ${int(ab.height)} px`,
+      chips: [saving ? { text: "Salvando…" } : dirty ? { text: "Não salvo", tone: "dirty", tip: "Há alterações não salvas. Ctrl+S salva." } : { text: "Salvo", tone: "ok" }],
+      menu: () => [
+        { label: "Salvar", shortcut: "mod+s", run: save, disabled: saving },
+        { label: "Propriedades do mapa…", run: openMapProps },
+        { label: "Preparar névoa e luz…", run: prepareFog, disabled: !meta.hasGrid, disabledReason: "Ative a grade (Configurar › Grade e escala) para preparar névoa e luz." },
+        { separator: true },
+        { label: "Restaurar layout padrão", run: () => shell.resetLayout(), hint: "O documento não muda" },
+      ],
+    });
   }
   function updateAria() {
     const els = selected();
@@ -241,6 +257,28 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
   }
   /** Durante arrastes: só desenho, leitura rápida e estado (painéis completos ao soltar). */
   function liveUpdate() { updateQuickValues(); shell.contextBar.update(quickValues()); }
+
+  /** Ações sobre a seleção, comuns à barra contextual, ao inspetor e aos menus. */
+  function selectionAction(id) {
+    const els = selected(), one = els.length === 1 ? els[0] : null;
+    if (id === "props" && one) return openProps(one.id);
+    if (id.startsWith("align-")) return align(id.slice(6));
+    if (id === "dist-x") return distribute("x");
+    if (id === "dist-y") return distribute("y");
+    if (id === "group") return groupSelection();
+    if (id === "ungroup") return ungroupSelection();
+    if (id === "duplicate") return duplicate();
+    if (id === "delete") return removeSelected();
+    if (id === "locate") return locate();
+    if (["front", "forward", "backward", "back"].includes(id)) return zorder(id);
+  }
+  /** Localizar no mapa: enquadra os elementos sem mudar a posição deles (a seleção simples nunca move a câmera). */
+  function locate(ids = [...selection]) {
+    const b = P.unionBounds(doc.elements.filter((e) => ids.includes(e.id)));
+    if (!b) return shell.message("Selecione um elemento para localizar.");
+    surface.fitRect({ x: b.x - 16, y: b.y - 16, width: b.width + 32, height: b.height + 32 });
+    shell.updateZoom();
+  }
 
   // Barra contextual (ADR-086): campos simples do selecionado junto ao canvas, sem janela. Cada mudança = uma entrada de histórico.
   function renderContextBar() {
@@ -259,7 +297,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     const many = els.length >= 2, grouped = els.some((e) => e.group);
     const actions = [
       ...(one ? [{ id: "props", label: "Todas as propriedades (Enter)", icon: "settings" }] : []),
-      ...(many ? [["left", "alignLeft", "Alinhar à esquerda"], ["center", "alignCenter", "Centralizar na horizontal"], ["right", "alignRight", "Alinhar à direita"], ["top", "alignTop", "Alinhar ao topo"], ["middle", "alignMiddle", "Centralizar na vertical"], ["bottom", "alignBottom", "Alinhar à base"]].map(([m, ic, label]) => ({ id: `align-${m}`, label, icon: ic, disabled: locked })) : []),
+      ...(many ? ALIGN_ACTIONS.map(([m, ic, label]) => ({ id: `align-${m}`, label, icon: ic, disabled: locked })) : []),
       ...(els.length >= 3 ? [{ id: "dist-x", label: "Distribuir na horizontal", icon: "distributeX", disabled: locked }, { id: "dist-y", label: "Distribuir na vertical", icon: "distributeY", disabled: locked }] : []),
       ...(many ? [{ id: "group", label: "Agrupar (Ctrl+G)", icon: "group", disabled: locked }] : []),
       ...(grouped ? [{ id: "ungroup", label: "Desagrupar (Ctrl+Shift+G)", icon: "layers", disabled: locked }] : []),
@@ -275,81 +313,207 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
         if (name === "locked") { const els2 = selected(); if (els2.length) change(value ? "Bloquear" : "Desbloquear", () => { for (const el of els2) el.locked = !!value; }); return; }
         applyQuick({ name, value: String(value) });
       },
-      onAction: (id) => {
-        if (id === "props" && one) return openProps(one.id);
-        if (id.startsWith("align-")) return align(id.slice(6));
-        if (id === "dist-x") return distribute("x");
-        if (id === "dist-y") return distribute("y");
-        if (id === "group") return groupSelection();
-        if (id === "ungroup") return ungroupSelection();
-        if (id === "duplicate") return duplicate();
-        if (id === "delete") return removeSelected();
-      },
+      onAction: (id) => selectionAction(id),
     });
   }
 
-  function renderLayers() {
-    const els = selected();
-    renderLayersPanel(shell.panel("layers"), {
-      layers: doc.layers, active: activeLayer, complete: shell.mode === "complete", selectionCount: els.length,
-      visibilityNote: "Camada oculta fica fora da imagem salva; a opacidade entra no achatamento.",
-      onAction: layerAction,
-    });
-  }
-  function renderStructure() {
-    const host = shell.panel("structure");
-    const focused = host.contains(document.activeElement) ? document.activeElement.dataset?.item : null;
-    renderStructurePanel(host, {
-      groups: [...doc.layers].reverse().map((l) => ({
-        label: `${l.name}${l.visible ? "" : " (oculta)"}${l.locked ? " (bloqueada)" : ""}`, showEmpty: true,
+  // ---------- Organizar: árvore unificada de camadas e elementos ----------
+  const isFixedLayer = (id) => id === "base" || id === "elements";
+  function renderTree() {
+    const full = doc.layers.length >= P.LIMITS.layers;
+    renderOutline(shell.panel("structure"), {
+      label: "Camadas e elementos do mapa, da mais alta para a mais baixa",
+      complete: shell.mode === "complete",
+      collapsed: shell.views.collapsed(),
+      sections: [{ id: "map", layers: [...doc.layers].reverse().map((l) => ({
+        id: l.id, name: l.name, icon: "layers", active: l.id === activeLayer, fixed: isFixedLayer(l.id),
+        visible: l.visible, locked: l.locked, opacity: l.opacity,
+        visibleTip: "Camada oculta não aparece no editor nem na imagem salva do mapa. A opacidade entra no achatamento.",
+        emptyText: "Camada vazia. Elementos novos entram na camada ativa.",
         items: doc.elements.filter((e) => e.layer === l.id).reverse().map((e) => {
           const status = P.artboardStatus(e, doc.artboard);
           return {
-            id: e.id, label: elementLabel(e), icon: TYPE_ICON[e.type],
-            meta: status === "outside" ? "fora da área visível" : status === "partial" ? "parcialmente fora" : "",
+            id: e.id, label: elementLabel(e), icon: TYPE_ICON[e.type], meta: `${TYPE_LABEL[e.type]}${e.group ? " · grupo" : ""}`,
             hidden: !e.visible || !l.visible, locked: e.locked || l.locked, selected: selection.has(e.id),
+            outside: status === "outside" || status === "partial" ? status : "", movable: editable(e), renamable: !l.locked,
           };
         }),
-      })),
-      empty: "Nenhum elemento ainda. Use Texto, Retângulo ou Adicionar imagem.",
-      onSelect: (id, additive) => select([id], additive),
-      onContext: (id, at) => openElementMenu(at),
+      })) }],
+      actions: [
+        { id: "add-layer", label: "Nova camada", icon: "plus", reason: full ? `Use até ${P.LIMITS.layers} camadas.` : "", run: newLayer },
+        { id: "locate", label: "Localizar a seleção no mapa", icon: "target", reason: selection.size ? "" : "Selecione um elemento para localizar.", run: () => locate() },
+      ],
+      empty: { text: "Mapa sem elementos ainda. Imagens, textos e formas aparecem aqui, dentro da camada em que estão.", action: { label: "Adicionar imagem…", run: () => openAddImage() } },
+      onToggle: (key, closedNow) => { shell.views.setCollapsed(key, closedNow); renderTree(); },
+      onLayer: (action, id, value) => {
+        if (action === "select") {
+          activeLayer = id; inspectLayer = true;
+          if (selection.size) { selection = new Set(); surface.invalidate(); }
+          scheduleUi(); return;
+        }
+        layerAction(action, id, value);
+      },
+      layerMenu: (id) => layerMenuItems(id),
+      onSelect: (ids, how) => { inspectLayer = false; select(ids, how === "toggle"); },
+      itemMenu: (id, at) => openElementMenu(at),
+      onLocate: (id) => { if (!selection.has(id)) select([id], false); locate([id]); },
+      onMove: (ids, layerId) => { selection = new Set(ids); moveSelectionTo(layerId); },
+      onReorder: (ids, targetId, where) => reorderElements(ids, targetId, where),
+      onRename: (id, name) => { const el = doc.elements.find((e) => e.id === id); if (el && name !== el.name) change("Renomear elemento", () => { el.name = name.slice(0, 80); }); },
     });
-    if (focused) host.querySelector(`[data-item="${CSS.escape(focused)}"]`)?.focus();
+  }
+  function layerMenuItems(id) {
+    const l = doc.layers.find((x) => x.id === id);
+    if (!l) return [];
+    const fixed = isFixedLayer(id), i = doc.layers.findIndex((x) => x.id === id), full = doc.layers.length >= P.LIMITS.layers;
+    const count = doc.elements.filter((e) => e.layer === id).length;
+    return [
+      { label: "Renomear…", run: () => { const name = prompt("Nome da camada (até 40 caracteres)", l.name); if (name?.trim()) layerAction("rename", id, name.trim().slice(0, 40)); } },
+      { label: "Nova camada acima", run: () => { activeLayer = id; newLayer(); }, disabled: full, disabledReason: `Use até ${P.LIMITS.layers} camadas.` },
+      { label: "Duplicar camada", run: () => duplicateLayer(id), disabled: full, disabledReason: `Use até ${P.LIMITS.layers} camadas.` },
+      { label: "Subir camada", run: () => layerAction("up", id), disabled: fixed || i >= doc.layers.length - 1, disabledReason: fixed ? "Base e Elementos são fixas e ficam sempre embaixo." : "Já é a camada mais alta." },
+      { label: "Descer camada", run: () => layerAction("down", id), disabled: fixed || i <= 2, disabledReason: fixed ? "Base e Elementos são fixas e ficam sempre embaixo." : "Camadas extras ficam acima de Elementos." },
+      { label: `Opacidade… (${l.opacity}%)`, run: () => askLayerOpacity(id) },
+      { separator: true },
+      { label: "Selecionar os elementos da camada", run: () => { inspectLayer = false; select(doc.elements.filter((e) => e.layer === id && P.isSelectable(doc, e)).map((e) => e.id), false); }, disabled: !count, disabledReason: "Camada vazia." },
+      { label: "Mover a seleção para esta camada", run: () => moveSelectionTo(id), disabled: !selection.size || l.locked, disabledReason: l.locked ? "Camada bloqueada: desbloqueie para mover elementos para ela." : "Nada selecionado." },
+      { separator: true },
+      { label: "Excluir camada", danger: true, run: () => deleteLayer(id), disabled: fixed, disabledReason: "Base e Elementos são camadas fixas: não podem ser excluídas." },
+    ];
+  }
+  function askLayerOpacity(id) {
+    const l = doc.layers.find((x) => x.id === id);
+    const v = prompt("Opacidade da camada (0 a 100%)", String(l?.opacity ?? 100));
+    if (v == null || v.trim() === "" || !Number.isFinite(Number(v))) return;
+    layerAction("opacity", id, Math.max(0, Math.min(100, Math.round(Number(v)))));
+  }
+  /** Arrastar na árvore: os itens vão para antes/depois do alvo (a árvore mostra o topo primeiro), na camada dele. */
+  function reorderElements(ids, targetId, where) {
+    const set = new Set(ids), target = doc.elements.find((e) => e.id === targetId);
+    if (!target || set.has(targetId)) return;
+    const layer = doc.layers.find((l) => l.id === target.layer);
+    if (layer?.locked) return shell.message(`A camada ${layer.name} está bloqueada.`);
+    change("Reordenar elementos", () => {
+      const moving = doc.elements.filter((e) => set.has(e.id)).map((e) => ({ ...e, layer: target.layer }));
+      const rest = doc.elements.filter((e) => !set.has(e.id));
+      const at = rest.findIndex((e) => e.id === targetId);
+      rest.splice(where === "before" ? at + 1 : at, 0, ...moving);
+      doc.elements = rest;
+      selection = new Set(ids); activeLayer = target.layer;
+    });
+    shell.message(`${ids.length === 1 ? "Elemento reordenado" : `${ids.length} elementos reordenados`} em ${layer?.name || "camada"}.`);
   }
 
-  // Propriedades rápidas: x, y, largura, altura, rotação e opacidade da seleção.
+  // ---------- Inspetor: documento, camada, um elemento ou vários ----------
   const QUICK = [["x", "X", "px"], ["y", "Y", "px"], ["width", "Largura", "px"], ["height", "Altura", "px"], ["rotation", "Rotação", "°"], ["opacity", "Opacidade", "%"]];
+  const QUICK_ATTRS = { opacity: 'min="0" max="100" step="5"', width: 'min="1" max="16384" step="1"', height: 'min="1" max="16384" step="1"', rotation: 'min="-360" max="360" step="0.5"' };
+  const ALIGN_ACTIONS = [["left", "alignLeft", "Alinhar à esquerda"], ["center", "alignCenter", "Centralizar na horizontal"], ["right", "alignRight", "Alinhar à direita"], ["top", "alignTop", "Alinhar ao topo"], ["middle", "alignMiddle", "Centralizar na vertical"], ["bottom", "alignBottom", "Alinhar à base"]];
   function quickValues() {
     const els = selected();
     if (els.length === 1) return Object.fromEntries(QUICK.map(([k]) => [k, els[0][k]]));
-    if (els.length > 1) { const b = P.unionBounds(els); return { x: b.x, y: b.y, opacity: els[0].opacity }; }
+    if (els.length > 1) { const b = P.unionBounds(els); return { x: b.x, y: b.y, opacity: els.every((e) => e.opacity === els[0].opacity) ? els[0].opacity : null }; }
     return {};
   }
-  function renderQuick() {
+  const inspBtn = (id, ic, label, { reason = "", danger = false } = {}) => `<button type="button" class="ed-icon-button${danger ? " danger" : ""}" data-insp="${id}" aria-label="${esc(label)}" data-tip="${esc(label)}"${reason ? ` aria-disabled="true" data-tip-detail="${esc(reason)}"` : ""}>${icon(ic)}</button>`;
+  function inspectorKey(els, layer) {
+    if (els.length) return `e|${els.map((e) => `${e.id}:${editable(e)}:${e.visible}:${e.locked}:${e.layer}:${e.group || ""}:${e.name}`).join(",")}|${shell.mode}|${doc.layers.map((l) => `${l.id}${l.name}${l.locked}`).join(",")}|${ratioLock}`;
+    if (layer) return `l|${JSON.stringify(layer)}|${doc.elements.filter((e) => e.layer === layer.id).length}|${doc.layers.length}|${doc.layers.findIndex((l) => l.id === layer.id)}`;
+    return `d|${doc.artboard.width}x${doc.artboard.height}|${doc.elements.length}|${meta.hasGrid}|${meta.gridPixels}|${meta.name}|${activeLayer}`;
+  }
+  function renderInspector() {
     const host = shell.panel("quick");
     const els = selected();
-    const key = `${els.map((e) => `${e.id}:${editable(e)}`).join(",")}|${shell.mode}`;
-    if (key === quickKey && host.contains(document.activeElement)) { updateQuickValues(); return; }
+    const layer = !els.length && inspectLayer ? doc.layers.find((l) => l.id === activeLayer) : null;
+    const key = inspectorKey(els, layer);
+    if (key === quickKey) { updateQuickValues(); return; }
     quickKey = key;
-    const ab = doc.artboard;
-    if (!els.length) {
-      host.innerHTML = `<p class="muted small">Nada selecionado. Área visível: ${int(ab.width)} × ${int(ab.height)} px.</p><p class="form-help">Clique num elemento ou escolha na Estrutura. Duplo clique abre todas as propriedades. ${helpButton("campanhas.editor.atalhos", "Atalhos do editor")}</p>`;
+    if (!host.dataset.bound) {
+      host.dataset.bound = "1";
+      host.addEventListener("change", onInspectorChange);
+      host.addEventListener("submit", (e) => e.preventDefault());
+      host.addEventListener("click", onInspectorClick);
+    }
+    host.innerHTML = els.length ? elementInspector(els) : layer ? layerInspector(layer) : documentInspector();
+    updateQuickValues(true);
+  }
+  function documentInspector() {
+    const ab = doc.artboard, g = gridInfo(), active = doc.layers.find((l) => l.id === activeLayer);
+    return `<div class="ed-insp-head">${icon("image")}<strong>${esc(meta.name || "Mapa")}</strong><small>Nada selecionado</small></div>
+      <dl class="ed-insp-summary"><dt>Área visível</dt><dd>${int(ab.width)} × ${int(ab.height)} px</dd><dt>Grade</dt><dd>${g ? (g.valid ? `${g.columns} × ${g.rows} casas` : "inválida") : "sem grade"}</dd><dt>Elementos</dt><dd>${doc.elements.length}</dd><dt>Camada ativa</dt><dd>${esc(active?.name || "")}</dd></dl>
+      <div class="form-actions"><button type="button" class="primary small" data-insp="add-image">${icon("image")}<span>Adicionar imagem…</span></button><button type="button" class="subtle small" data-insp="doc-size">Tamanho…</button></div>
+      <p class="ed-insp-note">Clique num elemento no mapa ou em Organizar para editar aqui. Duplo clique abre todas as propriedades.</p>`;
+  }
+  function layerInspector(l) {
+    const fixed = isFixedLayer(l.id), i = doc.layers.findIndex((x) => x.id === l.id), full = doc.layers.length >= P.LIMITS.layers;
+    const count = doc.elements.filter((e) => e.layer === l.id).length;
+    return `<form class="im-quick" data-quick novalidate><div class="ed-insp-head">${icon("layers")}<strong>${esc(l.name)}</strong><small>${fixed ? "Camada fixa" : "Camada extra"} · ${count} ${count === 1 ? "elemento" : "elementos"}</small></div>
+      <div class="field"><label for="im-l-name">Nome da camada</label><input id="im-l-name" name="layerName" maxlength="40" value="${esc(l.name)}" autocomplete="off"></div>
+      <div class="im-quick-grid"><label class="im-quick-field"><span>Opacidade <small>%</small></span><input type="number" name="layerOpacity" min="0" max="100" step="5" value="${Number(l.opacity)}"></label></div>
+      <label class="check"><input type="checkbox" name="layerVisible" ${l.visible ? "checked" : ""}> Visível (no editor e na imagem salva)</label>
+      <label class="check"><input type="checkbox" name="layerLocked" ${l.locked ? "checked" : ""}> Bloqueada</label>
+      <div class="ed-insp-actions" role="group" aria-label="Ações da camada">${inspBtn("layer-add", "plus", "Nova camada acima", { reason: full ? `Use até ${P.LIMITS.layers} camadas.` : "" })}${inspBtn("layer-dup", "copy", "Duplicar camada", { reason: full ? `Use até ${P.LIMITS.layers} camadas.` : "" })}${inspBtn("layer-up", "up", "Subir camada", { reason: fixed ? "Camada fixa." : i >= doc.layers.length - 1 ? "Já é a mais alta." : "" })}${inspBtn("layer-down", "down", "Descer camada", { reason: fixed ? "Camada fixa." : i <= 2 ? "Camadas extras ficam acima de Elementos." : "" })}${inspBtn("layer-select", "select", "Selecionar os elementos da camada", { reason: count ? "" : "Camada vazia." })}${inspBtn("layer-delete", "trash", "Excluir camada", { danger: true, reason: fixed ? "Base e Elementos são camadas fixas." : "" })}</div>
+      <p class="ed-insp-note">Oculta, a camada fica fora da imagem salva do mapa; a opacidade entra no achatamento.</p></form>`;
+  }
+  function elementInspector(els) {
+    const one = els.length === 1 ? els[0] : null, locked = !els.every(editable), dis = locked ? "disabled" : "";
+    const layerId = els.every((e) => e.layer === els[0].layer) ? els[0].layer : "";
+    const layerLocked = els.some((e) => layerOf(e)?.locked);
+    const options = `${layerId ? "" : '<option value="">Várias</option>'}${doc.layers.slice().reverse().map((l) => `<option value="${esc(l.id)}" ${l.id === layerId ? "selected" : ""} ${l.locked && l.id !== layerId ? "disabled" : ""}>${esc(l.name)}${l.locked ? " (bloqueada)" : ""}</option>`).join("")}`;
+    const fields = one ? QUICK : QUICK.filter(([k]) => ["x", "y", "opacity"].includes(k));
+    const grid = `<div class="im-quick-grid">${fields.map(([k, label, unit]) => `<label class="im-quick-field"><span>${esc(label)} <small>${esc(unit)}</small></span><input type="number" name="${k}" ${QUICK_ATTRS[k] || 'min="-16384" max="20480" step="1"'} ${!one && k === "opacity" ? 'placeholder="várias"' : ""} ${dis}></label>`).join("")}</div>`;
+    const grouped = els.some((e) => e.group), many = els.length >= 2;
+    const order = [["front", "front", "Trazer para frente (Ctrl+])"], ["forward", "up", "Avançar"], ["backward", "down", "Recuar"], ["back", "back", "Enviar para trás (Ctrl+[)"]].map(([id, ic, label]) => inspBtn(id, ic, label, { reason: locked ? "Desbloqueie para reordenar." : "" })).join("");
+    const head = one
+      ? `<div class="ed-insp-head">${icon(TYPE_ICON[one.type])}<strong>${esc(elementLabel(one))}</strong><small>${esc(TYPE_LABEL[one.type])}${one.group ? " · grupo" : ""}</small></div><div class="field"><label for="im-q-name">Nome</label><input id="im-q-name" name="name" maxlength="80" value="${esc(one.name || "")}" placeholder="${esc(elementLabel(one))}" autocomplete="off" ${dis}></div>`
+      : `<div class="ed-insp-head">${icon("group")}<strong>${els.length} elementos${grouped ? " (grupo)" : ""}</strong><small>Campos comuns</small></div>`;
+    return `<form class="im-quick" data-quick novalidate>${head}${grid}
+      ${one && one.type === "image" ? `<label class="check"><input type="checkbox" name="ratio" ${ratioLock ? "checked" : ""} ${dis}> Manter proporção ao mudar largura ou altura</label>` : ""}
+      <div class="field"><label for="im-q-layer">Camada</label><select id="im-q-layer" name="layer" ${dis}>${options}</select></div>
+      <label class="check"><input type="checkbox" name="visible" ${els.every((e) => e.visible) ? "checked" : ""} ${dis}> Visível (no editor e na imagem salva)</label>
+      <label class="check"><input type="checkbox" name="locked" ${els.every((e) => e.locked) ? "checked" : ""} ${layerLocked ? "disabled" : ""}> Bloqueado</label>
+      ${locked ? `<p class="form-help">${layerLocked ? "Camada bloqueada: desbloqueie a camada em Organizar para editar." : "Elemento bloqueado: desmarque Bloqueado para editar."}</p>` : ""}
+      ${one ? `<p class="im-quick-status small">${statusText(one)}</p>` : '<p class="ed-insp-note">Tamanho e rotação aparecem com um elemento só.</p>'}
+      <div class="ed-insp-actions" role="group" aria-label="Ordem de empilhamento">${order}</div>
+      ${many ? `<div class="ed-insp-actions" role="group" aria-label="Alinhar e distribuir">${ALIGN_ACTIONS.map(([m, ic, label]) => inspBtn(`align-${m}`, ic, label, { reason: locked ? "Desbloqueie para alinhar." : "" })).join("")}${els.length >= 3 ? `${inspBtn("dist-x", "distributeX", "Distribuir na horizontal")}${inspBtn("dist-y", "distributeY", "Distribuir na vertical")}` : ""}</div>` : ""}
+      <div class="ed-insp-actions" role="group" aria-label="Ações">${inspBtn("locate", "target", "Localizar no mapa")}${many ? inspBtn("group", "group", "Agrupar (Ctrl+G)", { reason: locked ? "Desbloqueie para agrupar." : "" }) : ""}${grouped ? inspBtn("ungroup", "layers", "Desagrupar (Ctrl+Shift+G)") : ""}${inspBtn("duplicate", "copy", "Duplicar (Ctrl+J)")}${inspBtn("delete", "trash", "Excluir (Delete)", { danger: true, reason: locked ? "Elemento bloqueado." : "" })}${one ? `<button type="button" class="subtle small" data-insp="props">Todas as propriedades…</button>` : ""}</div>
+    </form>`;
+  }
+  function onInspectorChange(e) {
+    const t = e.target, name = t.name, els = selected();
+    if (!name) return;
+    if (name === "name") {
+      const one = els.length === 1 ? els[0] : null, value = t.value.replace(/\s+/g, " ").trim().slice(0, 80);
+      if (one && value !== (one.name || "")) change("Renomear elemento", () => { one.name = value; });
       return;
     }
-    const locked = !els.every(editable);
-    const fields = els.length === 1 ? QUICK : QUICK.filter(([k]) => ["x", "y", "opacity"].includes(k));
-    host.innerHTML = `<form class="im-quick" data-quick novalidate>
-      <p class="small im-quick-title">${els.length === 1 ? `${icon(TYPE_ICON[els[0].type])}<span>${esc(elementLabel(els[0]))}</span>` : `<span>${els.length} elementos (limites do grupo)</span>`}</p>
-      <div class="im-quick-grid">${fields.map(([k, label, unit]) => `<label class="im-quick-field"><span>${esc(label)} <small>${esc(unit)}</small></span><input type="number" name="${k}" step="${k === "rotation" ? "0.5" : "1"}" ${k === "opacity" ? 'min="0" max="100"' : k === "width" || k === "height" ? 'min="1" max="16384"' : k === "rotation" ? 'min="-360" max="360"' : 'min="-16384" max="20480"'} ${locked ? "disabled" : ""}></label>`).join("")}</div>
-      ${locked ? '<p class="form-help">Elemento ou camada bloqueada. Desbloqueie para editar.</p>' : ""}
-      ${els.length === 1 ? `<p class="im-quick-status small">${statusText(els[0])}</p><button type="button" class="subtle small" data-quick-open>Todas as propriedades…</button>` : ""}
-    </form>`;
-    updateQuickValues(true);
-    const form = host.querySelector("[data-quick]");
-    form.addEventListener("change", (e) => applyQuick(e.target));
-    form.addEventListener("submit", (e) => e.preventDefault());
-    host.querySelector("[data-quick-open]")?.addEventListener("click", () => openProps(els[0].id));
+    if (name === "layer") { if (t.value) moveSelectionTo(t.value); return; }
+    if (name === "ratio") { ratioLock = t.checked; return; }
+    if (name === "locked" || name === "visible") {
+      if (!els.length) return;
+      const label = name === "locked" ? (t.checked ? "Bloquear" : "Desbloquear") : (t.checked ? "Mostrar" : "Ocultar");
+      change(label, () => { for (const el of els) el[name] = t.checked; });
+      return;
+    }
+    const l = doc.layers.find((x) => x.id === activeLayer);
+    if (name === "layerName") { const v = t.value.trim().slice(0, 40); if (l && v && v !== l.name) layerAction("rename", l.id, v); else t.value = l?.name || ""; return; }
+    if (name === "layerOpacity") { if (l) layerAction("opacity", l.id, Math.max(0, Math.min(100, Math.round(Number(t.value) || 0)))); return; }
+    if (name === "layerVisible") { if (l && l.visible !== t.checked) layerAction("visible", l.id); return; }
+    if (name === "layerLocked") { if (l && l.locked !== t.checked) layerAction("lock", l.id); return; }
+    if (t.type === "number") applyQuick(t);
+  }
+  function onInspectorClick(e) {
+    const b = e.target.closest("[data-insp]");
+    if (!b) return;
+    if (b.getAttribute("aria-disabled") === "true") { shell.message(b.dataset.tipDetail || "Indisponível agora."); return; }
+    const id = b.dataset.insp, l = doc.layers.find((x) => x.id === activeLayer);
+    if (id === "add-image") return openAddImage();
+    if (id === "doc-size") return openDocSize("canvas");
+    if (id === "layer-add") return newLayer();
+    if (id === "layer-dup") return l && duplicateLayer(l.id);
+    if (id === "layer-up" || id === "layer-down") return l && layerAction(id === "layer-up" ? "up" : "down", l.id);
+    if (id === "layer-select") { inspectLayer = false; return l && select(doc.elements.filter((x) => x.layer === l.id && P.isSelectable(doc, x)).map((x) => x.id), false); }
+    if (id === "layer-delete") return l && deleteLayer(l.id);
+    selectionAction(id);
   }
   function statusText(el) {
     const s = P.artboardStatus(el, doc.artboard);
@@ -359,9 +523,10 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     const form = shell.panel("quick").querySelector("[data-quick]");
     if (!form) return;
     const v = quickValues();
-    for (const input of form.querySelectorAll("input[name]")) {
-      if (!force && input === document.activeElement) continue;
-      const n = v[input.name];
+    for (const [k] of QUICK) {
+      const input = form.elements.namedItem(k);
+      if (!input || (!force && input === document.activeElement)) continue;
+      const n = v[k];
       input.value = n == null ? "" : String(Math.round(n * 100) / 100);
     }
   }
@@ -378,8 +543,10 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
       }
       for (const el of els) {
         if (k === "width" || k === "height") {
-          // Redimensiona mantendo o centro (o elemento pode estar girado).
-          const c = P.center(el); el[k] = value; el.x = c.x - el.width / 2; el.y = c.y - el.height / 2;
+          // Redimensiona mantendo o centro (o elemento pode estar girado). Imagem com "Manter proporção": a outra medida acompanha.
+          const c = P.center(el), other = k === "width" ? "height" : "width";
+          if (ratioLock && el.type === "image" && els.length === 1 && el[k] > 0) el[other] = Math.max(1, Math.min(P.LIMITS.sizeMax, Math.round(el[other] * (value / el[k]) * 100) / 100));
+          el[k] = value; el.x = c.x - el.width / 2; el.y = c.y - el.height / 2;
         } else el[k] = value;
         P.clampGeometry(el);
       }
@@ -407,7 +574,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
   function newLayer() {
     const r = addLayer(doc.layers, "", activeLayer);
     if (r.error) return shell.message(r.error);
-    change("Nova camada", () => { doc.layers = r.layers; activeLayer = r.id; });
+    if (change("Nova camada", () => { doc.layers = r.layers; activeLayer = r.id; })) shell.message(`Camada criada e ativa: ${doc.layers.find((l) => l.id === r.id)?.name || "nova camada"}. Novos elementos entram nela.`);
   }
   function duplicateLayer(id) {
     const layer = doc.layers.find((l) => l.id === id);
@@ -513,7 +680,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     uploading = true;
     try {
       const source = await api(`${base}/sources/copy`, "POST", { from: item.src }, { background: true });
-      if (shell.root.isConnected) addImageElement(source, at || surface.viewCenter());
+      if (shell.root.isConnected && addImageElement(source, at || surface.viewCenter())) { touchAsset(item.src); shell.message(`“${String(item.name || "Imagem").slice(0, 80)}” adicionada à camada ativa. Ctrl+Z desfaz.`); }
     } catch (e) { shell.message(e?.message || "Não foi possível usar a imagem do acervo."); }
     finally { uploading = false; }
   }
@@ -524,33 +691,122 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     onAsset: (item, p) => addAsset(item, docPoint(p)),
   });
   const pasting = listenPaste((files) => addFiles(files, surface.lastPointer()), { enabled: () => shell.root.isConnected, fallback: () => paste() });
-  let assetItems = null, assetsLoading = false, disposeAssets = () => {};
+  // ---------- Adicionar: acervo da campanha (ADR-118) ----------
+  // Categorias em segmentos, busca que sobrevive à troca de área (o DOM do painel não é recriado), clique insere no centro
+  // da vista e arrastar solta no ponto. Imagens sempre por referência ao acervo (sem duplicar arquivo).
+  const ASSET_CATS = [["images", "Imagens"], ["maps", "Mapas"], ["recent", "Recentes"], ["favorites", "Favoritos"]];
+  let assetItems = null, assetsLoading = false, assetsError = "", disposeAssets = () => {};
+  let assetCat = ASSET_CATS.some(([id]) => id === shell.views.get("assetCat")) ? shell.views.get("assetCat") : "images";
+  const assetIsMap = (m) => m.kind === "tileset" && m.hasGrid !== false;
+  const assetPrefKey = (m) => (m.prepMap && m.id ? `map:${m.id}` : null);
   async function renderAssets() {
     const host = shell.panel("assets");
-    if (!host || assetsLoading || (assetItems && host.querySelector("[data-asset-q]"))) return; // carregado uma vez; a busca repinta
+    if (!host) return;
     if (!host.querySelector("[data-asset-q]")) {
-      host.innerHTML = '<div class="field"><label for="im-asset-q">Buscar no acervo</label><input id="im-asset-q" type="search" data-asset-q maxlength="80" autocomplete="off"></div><div data-asset-list><p class="loading-line" role="status">Carregando imagens da campanha…</p></div><p class="form-help">Arraste para o mapa ou use Adicionar. Também dá para soltar arquivos do computador no mapa ou colar uma imagem (Ctrl+V).</p>';
+      host.innerHTML = `<div class="form-actions im-add-actions"><button type="button" class="primary small" data-im-add="upload">${icon("upload")}<span>Enviar imagem…</span></button><button type="button" class="subtle small" data-im-add="text">${icon("text")}<span>Texto</span></button><button type="button" class="subtle small" data-im-add="rect" data-complete-only>${icon("rect")}<span>Retângulo</span></button><button type="button" class="subtle small" data-im-add="ellipse" data-complete-only>${icon("ellipse")}<span>Elipse</span></button></div>
+        <div class="ed-seg" role="group" aria-label="Categorias do acervo" data-asset-cats></div>
+        <div class="field"><label for="im-asset-q">Buscar no acervo${helpButton("campanhas.mapas.acervo-editor", "Imagens do acervo no editor")}</label><input id="im-asset-q" type="search" data-asset-q maxlength="80" autocomplete="off" placeholder="Nome"></div>
+        <div data-asset-list aria-live="polite"><p class="loading-line" role="status">Carregando imagens da campanha…</p></div>`;
       host.querySelector("[data-asset-q]").addEventListener("input", () => paintAssets());
+      host.addEventListener("click", (e) => {
+        const cat = e.target.closest("[data-asset-cat]")?.dataset.assetCat;
+        if (cat) { assetCat = cat; shell.views.set("assetCat", cat); paintAssets(); return; }
+        const add = e.target.closest("[data-im-add]")?.dataset.imAdd;
+        if (add === "upload") return openAddImage();
+        if (add === "text") return createAt("text");
+        if (add === "rect" || add === "ellipse") { shell.useTool(add); shell.message(`Arraste no mapa para desenhar ${add === "rect" ? "o retângulo" : "a elipse"}.`); return; }
+        if (e.target.closest("[data-im-assets-retry]")) { assetItems = null; assetsError = ""; renderAssets(); return; }
+        if (e.target.closest("[data-im-assets-clear]")) { host.querySelector("[data-asset-q]").value = ""; paintAssets(); }
+      });
       disposeAssets = bindAssetList(host, { onAdd: (item) => addAsset(item) });
+      paintAssets();
     }
     if (assetItems == null && !assetsLoading) {
       assetsLoading = true;
       const root = `/campaigns/${campaign.id}`;
-      const [maps, portraits] = await Promise.all([
-        api(`${root}/prep/explorer`, "GET", undefined, { background: true }).then((r) => r?.maps || []).catch(() => []),
-        api(`${root}/assets/portraits`, "GET", undefined, { background: true }).then((r) => r?.items || []).catch(() => []),
+      const [maps, portraits] = await Promise.allSettled([
+        api(`${root}/prep/explorer`, "GET", undefined, { background: true }).then((r) => r?.maps || []),
+        api(`${root}/assets/portraits`, "GET", undefined, { background: true }).then((r) => r?.items || []),
       ]);
       assetsLoading = false;
-      assetItems = [...maps.filter((m) => !m.isTileMap && m.origin !== "tiles" && m.id !== map.id), ...portraits].map((m) => ({ ...m, key: m.key || `asset:${m.id}` }));
+      assetsError = maps.status === "rejected" || portraits.status === "rejected" ? "Parte do acervo não carregou. Verifique a conexão e tente de novo." : "";
+      const fromMaps = (maps.value || []).filter((m) => !m.isTileMap && m.origin !== "tiles" && m.id !== map.id).map((m) => ({ ...m, prepMap: true }));
+      assetItems = [...fromMaps, ...(portraits.value || [])].map((m) => ({ ...m, key: m.key || `asset:${m.id}`, kindLabel: assetIsMap(m) ? "Mapa" : "Imagem" }));
+      paintAssets();
     }
-    paintAssets();
   }
   function paintAssets() {
     const host = shell.panel("assets");
-    const list = host?.querySelector("[data-asset-list]");
-    if (list && assetItems) list.innerHTML = assetListHtml(assetItems, { query: host.querySelector("[data-asset-q]")?.value || "" });
+    if (!host) return;
+    const counts = Object.fromEntries(ASSET_CATS.map(([id]) => [id, assetItems ? assetsIn(id).length : null]));
+    host.querySelector("[data-asset-cats]").innerHTML = ASSET_CATS.map(([id, label]) => `<button type="button" data-asset-cat="${id}" aria-pressed="${id === assetCat}">${esc(label)}${counts[id] ? `<small>${counts[id]}</small>` : ""}</button>`).join("");
+    const list = host.querySelector("[data-asset-list]");
+    if (!assetItems) { list.innerHTML = '<p class="loading-line" role="status">Carregando imagens da campanha…</p>'; return; }
+    const query = host.querySelector("[data-asset-q]")?.value || "";
+    const items = assetsIn(assetCat);
+    const error = assetsError ? `<p class="form-error" role="alert">${esc(assetsError)}</p><button type="button" class="subtle small" data-im-assets-retry>Tentar de novo</button>` : "";
+    if (!items.length) {
+      const empty = {
+        images: ["Nenhuma imagem no acervo da campanha ainda. Envie do computador, solte arquivos no mapa ou cole (Ctrl+V).", '<button type="button" class="subtle small" data-im-add="upload">Enviar imagem…</button>'],
+        maps: ["Nenhum outro mapa de imagem nesta campanha.", ""],
+        recent: ["Nada recente: mapas que você abrir na Preparação ou inserir daqui aparecem aqui.", ""],
+        favorites: ["Nenhum favorito. Marque com a estrela na Preparação.", ""],
+      }[assetCat];
+      list.innerHTML = `${error}<div class="o-empty"><p>${esc(empty[0])}</p>${empty[1]}</div>`;
+      return;
+    }
+    const html = assetListHtml(items, { query });
+    list.innerHTML = error + (query && !html.includes("<li") ? `<div class="o-empty"><p>Nenhum resultado para “${esc(query)}”.</p><button type="button" class="subtle small" data-im-assets-clear>Limpar busca</button></div>` : html);
+  }
+  function assetsIn(cat) {
+    const all = assetItems || [];
+    if (cat === "images") return all.filter((m) => !assetIsMap(m));
+    if (cat === "maps") return all.filter(assetIsMap);
+    const prefs = quickPrefsOf(appState.user?.id, campaign.id);
+    const byKey = new Map(all.filter(assetPrefKey).map((m) => [assetPrefKey(m), m]));
+    if (cat === "recent") return prefs.recents.map((r) => byKey.get(r.key)).filter(Boolean);
+    return prefs.favorites.map((k) => byKey.get(k)).filter(Boolean);
+  }
+  /** Inserção pelo acervo entra nos recentes da Preparação (só mapas da campanha têm chave `map:{id}`). */
+  function touchAsset(src) {
+    const m = (assetItems || []).find((x) => x.key === src);
+    const key = m && assetPrefKey(m);
+    if (key) touchQuickPref(appState.user?.id, campaign.id, key);
   }
 
+  // ---------- Configurar: documento ----------
+  let docKey = "";
+  function renderDocument() {
+    const host = shell.panel("document");
+    if (!host) return;
+    const ab = doc.artboard, g = gridInfo();
+    const key = JSON.stringify([ab.width, ab.height, ab.background, meta.hasGrid, meta.gridPixels, meta.scaleMeters, g?.valid, g?.columns, g?.rows, view.hideOutside, meta.name, saving]);
+    if (key === docKey) return;
+    docKey = key;
+    if (!host.dataset.bound) {
+      host.dataset.bound = "1";
+      host.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-im-doc]");
+        if (!b) return;
+        if (b.getAttribute("aria-disabled") === "true") { shell.message(b.dataset.tip || "Indisponível agora."); return; }
+        ({ size: () => openDocSize("canvas"), crop: () => shell.useTool("crop"), grid: openGridDialog, background: openBackground, props: openMapProps, fog: prepareFog })[b.dataset.imDoc]?.();
+      });
+      host.addEventListener("change", (e) => {
+        if (!e.target.matches("[data-im-doc-outside]")) return;
+        view.hideOutside = !e.target.checked; surface.invalidate(); docKey = "";
+        shell.message(view.hideOutside ? "Área externa encoberta no editor. A imagem salva não muda." : "Área externa visível (escurecida). A imagem salva não muda.");
+      });
+    }
+    const gridText = meta.hasGrid ? (g?.valid ? `Casa de ${int(meta.gridPixels)} px · ${g.columns} × ${g.rows} casas · 1 casa = ${esc(String(meta.scaleMeters))} m.` : "A grade não cabe neste tamanho: revise em Grade e escala.") : "Sem grade: o mapa entra como imagem, sem névoa, luz nem movimento por casas.";
+    host.innerHTML = `<section class="ed-cfg-card"><h3>${icon("maximize")}Área visível</h3><p>${int(ab.width)} × ${int(ab.height)} px. Só o que está dentro dela entra na imagem salva.</p>
+        <div class="form-actions"><button type="button" class="subtle small" data-im-doc="size">Tamanho do documento…</button><button type="button" class="subtle small" data-im-doc="crop">Recortar a área</button></div>
+        <label class="check"><input type="checkbox" data-im-doc-outside ${view.hideOutside ? "" : "checked"}> Mostrar a área externa (só no editor)</label></section>
+      <section class="ed-cfg-card"><h3>${icon("grid")}Grade e escala</h3><p>${gridText}</p><div class="form-actions"><button type="button" class="subtle small" data-im-doc="grid">Grade e escala…</button></div></section>
+      <section class="ed-cfg-card"><h3>${icon("fill")}Fundo</h3><p><span class="im-swatch" data-im-swatch aria-hidden="true"></span> ${esc(ab.background)}: aparece onde nenhum elemento cobre a área visível.</p><div class="form-actions"><button type="button" class="subtle small" data-im-doc="background">Cor de fundo…</button></div></section>
+      <section class="ed-cfg-card"><h3>${icon("settings")}Mapa da campanha</h3><p>${esc(meta.name || "Mapa")}: nome, resumo e preparação técnica (névoa e luz, salva antes de abrir).</p><div class="form-actions"><button type="button" class="subtle small" data-im-doc="props">Propriedades do mapa…</button><button type="button" class="subtle small" data-im-doc="fog" ${meta.hasGrid ? "" : 'aria-disabled="true" data-tip="Ative a grade em Grade e escala para preparar névoa e luz."'}>Preparar névoa e luz…</button></div></section>`;
+    const swatch = host.querySelector("[data-im-swatch]");
+    if (swatch && P.isHex(ab.background)) swatch.style.background = ab.background; // CSSOM: sem estilo inline no HTML (CSP)
+  }
   // ---------- Editar ----------
   function undo() { flushNudge(); if (surface.busy) return; const label = history.undo(); shell.message(label ? `Desfeito: ${label}.` : "Nada para desfazer."); }
   function redo() { flushNudge(); if (surface.busy) return; const label = history.redo(); shell.message(label ? `Refeito: ${label}.` : "Nada para refazer."); }
@@ -629,7 +885,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     const plan = P.planGroup(doc, els.map((e) => e.id));
     if (plan.error) return shell.message(plan.error);
     change("Agrupar", () => { for (const el of doc.elements) if (plan.ids.includes(el.id)) el.group = plan.group; });
-    shell.message(`${plan.ids.length} elementos agrupados. Clique num deles para selecionar o grupo; a Estrutura escolhe um só.`);
+    shell.message(`${plan.ids.length} elementos agrupados. Clique num deles para selecionar o grupo; em Organizar dá para escolher um só.`);
   }
   function ungroupSelection() {
     const els = editableSelection().filter((e) => e.group);
@@ -893,7 +1149,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
       { name: "visible", label: "Visível", type: "checkbox", value: el.visible },
       { name: "locked", label: "Bloqueado (não seleciona por clique)", type: "checkbox", value: el.locked },
     ];
-    const name = { name: "name", label: "Nome", type: "text", value: el.name, maxlength: P.LIMITS.elementName, help: "Aparece na Estrutura. Opcional." };
+    const name = { name: "name", label: "Nome", type: "text", value: el.name, maxlength: P.LIMITS.elementName, help: "Aparece em Organizar. Opcional." };
     let fields;
     if (el.type === "image") fields = [
       name, { type: "static", label: "Origem", value: originText(el) },

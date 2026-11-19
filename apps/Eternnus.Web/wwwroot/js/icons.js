@@ -4,6 +4,12 @@
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]);
 
 const P = {
+  // Barra lateral dos editores (ADR-118): árvore, visibilidade para jogadores e camada fixa.
+  chevron: '<path d="M9 6l6 6-6 6"/>',
+  players: '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5.5a3 3 0 010 5.5M18 14.5c1.9.9 3 2.9 3 5.5"/>',
+  master: '<path d="M3 8l4 4 5-7 5 7 4-4-2 11H5zM5 19h14"/>',
+  pin: '<path d="M9 3h6l-1 6 4 4H6l4-4zM12 13v8"/>',
+  inspect: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
   select: '<path d="M5 3l13 8-6 1.5L9 19z"/>',
   move: '<path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/>',
   hand: '<path d="M8 13V5a1.5 1.5 0 013 0v6M11 11V4a1.5 1.5 0 013 0v7M14 11V5.5a1.5 1.5 0 013 0V14c0 4-2.5 7-6.5 7S5 18 4 15l-1.5-3.5a1.4 1.4 0 012.4-1.4L8 13"/>',

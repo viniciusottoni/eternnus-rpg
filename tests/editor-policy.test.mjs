@@ -108,3 +108,42 @@ test("régua: rótulos com vírgula decimal e sem -0", () => {
   assert.equal(P.rulerLabel(1.25), "1,25");
   assert.equal(P.rulerLabel(1500), "1.500");
 });
+
+// ---------- Barra lateral dos editores (ADR-118) ----------
+test("lateral: áreas declaradas, inicial salva/declarada e Histórico secundário", () => {
+  const panels = [{ id: "quick", area: "inspect" }, { id: "structure" }, { id: "assets", area: "add" }, { id: "doc", area: "configure" }, { id: "history" }];
+  assert.equal(P.panelArea(panels[1]), "organize");
+  assert.equal(P.panelArea(panels[4]), "history");
+  assert.equal(P.panelArea({ id: "x", area: "evil" }), "organize");
+  assert.deepEqual(P.sideAreasFor(panels).map((a) => a.id), ["organize", "add", "configure"]);
+  assert.deepEqual(P.sideAreasFor([{ id: "a", area: "add" }]).map((a) => a.id), ["add"]);
+  assert.equal(P.initialArea(panels, "configure", "add"), "configure");
+  assert.equal(P.initialArea(panels, "bogus", "add"), "add");
+  assert.equal(P.initialArea([{ id: "l" }], "add", null), "organize");
+  assert.equal(P.initialArea([{ id: "h", area: "history" }], null, null), "history");
+});
+test("lateral: preferências novas normalizadas; antigas e inválidas não quebram o layout", () => {
+  const p = P.normalizeLayoutPref({ width: 9999, area: { image: "add", scene: "evil", "BAD KEY": "add" }, split: { image: 0.95, scene: "x", tiles: 0.3 }, tree: { image: ["map:base", "<script>", 3] }, views: { scene: { charView: "reserved", bad: "<b>" } } });
+  assert.equal(p.width, P.PANEL_WIDTH.max);
+  assert.deepEqual(p.area, { image: "add" });
+  assert.deepEqual(p.split, { image: P.INSPECT_SPLIT.max, tiles: 0.3 });
+  assert.deepEqual(p.tree, { image: ["map:base", "3"] });
+  assert.deepEqual(p.views, { scene: { charView: "reserved" } });
+  assert.deepEqual(P.normalizeLayoutPref({ width: 300, closed: ["layers"] }), { width: 300, closed: ["layers"] });
+  assert.equal(P.clampSplit(0.01), P.INSPECT_SPLIT.min);
+});
+test("árvore: intervalo com Shift e destinos de arraste", () => {
+  const order = ["a", "b", "c", "d"];
+  assert.deepEqual(P.rangeIds(order, "b", "d"), ["b", "c", "d"]);
+  assert.deepEqual(P.rangeIds(order, "d", "b"), ["b", "c", "d"]);
+  assert.deepEqual(P.rangeIds(order, "zz", "c"), ["c"]);
+  assert.deepEqual(P.rangeIds(order, "a", "zz"), []);
+  const items = [{ layer: "elements", movable: true }];
+  assert.equal(P.outlineDropProblem(items, { name: "Teto" }), null);
+  assert.match(P.outlineDropProblem(items, { name: "Teto", locked: true }), /bloqueada/);
+  assert.match(P.outlineDropProblem(items, { name: "Mapa", readonly: true }), /não recebe/);
+  assert.match(P.outlineDropProblem(items, { name: "Luzes", accepts: false }), /não recebe/);
+  assert.match(P.outlineDropProblem([{ layer: "x", movable: false }], { name: "Teto" }), /bloqueado/);
+  assert.ok(P.outlineDropProblem([], { name: "Teto" }));
+  assert.ok(P.outlineDropProblem(items, null));
+});

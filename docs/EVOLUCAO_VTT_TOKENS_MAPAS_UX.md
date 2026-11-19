@@ -105,3 +105,7 @@ Migração `20261119033017_VttTokensGuestsCamera`: cria `PartySlots`, `GuestInvi
 - `tests/table-vtt-ui.mjs` e `tests/free-movement.mjs` já falhavam na base `b3f9c78`.
 - Concorrência de resgate e vínculo verificada só em SQLite; carga não medida.
 - Resultados dos testes: [TESTES.md](TESTES.md).
+
+## Barra lateral contextual (ADR-118, 19/11/2026)
+
+Os editores de cena, mapa de imagem e tiles trocaram a pilha de painéis por cabeçalho + inspetor + Organizar/Adicionar/Configurar (+ Histórico secundário), com árvore unificada de camadas e elementos e visibilidade para jogadores separada da visibilidade no editor. A mesa ao vivo usa as mesmas abas. Detalhes em `PREPARACAO_EDITOR.md` §6.2 e `CENAS_EDITOR.md`.
