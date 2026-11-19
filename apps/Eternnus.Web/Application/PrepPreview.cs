@@ -4,10 +4,16 @@ namespace Eternnus.Web;
 /// <summary>
 /// Pedido de prévia do jogador no editor (ADR-088). <c>Layer</c> é a preparação ainda não salva (nula = a salva);
 /// <c>Tokens</c> é o arranjo do editor. Quem vê: um personagem (<c>ViewerCharacterId</c>), um jogador (<c>ViewerUserId</c>,
-/// todos os personagens dele) ou o grupo inteiro (<c>Party</c>).
+/// todos os personagens dele), um marcador (<c>ViewerToken</c>, índice em <c>Tokens</c>) ou o grupo inteiro (<c>Party</c>).
+/// Ensaio (ADR-111): <c>Tokens</c> aceita reservados e tokens de ensaio; <c>Profiles</c> dá visão, luz, percepção e sentidos
+/// sintéticos a marcadores. Observadores sintéticos só existem nesta prévia.
 /// </summary>
 public record PrepPreviewInput(string MapKey, Guid? SceneId, MapLayerInput? Layer, List<SceneTokenInput>? Tokens, string? VisionMode,
-    Guid? ViewerCharacterId = null, string? ViewerUserId = null, bool Party = false);
+    Guid? ViewerCharacterId = null, string? ViewerUserId = null, bool Party = false, List<RehearsalProfileInput>? Profiles = null, int? ViewerToken = null);
+
+/// <summary>Perfil de ensaio de um marcador (<c>Token</c> = índice em <c>Tokens</c>). Nulos seguem a ficha ou a configuração da mesa.
+/// Metros de 0 a 300, percepção de -50 a 100, sentidos no formato da ficha ("nome: metros", até 400 caracteres).</summary>
+public record RehearsalProfileInput(int Token, int? VisionMeters, int? LightMeters, int? Perception, string? Senses);
 
 /// <summary>
 /// "Ver como jogador" do editor com as regras autoritativas da mesa (<see cref="FogRules"/>), sem simulação simplificada:
@@ -42,29 +48,48 @@ public sealed partial class PreparationService
             .Take(100).ToListAsync(ct);
         var npcs = (await db.MasterCharacters.AsNoTracking().Where(m => m.CampaignId == campaignId).Select(m => m.Id).ToListAsync(ct)).ToHashSet();
         var grid = FogGrid.Of(map, prep);
-        var placed = ScenePrep.ValidateTokens(x.Tokens, grid, characters.Select(c => c.Id).ToHashSet(), characters.ToDictionary(c => c.Id, c => c.Name), npcs, map.Free);
+        var slots = await PartySlotService.LookupAsync(db, campaignId, ct);
+        var placed = ScenePrep.ValidateTokens(x.Tokens, grid, characters.Select(c => c.Id).ToHashSet(), characters.ToDictionary(c => c.Id, c => c.Name), npcs, map.Free, null, slots, allowRehearsal: true);
+        var profiles = ValidProfiles(x.Profiles, placed.Count);
         var byId = characters.ToDictionary(c => c.Id);
         string? OwnerOf(Guid? id) => id is { } cid && byId.TryGetValue(cid, out var c) && c.OwnerId != campaign.OwnerId ? c.OwnerId : null;
+        // Observador sintético (ADR-111): reservado sem personagem, token de ensaio ou marcador com perfil que não é personagem de jogador.
+        bool Synthetic(int i) => OwnerOf(placed[i].CharacterId) == null
+            && (x.Tokens![i].Rehearsal || (placed[i].CharacterId == null && placed[i].SlotId != null) || profiles.ContainsKey(i));
 
         var manual = prep.Manual ?? settings.ManualReveal;
         var scale = map.ScaleMeters;
         // Mesmos valores efetivos de TableFogService.SceneAsync (ficha → ajuste do marcador → configuração da mesa).
         var ids = placed.Select((_, i) => Guid.NewGuid()).ToList();
+        List<(string, int?)> Senses(string? text) => TableFog.ParseSenses(text).Select(s => (s.Name, s.Meters is { } m ? (int?)TableFog.MetersToCells(m, scale) : null)).ToList();
         var tokens = placed.Select((t, i) =>
         {
             var ch = t.CharacterId is { } cid ? byId.GetValueOrDefault(cid) : null;
-            var light = t.Light ?? (t.CharacterId == null ? settings.CreatureLight : TableFog.MetersToCells(ch?.LightMeters ?? settings.PlayerLightMeters, scale));
-            var vision = t.CharacterId == null ? 0 : TableFog.MetersToCells(ch?.VisionMeters ?? settings.PlayerVisionMeters, scale);
-            var senses = TableFog.ParseSenses(ch?.Senses).Select(s => (s.Name, s.Meters is { } m ? (int?)TableFog.MetersToCells(m, scale) : null)).ToList();
-            return new FogToken(ids[i], t.CharacterId, OwnerOf(t.CharacterId), t.Side, t.X, t.Y,
-                manual ? 0 : Math.Clamp(light, 0, TableFog.MaxRadius), manual ? 0 : Math.Clamp(vision, 0, TableFog.MaxRadius), ch?.Perception ?? 0, senses,
-                t.CharacterId == null && t.Hidden, [], null, null, null, map.Free ? 1 : t.SpanOf().W, map.Free ? 1 : t.SpanOf().H);
+            var p = profiles.GetValueOrDefault(i);
+            var synthetic = Synthetic(i);
+            var observer = synthetic || t.CharacterId != null;
+            // Perfil > ficha > configuração da mesa (jogador sem valor na ficha). Sintético sem perfil de luz usa a luz do marcador, se houver.
+            var light = p?.LightMeters is { } lm ? TableFog.MetersToCells(lm, scale)
+                : synthetic ? t.Light ?? TableFog.MetersToCells(settings.PlayerLightMeters, scale)
+                : t.Light ?? (t.CharacterId == null ? settings.CreatureLight : TableFog.MetersToCells(ch?.LightMeters ?? settings.PlayerLightMeters, scale));
+            var vision = !observer ? 0 : TableFog.MetersToCells(p?.VisionMeters ?? ch?.VisionMeters ?? settings.PlayerVisionMeters, scale);
+            var senses = Senses(p?.Senses ?? ch?.Senses);
+            // O observador sintético age como personagem nas regras da mesa (vê, detecta e aparece sempre ao grupo), com dono "rehearsal:{índice}".
+            return new FogToken(ids[i], synthetic ? Guid.NewGuid() : t.CharacterId, synthetic ? RehearsalKey(i) : OwnerOf(t.CharacterId), t.Side, t.X, t.Y,
+                manual ? 0 : Math.Clamp(light, 0, TableFog.MaxRadius), manual ? 0 : Math.Clamp(vision, 0, TableFog.MaxRadius), p?.Perception ?? ch?.Perception ?? 0, senses,
+                !synthetic && t.CharacterId == null && t.Hidden, [], null, null, null, map.Free ? 1 : t.SpanOf().W, map.Free ? 1 : t.SpanOf().H);
         }).ToList();
 
         // Quem vê.
         List<string> viewers;
         string label;
         if (x.Party) { viewers = tokens.Where(t => t.OwnerUserId != null).Select(t => t.OwnerUserId!).Distinct().ToList(); label = "Grupo"; }
+        else if (x.ViewerToken is { } vt)
+        {
+            if (vt < 0 || vt >= tokens.Count) throw new RuleException(400, "Escolha um marcador da cena para ver como ele.");
+            viewers = [tokens[vt].OwnerUserId ?? throw new RuleException(400, "Esse marcador não enxerga na prévia. Dê a ele um perfil de ensaio.")];
+            label = placed[vt].Label;
+        }
         else if (x.ViewerCharacterId is { } vc)
         {
             var owner = OwnerOf(vc) ?? throw new RuleException(400, "Escolha um personagem de jogador vinculado à campanha.");
@@ -122,6 +147,26 @@ public sealed partial class PreparationService
             shown = ids.Select((id, i) => (id, i)).Where(p => shownSet.Contains(p.id)).Select(p => p.i),
             perceived = ids.Select((id, i) => (id, i)).Where(p => perceivedSet.Contains(p.id)).Select(p => p.i),
         };
+    }
+
+    public const int MaxProfiles = 60;
+    static string RehearsalKey(int index) => $"rehearsal:{index}";
+
+    /// <summary>Perfis de ensaio por índice do marcador: até 60, um por marcador, valores dentro dos limites da ficha.</summary>
+    static Dictionary<int, RehearsalProfileInput> ValidProfiles(List<RehearsalProfileInput>? input, int tokens)
+    {
+        var list = input ?? [];
+        if (list.Count > MaxProfiles) throw new RuleException(400, $"Use até {MaxProfiles} perfis de ensaio.");
+        var result = new Dictionary<int, RehearsalProfileInput>();
+        foreach (var p in list)
+        {
+            if (p == null || p.Token < 0 || p.Token >= tokens) throw new RuleException(400, "Perfil de ensaio de um marcador que não está na cena. Recarregue o editor.");
+            if (p.VisionMeters is < 0 or > 300 || p.LightMeters is < 0 or > 300) throw new RuleException(400, "Visão e luz vão de 0 a 300 metros.");
+            if (p.Perception is < -50 or > 100) throw new RuleException(400, "A percepção vai de -50 a 100.");
+            if (p.Senses is { Length: > 400 }) throw new RuleException(400, "Os sentidos aceitam até 400 caracteres.");
+            if (!result.TryAdd(p.Token, p)) throw new RuleException(400, "Cada marcador recebe um perfil de ensaio.");
+        }
+        return result;
     }
 
     /// <summary>Preparação não salva do editor, com as mesmas validações de <see cref="CampaignAssetsService.SaveLayerAsync"/>.</summary>

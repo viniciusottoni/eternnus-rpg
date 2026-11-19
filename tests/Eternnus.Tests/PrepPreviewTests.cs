@@ -100,4 +100,85 @@ public sealed class PrepPreviewTests : IAsyncLifetime
         Assert.False(result.GetProperty("active").GetBoolean());
         Assert.Equal(new[] { 0 }, result.GetProperty("shown").EnumerateArray().Select(e => e.GetInt32()).ToArray());
     }
+
+    // ---------- Ensaio (ADR-111) ----------
+    static int VisibleCount(object result) => Bits.Decode(JsonSerializer.SerializeToElement(result, Web).GetProperty("visible").GetString(), Crypt.Width * Crypt.Height).Count(v => v);
+
+    async Task<(int Slots, int Scenes, int Layers, int Sessions, int Revisions)> Snapshot()
+    {
+        db.ChangeTracker.Clear();
+        return (await db.PartySlots.CountAsync(), await db.Scenes.CountAsync(), await db.Set<CampaignMapLayer>().CountAsync(), await db.Sessions.CountAsync(),
+            await db.PartySlots.SumAsync(s => s.Revision));
+    }
+
+    [Fact]
+    public async Task Rehearsal_token_sees_in_a_campaign_without_players_and_a_wall_hides_the_creature()
+    {
+        // Campanha só do mestre: sem jogadores nem personagens; visão padrão da mesa de 30 m.
+        var solo = new Campaign { OwnerId = Master, Name = "Ensaio", TableSettings = (TableSettings.Default with { PlayerVisionMeters = 30 }).Serialize() };
+        db.Add(solo); await db.SaveChangesAsync();
+        var cells = TableFog.Initial(Crypt, TableSettings.Default).Cells;
+        var (a, b) = Pair(cells);
+        var x = (a.X + 2) * TableFog.WallUnit;
+        var wall = new FogWall { X1 = x, Y1 = (a.Y - 1) * TableFog.WallUnit, X2 = x, Y2 = (a.Y + 2) * TableFog.WallUnit, Kind = FogWallKinds.Wall };
+        PrepPreviewInput Rehearse(List<FogWall> walls) => new("crypt", null, new MapLayerInput(true, cells, [], "", [], 0, Walls: walls),
+            [new SceneTokenInput(null, null, "Batedor", null, a.X, a.Y, Rehearsal: true), new SceneTokenInput(null, null, "Espreitador", "enemy", b.X, b.Y)],
+            VisionModes.Character, ViewerToken: 0);
+        var before = await Snapshot();
+
+        var open = await prep.PreviewViewAsync(solo.Id, Rehearse([]), Master, default);
+        Assert.Equal("Batedor", JsonSerializer.SerializeToElement(open, Web).GetProperty("viewer").GetString());
+        Assert.True(VisibleCount(open) > 0);
+        Assert.Equal(new[] { 0, 1 }, Shown(open));
+        Assert.Equal(new[] { 0 }, Shown(await prep.PreviewViewAsync(solo.Id, Rehearse([wall]), Master, default)));
+        // O inimigo não enxerga na prévia: escolher ele como visão é recusado; índice fora da cena também.
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => prep.PreviewViewAsync(solo.Id, Rehearse([]) with { ViewerToken = 1 }, Master, default))).Status);
+        Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => prep.PreviewViewAsync(solo.Id, Rehearse([]) with { ViewerToken = 5 }, Master, default))).Status);
+        Assert.Equal(before, await Snapshot());
+    }
+
+    [Fact]
+    public async Task Rehearsal_profile_light_changes_what_is_seen_and_is_validated()
+    {
+        var cells = TableFog.Initial(Crypt, TableSettings.Default).Cells;
+        var (a, _) = Pair(cells);
+        PrepPreviewInput Lit(int meters) => new("crypt", null, new MapLayerInput(true, cells, [], "", [], 0, Walls: []),
+            [new SceneTokenInput(null, null, "Tocha", null, a.X, a.Y, Rehearsal: true)], VisionModes.Character,
+            ViewerToken: 0, Profiles: [new RehearsalProfileInput(0, 0, meters, null, null)]);
+        var dark = VisibleCount(await prep.PreviewViewAsync(campaign.Id, Lit(0), Master, default));
+        var lit = VisibleCount(await prep.PreviewViewAsync(campaign.Id, Lit(18), Master, default));
+        Assert.True(lit > dark, $"{lit} > {dark}");
+
+        Task<int> Bad(RehearsalProfileInput p) => Status(() => prep.PreviewViewAsync(campaign.Id, Lit(0) with { Profiles = [p] }, Master, default));
+        Assert.Equal(400, await Bad(new(3, null, null, null, null)));
+        Assert.Equal(400, await Bad(new(0, 301, null, null, null)));
+        Assert.Equal(400, await Bad(new(0, null, null, 101, null)));
+        Assert.Equal(400, await Bad(new(0, null, null, null, new string('a', 401))));
+        Assert.Equal(400, await Status(() => prep.PreviewViewAsync(campaign.Id, Lit(0) with { Profiles = [new(0, 1, 1, 1, null), new(0, 2, 2, 2, null)] }, Master, default)));
+    }
+    static async Task<int> Status(Func<Task> act) => (await Assert.ThrowsAsync<RuleException>(act)).Status;
+
+    [Fact]
+    public async Task Party_includes_synthetic_observers_from_reserved_slots_without_writing()
+    {
+        var slot = new PartySlot { CampaignId = campaign.Id, Name = "Reserva" };
+        db.Add(slot); await db.SaveChangesAsync();
+        var cells = TableFog.Initial(Crypt, TableSettings.Default).Cells;
+        var (a, b) = Pair(cells);
+        var grid = new FogGrid(Crypt.Width, Crypt.Height, cells);
+        var scout = new[] { (a.X + 3, a.Y), (a.X + 2, a.Y) }.First(p => Crypt.CanStand(p.Item1, p.Item2) && !grid.BlocksMove(p.Item1, p.Item2));
+        var x = (a.X + 2) * TableFog.WallUnit;
+        var wall = new FogWall { X1 = x, Y1 = (a.Y - 1) * TableFog.WallUnit, X2 = x, Y2 = (a.Y + 2) * TableFog.WallUnit, Kind = FogWallKinds.Wall };
+        // Tharion (jogador) atrás da parede; o reservado, do outro lado, sem luz e com visão de 30 m.
+        PrepPreviewInput Scene(bool party) => new("crypt", null, new MapLayerInput(true, cells, [], "", [], 0, Walls: [wall]),
+            [new SceneTokenInput(hero.Id, null, null, null, a.X, a.Y), new SceneTokenInput(null, null, "Espreitador", "enemy", b.X, b.Y), new SceneTokenInput(null, null, null, null, scout.Item1, scout.Item2, SlotId: slot.Id)],
+            VisionModes.Character, party ? null : hero.Id, null, party, [new RehearsalProfileInput(2, 30, 0, null, null)]);
+        var before = await Snapshot();
+
+        Assert.DoesNotContain(1, Shown(await prep.PreviewViewAsync(campaign.Id, Scene(false), Master, default)));
+        Assert.Contains(1, Shown(await prep.PreviewViewAsync(campaign.Id, Scene(true), Master, default)));
+        // Visto só pelo reservado (índice do marcador).
+        Assert.Contains(1, Shown(await prep.PreviewViewAsync(campaign.Id, Scene(false) with { ViewerCharacterId = null, ViewerToken = 2 }, Master, default)));
+        Assert.Equal(before, await Snapshot());
+    }
 }

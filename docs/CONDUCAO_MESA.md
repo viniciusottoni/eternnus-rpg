@@ -203,3 +203,7 @@ A mesa ganhou a navegação própria **Mapa | Ficha | Conversa** (mestre: **Mapa
 - A visão manual é por mapa (cena) ou por configuração da mesa. Luzes continuam desenhadas para o mestre, mas não revelam casas aos jogadores.
 - Trocar o mapa de uma cena descarta o arranjo preparado e o estado salvo dela, porque as posições pertencem à grade anterior. Com a cena em apresentação, o novo cenário só vale com "Reiniciar cena".
 - Não houve medição de carga nem teste em aparelho físico.
+
+## Câmera compartilhada, exibição externa e convidados (19/11/2026, ADR-114/115)
+
+"Mostrar esta região aos participantes", "Seguir o mestre" (opcional para cada jogador), exibição externa limpa para TV/projetor e convidados sem conta (observador ou participante com controle temporário de um token do mestre). Ver [EVOLUCAO_VTT_TOKENS_MAPAS_UX.md](EVOLUCAO_VTT_TOKENS_MAPAS_UX.md) e [API.md](API.md).

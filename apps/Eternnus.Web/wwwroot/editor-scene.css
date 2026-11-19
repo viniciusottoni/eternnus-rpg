@@ -141,3 +141,49 @@
 .se-start-choice .se-panel { padding: 0; }
 .se-start-choice h3 { text-align: center; }
 .se-start-choice .form-actions { justify-content: flex-end; }
+
+/* ---------- Personagens reservados, ensaio e Acervo rápido (ADR-110/111) ---------- */
+.se-slots { margin-bottom: 4px; }
+.se-slot-create { display: grid; gap: 6px; margin: 2px 0 8px; }
+.se-slot-add { justify-self: start; display: inline-flex; align-items: center; gap: 4px; }
+.se-slot-add svg { width: 16px; height: 16px; }
+.se-slot-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.scene-editor .se-chip { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 2px 10px; border: 1px solid var(--line, #494337); border-radius: 999px; background: var(--panel2, #22211e); color: var(--text, #e8e1cf); font-size: 12px; }
+.scene-editor .se-chip svg { width: 15px; height: 15px; }
+.scene-editor .se-chip[aria-pressed="true"] { border-color: var(--gold, #c6a463); background: #2b2416; color: var(--bright, #f1d79c); }
+.scene-editor .se-chip:focus-visible, .se-ip-item:focus-visible, .se-slot-name:focus-visible { outline: 2px solid var(--bright, #f1d79c); outline-offset: 2px; }
+.se-slot-glyph { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.se-slot-preview { flex: none; display: grid; place-items: center; width: 34px; height: 34px; padding: 6px; overflow: hidden; border: 2px dashed #e6cf98; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #4a3f28, #1d180e); color: #f6ead0; }
+.se-slot-preview.bound { border-style: solid; border-color: #7cc35b; }
+.se-slot-preview img { width: 34px; height: 34px; margin: -6px; object-fit: cover; }
+.se-slot-list .se-slot { justify-content: flex-start; }
+.se-slot-text { flex: 1; min-width: 0; }
+.se-slot-name { width: 100%; min-height: 32px; padding: 2px 6px; }
+.se-slot-note { display: flex; align-items: center; gap: 8px; }
+.se-slot-note p { margin: 0; }
+.scene-editor .se-sim-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 6px; }
+.scene-editor .se-sim-row .se-sim-viewer { margin-top: 0; }
+.scene-editor .se-sim-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.scene-editor .se-sim-actions button { display: inline-flex; align-items: center; gap: 4px; }
+.scene-editor .se-sim-actions svg { width: 15px; height: 15px; }
+.se-rh-custom { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 10px; }
+.scene-editor .se-hint.se-hint-error { border-color: #e0604c; color: #ffd4cb; background: #2a120ee6; }
+.se-quick-cats { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.se-quick-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.se-quick-item { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border: 1px solid transparent; border-radius: 6px; cursor: grab; }
+.se-quick-item:hover, .se-quick-item:focus-within { background: var(--ed-hover, #262a20); border-color: var(--ed-line, #3a3f31); }
+.se-quick-item > span:not(.se-quick-thumb):not(.se-slot-preview) { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.se-quick-item small { display: block; color: var(--muted, #9da492); }
+.se-quick-thumb { flex: none; display: grid; place-items: center; width: 34px; height: 34px; overflow: hidden; border: 1px solid var(--line, #494337); border-radius: 50%; background: #1d1b16; color: var(--gold, #c6a463); }
+.se-quick-thumb.wide { width: 48px; border-radius: 4px; }
+.se-quick-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.se-quick-thumb svg { width: 18px; height: 18px; }
+.se-image-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; max-height: 340px; overflow: auto; }
+.se-ip-item { display: grid; gap: 4px; width: 100%; min-height: 44px; padding: 4px; border: 1px solid var(--line, #494337); border-radius: 6px; background: var(--panel2, #22211e); color: var(--text, #e8e1cf); font-size: 12px; text-align: left; }
+.se-ip-item img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 4px; }
+.se-ip-item span { overflow-wrap: anywhere; }
+.se-ip-item:hover { border-color: var(--gold, #c6a463); }
+@media (max-width: 900px), (pointer: coarse) {
+  .scene-editor .se-chip, .se-slot-name, .se-quick-item button, .scene-editor .se-sim-actions button, .se-slot .tool-icon { min-height: 44px; }
+  .se-slot .tool-icon { min-width: 44px; }
+}

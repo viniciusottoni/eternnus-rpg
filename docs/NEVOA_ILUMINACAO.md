@@ -158,3 +158,7 @@ O `GET …/live` passa a incluir `fog`:
   - As imagens têm cache em memória de até 96 MiB e no máximo 2 gerações simultâneas.
   - A busca da imagem espera até 10 s pela fila de geração; se não conseguir a vez, responde `429`.
   - Uma falha na geração responde `503` e nunca devolve a imagem completa.
+
+## Ensaio e espectadores (19/11/2026, ADR-111/114/115)
+
+A prévia do editor aceita observadores sintéticos (`rehearsal:{índice}`) só em memória, com perfis de visão/luz/percepção/sentidos. Convidados e a exibição externa recebem a névoa calculada no servidor para um espectador (luz comum e áreas reveladas; o convidado participante vê pela luz e visão do token que controla); ocultos nunca vão a espectadores. Eventos de criatura oculta são do mestre mesmo com névoa desligada.

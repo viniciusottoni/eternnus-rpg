@@ -208,3 +208,7 @@ Editor de cenas e preparação de mapas/cenários compartilham câmera com a mes
 - Ordem ao apresentar: posição preparada › área de entrada da cena › Entrada do grupo do mapa › regra antiga. **Recolocar personagens nas posições preparadas…** (Arquivo, com a cena em apresentação) mostra a prévia antes de confirmar.
 - Celular: contextos aparecem só com ícone (nome acessível e dica continuam).
 - Limitações: mapas de tiles e cenários prontos não recebem composição; o mestre na mesa vê o mesmo que os jogadores (os elementos só do mestre aparecem no editor); a composição não entra nas versões persistentes da cena.
+
+## Evolução de 19/11/2026 (ADR-110 a ADR-113)
+
+Personagens reservados no painel Personagens, **Ensaiar cena** (antes "Ver como jogador") com observadores sintéticos e perfis de teste, menu do token com trocar imagem/ajustar tamanho/vincular, Acervo rápido e mapas da campanha inseridos na grade da cena. Detalhes, fluxos e limites em [EVOLUCAO_VTT_TOKENS_MAPAS_UX.md](EVOLUCAO_VTT_TOKENS_MAPAS_UX.md).

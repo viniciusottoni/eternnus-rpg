@@ -56,6 +56,14 @@ export const TOOL_INVENTORY = Object.freeze([
   { id: "sceneSettings", label: "Tipo, ordem, descrição e alcance da preparação", group: "scene", basic: false, where: ["editor"] },
   { id: "tableSettings", label: "Configuração da mesa", group: "scene", basic: false, where: ["table"] },
   { id: "captureArrangement", label: "Guardar posições atuais como arranjo inicial", group: "elements", basic: false, where: ["table"] },
+  // ADR-110: seção do painel Personagens (contextual), não um botão da barra; a Básica continua no orçamento.
+  { id: "partySlots", label: "Personagens reservados (tokens provisórios)", group: "elements", basic: false, where: ["editor"] },
+  // ADR-113: instância de um mapa da campanha na composição da cena (várias regiões na mesma cena).
+  { id: "mapInstance", label: "Inserir mapa da campanha na cena", group: "scene", basic: false, where: ["editor"] },
+  // ADR-114/115: convidados temporários, "Mostrar esta região" e exibição externa (só mestre, na mesa).
+  { id: "guests", label: "Convidados da mesa", group: "scene", basic: false, where: ["table"] },
+  { id: "showRegion", label: "Mostrar esta região aos participantes", group: "scene", basic: false, where: ["table"] },
+  { id: "externalDisplay", label: "Abrir exibição externa", group: "scene", basic: false, where: ["table"] },
 ]);
 
 /**
@@ -347,17 +355,19 @@ export function clipboardFrom(tokens, indices) {
 export function pastePlacement({ cells, width, height, tokens = [], items = [], anchor, free = false }) {
   const placed = [];
   let skipped = 0;
-  const present = new Set(tokens.map((t) => t.characterId).filter(Boolean));
+  // Personagens dos jogadores e personagens reservados aparecem uma vez por cena.
+  const once = (t) => (t.characterId ? `c:${t.characterId}` : t.slotId ? `s:${t.slotId}` : "");
+  const present = new Set(tokens.map(once).filter(Boolean));
   for (const item of items) {
     const t = item.token;
-    if (t.characterId && present.has(t.characterId)) { skipped++; continue; }
+    if (once(t) && present.has(once(t))) { skipped++; continue; }
     const all = [...tokens, ...placed];
     const tx = anchor.x + item.dx, ty = anchor.y + item.dy;
     const exact = !placementProblem(cells, width, height, all, tx, ty, -1, free, tokenSpan(t));
     const spot = exact ? { x: tx, y: ty } : nearestFreeCell(cells, width, height, all, tx, ty, free, tokenSpan(t));
     if (!spot) { skipped++; continue; }
     placed.push({ ...t, x: spot.x, y: spot.y, fx: free && exact ? t.fx ?? null : null, fy: free && exact ? t.fy ?? null : null });
-    if (t.characterId) present.add(t.characterId);
+    if (once(t)) present.add(once(t));
   }
   return { placed, skipped };
 }
@@ -390,7 +400,7 @@ export function structureGroups({ tokens = [], layers = [], selected = [], layer
     id: l.id, label: l.name, showEmpty: true,
     items: tokens.map((t, i) => [t, i]).filter(([t]) => tokenLayerOf(t.layer, list) === l.id).map(([t, i]) => ({
       id: `t${i}`, label: t.label || "Marcador", icon: "character", hidden: !!t.hidden, locked: !!l.locked, selected: chosen.has(i),
-      meta: [sideName(t.side), t.characterId ? "personagem" : t.masterCharacterId ? "do mestre" : "", t.hidden ? "oculto" : ""].filter(Boolean).join(" · "),
+      meta: [sideName(t.side), t.characterId ? "personagem" : t.slotId ? "reservado" : t.masterCharacterId ? "do mestre" : "", t.hidden ? "oculto" : ""].filter(Boolean).join(" · "),
     })),
   }));
   if (!technical || !layer) return groups;
@@ -539,3 +549,103 @@ export const hasPublicElements = (doc) => publicComposition(doc).elements.some((
 
 /** Fontes de imagem (`asset:{guid}`) usadas pela composição, sem repetição. */
 export const compositionSources = (doc) => [...new Set((doc?.elements || []).filter((e) => e.type === "image" && /^asset:/.test(e.src || "")).map((e) => e.src))];
+
+// ---------- Personagens reservados, tamanhos predefinidos e Acervo rápido (ADR-110) ----------
+
+/** Limite de personagens reservados por campanha (o servidor responde 409 além disso). */
+export const MAX_SLOTS = 12;
+
+/**
+ * Próximo nome livre: `base` e depois "base 2", "base 3"… (até 40 caracteres, sem diferenciar maiúsculas).
+ * Ex.: (["Guerreiro"], "Guerreiro") → "Guerreiro 2"; ([], "Personagem") → "Personagem 1" quando `numbered`.
+ */
+export function nextSlotName(names = [], base = "Personagem", numbered = false) {
+  const taken = new Set(names.map((n) => String(n || "").trim().toLowerCase()));
+  const clean = String(base || "Personagem").trim().slice(0, 34) || "Personagem";
+  if (!numbered && !taken.has(clean.toLowerCase())) return clean;
+  for (let n = numbered ? 1 : 2; n < 1000; n++) if (!taken.has(`${clean} ${n}`.toLowerCase())) return `${clean} ${n}`;
+  return clean;
+}
+
+/**
+ * Marcador preparado de um personagem reservado. O servidor grava nome e lado a partir do reservado; a imagem vem
+ * sempre do reservado (nenhum arquivo é copiado). Forma e tamanho começam como os do reservado.
+ */
+export function slotToken(slot, layer = "elements") {
+  return {
+    slotId: slot.id, label: String(slot.name || "Reservado").slice(0, 40), side: "ally", hidden: false,
+    appearance: slot.appearance ?? null, size: slot.size ?? null, width: slot.width ?? null, height: slot.height ?? null, imageUrl: null, layer,
+  };
+}
+
+/** Índice do marcador de um reservado na cena (aparece uma vez por cena) ou -1. */
+export const slotIndex = (tokens, slotId) => (slotId ? (tokens || []).findIndex((t) => t.slotId === slotId) : -1);
+
+/**
+ * Tamanhos predefinidos do menu "Ajustar tamanho". Acima de uma casa, com imagem, a criatura ocupa a área inteira
+ * (largura e altura em casas, como TokenSpan); sem imagem, o marcador redondo só é desenhado maior e ocupa uma casa.
+ */
+export const SIZE_PRESETS = Object.freeze([
+  Object.freeze({ id: "small", label: "Pequeno", hint: "75% da casa", size: 75, cells: 1 }),
+  Object.freeze({ id: "medium", label: "Médio", hint: "1 casa", size: 100, cells: 1 }),
+  Object.freeze({ id: "large", label: "Grande", hint: "2 × 2 casas", size: 200, cells: 2 }),
+  Object.freeze({ id: "huge", label: "Enorme", hint: "3 × 3 casas", size: 300, cells: 3 }),
+  Object.freeze({ id: "gargantuan", label: "Imenso", hint: "4 × 4 casas", size: 400, cells: 4 }),
+]);
+
+/**
+ * Campos do marcador para uma predefinição. `image`: há imagem para a forma livre. Ex.: ("large", { image: true }) →
+ * { appearance: "image", size: null, width: 200, height: 200 }; ("large", {}) → { size: 200, width: null, height: null }.
+ */
+export function sizePresetPatch(id, { image = false, appearance = null } = {}) {
+  const p = SIZE_PRESETS.find((x) => x.id === id);
+  if (!p) return null;
+  if (p.cells > 1 && image) return { appearance: "image", size: null, width: p.cells * 100, height: p.cells * 100 };
+  return { appearance: appearance === "image" && image ? "image" : null, size: p.size === 100 ? null : p.size, width: null, height: null };
+}
+
+/** Predefinição que descreve o marcador agora ("" quando é um tamanho personalizado). */
+export function sizePresetOf(token) {
+  const w = Number(token?.width) || 0, h = Number(token?.height) || 0;
+  if (token?.appearance === "image" && w > 0 && h > 0) return w === h ? SIZE_PRESETS.find((p) => p.cells > 1 && p.cells * 100 === w)?.id || "" : "";
+  const size = token?.size == null ? 100 : Number(token.size);
+  return SIZE_PRESETS.find((p) => p.size === size)?.id || "";
+}
+
+/** Categorias do Acervo rápido (filtros em chips; nenhuma copia arquivos). */
+export const QUICK_CATEGORIES = Object.freeze([
+  ["recent", "Recentes"], ["favorites", "Favoritos"], ["party", "Grupo"], ["reserved", "Reservados"],
+  ["npcs", "NPCs e criaturas"], ["maps", "Mapas"], ["images", "Imagens da campanha"],
+]);
+const ASSET_KEY = /^asset:[0-9a-fA-F-]{32,36}$/;
+const plainText = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+
+/**
+ * Itens do Acervo rápido para uma categoria e uma busca. Fontes já carregadas: personagens dos jogadores, reservados,
+ * personagens do mestre (sem cópias de encontro), mapas e imagens da campanha (`asset:`), favoritos e recentes da
+ * Preparação (`map:{id}`, `character:{id}`). Cada item: { kind, ref, key, name, sub, imageUrl?, asset? }.
+ * `kind`: pc | slot | npc (vão ao mapa como marcador) ou map | image (entram pela composição, por referência).
+ */
+export function quickAssetItems({ characters = [], slots = [], npcs = [], maps = [], prefs = null } = {}, category = "party", query = "", limit = 60) {
+  const pc = (c) => ({ kind: "pc", ref: `pc:${c.id}`, key: null, name: c.name, sub: "Personagem de jogador" });
+  const slot = (s) => ({ kind: "slot", ref: `slot:${s.id}`, key: null, name: s.name, sub: s.characterName ? `Vinculado a ${s.characterName}` : "Reservado", imageUrl: s.imageUrl || null, archetype: s.archetype || null });
+  const npc = (n) => ({ kind: "npc", ref: `npc:${n.id}`, key: `character:${n.id}`, name: n.name, sub: n.summary || "Personagem do mestre", imageUrl: n.imagePreview || null });
+  const asset = (m) => {
+    const grid = m.kind === "tileset" && m.hasGrid !== false;
+    return { kind: grid ? "map" : "image", ref: m.key, key: m.id ? `map:${m.id}` : null, name: m.name || "Imagem", sub: m.pixelWidth ? `${Number(m.pixelWidth)} × ${Number(m.pixelHeight)} px` : grid ? "Mapa" : "Imagem",
+      imageUrl: m.imageUrl || null, asset: { src: m.key, name: String(m.name || "Imagem").slice(0, 80), width: Number(m.pixelWidth) || 0, height: Number(m.pixelHeight) || 0 } };
+  };
+  const own = (npcs || []).filter((n) => !n.copy);
+  const files = (maps || []).filter((m) => ASSET_KEY.test(String(m.key || "")) && m.imageUrl);
+  const byKey = new Map([...own.map((n) => [`character:${n.id}`, npc(n)]), ...files.filter((m) => m.id).map((m) => [`map:${m.id}`, asset(m)])]);
+  let list;
+  if (category === "recent") list = (prefs?.recents || []).map((r) => byKey.get(r.key)).filter(Boolean);
+  else if (category === "favorites") list = (prefs?.favorites || []).map((k) => byKey.get(k)).filter(Boolean);
+  else if (category === "reserved") list = (slots || []).map(slot);
+  else if (category === "npcs") list = own.map(npc);
+  else if (category === "maps") list = files.map(asset).filter((x) => x.kind === "map");
+  else if (category === "images") list = files.map(asset).filter((x) => x.kind === "image");
+  else list = [...(characters || []).map(pc), ...(slots || []).map(slot)];
+  const q = plainText(query);
+  return (q ? list.filter((x) => plainText(`${x.name} ${x.sub}`).includes(q)) : list).slice(0, limit);
+}

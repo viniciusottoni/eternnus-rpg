@@ -18,13 +18,21 @@ import {
   placementProblem, simulateView, recentMapKeys, mapTypeLabel, sceneKindLabel, SCENE_SIDES, sceneLayers, tokenLayerOf, layerAlpha,
   clipboardFrom, pastePlacement, moveTokensBy, structureGroups, sameSnapshot,
   BACKGROUND_MODES, defaultGrid, ENTRY_KINDS, entryRect, rectCells, newEntryId, entriesProblem, sceneEntryArea, distributeInArea, compositionSources,
+  nearestFreeCell, slotToken, slotIndex, nextSlotName, MAX_SLOTS, SIZE_PRESETS, sizePresetPatch, sizePresetOf, QUICK_CATEGORIES, quickAssetItems,
 } from "./scene-policy.js";
+import { createSlotStore, slotImageSrc, slotPreviewHtml, archetypeSvg } from "./party-slots.js";
+import {
+  PROFILE_PRESETS, profileLabel, sandboxFrom, rehearsalToken, rehearsalDiff, diffLines, applyRehearsal, sandboxChanged, observerOptions,
+  defaultObserver, viewerFields, previewProfiles,
+} from "./rehearsal-policy.js";
+import { normalizeUserPrefs, userPrefsKey, touchRecent } from "./prep-explorer-policy.js";
+import { state as appState } from "./state.js";
 import { mountImageDrop, listenPaste, splitImageFiles, baseName, readImageSize, assetListHtml, bindAssetList } from "./image-drop.js";
 import { MAP_ELEMENT, blankSceneComposition, loadSceneComposition, sceneSourceResolver, flattenPreview, flattenOverlay, createImageCache, createSceneComposer } from "./scene-composition.js";
 import * as CP from "./composition-policy.js";
 import { sceneWeight } from "./scene-weight-policy.js";
 import { LIGHT_PRESETS, CUSTOM, presetText, lightPresetOf, presetById } from "./light-presets-policy.js";
-import { LOOK_IMAGE, LOOK_ROUND, MIN_SIZE, MAX_SIZE, SIZE_STEP, DEFAULT_SIZE, clampSize, hasSpan, tokenSpan } from "./token-look.js";
+import { LOOK_IMAGE, LOOK_ROUND, MIN_SIZE, MAX_SIZE, SIZE_STEP, DEFAULT_SIZE, clampSize, hasSpan, tokenSpan, ARCHETYPES, archetypeOf } from "./token-look.js";
 
 const SIDES = SCENE_SIDES;
 const opt = (list, current) => list.map(([v, l]) => `<option value="${esc(v)}" ${v === current ? "selected" : ""}>${esc(l)}</option>`).join("");
@@ -87,7 +95,14 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     : toDraft({ kind: kind === "layer" ? "map" : kind, mapKey: mapKey || "", order: sceneList?.items?.length || 0 });
   let saved = { id: scene?.id || null, revision: scene?.revision || 0 };
   let live = scene?.live || null;
-  const characters = scene?.characters || sceneList?.characters || [];
+  let characters = scene?.characters || sceneList?.characters || [];
+  // Personagens reservados da campanha (ADR-110): vêm com a cena quando o servidor já os inclui; senão, sob demanda.
+  const slotStore = createSlotStore(campaign.id, scene?.slots || sceneList?.slots || null);
+  let renaming = null, slotBusy = false, binding = null, imagePick = null;
+  // Ensaio (ADR-111): caixa de areia da preparação enquanto `simulate` está ligado; nada dele vai ao rascunho sem "Aplicar".
+  let rehearsal = null;
+  // Acervo rápido: categoria e busca (por contexto de trabalho).
+  let quickCat = "", quickQuery = "";
   let savedLayerMode = draft.layerMode;
   /** Trocar o alcance só passa a valer depois de salvar: até lá, a camada do mapa não é editada. */
   const layerLocked = () => draft.layerMode !== savedLayerMode;
@@ -98,7 +113,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   // Estado salvo (para recalcular "alterações não salvas" depois de desfazer/refazer).
   let savedScene = clone(draft), savedLayer = null;
   let sceneDirty = false, layerDirty = false, resetExploration = false;
-  let tool = "select", selection = [], pick = null, panel = "overview", simulate = false, viewer = "", grid = true, conflict = null, applying = false, busy = false;
+  let tool = "select", selection = [], pick = null, panel = "overview", simulate = false, grid = true, conflict = null, applying = false, busy = false;
   let error = "", closed = false;
   let drafts = null; // rascunho local e versões (ADR-083), ligado depois de carregar a preparação do mapa
   let mode = interfaceMode();
@@ -180,6 +195,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     T("gridToggle", "grid", "g", "grid", false, { hidden: notMap, action: () => { grid = !grid; redraw(); }, pressed: () => grid }),
     T("gridAdjust", "measure", "", "grid", false, { hidden: notMap, ...panelTool("gridAdjust") }),
     T("sceneSettings", "settings", "", "scene", false, { hidden: () => mapOnly, ...panelTool("sceneSettings") }),
+    // ADR-113: também na Busca de ações; abre a lista de mapas com grade da campanha (inserção no centro da vista).
+    T("mapInstance", "layers", "", "scene", false, { hidden: () => mapOnly || draft.kind === "text", action: () => openMapInstanceMenu() }),
   ];
   const titleText = () => (mapOnly ? "Preparação do mapa" : saved.id ? "Editar preparação da cena" : "Nova cena");
   const subtitleText = () => (mapOnly ? `Preparação compartilhada do mapa${meta?.name ? ` · ${meta.name}` : ""}` : draft.name || "Cena sem nome");
@@ -193,7 +210,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     kind: mapOnly ? "map-prep" : "scene",
     contexts: [
       ...(mapOnly ? [] : [{ id: "compose", tools: ["addImage"], panels: ["props", "layers", "assets"], defaultTool: "select" }]),
-      { id: "elements", label: mapOnly ? "Elementos" : "Personagens", groups: ["elements"], tools: ["add", "entry"], panels: ["props", "layers", "structure", "characters"], defaultTool: "select" },
+      { id: "elements", label: mapOnly ? "Elementos" : "Personagens", groups: ["elements"], tools: ["add", "entry"], panels: ["props", "layers", "structure", "characters", ...(mapOnly ? [] : ["assets"])], defaultTool: "select" },
       { id: "walls", groups: ["walls"], panels: ["props", "structure"], defaultTool: "wall" },
       { id: "light", groups: ["light"], panels: ["props", "structure"], defaultTool: "light" },
       { id: "explore", groups: ["explore"], tools: ["visibility", "reveal", "conceal"], panels: ["props", "structure"], defaultTool: "select" },
@@ -205,11 +222,11 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       ...(mapOnly ? [] : [{ id: "layers", title: "Camadas" }]),
       { id: "structure", title: "Estrutura" },
       ...(mapOnly ? [] : [{ id: "characters", title: "Personagens e posições iniciais", help: ["campanhas.cenas.posicoes", "Posições iniciais e área de entrada"] }]),
-      ...(mapOnly ? [] : [{ id: "assets", title: "Acervo", help: ["campanhas.cenas.composicao", "Composição da cena"] }]),
+      ...(mapOnly ? [] : [{ id: "assets", title: "Acervo rápido", help: ["campanhas.cenas.acervo-rapido", "Acervo rápido"] }]),
       { id: "history", title: "Histórico", basic: false },
     ],
     onContext: (id) => onWorkContext(id),
-    actions: `${nameField}${button(`${icon("eye")}<span>Ver como jogador</span>`, "se-preview", "", "subtle", 'aria-pressed="false" data-tip="Ver como jogador" data-tip-detail="Simula luz, névoa e visão dos personagens, sem alterar a mesa."')}${button("Salvar preparação", "se-save", "", "primary")}<span id="se-apply-slot"></span>`,
+    actions: `${nameField}${button(`${icon("eye")}<span>Ensaiar cena</span>`, "se-preview", "", "subtle", 'aria-pressed="false" data-tip="Ensaiar cena" data-tip-detail="Veja como jogador e teste posições, luz e visão sem alterar a mesa."')}${button("Salvar preparação", "se-save", "", "primary")}<span id="se-apply-slot"></span>`,
     // No contexto Composição os atalhos agem nas imagens; nos demais, nos marcadores (ADR-090).
     keys: {
       "mod+s": () => save(),
@@ -253,6 +270,10 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     onZoom: () => shell.updateZoom(),
     onVector: (e) => onVector(e),
     onResize: (t, patch) => resizeToken(Number(String(t.id).slice(1)), patch),
+    // Durante o arraste: casa recusada em vermelho e o motivo na dica, sem gravar nada (Esc desiste).
+    dropProblem: (t, c) => dropProblemOf(Number(String(t.id).slice(1)), c),
+    onDragHint: (text) => liveHint(text, true),
+    onResizing: (t, text) => liveHint(text ? `${t.label}: ${text}` : "", false),
   });
   // 100% = tamanho real da imagem enviada (pixels por casa); mapas de tiles usam 64 px por casa.
   const natural = () => (Number(meta?.gridPixels) >= 8 ? Number(meta.gridPixels) : 64);
@@ -304,8 +325,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   }
   /** Contexto trocado (cenário, tipo, alcance, grade): instantâneos antigos não valem para o novo mapa. */
   function resetHistory(reason) { history.clear(); if (reason) say(reason); }
-  function undo() { commitTyping(); const label = history.undo(); say(label ? `Desfeito: ${label}.` : "Nada para desfazer."); }
-  function redo() { commitTyping(); const label = history.redo(); say(label ? `Refeito: ${label}.` : "Nada para refazer."); }
+  function undo() { commitTyping(); if (simulate) return rehearsalUndo(); const label = history.undo(); say(label ? `Desfeito: ${label}.` : "Nada para desfazer."); }
+  function redo() { commitTyping(); if (simulate) return say("No ensaio, Ctrl+Z desfaz o último passo; refazer não está disponível."); const label = history.redo(); say(label ? `Refeito: ${label}.` : "Nada para refazer."); }
 
   // ---------- Dados do mapa ----------
   async function loadLayer() {
@@ -339,10 +360,13 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
    * Sem imagem, o marcador só pode ser redondo. Personagens dos jogadores não têm imagem na preparação.
    */
   function tokenImage(t) {
-    if (!t || t.characterId) return null;
+    // Personagens dos jogadores não têm imagem na preparação; o reservado vinculado pode manter a dele (ADR-110).
+    if (!t || (t.characterId && !t.slotId)) return null;
     const own = typeof t.imageUrl === "string" ? t.imageUrl : "";
     if (own.startsWith("asset:")) return /^asset:[0-9a-f-]{32,36}$/i.test(own) ? `/api/campaigns/${encodeURIComponent(campaign.id)}/assets/maps/${own.slice(6)}/image` : null;
     if (own.startsWith("https://")) return own;
+    // Reservado: a imagem é a do próprio reservado (referência; nada é copiado para a cena).
+    if (t.slotId) return slotImageSrc(campaign.id, slotStore.byId(t.slotId)?.imageUrl);
     if (!t.masterCharacterId) return null;
     const preview = (npcs || []).find((n) => n.id === t.masterCharacterId)?.imagePreview;
     return typeof preview === "string" && (preview.startsWith("/api/") || preview.startsWith("https://")) ? preview : null;
@@ -371,23 +395,30 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const shown = previewUrl && compElements() ? previewUrl : null;
     if (draft.kind === "image" && m) return { map: { kind: "cartographic", key: m.key, name: m.name, imageUrl: shown || m.imageUrl || "/assets/valley.webp", rows: [] }, tokens: [], participants: [], session: {}, me: { isMaster: true } };
     if (!meta) return { map: { kind: "cartographic", key: "none", name: "", imageUrl: "", rows: [] }, tokens: [], participants: [], session: {}, me: { isMaster: true } };
-    let tokens = draft.prepared.map((t, i) => {
+    // No ensaio, o tabuleiro desenha a caixa de areia (ids "p{índice}" nela); fora dele, a preparação.
+    const source = simulate && rehearsal ? rehearsal.sandbox : draft.prepared;
+    let tokens = source.map((t, i) => {
       // Camadas da cena: olho e opacidade só mudam o desenho no editor; a simulação mostra o que os jogadores veem.
       const alpha = simulate ? 1 : layerAlpha(layerOfToken(t));
-      return { id: "p" + i, characterId: t.characterId || null, label: t.label, side: t.side || "ally", x: t.x, y: t.y, fx: t.fx ?? null, fy: t.fy ?? null, hidden: !!t.hidden, light: t.light ?? null, appearance: t.appearance ?? null, size: t.size ?? null, width: t.width ?? null, height: t.height ?? null, image: tokenImage(t), alpha: alpha < 1 ? alpha : null };
+      const image = tokenImage(t);
+      // Reservado sem vínculo: contorno tracejado e selo "R"; token de ensaio: pontilhado e selo "E" (só no editor).
+      const cue = t.rehearsal ? "rehearsal" : t.slotId && !t.characterId ? "reserved" : null;
+      const glyph = t.slotId && !image ? slotStore.byId(t.slotId)?.archetype || null : null;
+      return { id: "p" + i, characterId: t.characterId || null, label: t.label, side: t.side || "ally", x: t.x, y: t.y, fx: t.fx ?? null, fy: t.fy ?? null, hidden: !!t.hidden, light: t.light ?? null, appearance: t.appearance ?? null, size: t.size ?? null, width: t.width ?? null, height: t.height ?? null, image, alpha: alpha < 1 ? alpha : null, cue, glyph };
     });
     // Imagens de personagens do mestre chegam com a lista deles; sem ela, o desenho cai no marcador redondo até carregar.
-    if (npcs == null && !mapOnly && draft.prepared.some((t) => t.masterCharacterId)) loadNpcs();
+    if (npcs == null && !mapOnly && source.some((t) => t.masterCharacterId)) loadNpcs();
     let fog;
     if (simulate && serverView) {
       // Resultado do servidor: idêntico ao que o jogador receberia (paredes, luz, visão, sentidos, percepção e exploração).
       fog = serverView.active ? { active: true, visible: serverView.visible, explored: serverView.explored, cells: serverView.cells, lights: serverView.lights, marks: serverView.marks, walls: serverView.walls } : { active: false };
       const shown = new Set(serverView.shown), perceived = new Set(serverView.perceived || []);
       // Percebido não revela nome, imagem, forma nem porte (como na mesa).
-      tokens = tokens.filter((_, i) => shown.has(i)).map((t) => (perceived.has(Number(t.id.slice(1))) ? { ...t, label: "?", perceived: true, image: null, appearance: null, size: null, width: null, height: null } : t));
+      tokens = tokens.filter((_, i) => shown.has(i)).map((t) => (perceived.has(Number(t.id.slice(1))) ? { ...t, label: "?", perceived: true, image: null, appearance: null, size: null, width: null, height: null, cue: null, glyph: null } : t));
     } else if (simulate) {
       requestServerView();
-      const sim = simulateView({ visionMode: draft.visionMode, layer, width: width(), height: height(), tokens, characters, settings: meta.settings || {}, scale: meta.scaleMeters || 1.5, viewer: viewer && viewer !== "party" ? viewer : null });
+      const observer = rehearsal?.observer || "";
+      const sim = simulateView({ visionMode: draft.visionMode, layer, width: width(), height: height(), tokens, characters, settings: meta.settings || {}, scale: meta.scaleMeters || 1.5, viewer: observer.startsWith("c:") ? observer.slice(2) : null });
       fog = sim.fog.active ? sim.fog : { active: false };
       tokens = sim.tokens;
     } else fog = { active: fogOn(), cells: layer.cells, lights: layer.lights, marks: layer.marks, walls: layer.walls, shared: shared() };
@@ -411,13 +442,156 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       mode: paint ? "paint" : vector ? "vector" : "none", fogTools: !simulate && (mode === "complete" || (paint && tool !== "entry") || vector || diag), grid, reach: entryHighlight(), attack: [],
       vector: vector || wallSel.length ? { preview: wallPreview(), selected: wallSel, vertices: tool === "vedit", point: vector ? vpoint : null, box: vdrag?.box || null } : null,
       diagnostic: !simulate && diag && layer ? diagnosticView() : null,
-      selected: !simulate && selection.length === 1 ? "p" + selection[0] : null, selectedIds: simulate ? [] : selection.map((i) => "p" + i),
-      draggable: !simulate && tool === "select" ? "*" : null, viewAs: simulate,
+      selected: simulate ? (sandboxSelected() >= 0 ? "p" + sandboxSelected() : null) : selection.length === 1 ? "p" + selection[0] : null, selectedIds: simulate ? [] : selection.map((i) => "p" + i),
+      // Ensaio: os tokens da caixa de areia também são arrastados e redimensionados (nada vai ao rascunho).
+      draggable: tool === "select" ? "*" : null, viewAs: simulate,
       // Alças do marcador selecionado: tamanho do redondo; largura e altura da imagem livre (ADR-092).
-      resizable: !simulate && tool === "select" && selection.length === 1 && editable(selection[0]),
+      resizable: tool === "select" && (simulate ? sandboxSelected() >= 0 : selection.length === 1 && editable(selection[0])),
     };
   }
   const redraw = () => board.update(boardState(), boardView());
+
+  // ---------- Ensaiar cena (ADR-111): caixa de areia sobre a preparação ----------
+  const sandboxSelected = () => (rehearsal?.selected ? rehearsal.sandbox.findIndex((t) => t.key === rehearsal.selected) : -1);
+  /** Uma mudança no ensaio: guarda o estado anterior (Ctrl+Z do ensaio) e pede nova prévia ao servidor. */
+  function sandboxChange(label, fn) {
+    if (!rehearsal) return;
+    rehearsal.past.push(clone(rehearsal.sandbox));
+    if (rehearsal.past.length > 50) rehearsal.past.shift();
+    fn();
+    serverView = null; serverViewError = "";
+    redraw(); renderSimBanner(); renderSide();
+    if (label) say(`${label}.`);
+  }
+  function sandboxMove(k, cell) {
+    const t = rehearsal?.sandbox[k];
+    if (!t) return false;
+    const problem = placementProblem(layer?.cells, width(), height(), rehearsal.sandbox, cell.x, cell.y, k, freeOn(), tokenSpan(t));
+    if (problem) { say(problem); return false; }
+    sandboxChange(`Ensaio: ${t.label} na coluna ${cell.x + 1}, linha ${cell.y + 1}`, () => { rehearsal.sandbox[k] = { ...t, ...fineOf(cell) }; rehearsal.selected = t.key; });
+    return true;
+  }
+  function sandboxResize(k, patch) {
+    const cur = rehearsal?.sandbox[k];
+    if (!cur) return false;
+    const next = { ...cur, ...patch };
+    if (!freeOn()) { next.fx = null; next.fy = null; }
+    const problem = placementProblem(layer?.cells, width(), height(), rehearsal.sandbox, next.x, next.y, k, freeOn(), tokenSpan(next));
+    if (problem) { say(problem); return false; }
+    sandboxChange(`Ensaio: novo tamanho de ${cur.label}`, () => { rehearsal.sandbox[k] = next; });
+    return true;
+  }
+  function sandboxRemove(k) {
+    const t = rehearsal?.sandbox[k];
+    if (!t) return;
+    sandboxChange(`Ensaio: ${t.label} retirado`, () => {
+      rehearsal.sandbox.splice(k, 1);
+      if (rehearsal.selected === t.key) rehearsal.selected = null;
+      if (rehearsal.observer === `t:${t.key}`) rehearsal.observer = defaultObserver(rehearsal.sandbox);
+    });
+  }
+  /** Personagem, reservado ou NPC colocado durante o ensaio: entra só na caixa de areia (ou move o que já está nela). */
+  function sandboxPlace(token, cell, label) {
+    const list = rehearsal.sandbox;
+    const existing = token.characterId ? list.findIndex((t) => t.characterId === token.characterId) : token.slotId ? slotIndex(list, token.slotId) : -1;
+    if (existing >= 0) return sandboxMove(existing, cell);
+    if (list.length >= 60) { say("Use até 60 tokens no ensaio."); return false; }
+    const problem = placementProblem(layer?.cells, width(), height(), list, cell.x, cell.y, -1, freeOn(), tokenSpan(token));
+    if (problem) { say(problem); return false; }
+    const key = `n${++rehearsal.counter}`;
+    sandboxChange(`Ensaio: ${label}`, () => { list.push({ ...token, ...fineOf(cell), hidden: !!token.hidden, layer: activeTokenLayer(), ref: null, key }); rehearsal.selected = key; });
+    return true;
+  }
+  /**
+   * Token de ensaio (local, nunca salvo) perto do cursor. Começa "Carregando uma fonte de luz": sem perfil, a mesa padrão
+   * não dá visão nem luz a um token sem ficha, e a prévia ficaria escura.
+   */
+  function addRehearsalToken() {
+    if (!rehearsal) return;
+    if (rehearsal.sandbox.length >= 60) return say("Use até 60 tokens no ensaio.");
+    const at = hover || lastCell || { x: Math.floor(width() / 2), y: Math.floor(height() / 2) };
+    const spot = nearestFreeCell(layer?.cells, width(), height(), rehearsal.sandbox, at.x, at.y, freeOn());
+    if (!spot) return say("Não há casa livre para o token de ensaio.");
+    const key = `r${++rehearsal.counter}`;
+    sandboxChange("Token de ensaio colocado (com uma fonte de luz; troque o perfil no painel)", () => {
+      rehearsal.sandbox.push(rehearsalToken(rehearsal.sandbox, spot, key));
+      rehearsal.profiles.set(key, { id: "torch" });
+      rehearsal.selected = key;
+      if (!rehearsal.observer) rehearsal.observer = `t:${key}`;
+    });
+  }
+  function rehearsalUndo() {
+    const prev = rehearsal?.past.pop();
+    if (!prev) return say("Nada para desfazer no ensaio.");
+    rehearsal.sandbox = prev;
+    if (sandboxSelected() < 0) rehearsal.selected = null;
+    serverView = null; serverViewError = "";
+    redraw(); renderSimBanner(); renderSide();
+    say("Desfeito no ensaio.");
+  }
+  /** Sai do ensaio descartando a caixa de areia. Pergunta antes só quando algo mudou. False = a pessoa preferiu ficar. */
+  function leaveRehearsal(ask = true) {
+    if (!simulate) return true;
+    if (ask && rehearsal && sandboxChanged(rehearsal.start, rehearsal.sandbox) && !confirm("Sair do ensaio descarta o que você mudou nele. A preparação continua como estava. Sair?")) return false;
+    simulate = false; rehearsal = null; serverView = null; serverViewError = ""; imagePick = imagePick?.target.kind === "sandbox" ? null : imagePick;
+    liveHint("");
+    return true;
+  }
+  /** Leva o resultado do ensaio ao rascunho numa única entrada do histórico (Ctrl+Z desfaz). Tokens de ensaio não entram. */
+  function applyRehearsalChanges() {
+    if (!rehearsal) return;
+    const diff = rehearsalDiff(draft.prepared, rehearsal.sandbox);
+    if (!diff.changed) return say(diff.rehearsalOnly.length ? "Nada a aplicar: tokens de ensaio não são salvos. Use “Converter em personagem reservado” para guardar um deles." : "Nada mudou no ensaio.");
+    if (!confirm(`Aplicar as alterações do ensaio à preparação?\n\n${diffLines(diff).map((l) => `• ${l}`).join("\n")}\n\nDá para desfazer com Ctrl+Z. Os jogadores só veem ao apresentar ou aplicar a cena.`)) return;
+    const next = applyRehearsal(draft.prepared, rehearsal.sandbox).map((t) => ({ ...t, layer: tokenLayerOf(t.layer, draft.layers) }));
+    leaveRehearsal(false);
+    change("Aplicar ensaio à preparação", () => { draft.prepared = next; });
+    selection = []; if (panel === "token") panel = "overview";
+    renderAll();
+    say("Alterações do ensaio aplicadas à preparação. Salve para guardar.");
+  }
+  /** Token de ensaio vira personagem reservado da campanha; ao aplicar, entra na preparação com o vínculo ao reservado. */
+  async function convertToSlot(key) {
+    const k = rehearsal?.sandbox.findIndex((t) => t.key === key) ?? -1;
+    const t = rehearsal?.sandbox[k];
+    if (!t?.rehearsal) return;
+    if (slotStore.items.length >= MAX_SLOTS) return say(`Use até ${MAX_SLOTS} personagens reservados por campanha.`);
+    try {
+      const name = nextSlotName(slotStore.items.map((s) => s.name), String(t.label || "Personagem").slice(0, 34));
+      const slot = await slotStore.create({ name, imageUrl: t.imageUrl ?? null, appearance: t.appearance ?? null, size: t.size ?? null, width: t.width ?? null, height: t.height ?? null });
+      if (!rehearsal) return;
+      const i = rehearsal.sandbox.findIndex((x) => x.key === key);
+      if (i < 0) return;
+      sandboxChange(`“${slot.name}” agora é um personagem reservado; aplique o ensaio para guardar a posição`, () => {
+        const { rehearsal: _r, ...rest } = rehearsal.sandbox[i];
+        rehearsal.sandbox[i] = { ...rest, slotId: slot.id, label: slot.name, side: "ally", converted: true };
+      });
+      renderCharacterList(); renderAssets(true);
+    } catch (e) { say(e.message); }
+  }
+  /** Casa de destino recusada durante o arraste (mesmas regras de soltar). */
+  function dropProblemOf(i, c) {
+    if (simulate) {
+      const t = rehearsal?.sandbox[i];
+      return t ? placementProblem(layer?.cells, width(), height(), rehearsal.sandbox, c.x, c.y, i, freeOn(), tokenSpan(t)) : "";
+    }
+    const t = draft.prepared[i];
+    if (!t) return "";
+    if (!editable(i)) return "Esse marcador está numa camada oculta ou bloqueada.";
+    if (selection.length > 1 && selection.includes(i) && !freeOn()) return moveTokensBy(layer?.cells, width(), height(), draft.prepared, editableSelection(), c.x - t.x, c.y - t.y, false).error || "";
+    return placementProblem(layer?.cells, width(), height(), draft.prepared, c.x, c.y, i, freeOn(), tokenSpan(t));
+  }
+  /** Dica temporária sobre o palco (casa recusada no arraste; tamanho durante a alça). Vazia volta à dica da ferramenta. */
+  let hintOverride = "";
+  function liveHint(text, problem = false) {
+    const el = q("#se-hint");
+    if (!el) return;
+    hintOverride = text || "";
+    el.classList.toggle("se-hint-error", !!hintOverride && problem);
+    if (hintOverride) { el.textContent = hintOverride; el.hidden = false; return; }
+    const normal = stageHint();
+    el.textContent = normal; el.hidden = !normal;
+  }
 
   // ---------- Edição no tabuleiro ----------
   function moveToken(i, cell) {
@@ -434,8 +608,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
    * No tático a área inteira precisa caber e estar livre, como no servidor. True quando aplicado.
    */
   function resizeToken(i, patch) {
+    if (simulate) return sandboxResize(i, patch);
     const cur = draft.prepared[i];
-    if (simulate || !cur || !editable(i)) return false;
+    if (!cur || !editable(i)) return false;
     const next = { ...cur, ...patch };
     if (!freeOn()) { delete next.fx; delete next.fy; }
     const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, next.x, next.y, i, freeOn(), tokenSpan(next));
@@ -454,8 +629,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     say(`Coluna ${t.x + 1}, linha ${t.y + 1}.`);
   }
   function onDrop(t, c) {
-    if (simulate) return false;
     const i = Number(t.id.slice(1));
+    if (simulate) return sandboxMove(i, c);
     if (!editable(i)) { say("Esse marcador está numa camada oculta ou bloqueada. Ajuste em Camadas."); return false; }
     // Arraste de um marcador de uma seleção (com grade): o grupo inteiro anda o mesmo deslocamento.
     if (selection.length > 1 && selection.includes(i) && !freeOn()) {
@@ -469,8 +644,14 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     return moveToken(i, c);
   }
   function onToken(t) {
-    if (simulate) return;
     lastCell = { x: t.x, y: t.y };
+    if (simulate) {
+      const s = rehearsal?.sandbox[Number(t.id.slice(1))];
+      if (!s) return;
+      rehearsal.selected = rehearsal.selected === s.key ? null : s.key;
+      board.setView(boardView()); renderSide();
+      return say(rehearsal.selected ? `${s.label} selecionado no ensaio: arraste, use as alças ou o menu (botão direito).` : "Seleção desfeita.");
+    }
     if (tool === "light" || tool === "mark" || tool === "toggleDoor") return onCell({ x: t.x, y: t.y });
     const i = Number(t.id.slice(1)), tok = draft.prepared[i];
     if (!tok) return;
@@ -487,7 +668,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     refreshSelection();
   }
   function onCell(c) {
-    if (simulate || !meta) return;
+    if (!meta) return;
+    if (simulate) { lastCell = c; const k = sandboxSelected(); if (k >= 0 && tool === "select") sandboxMove(k, c); return; }
     lastCell = c;
     if (enterPress) enterPress.used = true;
     if (tool === "select") {
@@ -773,14 +955,17 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     clearTimeout(previewTimer);
     const seq = ++previewSeq;
     previewTimer = setTimeout(async () => {
+      // Ensaio: a caixa de areia inteira (com tokens de ensaio e reservados), os perfis de teste e o observador escolhido.
+      const sandbox = rehearsal?.sandbox || [];
       const body = {
         mapKey: draft.mapKey, sceneId: saved.id || null, visionMode: mapKind() ? draft.visionMode || null : null,
-        tokens: sceneBody().prepared,
+        tokens: sandbox.map((t) => ({ ...tokenInput(t), label: t.label, rehearsal: !!t.rehearsal })),
+        profiles: previewProfiles(sandbox, rehearsal?.profiles || new Map()),
+        ...viewerFields(rehearsal?.observer || "", sandbox),
         layer: { fog: layer.fog, cells: layer.cells, revealed: layer.revealed, revision: meta.revision,
           lights: layer.lights.map((l) => ({ x: l.x, y: l.y, radius: l.radius, dim: l.dim ?? null, color: l.color ?? null, intensity: l.intensity ?? null, animation: l.animation ?? null })),
           marks: layer.marks.map((m) => ({ id: m.id || null, x: m.x, y: m.y, kind: m.kind, label: m.label, dc: m.dc ?? null, sense: m.sense || null, maxDistance: m.maxDistance ?? null })),
           walls: walls().map((w) => ({ id: w.id, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, kind: w.kind, open: !!w.open, hidden: !!w.hidden })) },
-        viewerCharacterId: viewer && viewer !== "party" ? viewer : null, party: viewer === "party",
       };
       try {
         const result = await api(`${base}/prep/preview-view`, "POST", body, { background: true });
@@ -797,13 +982,14 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
 
   // ---------- Seleção, área de transferência e camadas ----------
   function placeToken(token, cell, label) {
-    if (simulate || mapOnly || !mapKind() || !meta) { say("Personagens e marcadores entram em cenas de mapa tático."); return false; }
+    if (mapOnly || !mapKind() || !meta) { say("Personagens e marcadores entram em cenas de mapa tático."); return false; }
+    if (simulate) return sandboxPlace(token, cell, label);
     const target = draft.layers.find((l) => l.id === activeTokenLayer());
     if (target?.locked) { say(`A camada “${target.name}” está bloqueada. Escolha outra em Camadas.`); return false; }
-    // Personagem já posicionado: arrastar de novo move o marcador existente (nunca cria duplicata).
-    const existing = token.characterId ? draft.prepared.findIndex((t) => t.characterId === token.characterId) : -1;
+    // Personagem ou reservado já posicionado: arrastar de novo move o marcador existente (nunca cria duplicata).
+    const existing = token.characterId ? draft.prepared.findIndex((t) => t.characterId === token.characterId) : token.slotId ? slotIndex(draft.prepared, token.slotId) : -1;
     if (existing >= 0) { selection = [existing]; panel = "token"; return moveToken(existing, cell); }
-    const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, cell.x, cell.y, -1, freeOn());
+    const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, cell.x, cell.y, -1, freeOn(), tokenSpan(token));
     if (problem) { say(problem); return false; }
     change(label, () => { draft.prepared.push({ ...token, ...fineOf(cell), hidden: !!token.hidden, layer: activeTokenLayer() }); });
     selection = [draft.prepared.length - 1]; panel = "token"; pick = null;
@@ -816,7 +1002,17 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       const c = characters.find((x) => x.id === id);
       return c ? placeToken({ characterId: c.id, label: c.name, side: "ally", hidden: false }, cell, "Colocar personagem") : false;
     }
+    if (type === "slot") {
+      const s = slotStore.byId(id);
+      if (!s) { say("Esse personagem reservado não existe mais."); return false; }
+      // Reservado vinculado: o marcador já é o personagem (mesma regra do servidor); senão, o token provisório.
+      const token = { ...slotToken(s, activeTokenLayer()), ...(s.characterId ? { characterId: s.characterId, label: s.characterName || s.name } : {}) };
+      const ok = placeToken(token, cell, "Colocar personagem reservado");
+      if (ok) renderCharacterList();
+      return ok;
+    }
     const n = (npcs || []).find((x) => x.id === id);
+    if (n) touchQuick(`character:${n.id}`);
     // Forma escolhida no painel; sem imagem do personagem, entra redondo.
     const appearance = placeLook === LOOK_IMAGE && tokenImage({ masterCharacterId: n.id }) ? LOOK_IMAGE : null;
     return n ? placeToken({ masterCharacterId: n.id, label: n.name.slice(0, 40), side: n.side || "enemy", hidden: false, appearance }, cell, "Colocar personagem do mestre") : false;
@@ -833,7 +1029,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     refresh();
   }
   function removeSelection() {
-    if (simulate) return;
+    if (simulate) { const k = sandboxSelected(); return k >= 0 ? sandboxRemove(k) : say("Selecione um token do ensaio para retirar."); }
     if (wallSel.length) return removeWalls();
     const ids = editableSelection();
     if (!ids.length) return say("Selecione um marcador para excluir.");
@@ -842,8 +1038,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function copy() {
     const ids = editableSelection();
     if (!ids.length) return say("Selecione um marcador para copiar.");
-    const own = ids.filter((i) => !draft.prepared[i].characterId);
-    if (!own.length) return say("Personagens dos jogadores aparecem uma vez por cena; use Recortar para movê-los.");
+    const own = ids.filter((i) => !draft.prepared[i].characterId && !draft.prepared[i].slotId);
+    if (!own.length) return say("Personagens dos jogadores e reservados aparecem uma vez por cena; use Recortar para movê-los.");
     clipboard = clipboardFrom(draft.prepared, own);
     say(own.length < ids.length ? `${own.length} copiado(s). Personagens dos jogadores não são copiados.` : own.length === 1 ? "Marcador copiado." : `${own.length} marcadores copiados.`);
     shell.refreshMenus();
@@ -876,8 +1072,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   }
   function duplicate() {
     if (simulate) return;
-    const own = editableSelection().filter((i) => !draft.prepared[i].characterId);
-    if (!own.length) return say("Personagens dos jogadores aparecem uma vez por cena e não são duplicados.");
+    const own = editableSelection().filter((i) => !draft.prepared[i].characterId && !draft.prepared[i].slotId);
+    if (!own.length) return say("Personagens dos jogadores e reservados aparecem uma vez por cena e não são duplicados.");
     const anchor = { x: Math.min(...own.map((i) => draft.prepared[i].x)) + 1, y: Math.min(...own.map((i) => draft.prepared[i].y)) };
     const { placed, skipped } = pastePlacement({ cells: layer?.cells, width: width(), height: height(), tokens: draft.prepared, items: clipboardFrom(draft.prepared, own), anchor, free: freeOn() });
     insertPlaced(placed, skipped, "Duplicar");
@@ -991,9 +1187,14 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (!t || simulate) return;
     if (!editable(i)) return say("Esse marcador está numa camada oculta ou bloqueada.");
     const pc = !!t.characterId;
+    // Reservado: nome e lado vêm do reservado (renomeie no painel Personagens); forma, tamanho e posição são da cena.
+    const reserved = !!t.slotId && !pc;
     const fields = [
-      pc ? { name: "label", label: "Nome", type: "static", value: t.label } : { name: "label", label: "Nome", type: "text", value: t.label, maxlength: 40, required: true },
-      ...(pc ? [{ name: "kind", label: "Tipo", type: "static", value: "Personagem dos jogadores" }] : [
+      pc || reserved ? { name: "label", label: "Nome", type: "static", value: t.label } : { name: "label", label: "Nome", type: "text", value: t.label, maxlength: 40, required: true },
+      ...(pc ? [{ name: "kind", label: "Tipo", type: "static", value: "Personagem dos jogadores" }] : reserved ? [
+        { name: "kind", label: "Tipo", type: "static", value: "Personagem reservado (aliado)" },
+        { name: "hidden", label: "Oculto: só você vê até revelar", type: "checkbox", value: !!t.hidden },
+      ] : [
         { name: "side", label: "Lado", type: "select", value: t.side || "enemy", options: SIDES },
         { name: "hidden", label: "Oculto: só você vê até revelar", type: "checkbox", value: !!t.hidden },
       ]),
@@ -1022,7 +1223,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       onApply: (v) => {
         const cur = draft.prepared[i];
         if (!cur) throw new Error("O marcador não está mais na cena.");
-        const label = pc ? cur.label : String(v.label || "").trim().slice(0, 40);
+        const label = pc || reserved ? cur.label : String(v.label || "").trim().slice(0, 40);
         if (!label) throw new Error("Dê um nome ao marcador.");
         const x = Math.round(Number(v.x)) - 1, y = Math.round(Number(v.y)) - 1;
         const appearance = pc ? cur.appearance ?? null : lookFromDialog(v, cur);
@@ -1039,7 +1240,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
           draft.prepared[i] = {
             ...cur, label, x, y, fx: fine(v.fx, cur.fx), fy: fine(v.fy, cur.fy), layer: target,
             ...(pc ? {} : {
-              side: v.side, hidden: !!v.hidden, appearance, ...span,
+              side: reserved ? cur.side || "ally" : v.side, hidden: !!v.hidden, appearance, ...span,
               size: clampSize(v.size) === DEFAULT_SIZE && cur.size == null ? null : clampSize(v.size),
             }),
             ...(mode === "complete" && !pc ? { light: v.light == null ? null : Math.max(0, Math.min(30, Math.round(v.light))) } : {}),
@@ -1139,9 +1340,13 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   }
   function composeMenu(at, id, point) {
     if (!composer || simulate) return;
+    configureInstances();
     if (!id) {
       return openContextMenu(at, [
         { label: "Adicionar imagem…", run: () => pickImages() },
+        { label: "Importar imagem por link…", run: () => importImageUrl(point) },
+        instanceMenuItem(point),
+        { label: "Selecionar próximo mapa inserido", disabled: !(draft.composition?.elements || []).some(MI_isInstance), disabledReason: "Nenhum mapa inserido nesta cena.", run: () => composeAction("nextMap") },
         { label: "Colar aqui", shortcut: "mod+v", disabled: !composer.hasClipboard, disabledReason: "Copie um elemento antes.", run: () => { composer.paste(point); afterCompose(); } },
         { label: "Selecionar tudo", shortcut: "mod+a", run: () => composer.select((draft.composition?.elements || []).filter((x) => CP.isSelectable(draft.composition, x)).map((x) => x.id), false) },
       ], { label: "Composição" });
@@ -1149,8 +1354,18 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const els = composer.selected(), one = els[0];
     const layers = compDoc().layers;
     const act = (fn) => () => { fn(); afterCompose(); };
+    const inst = els.some(MI_isInstance);
     openContextMenu(at, [
       { label: "Propriedades…", shortcut: "enter", run: () => showProps() },
+      ...(inst ? [
+        { separator: true },
+        { label: "Encaixar na grade da cena", run: () => composeAction("snapMap") },
+        { label: "Trazer paredes, portas e luzes deste mapa", disabled: els.length !== 1 || !MI_isInstance(one), disabledReason: "Selecione um único mapa inserido.", run: () => importInstanceRules(one) },
+        { label: "Encaixar mapas inseridos na grade", checked: snapMaps, run: () => { snapMaps = !snapMaps; say(snapMaps ? "Mapas inseridos encaixam na grade da cena: giro de 90° em 90° e movimento de casa em casa." : "Encaixe desligado: mapas inseridos movem e giram livremente (as regras só podem ser trazidas com o mapa encaixado)."); } },
+        { label: "Mapa inserido anterior", run: () => composeAction("prevMap") },
+        { label: "Próximo mapa inserido", run: () => composeAction("nextMap") },
+        { separator: true },
+      ] : []),
       { label: "Duplicar", shortcut: "mod+j", run: act(() => composer.duplicate()) },
       { label: "Copiar", shortcut: "mod+c", run: () => composer.copy() },
       { label: "Recortar", shortcut: "mod+x", run: act(() => composer.cut()) },
@@ -1206,6 +1421,11 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
         { name: "locked", label: "Bloqueado", type: "checkbox", value: els.every((x) => x.locked) },
       ],
       actions: [
+        ...(one && MI_isInstance(one) ? [
+          { id: "snapMap", label: "Encaixar na grade da cena", icon: "grid" },
+          { id: "importRules", label: "Trazer paredes, portas e luzes deste mapa", icon: "wall" },
+          { id: "nextMap", label: "Próximo mapa inserido", icon: "next" },
+        ] : []),
         { id: "fit", label: "Ajustar à área visível (imagem inteira)", icon: "maximize" },
         { id: "fill", label: "Preencher a área visível (pode recortar)", icon: "fill" },
         { id: "original", label: "Tamanho original", icon: "image" },
@@ -1231,8 +1451,103 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       fit: () => composer.fit("fit"), fill: () => composer.fit("fill"), original: () => composer.fit("original"), center: () => composer.fit("center"),
       flipX: () => composer.flip("x"), flipY: () => composer.flip("y"), duplicate: () => composer.duplicate(), front: () => composer.zorder("front"), back: () => composer.zorder("back"),
       delete: () => composer.remove(), rotR: () => composer.rotate(90), rotL: () => composer.rotate(-90), add: () => pickImages(),
+      snapMap: () => { configureInstances(); composer.snapInstances(); },
+      nextMap: () => composer.selectInstance(1), prevMap: () => composer.selectInstance(-1),
+      importRules: () => importInstanceRules(composer.selected()[0]),
     })[id]?.();
     afterCompose(); syncComposeBar();
+  }
+  // ---------- Mapas da campanha inseridos na cena (ADR-113) ----------
+  // A cena tem uma grade global (a do mapa de fundo); cada mapa inserido é um elemento da composição com `mapKey` e encaixa
+  // nessa grade. O original não é copiado nem alterado; regras só entram pela importação explícita abaixo.
+  let snapMaps = true, MI = null;
+  import("./map-instance-policy.js").then((m) => { MI = m; }).catch(() => {});
+  function MI_isInstance(el) { return !!MI?.isMapInstance(el); }
+  /** Grade da cena para as instâncias: a do mapa tático de fundo (null em cenas sem grade). */
+  function instanceGrid() { return MI && mapKind() && meta ? MI.sceneGrid(meta) : null; }
+  function configureInstances() { composer?.setInstances({ mapOf, grid: instanceGrid, snap: () => snapMaps }); }
+  /** Mapas da campanha que podem ser inseridos (com grade, de imagem, outros que não o fundo). */
+  function instanceChoices() { return MI ? maps.items.filter((m) => MI.canInstance(m) && m.key !== draft.mapKey) : []; }
+  function instanceMenuItem(point) {
+    const g = instanceGrid(), list = instanceChoices();
+    const reason = !g ? "A cena precisa de um mapa tático (com grade) como fundo." : "Nenhum outro mapa com grade na campanha.";
+    return { label: "Inserir mapa da campanha", disabled: !g || !list.length, disabledReason: reason, items: list.slice(0, 50).map((m) => ({ label: m.name, run: () => insertMapInstance(m, point) })) };
+  }
+  /** Ferramenta "Inserir mapa da campanha" (barra da Completa e Busca de ações): mesmo submenu do menu de contexto. */
+  function openMapInstanceMenu() {
+    const item = instanceMenuItem(null);
+    if (item.disabled) return say(item.disabledReason);
+    const r = shell.stage.getBoundingClientRect();
+    openContextMenu({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + 80) }, item.items, { label: item.label });
+  }
+  function insertMapInstance(m, point) {
+    const g = instanceGrid();
+    if (!g || !MI?.canInstance(m)) return say("Para inserir um mapa, a cena precisa de grade e o mapa também.");
+    if (shell.context !== "compose") shell.setContext("compose");
+    mountComposer();
+    configureInstances();
+    const el = composer.addMapInstance(m, g, point);
+    if (!el) return;
+    afterCompose(); syncComposeBar();
+    say(`Mapa “${m.name}” inserido na grade da cena (casa de ${g.size} px). O original continua igual; paredes e luzes dele só entram com “Trazer paredes, portas e luzes deste mapa”.`);
+  }
+  /** Converte a preparação compartilhada do mapa original para casas da cena e junta à camada própria da cena (um passo de desfazer). */
+  async function importInstanceRules(el) {
+    if (!MI || !MI_isInstance(el)) return say("Selecione um mapa inserido.");
+    if (draft.layerMode !== "scene") {
+      say("As regras trazidas entram só na preparação própria desta cena. Em Configurações da cena, escolha “Própria desta cena” e salve; depois traga as paredes e luzes.");
+      return openPanel("sceneSettings");
+    }
+    if (layerLocked()) return say("Salve o alcance da preparação antes de trazer regras.");
+    const m = mapOf(el.mapKey), g = instanceGrid();
+    if (!m || !g || !layer) return say("A cena precisa de grade e o mapa original precisa estar disponível.");
+    const a = MI.alignment(el, m, g);
+    if (!a.aligned) return say(a.problem);
+    try {
+      say(`Lendo a preparação de “${m.name}”…`);
+      const src = await api(`${base}/assets/layers?key=${encodeURIComponent(m.key)}`, "GET", undefined, { background: true });
+      if (closed) return;
+      const t = MI.transformPrep({ cells: src.cells, lights: src.lights, walls: src.walls }, el, m, g);
+      if (t.error) return say(t.error);
+      let result = null;
+      change(`Trazer regras de “${m.name}”`, () => { result = MI.mergePrep(layer, t, width(), el.id); layer = result.layer; });
+      refresh();
+      say(MI.importSummary(m.name, result.added, t.dropped, result.skipped) + " Ctrl+Z desfaz.");
+    } catch (e) { say(e?.message || "Não foi possível ler a preparação do mapa original."); }
+  }
+  /** Imagem por link https: o servidor baixa uma cópia como imagem desta cena (mesmos limites do envio). */
+  async function importImageUrl(point) {
+    const text = prompt("Endereço https da imagem (PNG ou JPEG)");
+    if (text == null) return;
+    const { httpsImageUrl } = await import("./image-drop.js");
+    let url;
+    try { url = httpsImageUrl(text); } catch (e) { return say(e.message); }
+    if (busy || uploading) return say("Aguarde a operação em andamento terminar.");
+    if (!(await ensureSceneSaved("imagem do link"))) return;
+    const name = (url.split("?")[0].split("/").pop() || "Imagem").replace(/\.[a-z0-9]{2,5}$/i, "").slice(0, 120) || "Imagem";
+    uploading = true; shell.refreshTools();
+    say(`Importando “${name}”…`);
+    try {
+      const source = await api(`${base}/scenes/${saved.id}/sources/import`, "POST", { url, name }, { background: true });
+      if (closed) return;
+      if (shell.context !== "compose") shell.setContext("compose");
+      const el = mountComposer().addImage(source, point || null, { label: "Imagem por link" });
+      if (el) { composer.select([el.id], false); say(`Imagem “${name}” adicionada só a esta cena.`); }
+    } catch (e) { say(`${e?.message || "A importação falhou."} Nada do que já estava na cena foi perdido.`); }
+    finally { uploading = false; shell.refreshTools(); afterCompose(); syncComposeBar(); }
+  }
+  let uploadTray = null;
+  /** Bloco do mapa inserido (ADR-113): original, encaixe na grade da cena e regras explícitas. */
+  function instancePanelHtml(el) {
+    const m = mapOf(el.mapKey), g = instanceGrid();
+    const a = m && g ? MI.alignment(el, m, g) : { aligned: false, problem: !m ? "O mapa original não está na lista de mapas da campanha." : "A cena precisa de grade." };
+    const rules = draft.layerMode === "scene" ? "As paredes, portas e luzes do original entram na preparação própria desta cena só quando você pedir; o original não muda."
+      : "Para trazer paredes, portas e luzes do original, a cena precisa da preparação própria (Configurações da cena).";
+    return `<section class="se-instance" aria-label="Mapa inserido"><h4>Mapa inserido${helpButton("campanhas.cenas.mapa-inserido", "Mapas inseridos na cena")}</h4>
+      <p class="form-help">Original: <strong>${esc(m?.name || "indisponível")}</strong>. Excluir este elemento tira só o mapa da cena.</p>
+      <p class="form-help" role="status">${a.aligned ? `Encaixado na grade da cena (casa de ${g.size} px, giro ${Math.round(el.rotation)}°).` : esc(a.problem)}</p>
+      <div class="se-comp-actions" role="group" aria-label="Mapa inserido">${button("Encaixar na grade da cena", "se-comp", "snapMap", "subtle small")}${button("Trazer paredes, portas e luzes", "se-comp", "importRules", "subtle small")}${iconButton("next", "Próximo mapa inserido", "se-comp", "nextMap", "subtle small")}</div>
+      <p class="form-help">${rules}</p></section>`;
   }
   /** Painel Propriedades no contexto Composição: o selecionado ou, sem seleção, o que é desta cena e o que é compartilhado. */
   function composePanel() {
@@ -1253,6 +1568,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const status = one ? CP.artboardStatus(one, compDoc().artboard) : "";
     return `<div class="se-panel"><h3>${one ? esc(one.name || "Imagem") : `${els.length} elementos`}</h3>${scope}
       ${one ? `<div class="field"><label for="se-c-name">Nome</label><input id="se-c-name" data-comp-name maxlength="80" value="${esc(one.name || "")}"></div><p class="form-help">${Math.round(one.width)} × ${Math.round(one.height)} px · giro ${Math.round(one.rotation)}°${status === "outside" ? " · fora da área visível (não aparece na mesa)" : status === "partial" ? " · parcialmente fora da área visível (a parte de fora não aparece)" : ""}.</p>` : ""}
+      ${one && MI_isInstance(one) ? instancePanelHtml(one) : ""}
       <label class="check"><input type="checkbox" data-comp-flag="secret" ${els.every((x) => x.secret) ? "checked" : ""}> Só o mestre vê (não vai para os jogadores)</label>
       <label class="check"><input type="checkbox" data-comp-flag="visible" ${els.every((x) => x.visible) ? "" : "checked"}> Ocultar só no editor</label>
       <label class="check"><input type="checkbox" data-comp-flag="locked" ${els.every((x) => x.locked) ? "checked" : ""}> Bloquear</label>
@@ -1298,21 +1614,65 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       if (composer) composer.activeLayer = "elements";
     }
   }
-  /** Painel Acervo: mapas de imagem da campanha arrastáveis para a composição (referência, sem copiar o arquivo). */
+  /**
+   * Acervo rápido (P1.1): categorias em chips, busca e miniaturas. Personagens, reservados e NPCs vão ao mapa como
+   * marcadores (mesmo arrastar do painel Personagens); mapas e imagens entram pela composição (mesmo arrastar do Acervo,
+   * tratado em addFromAsset). Sempre por referência: nenhum arquivo é duplicado.
+   */
   let assetsKey = "";
+  const TOKEN_KINDS = new Set(["pc", "slot", "npc"]);
+  /** Favoritos e recentes da Preparação (mesmo armazenamento local por conta e campanha; só chaves `tipo:id`). */
+  function quickPrefs() {
+    try { return normalizeUserPrefs(JSON.parse(localStorage.getItem(userPrefsKey(appState.user?.id, campaign.id)) || "{}")); }
+    catch { return normalizeUserPrefs({}); }
+  }
+  function touchQuick(key) {
+    try {
+      const k = userPrefsKey(appState.user?.id, campaign.id);
+      const raw = JSON.parse(localStorage.getItem(k) || "{}");
+      const next = touchRecent(normalizeUserPrefs(raw), key);
+      localStorage.setItem(k, JSON.stringify({ ...raw, recents: next.recents }));
+    } catch { /* armazenamento indisponível: recentes valem só nesta visita */ }
+  }
+  function quickCategories() {
+    // Na composição só entram imagens e mapas; nos demais contextos, também personagens e criaturas.
+    return composing() ? QUICK_CATEGORIES.filter(([id]) => ["recent", "favorites", "maps", "images"].includes(id)) : QUICK_CATEGORIES;
+  }
+  function quickThumb(item) {
+    if (item.kind === "slot") return slotPreviewHtml(campaign.id, slotStore.byId(item.ref.slice(5)));
+    const src = item.kind === "map" || item.kind === "image" ? slotImageSrc(campaign.id, item.ref)
+      : typeof item.imageUrl === "string" && (item.imageUrl.startsWith("/api/") || item.imageUrl.startsWith("https://")) ? item.imageUrl : null;
+    return `<span class="se-quick-thumb${item.kind === "map" || item.kind === "image" ? " wide" : ""}" aria-hidden="true">${src ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : icon(item.kind === "pc" ? "character" : "object")}</span>`;
+  }
   function renderAssets(force = false) {
     const host = shell.panel("assets");
     if (!host) return;
+    const cats = quickCategories();
+    if (!cats.some(([id]) => id === quickCat)) quickCat = composing() ? "images" : "party";
     if (!host.querySelector("[data-asset-q]")) {
-      host.innerHTML = '<div class="field"><label for="se-asset-q">Buscar no acervo</label><input id="se-asset-q" type="search" data-asset-q maxlength="80" autocomplete="off"></div><div data-asset-list></div><p class="form-help">Arraste para o palco ou use Adicionar: a cena passa a usar a mesma imagem, sem duplicar o arquivo. Numa cena vazia, a imagem vira o fundo.</p>';
-      bindAssetList(host, { onAdd: (item) => addFromAsset(item, null) });
+      host.innerHTML = `<div class="se-quick"><div class="se-quick-cats" role="group" aria-label="Categorias do acervo" data-quick-cats></div><div class="field"><label for="se-asset-q">Buscar no acervo</label><input id="se-asset-q" type="search" data-asset-q maxlength="80" autocomplete="off" placeholder="Nome"></div><div data-asset-list></div><p class="form-help" data-quick-help></p></div>`;
+      bindAssetList(host, { onAdd: (item) => { const m = mapOf(item.src); if (m?.id) touchQuick(`map:${m.id}`); addFromAsset(item, null); } });
     }
-    // As miniaturas só são refeitas quando a lista muda (imagens do acervo não ficam em cache do navegador).
-    const key = `${draft.mapKey}|${maps.items.length}|${host.querySelector("[data-asset-q]").value}`;
+    quickQuery = host.querySelector("[data-asset-q]").value;
+    const placed = draft.prepared.length + (rehearsal?.sandbox.length || 0);
+    const key = [quickCat, quickQuery, shell.context, draft.mapKey, maps.items.length, npcs?.length ?? "-", slotStore.items.map((s) => `${s.id}:${s.revision}`).join(","), slotStore.error, characters.length, placed].join("|");
     if (!force && key === assetsKey) return;
     assetsKey = key;
-    const items = maps.items.filter((m) => m.key !== draft.mapKey);
-    host.querySelector("[data-asset-list]").innerHTML = assetListHtml(items, { query: host.querySelector("[data-asset-q]").value, empty: "Nenhuma imagem no acervo da campanha ainda. Envie imagens pela Preparação › Mapas ou solte arquivos aqui no palco." });
+    host.querySelector("[data-quick-cats]").innerHTML = cats.map(([id, label]) => `<button type="button" class="se-chip" data-action="se-quick-cat" data-id="${id}" aria-pressed="${id === quickCat}">${esc(label)}</button>`).join("");
+    const items = quickAssetItems({ characters, slots: slotStore.items, npcs: npcs || [], maps: maps.items.filter((m) => m.key !== draft.mapKey), prefs: quickPrefs() }, quickCat, quickQuery)
+      .filter((x) => !composing() || !TOKEN_KINDS.has(x.kind));
+    const loading = (quickCat === "npcs" && npcs == null) || ((quickCat === "reserved" || quickCat === "party") && slotStore.loading && !slotStore.items.length);
+    const failed = (quickCat === "reserved" || quickCat === "party") && slotStore.error && !slotStore.items.length;
+    const empty = { recent: "Nada recente ainda: o que você abrir na Preparação ou inserir daqui aparece aqui.", favorites: "Nenhum favorito: marque com a estrela na Preparação.", party: "Nenhum personagem de jogador nem reservado ainda. Crie reservados no painel Personagens.", reserved: "Nenhum personagem reservado. Crie no painel Personagens.", npcs: "Crie personagens do mestre na Preparação (pasta Personagens).", maps: "Nenhum mapa com grade enviado à campanha.", images: "Nenhuma imagem no acervo da campanha ainda. Envie pela Preparação › Mapas ou solte arquivos no palco." }[quickCat];
+    const tokenRow = (x) => `<li class="se-quick-item se-char" draggable="true" data-se-char="${esc(x.ref)}">${quickThumb(x)}<span>${esc(x.name)}<small>${esc(x.sub)}</small></span>${button(`Colocar<span class="sr-only"> ${esc(x.name)} no cursor</span>`, "se-place-cursor", x.ref, "subtle small", mapKind() && meta ? "" : 'aria-disabled="true" data-tip="Personagens entram em cenas com mapa tático."')}</li>`;
+    const assetRow = (x) => `<li class="se-quick-item ed-asset" draggable="true" data-ed-asset="${esc(JSON.stringify(x.asset))}">${quickThumb(x)}<span>${esc(x.name)}<small>${esc(x.sub)}</small></span><button type="button" class="subtle small" data-ed-asset-add>Inserir<span class="sr-only"> ${esc(x.name)}</span></button></li>`;
+    host.querySelector("[data-asset-list]").innerHTML = loading ? '<p class="loading-line" role="status">Carregando…</p>'
+      : failed ? `<p class="form-error" role="alert">${esc(slotStore.error)}</p>${button("Tentar de novo", "se-slot-retry", "", "subtle small")}`
+      : items.length ? `<ul class="se-quick-list" role="list">${items.map((x) => (TOKEN_KINDS.has(x.kind) ? tokenRow(x) : assetRow(x))).join("")}</ul>`
+      : `<p class="muted small">${esc(quickQuery ? "Nenhum resultado." : empty)}</p>`;
+    host.querySelector("[data-quick-help]").textContent = composing()
+      ? "Arraste para o palco ou use Inserir: a cena usa o mesmo arquivo, sem duplicar. Numa cena vazia, a imagem vira o fundo."
+      : "Arraste para o mapa ou use Colocar (vai para a casa sob o cursor). Imagens e mapas entram pela composição desta cena.";
   }
 
   // ---------- Imagens soltas, coladas ou escolhidas (ADR-090) ----------
@@ -1353,25 +1713,23 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (!(await ensureSceneSaved(baseName(files[0].name)))) return;
     mountComposer();
     uploading = true; shell.refreshTools();
-    const added = [];
     try {
-      for (const [i, file] of files.entries()) {
-        say(files.length > 1 ? `Enviando imagem ${i + 1} de ${files.length}…` : `Enviando “${baseName(file.name)}”…`);
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("name", baseName(file.name));
-        const source = await api(`${base}/scenes/${saved.id}/sources`, "POST", fd, { background: true });
-        if (closed) return;
-        const el = composer.addImage(source, at ? { x: at.x + i * 24, y: at.y + i * 24 } : null);
-        if (el) added.push(el.id);
-      }
-      say(added.length > 1 ? `${added.length} imagens adicionadas só a esta cena.` : "Imagem adicionada só a esta cena: arraste para mover; as alças redimensionam e giram.");
-    } catch (e) {
-      say(`${added.length ? `${added.length} imagem(ns) adicionada(s). ` : ""}${e?.message || "O envio falhou."} As restantes não foram enviadas; tente de novo.`);
+      // Fluxo comum com o editor de mapas (image-drop.js): miniatura e andamento por arquivo, colocação no ponto da soltura,
+      // seleção ao terminar; uma falha não interrompe os demais nem descarta o rascunho da cena.
+      const { mountUploadTray, uploadEach } = await import("./image-drop.js");
+      if (closed) return;
+      if (!uploadTray?.isConnected) { uploadTray = mountUploadTray(shell.stage); uploadTray.isConnected = true; }
+      const { added } = await uploadEach(files, {
+        tray: uploadTray,
+        upload: (file) => { const fd = new FormData(); fd.append("file", file); fd.append("name", baseName(file.name)); return api(`${base}/scenes/${saved.id}/sources`, "POST", fd, { background: true }); },
+        place: (source, i) => composer.addImage(source, at ? { x: at.x + i * 24, y: at.y + i * 24 } : null)?.id || null,
+        alive: () => !closed,
+        say,
+      });
+      if (added.length && !closed) { composer.select(added, false); composer.surface.canvas.focus({ preventScroll: true }); }
     } finally {
       uploading = false;
-      if (added.length) composer.select(added, false);
-      shell.refreshTools(); afterCompose(); syncComposeBar();
+      if (!closed) { shell.refreshTools(); afterCompose(); syncComposeBar(); }
     }
   }
   /** Imagem do acervo: numa cena vazia vira o fundo; senão entra na composição como referência (sem copiar bytes). */
@@ -1381,6 +1739,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (!draft.mapKey && m) return chooseMap(m);
     if (!composable()) return say("A composição usa uma imagem da campanha como fundo. Escolha o fundo antes.");
     const at = dropPoint(p);
+    // Mapa da campanha com grade numa cena com grade: entra como mapa inserido, encaixado (ADR-113); demais imagens, como imagem.
+    if (m && MI?.canInstance(m) && instanceGrid()) return insertMapInstance(m, at);
     if (shell.context !== "compose") shell.setContext("compose");
     mountComposer().addImage({ key: item.src, name: item.name, width: item.width || m?.pixelWidth, height: item.height || m?.pixelHeight }, at, { label: "Imagem do acervo" });
     syncComposeBar();
@@ -1393,10 +1753,12 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const files = c.files || [];
     const head = c.playable ? "Tornar esta imagem jogável" : c.blank ? "Começar com uma área em branco" : c.replace ? "Usar como novo fundo da cena?" : "Primeira imagem da cena";
     const use = files.length ? `<fieldset><legend>“${esc(baseName(files[0].name))}”</legend><label class="check se-option"><input type="radio" name="use" value="background" checked><span><strong>Usar como fundo da cena</strong><small>Vira o mapa desta cena (guardado em Mapas e reutilizável em outras cenas).</small></span></label>${c.replace ? "" : `<label class="check se-option"><input type="radio" name="use" value="element"><span><strong>Adicionar como elemento independente</strong><small>Cria um fundo em branco do mesmo tamanho e coloca a imagem por cima, livre para mover.</small></span></label>`}</fieldset>${files.length > 1 ? `<p class="form-help">As outras ${files.length - 1} imagem(ns) entram como elementos por cima do fundo.</p>` : ""}` : "";
-    const size = c.blank ? `<div class="field"><label for="se-blank-size">Tamanho</label><select id="se-blank-size" name="size">${opt([["2048x1536", "2048 × 1536 px (4:3)"], ["1920x1080", "1920 × 1080 px (16:9)"], ["1536x1536", "1536 × 1536 px (quadrado)"], ["3072x2048", "3072 × 2048 px (grande)"]], "2048x1536")}</select></div>` : "";
+    // Área em branco por casas (P1.3): cenas com vários mapas inseridos precisam de uma superfície maior que um mapa só.
+    const presets = (MI?.BLANK_PRESETS || [[30, 20], [40, 30], [60, 40]]).map(([w, h]) => [`${w}x${h}`, `${w} × ${h} casas`]);
+    const size = c.blank ? `<div class="field"><label for="se-blank-size">Tamanho da área</label><select id="se-blank-size" name="cells" aria-describedby="se-blank-help">${opt([...presets, ...(mode === "complete" ? [["custom", "Outro tamanho…"]] : [])], "40x30")}</select><small class="form-help" id="se-blank-help">Casas de até 70 px; 8 a 100 casas por lado, até 4.096 casas. Mapas da campanha inseridos depois encaixam nessa grade.</small></div>${mode === "complete" ? `<div class="se-blank-custom" data-blank-custom><div class="field"><label for="se-blank-cols">Colunas</label><input id="se-blank-cols" name="cols" type="number" min="8" max="100" step="1" value="50"></div><div class="field"><label for="se-blank-rows">Linhas</label><input id="se-blank-rows" name="rows" type="number" min="8" max="100" step="1" value="40"></div></div>` : ""}` : "";
     const replaceNote = c.replace ? '<p class="notice-box">Trocar o fundo remove as posições preparadas e a composição desta cena (o mapa anterior continua em Mapas).</p>' : "";
     const sharedNote = c.playable ? `<p class="form-help">O mapa “${esc(imageMap()?.name || "")}” ganha uma grade técnica e passa a aceitar personagens. Outras cenas que o usam como imagem continuam iguais.</p>` : "";
-    return `<form class="se-panel se-start-form" data-start-form><h3>${head}${helpButton("campanhas.cenas.composicao", "Composição da cena")}</h3>${replaceNote}${use}${size}
+    return `<form class="se-panel se-start-form" data-start-form><h3>${head}${c.blank ? helpButton("campanhas.cenas.area-branco", "Área em branco") : helpButton("campanhas.cenas.composicao", "Composição da cena")}</h3>${replaceNote}${use}${size}
       <fieldset><legend>Como os personagens usam a imagem?</legend>${modes.map(([v, l, help], i) => `<label class="check se-option"><input type="radio" name="mode" value="${v}" ${i === 0 ? "checked" : ""}><span><strong>${esc(l)}</strong><small>${esc(help)}</small></span></label>`).join("")}</fieldset>${sharedNote}
       <div class="form-actions">${button("Cancelar", "se-start-cancel", "", "subtle")}<button type="submit" class="primary">Continuar</button></div></form>`;
   }
@@ -1411,8 +1773,10 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     try {
       if (c.playable) { uploading = false; return await makePlayable(modeV); }
       if (c.blank) {
-        const [w, h] = String(data.size || "2048x1536").split("x").map(Number);
-        await createBackground(await blankImage(w, h), modeV, "Área em branco");
+        const [cols, rows] = data.cells === "custom" ? [Number(data.cols), Number(data.rows)] : String(data.cells || "40x30").split("x").map(Number);
+        const surface = MI ? MI.blankSurface(cols, rows) : { width: 2800, height: 2100, gridPixels: 70 };
+        if (surface.error) throw new Error(surface.error);
+        await createBackground(await blankImage(surface.width, surface.height), modeV, `Área em branco ${cols} × ${rows}`, surface.gridPixels);
       } else if (data.use === "element") {
         const s = await readImageSize(c.files[0]);
         const k = Math.min(1, 4096 / Math.max(s.width, s.height), Math.sqrt(8_000_000 / (s.width * s.height)));
@@ -1437,10 +1801,10 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(new File([b], "area-em-branco.png", { type: "image/png" })) : reject(new Error("O navegador não gerou a área em branco."))), "image/png"));
   }
   /** Envia a imagem como mapa da campanha (pelo upload de mapas existente) e a associa a esta cena. */
-  async function createBackground(file, modeV, name) {
+  async function createBackground(file, modeV, name, cellPx = 0) {
     const s = await readImageSize(file);
     const playable = modeV !== "image";
-    const gridPx = defaultGrid(s.width, s.height);
+    const gridPx = cellPx || defaultGrid(s.width, s.height);
     if (playable && !gridPx) throw new Error("A imagem é pequena ou estreita demais para posicionar personagens. Use “Somente apresentação” ou outra imagem.");
     say("Enviando o fundo da cena…");
     const fd = new FormData();
@@ -1525,7 +1889,17 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   // ---------- Menus de contexto ----------
   function onContext({ cell, token, x, y }) {
     const at = { x, y };
-    if (simulate) return openContextMenu(at, [{ label: "Voltar à edição", run: () => toggleSimulate(false) }], { label: "Simulação" });
+    if (simulate) {
+      if (cell) lastCell = cell;
+      const k = token ? Number(token.id.slice(1)) : -1;
+      if (rehearsal?.sandbox[k]) return sandboxMenu(k, at);
+      return openContextMenu(at, [
+        { label: "Token de ensaio aqui", disabled: !cell, disabledReason: "Escolha uma casa do mapa.", run: () => { lastCell = cell; hover = cell; addRehearsalToken(); } },
+        { separator: true },
+        { label: "Aplicar alterações à preparação…", run: applyRehearsalChanges },
+        { label: "Sair do ensaio", hint: "Esc", run: () => toggleSimulate(false) },
+      ], { label: "Ensaio" });
+    }
     if (cell) lastCell = cell;
     if (token) {
       const i = Number(token.id.slice(1)), tok = draft.prepared[i];
@@ -1540,9 +1914,12 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (l?.locked) return openContextMenu(at, [{ label: `Desbloquear a camada “${l.name}”`, run: () => layerAction("lock", l.id) }], { label: tok.label || "Marcador" });
     if (!selection.includes(i)) { selection = [i]; panel = "token"; refreshSelection(); }
     const ids = editableSelection();
-    const allPc = ids.every((k) => draft.prepared[k].characterId);
+    const allPc = ids.every((k) => draft.prepared[k].characterId || draft.prepared[k].slotId);
     const own = ids.filter((k) => !draft.prepared[k].characterId);
-    const PC_ONCE = "Personagens dos jogadores aparecem uma vez por cena.";
+    const PC_ONCE = "Personagens dos jogadores e reservados aparecem uma vez por cena.";
+    const one = ids.length === 1;
+    const slot = one && tok.slotId ? slotStore.byId(tok.slotId) : null;
+    const bindReason = sceneDirty ? "Salve a cena antes: o vínculo reescreve as cenas salvas." : !saved.id ? "Salve a cena antes de vincular." : "";
     openContextMenu(at, [
       { label: "Editar propriedades…", shortcut: "enter", run: () => openTokenProperties(i) },
       { label: "Duplicar", disabled: allPc, disabledReason: PC_ONCE, run: duplicate },
@@ -1557,8 +1934,62 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
         label: "Forma no mapa",
         items: LOOK_OPTIONS.map(([v, label]) => ({ label, checked: lookOf(tok) === v, disabled: v === LOOK_IMAGE && !tokenImage(tok), disabledReason: "Este personagem não tem imagem. Escolha uma na ficha dele, na Preparação.", run: () => setTokenLook(i, v) })),
       }] : []),
+      // Manipulação rápida (P0.3): trocar imagem mantendo posição e tamanho; tamanhos predefinidos validados como ao soltar.
+      ...(one && (!tok.characterId || tok.slotId) ? [{ label: "Trocar imagem…", run: () => openImagePick(tok.slotId && !tok.imageUrl ? { kind: "slot", id: tok.slotId } : { kind: "token", i }) }] : []),
+      ...(one ? [{ label: "Ajustar tamanho", items: [
+        ...SIZE_PRESETS.map((p) => ({ label: p.label, hint: p.hint, checked: sizePresetOf(tok) === p.id, run: () => applySizePreset(i, p.id) })),
+        { separator: true }, { label: "Personalizado…", run: () => openTokenProperties(i) },
+      ] }] : []),
+      ...(slot ? [slot.characterId
+        ? { label: "Desvincular", hint: slot.characterName || "", disabled: !!bindReason, disabledReason: bindReason, run: () => unbindSlot(slot) }
+        : { label: "Vincular a personagem…", disabled: !!bindReason, disabledReason: bindReason, run: () => openBind(slot) }] : []),
       { label: "Selecionar camada", hint: l?.name || "", run: () => selectLayer(l?.id || "elements") },
+      ...(one ? [{ separator: true }, { label: "Mais propriedades…", run: () => openTokenProperties(i) }] : []),
     ], { label: tok.label || "Marcador" });
+  }
+  /** Ajustar tamanho por predefinição: com imagem, a criatura ocupa a área inteira; sem imagem, o redondo só fica maior. */
+  function applySizePreset(i, id) {
+    const list = simulate ? rehearsal?.sandbox : draft.prepared;
+    const t = list?.[i];
+    if (!t) return;
+    const patch = sizePresetPatch(id, { image: !!tokenImage(t), appearance: t.appearance });
+    const next = { ...t, ...patch };
+    const problem = placementProblem(layer?.cells, width(), height(), list, next.x, next.y, i, freeOn(), tokenSpan(next));
+    if (problem) return say(problem);
+    const p = SIZE_PRESETS.find((x) => x.id === id);
+    const note = p.cells > 1 && !tokenImage(t) ? " Sem imagem, o marcador redondo fica maior e continua ocupando uma casa." : "";
+    if (simulate) return sandboxChange(`Ensaio: ${t.label} ${p.label.toLowerCase()}`, () => { rehearsal.sandbox[i] = next; });
+    if (!editable(i)) return say("Esse marcador está numa camada oculta ou bloqueada.");
+    change(`Tamanho: ${p.label}`, () => { draft.prepared[i] = next; });
+    refresh();
+    say(`${t.label}: ${p.label} (${p.hint}).${note}`);
+  }
+  /** Menu do token no ensaio: perfil de teste, observador, tamanho, imagem, converter e retirar. */
+  function sandboxMenu(k, at) {
+    const t = rehearsal.sandbox[k];
+    rehearsal.selected = t.key; board.setView(boardView()); renderSide();
+    const choice = rehearsal.profiles.get(t.key) || { id: "default" };
+    openContextMenu(at, [
+      { label: "Ver por este token", checked: rehearsal.observer === (t.characterId ? `c:${t.characterId}` : `t:${t.key}`), run: () => setObserver(t.characterId ? `c:${t.characterId}` : `t:${t.key}`) },
+      { label: "Perfil de teste", items: PROFILE_PRESETS.map((p) => ({ label: p.label, hint: p.hint, checked: choice.id === p.id, run: () => setProfile(t.key, p.id) })) },
+      { label: "Ajustar tamanho", items: SIZE_PRESETS.map((p) => ({ label: p.label, hint: p.hint, checked: sizePresetOf(t) === p.id, run: () => applySizePreset(k, p.id) })) },
+      { label: "Trocar imagem…", disabled: !!t.characterId && !t.slotId, disabledReason: "Personagens dos jogadores usam a imagem da ficha.", run: () => openImagePick({ kind: "sandbox", key: t.key }) },
+      ...(t.rehearsal ? [{ label: "Converter em personagem reservado", run: () => convertToSlot(t.key) }] : []),
+      { separator: true },
+      { label: "Retirar do ensaio", shortcut: "delete", danger: true, run: () => sandboxRemove(rehearsal.sandbox.findIndex((x) => x.key === t.key)) },
+    ], { label: t.label || "Token" });
+  }
+  function setObserver(value) {
+    if (!rehearsal) return;
+    rehearsal.observer = value; serverView = null; serverViewError = "";
+    renderSimBanner(); redraw(); renderSide();
+  }
+  function setProfile(key, id, custom = null) {
+    if (!rehearsal) return;
+    const prev = rehearsal.profiles.get(key);
+    rehearsal.profiles.set(key, { id, custom: custom || prev?.custom || {} });
+    serverView = null; serverViewError = "";
+    renderSimBanner(); redraw(); renderSide();
   }
   async function cellMenu(cell, at) {
     const items = [];
@@ -1611,7 +2042,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
         const dirty = sceneDirty || layerDirty;
         return [
           { label: "Salvar preparação", shortcut: "mod+s", disabled: busy, disabledReason: "Salvando…", run: save },
-          { label: "Ver como jogador", checked: simulate, disabled: !mapKind() || !meta, disabledReason: "A simulação vale para mapas táticos.", run: () => toggleSimulate() },
+          { label: "Ensaiar cena", hint: "Ver como jogador", checked: simulate, disabled: !mapKind() || !meta, disabledReason: "O ensaio vale para mapas táticos.", run: () => toggleSimulate() },
           ...(presenting ? [{ separator: true },
             { label: "Aplicar à cena atual…", disabled: dirty, disabledReason: "Salve a preparação antes de aplicar.", run: () => { applying = true; renderSide(); showProps(); } },
             { label: "Recolocar personagens nas posições preparadas…", disabled: dirty || !mapKind(), disabledReason: dirty ? "Salve a preparação antes." : "Vale para cenas jogáveis.", run: () => { applying = "reposition"; loadReposition(); } },
@@ -1645,6 +2076,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       ] } : { id: "scene", label: "Cena", items: () => [
         { label: "Editar a composição (imagens desta cena)", disabled: draft.kind === "text", disabledReason: "Cenas textuais não têm imagem.", run: () => shell.setContext("compose") },
         { label: "Adicionar imagem…", shortcut: "u", disabled: draft.kind === "text", disabledReason: "Cenas textuais não têm imagem.", run: () => pickImages() },
+        { label: "Importar imagem por link…", disabled: !composable(), disabledReason: "A composição usa uma imagem da campanha como fundo.", run: () => importImageUrl(null) },
+        instanceMenuItem(null),
+        { label: "Selecionar próximo mapa inserido", disabled: !MI || !(draft.composition?.elements || []).some(MI_isInstance), disabledReason: "Nenhum mapa inserido nesta cena.", run: () => { if (shell.context !== "compose") shell.setContext("compose"); mountComposer(); configureInstances(); composeAction("nextMap"); } },
         { label: "Abrir o mapa original…", disabled: !mapOf(draft.mapKey)?.id, disabledReason: "Cenários prontos não são editados aqui.", run: () => openOriginalMap() },
         { label: "Criar mapa a partir da composição…", disabled: !compElements(), disabledReason: "Adicione imagens à composição antes.", run: () => mapFromComposition() },
         { label: "Tornar a imagem jogável…", disabled: !(draft.kind === "image" && imageMap()), disabledReason: "Vale para cenas de imagem da campanha sem personagens.", run: () => { startChoice = { playable: true }; renderSide(); showProps(); } },
@@ -1689,7 +2123,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function showProps() { shell.setPanels(true); shell.togglePanel("props", true); }
   function focusFirst() { setTimeout(() => shell.panel("props")?.querySelector("input:not([type=hidden]):not(:disabled), select, textarea")?.focus(), 0); }
   function openPanel(id) {
-    panel = id; pick = null; selection = []; simulate = false; applying = false;
+    if (simulate && !leaveRehearsal()) return;
+    panel = id; pick = null; selection = []; applying = false; binding = null; imagePick = null;
     renderAll(); showProps();
   }
   function renderLayers() {
@@ -1760,7 +2195,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const where = (i) => { const t = draft.prepared[i]; return `Posicionado · coluna ${t.x + 1}, linha ${t.y + 1}${t.hidden ? " · oculto" : ""}`; };
     const unplaced = area ? "Sem posição: entra pela área de entrada" : "Sem posição: entra pelo ponto padrão do mapa";
     const missing = characters.filter((c) => !pos.has(c.id)).length;
-    list.innerHTML = `<h4 class="se-char-head">Personagens dos jogadores</h4>${pcs.length ? `<ul class="se-pick-list">${pcs.map((c) => item(`pc:${c.id}`, c.name, pos.has(c.id) ? where(pos.get(c.id)) : unplaced, pos.has(c.id) ? pos.get(c.id) : -1)).join("")}</ul>` : `<p class="muted small">${query ? "Nenhum resultado." : "Nenhum personagem vinculado à campanha ainda."}</p>`}
+    list.innerHTML = `${slotsSection(match)}<h4 class="se-char-head">Personagens dos jogadores</h4>${pcs.length ? `<ul class="se-pick-list">${pcs.map((c) => item(`pc:${c.id}`, c.name, pos.has(c.id) ? where(pos.get(c.id)) : unplaced, pos.has(c.id) ? pos.get(c.id) : -1)).join("")}</ul>` : `<p class="muted small">${query ? "Nenhum resultado." : "Nenhum personagem vinculado à campanha ainda."}</p>`}
       <h4 class="se-char-head">Personagens do mestre</h4>${npcs == null ? '<p class="loading-line" role="status">Carregando…</p>' : masters.length ? `${placeLookField("list")}<ul class="se-pick-list">${masters.map((n) => item(`npc:${n.id}`, n.name, n.summary || "")).join("")}</ul><p class="form-help">Marque “Oculto” no marcador para preparar NPCs e emboscadas que só você vê.</p>` : `<p class="muted small">${query ? "Nenhum resultado." : "Crie personagens do mestre na Preparação (pasta Personagens)."}</p>`}
       ${entrySection(area, missing)}`;
   }
@@ -1784,6 +2219,257 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     refresh();
     say(result.missing.length ? `${result.placed.length} posicionado(s); ${result.missing.length} sem espaço na área (entram pela regra automática ao apresentar).` : `${result.placed.length} personagem(ns) distribuído(s) na área de entrada. Ajuste à vontade.`);
   }
+  // ---------- Personagens reservados (ADR-110) ----------
+  /** Seção do painel Personagens: criar (genérico ou por arquétipo), listar, colocar, renomear e ações do reservado. */
+  function slotsSection(match) {
+    if (!slotStore.loaded && !slotStore.loading && !slotStore.error) slotStore.load().then(() => { if (!closed) { renderCharacterList(); renderAssets(); redraw(); } });
+    const list = (simulate && rehearsal ? rehearsal.sandbox : draft.prepared);
+    const full = slotStore.items.length >= MAX_SLOTS;
+    const limit = full ? `aria-disabled="true" data-tip="Use até ${MAX_SLOTS} personagens reservados por campanha."` : slotBusy ? 'aria-disabled="true" data-tip="Aguarde: criando o personagem reservado."' : "";
+    const create = `<div class="se-slot-create">${button(`${icon("plus")}<span>Personagem reservado</span>`, "se-slot-new", "", "subtle small se-slot-add", limit)}<div class="se-slot-chips" role="group" aria-label="Criar personagem reservado por arquétipo">${ARCHETYPES.map((a) => button(`${archetypeSvg(a.id)}<span>${esc(a.label)}</span>`, "se-slot-new", a.id, "subtle small se-chip", limit)).join("")}</div></div>`;
+    const items = slotStore.items.filter((s) => match(s.name));
+    const row = (s) => {
+      const at = slotIndex(list, s.id), bound = s.characterId ? list.findIndex((t) => t.characterId === s.characterId) : -1;
+      const placedAt = at >= 0 ? at : bound;
+      const t = list[placedAt];
+      const scenes = Array.isArray(s.scenes) ? s.scenes.length : Number(s.scenes) || 0;
+      const state = s.characterId ? `Vinculado a ${s.characterName || "um personagem"}` : "Reservado";
+      const where = t ? `coluna ${t.x + 1}, linha ${t.y + 1}` : "fora desta cena";
+      const name = renaming === s.id
+        ? `<input class="se-slot-name" data-slot-rename="${esc(s.id)}" maxlength="40" value="${esc(s.name)}" aria-label="Nome do personagem reservado" autocomplete="off">`
+        : esc(s.name);
+      const actions = placedAt >= 0
+        ? button(`Mostrar<span class="sr-only"> ${esc(s.name)}</span>`, simulate ? "se-rh-show" : "se-char-show", simulate ? list[placedAt].key : String(placedAt), "subtle small")
+        : button(`Colocar <span class="sr-only">${esc(s.name)} </span>no cursor`, "se-place-cursor", `slot:${s.id}`, "subtle small");
+      return `<li class="se-char se-slot${placedAt >= 0 ? " placed" : ""}" draggable="${renaming === s.id ? "false" : "true"}" data-se-char="slot:${esc(s.id)}">${slotPreviewHtml(campaign.id, s)}<span class="se-slot-text">${name}<small>${esc(state)} · ${esc(where)}${scenes ? ` · em ${scenes} cena(s)` : ""}</small></span><span class="se-char-actions">${actions}${iconButton("dots", `Ações de ${s.name}`, "se-slot-menu", s.id, "subtle small")}</span></li>`;
+    };
+    const body = slotStore.loading && !slotStore.items.length ? '<p class="loading-line" role="status">Carregando…</p>'
+      : slotStore.error && !slotStore.items.length ? `<p class="form-error" role="alert">${esc(slotStore.error)}</p>${button("Tentar de novo", "se-slot-retry", "", "subtle small")}`
+      : items.length ? `<ul class="se-pick-list se-slot-list">${items.map(row).join("")}</ul>`
+      : `<p class="muted small">${slotStore.items.length ? "Nenhum resultado." : "Prepare a cena sem esperar os jogadores: crie personagens provisórios e vincule às fichas depois."}</p>`;
+    return `<section class="se-slots" aria-labelledby="se-slots-h"><h4 class="se-char-head" id="se-slots-h">Personagens reservados${helpButton("campanhas.cenas.reservados", "Personagens reservados")}</h4>${create}${body}</section>`;
+  }
+  async function createSlot(archetype) {
+    if (slotBusy) return;
+    if (slotStore.items.length >= MAX_SLOTS) return say(`Use até ${MAX_SLOTS} personagens reservados por campanha.`);
+    const a = archetypeOf(archetype);
+    slotBusy = true; renderCharacterList();
+    try {
+      const name = nextSlotName(slotStore.items.map((s) => s.name), a ? a.label : "Personagem", !a);
+      const s = await slotStore.create({ name, archetype: a?.id || null });
+      if (closed) return;
+      say(a ? `“${s.name}” criado. Arraste para o mapa ou use Colocar no cursor.` : `“${s.name}” criado. Digite um nome e Enter (ou só arraste para o mapa).`);
+      if (!a) renaming = s.id;
+    } catch (e) { say(e.status === 409 ? `Use até ${MAX_SLOTS} personagens reservados por campanha.` : e.message); }
+    finally {
+      slotBusy = false;
+      if (!closed) { renderCharacterList(); renderAssets(); focusRename(); }
+    }
+  }
+  function focusRename() {
+    if (!renaming) return;
+    const input = shell.panel("characters")?.querySelector(`[data-slot-rename="${CSS.escape(renaming)}"]`);
+    if (input) { input.focus(); input.select(); }
+  }
+  function startRename(id) { renaming = id; renderCharacterList(); focusRename(); }
+  /** Renomear em linha: Enter ou sair do campo grava; Esc desiste. O rótulo dos tokens dele acompanha o novo nome. */
+  async function commitRename(input) {
+    const id = input.dataset.slotRename, slot = slotStore.byId(id);
+    if (renaming !== id) return;
+    renaming = null;
+    const name = String(input.value || "").replace(/\s+/g, " ").trim().slice(0, 40);
+    if (!slot || !name || name === slot.name) { renderCharacterList(); return; }
+    try {
+      await slotStore.update(slot, { name });
+      // O servidor grava o nome do reservado nos tokens sem vínculo; aqui o rascunho e o salvo acompanham (sem "não salvo").
+      const rename = (list) => (list || []).map((t) => (t.slotId === id && !t.characterId ? { ...t, label: name } : t));
+      draft.prepared = rename(draft.prepared); savedScene.prepared = rename(savedScene.prepared);
+      if (rehearsal) { rehearsal.sandbox = rename(rehearsal.sandbox); rehearsal.start = rename(rehearsal.start); }
+      say(`Renomeado para “${name}”.`);
+    } catch (e) { say(e.message); }
+    if (!closed) { recomputeDirty(); redraw(); renderCharacterList(); renderStructure(); renderAssets(); }
+  }
+  async function slotAction(slot, fn, done) {
+    try { await fn(); if (done) say(done); }
+    catch (e) { say(e.message); }
+    if (!closed) { renderCharacterList(); renderAssets(); redraw(); }
+  }
+  function slotMenu(id, at) {
+    const s = slotStore.byId(id);
+    if (!s) return;
+    const bindReason = sceneDirty ? "Salve a cena antes: o vínculo reescreve as cenas salvas." : "";
+    openContextMenu(at, [
+      { label: "Colocar no cursor", disabled: !meta || !mapKind(), disabledReason: "Personagens entram em cenas com mapa tático.", run: () => placeAtCursor(`slot:${id}`) },
+      { label: "Renomear", hint: "F2", run: () => startRename(id) },
+      { label: "Arquétipo", items: [
+        ...ARCHETYPES.map((a) => ({ label: a.label, checked: s.archetype === a.id, run: () => slotAction(s, () => slotStore.update(s, { archetype: a.id }), `Arquétipo: ${a.label}.`) })),
+        { label: "Sem arquétipo", checked: !s.archetype, run: () => slotAction(s, () => slotStore.update(s, { archetype: null }), "Arquétipo retirado.") },
+      ] },
+      { label: "Trocar imagem…", run: () => openImagePick({ kind: "slot", id }) },
+      { label: "Duplicar", disabled: slotStore.items.length >= MAX_SLOTS, disabledReason: `Use até ${MAX_SLOTS} personagens reservados.`, run: () => slotAction(s, () => slotStore.duplicate(s), "Personagem reservado duplicado.") },
+      { separator: true },
+      s.characterId
+        ? { label: "Desvincular", hint: s.characterName || "", disabled: !!bindReason, disabledReason: bindReason, run: () => unbindSlot(s) }
+        : { label: "Vincular a personagem…", disabled: !!bindReason, disabledReason: bindReason, run: () => openBind(s) },
+      { separator: true },
+      { label: "Excluir…", danger: true, run: () => deleteSlot(s) },
+    ], { label: s.name });
+  }
+  async function deleteSlot(s) {
+    const scenes = Array.isArray(s.scenes) ? s.scenes.length : Number(s.scenes) || 0;
+    const here = slotIndex(draft.prepared, s.id) >= 0;
+    const lose = s.characterId ? "As cenas continuam com o personagem vinculado." : scenes ? `O token sai de ${scenes} cena(s) salva(s).` : "Nenhuma cena salva usa este reservado.";
+    if (!confirm(`Excluir “${s.name}”? ${lose}${here ? " Ele também sai desta cena." : ""} Não dá para desfazer.`)) return;
+    try {
+      await slotStore.remove(s);
+      if (closed) return;
+      // O servidor já tirou os tokens sem vínculo das cenas salvas: o rascunho e o salvo acompanham, sem histórico antigo.
+      const drop = (list) => (list || []).filter((t) => !(t.slotId === s.id && !t.characterId));
+      const had = draft.prepared.length !== drop(draft.prepared).length;
+      draft.prepared = drop(draft.prepared); savedScene.prepared = drop(savedScene.prepared); selection = [];
+      if (rehearsal) { rehearsal.sandbox = drop(rehearsal.sandbox); rehearsal.start = drop(rehearsal.start); rehearsal.selected = null; }
+      if (had) resetHistory("Personagem reservado excluído. O histórico de desfazer recomeça.");
+      else say(`“${s.name}” excluído.`);
+      recomputeDirty(); refresh();
+    } catch (e) { say(e.message); }
+  }
+
+  // ---------- Vincular reservado a um personagem existente ----------
+  async function openBind(s) {
+    if (sceneDirty) return say("Salve a cena antes de vincular: o vínculo reescreve as cenas salvas.");
+    binding = { slotId: s.id, characterId: "", preview: null, loading: !slotStore.loaded, error: "", keepImage: true, resolve: null };
+    imagePick = null; renderSide(); showProps();
+    if (!slotStore.loaded) await slotStore.load(true);
+    if (binding?.slotId !== s.id) return;
+    binding.loading = false;
+    renderSide();
+    setTimeout(() => shell.panel("props")?.querySelector("#se-bind-char")?.focus(), 0);
+  }
+  async function loadBindPreview() {
+    const b = binding, s = b && slotStore.byId(b.slotId);
+    if (!s || !b.characterId) { if (b) { b.preview = null; renderSide(); } return; }
+    b.loading = true; b.error = ""; b.preview = null; renderSide();
+    try { const p = await slotStore.bindPreview(s, b.characterId); if (binding === b) b.preview = p; }
+    catch (e) { if (binding === b) b.error = e.message; }
+    if (binding === b) { b.loading = false; b.resolve = null; renderSide(); }
+  }
+  function bindPanel() {
+    const b = binding, s = slotStore.byId(b.slotId);
+    if (!s) return `<div class="se-panel"><p class="form-error" role="alert">Esse personagem reservado não existe mais.</p>${button("Fechar", "se-bind-cancel", "", "subtle")}</div>`;
+    const chars = slotStore.characters;
+    const p = b.preview, conflicts = p?.conflicts || [];
+    const options = [["", chars.length ? "Escolha um personagem" : "Nenhum personagem na campanha"], ...chars.map((c) => [c.id, c.slotId && c.slotId !== s.id ? `${c.name} (já ligado a outro reservado)` : c.name])];
+    const scenesN = Array.isArray(p?.scenes) ? p.scenes.length : Number(p?.scenes) || 0;
+    const info = b.loading ? '<p class="loading-line" role="status">Conferindo as cenas…</p>'
+      : b.error ? `<p class="form-error" role="alert">${esc(b.error)}</p>`
+      : p ? `<div class="se-diff" role="note"><ul><li>${scenesN ? `${scenesN} cena(s) passam a mostrar ${esc(p.characterName || "o personagem")} na posição do reservado.` : "Nenhuma cena salva usa este reservado ainda."}</li>${p.boundElsewhere ? `<li>Este personagem já está ligado a “${esc(p.boundElsewhere.name)}”: desvincule-o lá antes.</li>` : ""}${conflicts.length ? `<li>O personagem já tem posição em: ${conflicts.map((c) => esc(c.sceneName)).join(", ")}. Escolha qual posição fica.</li>` : ""}${p.activeSession ? "<li>Há uma sessão ativa: a mesa só muda ao apresentar, reiniciar ou aplicar a cena.</li>" : ""}</ul></div>` : "";
+    const resolve = conflicts.length ? `<fieldset><legend>Nas cenas em que os dois já estão</legend><label class="check se-option"><input type="radio" name="se-bind-resolve" value="slot" ${b.resolve === "slot" ? "checked" : ""}><span><strong>Ficar na posição do reservado</strong><small>O token do personagem sai de onde estava.</small></span></label><label class="check se-option"><input type="radio" name="se-bind-resolve" value="character" ${b.resolve === "character" ? "checked" : ""}><span><strong>Ficar na posição do personagem</strong><small>O token reservado sai dessas cenas.</small></span></label></fieldset>` : "";
+    const blocked = !b.characterId ? "Escolha um personagem." : b.loading ? "Aguarde a conferência das cenas." : sceneDirty ? "Salve a cena antes de vincular." : p?.boundElsewhere ? "Desvincule o personagem do outro reservado antes." : conflicts.length && !b.resolve ? "Escolha qual posição fica nas cenas em conflito." : b.error ? "Corrija o problema indicado acima." : "";
+    return `<form class="se-panel" data-bind-form role="region" aria-labelledby="se-bind-h"><h3 id="se-bind-h">Vincular “${esc(s.name)}”${helpButton("campanhas.cenas.reservados", "Personagens reservados")}</h3><p class="form-help">O reservado vira o personagem escolhido em todas as cenas salvas, nas mesmas posições.</p>${sceneDirty ? '<p class="notice-box">Salve a cena antes de vincular: o vínculo reescreve as cenas salvas.</p>' : ""}
+      <div class="field"><label for="se-bind-char">Personagem</label><select id="se-bind-char" data-bind-char ${chars.length ? "" : "disabled"}>${opt(options, b.characterId)}</select></div>${info}${resolve}
+      <label class="check"><input type="checkbox" data-bind-keep ${b.keepImage ? "checked" : ""}> Manter a imagem do token</label>
+      <div class="form-actions">${button("Cancelar", "se-bind-cancel", "", "subtle")}${button("Vincular", "se-bind-go", "", "primary", blocked ? `aria-disabled="true" data-tip="${esc(blocked)}"` : "")}</div></form>`;
+  }
+  /** Depois de vincular/desvincular: o servidor reescreveu as cenas salvas; recarrega esta se não há alterações locais. */
+  async function afterSlotRewrite(message) {
+    if (!saved.id) { say(message); return refresh(); }
+    if (sceneDirty || layerDirty) { say(`${message} Salve e reabra a cena para ver as posições atualizadas.`); return refresh(); }
+    try {
+      const fresh = await api(`${base}/scenes/${saved.id}`, "GET", undefined, { background: true });
+      if (closed) return;
+      draft = toDraft(fresh); savedScene = clone(draft); saved.revision = fresh.revision; live = fresh.live;
+      if (fresh.characters) characters = fresh.characters;
+      selection = []; if (panel === "token") panel = "overview";
+      resetHistory(message);
+    } catch (e) { say(`${message} Não foi possível recarregar a cena: ${e.message}`); }
+    recomputeDirty(); refresh();
+  }
+  async function confirmBind() {
+    const b = binding, s = b && slotStore.byId(b.slotId);
+    if (!s || !b.characterId) return;
+    try {
+      const r = await slotStore.bind(s, { characterId: b.characterId, keepImage: b.keepImage, resolve: (b.preview?.conflicts || []).length ? b.resolve : null });
+      binding = null;
+      await slotStore.load(true);
+      await afterSlotRewrite(`“${s.name}” vinculado a ${r.characterName || b.preview?.characterName || "o personagem"}.${r.activeSession ? " A mesa ativa só muda ao apresentar ou aplicar a cena." : ""}`);
+    } catch (e) {
+      if (binding === b) { b.error = e.message; renderSide(); } else say(e.message);
+    }
+  }
+  async function unbindSlot(s) {
+    if (sceneDirty) return say("Salve a cena antes de desvincular.");
+    if (!confirm(`Desvincular “${s.name}” de ${s.characterName || "seu personagem"}? Nas cenas, o token volta a ser o reservado; o personagem continua na campanha.`)) return;
+    try {
+      await slotStore.unbind(s);
+      await slotStore.load(true);
+      await afterSlotRewrite(`“${s.name}” desvinculado.`);
+    } catch (e) { say(e.message); }
+  }
+
+  // ---------- Escolher imagem (reservado, marcador ou token do ensaio) ----------
+  function openImagePick(target) {
+    imagePick = { target, query: "", busy: false };
+    binding = null; renderSide(); showProps();
+    setTimeout(() => shell.panel("props")?.querySelector("#se-ip-q")?.focus(), 0);
+  }
+  function imageTargetName() {
+    const t = imagePick?.target;
+    if (t?.kind === "slot") return slotStore.byId(t.id)?.name || "Reservado";
+    if (t?.kind === "token") return draft.prepared[t.i]?.label || "Marcador";
+    return rehearsal?.sandbox.find((x) => x.key === t?.key)?.label || "Token";
+  }
+  function imageItems(query) {
+    const q2 = plain(query);
+    return maps.items.filter((m) => slotImageSrc(campaign.id, m.key) && (!q2 || plain(m.name).includes(q2))).slice(0, 60);
+  }
+  function imagePickRows() {
+    if (imagePick.busy) return '<p class="loading-line" role="status">Enviando a imagem…</p>';
+    const list = imageItems(imagePick.query);
+    return list.length ? `<ul class="se-image-pick" role="list">${list.map((m) => `<li><button type="button" class="se-ip-item" data-action="se-ip-use" data-id="${esc(m.key)}"><img src="${esc(slotImageSrc(campaign.id, m.key))}" alt="" loading="lazy" decoding="async"><span>${esc(m.name || "Imagem")}</span></button></li>`).join("")}</ul>`
+      : `<p class="muted small">${imagePick.query ? "Nenhum resultado." : "Nenhuma imagem na campanha ainda. Envie uma do computador."}</p>`;
+  }
+  function imagePickPanel() {
+    return `<div class="se-panel" role="region" aria-labelledby="se-ip-h"><h3 id="se-ip-h">Imagem de “${esc(imageTargetName())}”</h3><p class="form-help">Posição e tamanho continuam. A imagem fica no acervo da campanha e é usada por referência.</p>
+      <div class="field"><label for="se-ip-q">Buscar nas imagens da campanha</label><input id="se-ip-q" type="search" data-ip-q maxlength="80" autocomplete="off" value="${esc(imagePick.query)}"></div>
+      <div data-ip-list>${imagePickRows()}</div>
+      <input type="file" id="se-ip-file" accept="image/png,image/jpeg" hidden>
+      <div class="form-actions">${button("Enviar do computador…", "se-ip-upload", "", "subtle", imagePick.busy ? 'aria-disabled="true" data-tip="Aguarde o envio em andamento."' : "")}${button("Sem imagem própria", "se-ip-use", "", "text-button")}${button("Cancelar", "se-ip-cancel", "", "subtle")}</div></div>`;
+  }
+  /** Aplica a imagem escolhida (`asset:{id}` ou "" para voltar à imagem padrão) mantendo a geometria. */
+  async function useImage(key) {
+    const target = imagePick?.target;
+    if (!target) return;
+    const value = key || null;
+    imagePick = null;
+    if (target.kind === "slot") {
+      const s = slotStore.byId(target.id);
+      if (s) await slotAction(s, () => slotStore.update(s, { imageUrl: value }), value ? "Imagem do reservado trocada (vale em todas as cenas)." : "Imagem do reservado retirada.");
+      return renderSide();
+    }
+    if (target.kind === "sandbox") {
+      const k = rehearsal?.sandbox.findIndex((x) => x.key === target.key) ?? -1;
+      if (k >= 0) sandboxChange("Ensaio: imagem trocada", () => { rehearsal.sandbox[k] = { ...rehearsal.sandbox[k], imageUrl: value }; });
+      return renderSide();
+    }
+    const t = draft.prepared[target.i];
+    if (!t || !editable(target.i)) { say("O marcador não está mais disponível para edição."); return renderSide(); }
+    // Sem imagem, a forma livre volta ao redondo (a área só existe com imagem).
+    change(value ? "Trocar imagem" : "Imagem padrão", () => { draft.prepared[target.i] = { ...t, imageUrl: value, ...(!value && !tokenImage({ ...t, imageUrl: null }) ? { appearance: null, width: null, height: null } : {}) }; });
+    refresh();
+  }
+  async function uploadPickImage(file) {
+    if (!imagePick || !file) return;
+    imagePick.busy = true; renderSide();
+    try {
+      const { imageFromUpload } = await import("./npc-sheet.js");
+      const key = await imageFromUpload({ imageFile: file }, campaign.id, imageTargetName());
+      maps.items = (await api(`${base}/maps`, "GET", undefined, { background: true })).items;
+      if (closed || !imagePick) return;
+      await useImage(key);
+      renderAssets(true);
+    } catch (e) { if (imagePick) { imagePick.busy = false; renderSide(); } say(e.message); }
+  }
+
   function renderHistory() {
     const host = shell.panel("history");
     if (host) renderHistoryPanel(host, history);
@@ -1809,6 +2495,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
         pendingLive && !dirty ? '<span class="ed-chip pending">Alterações não aplicadas à mesa.</span>' : "",
         !presenting && meta?.inUse ? '<span class="ed-chip pending">Este mapa está na mesa: salvar guarda a preparação sem mudar a partida.</span>' : "",
         composing() ? '<span class="ed-chip private">Composição: alterando só esta cena</span>' : "",
+        simulate ? '<span class="ed-chip private">Ensaio: nada vai para a mesa</span>' : "",
         mapOnly && meta ? '<span class="ed-chip pending">Preparação do mapa: vale para as cenas que o compartilham</span>' : "",
         weightChip(),
       ].join(""),
@@ -1816,7 +2503,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     q("#se-apply-slot").innerHTML = presenting && saved.id && (pendingLive || mapKind()) ? button(pendingLive ? "Aplicar à cena atual…" : "Aplicar preparação à cena atual…", "se-apply", "", "subtle", dirty ? 'aria-disabled="true" data-tip="Salve a preparação antes de aplicar."' : "") : "";
     const previewBtn = q("[data-action=se-preview]");
     previewBtn.setAttribute("aria-pressed", String(simulate));
-    previewBtn.innerHTML = simulate ? "← Voltar à edição" : `${icon("eye")}<span>Ver como jogador</span>`;
+    previewBtn.innerHTML = simulate ? "← Sair do ensaio" : `${icon("eye")}<span>Ensaiar cena</span>`;
     previewBtn.disabled = !mapKind() || !meta;
     q("[data-action=se-save]").disabled = busy || (!dirty && !!(saved.id || mapOnly));
   }
@@ -1844,38 +2531,65 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     } else start.dataset.state = "";
     if (showComp) { mountComposer(); composer.invalidate(); }
     renderSimBanner();
-    const hint = simulate || showComp ? "" : PAINT.has(tool) || tool === "entry" ? `${helpOf(tool) || labelOf(tool)} Teclado: setas e Enter.` : helpOf(tool);
-    const hintEl = q("#se-hint");
-    hintEl.textContent = showText || showStart ? "" : hint;
-    hintEl.hidden = showText || showStart || !hint;
+    if (!hintOverride) liveHint("");
     if (!showComp) redraw();
   }
+  /** Dica da ferramenta sobre o palco (vazia na apresentação textual, no início, na composição e no ensaio). */
+  function stageHint() {
+    const showText = draft.kind === "text", showStart = !showText && !draft.mapKey && !mapOnly;
+    if (showText || showStart || simulate || (composing() && !simulate)) return "";
+    return PAINT.has(tool) || tool === "entry" ? `${helpOf(tool) || labelOf(tool)} Teclado: setas e Enter.` : helpOf(tool);
+  }
   function startOptionsHtml() {
-    return `<div class="se-start-card" role="region" aria-labelledby="se-start-h"><h3 id="se-start-h">Como deseja começar?</h3>${error ? `<p class="form-error" role="alert">${esc(error)}</p>` : ""}<p>Arraste uma imagem para qualquer ponto desta área ou escolha uma opção.</p><div class="se-start-grid">
-      <button type="button" class="se-start-option primary" data-action="se-start" data-id="upload">${icon("image")}<strong>Enviar imagem do computador</strong><small>PNG ou JPEG até 10 MB; várias de uma vez</small></button>
+    return `<div class="se-start-card" role="region" aria-labelledby="se-start-h"><h3 id="se-start-h">Como deseja começar?${helpButton("campanhas.cenas.conceitos", "Mapa, cena e sessão")}</h3>${error ? `<p class="form-error" role="alert">${esc(error)}</p>` : ""}<p>Arraste uma imagem para qualquer ponto desta área ou escolha uma opção.</p><div class="se-start-grid">
+      <button type="button" class="se-start-option primary" data-action="se-start" data-id="upload">${icon("image")}<strong>Enviar imagem do computador</strong><small>PNG ou JPEG; várias de uma vez</small></button>
       <button type="button" class="se-start-option" data-action="se-start" data-id="map">${icon("scenery")}<strong>Escolher um mapa existente</strong><small>Mapas e imagens da campanha</small></button>
       <button type="button" class="se-start-option" data-action="se-start" data-id="model">${icon("layers")}<strong>Usar um modelo</strong><small>Cenários prontos do Eternnus</small></button>
       <button type="button" class="se-start-option" data-action="se-start" data-id="blank">${icon("rect")}<strong>Começar com uma área em branco</strong><small>Fundo liso para compor com imagens</small></button>
     </div><p class="form-help">Também dá para colar uma imagem (Ctrl+V) ou arrastar do painel Acervo. Nada é mostrado aos jogadores até você apresentar a cena.</p></div>`;
   }
-  /** Simulação: escolher de quem é a visão (personagens posicionados). Sem personagem, só luz comum e revelações. */
+  /**
+   * Faixa do ensaio: aviso fixo, observador (grupo, personagens, reservados e tokens de ensaio), estado da prévia do
+   * servidor e as ações principais. Funciona sem jogadores e sem fichas (tokens de ensaio).
+   */
   function renderSimBanner() {
     const banner = q("#se-sim");
     banner.hidden = !simulate;
-    if (!simulate) { banner.innerHTML = ""; return; }
-    const placed = draft.prepared.filter((t) => t.characterId);
-    if (viewer && !placed.some((t) => t.characterId === viewer)) viewer = "";
-    const options = [`<option value="">Só luz comum e áreas reveladas</option>`, placed.length ? `<option value="party"${viewer === "party" ? " selected" : ""}>Grupo (todos os jogadores juntos)</option>` : "", ...placed.map((t) => `<option value="${esc(t.characterId)}"${t.characterId === viewer ? " selected" : ""}>${esc(t.label || "Personagem")}</option>`)].join("");
+    if (!simulate || !rehearsal) { banner.innerHTML = ""; return; }
+    const options = observerOptions(rehearsal.sandbox);
+    if (!options.some((o) => o.value === rehearsal.observer)) rehearsal.observer = "";
     const status = serverViewError ? `<span class="se-sim-status" role="alert">Prévia do servidor indisponível: ${esc(serverViewError)} Mostrando a simulação local (sem sentidos, percepção e exploração).</span>`
-      : serverView ? `<span class="se-sim-status">Prévia real: mesmas regras da mesa (paredes, luz, visão, sentidos, percepção e áreas já exploradas).</span>`
-      : `<span class="se-sim-status" role="status">Calculando a prévia real…</span>`;
-    banner.innerHTML = `<p>${esc(HELP.preview)}${helpButton("campanhas.cenas.simulacao", "Simulação de visão")}</p>${placed.length && mapKind() ? `<label class="se-sim-viewer"><span>Visão de</span><select id="se-viewer" name="se-viewer">${options}</select></label>` : ""}<p class="small">${status}</p>`;
+      : serverView ? '<span class="se-sim-status">Prévia real: mesmas regras da mesa (paredes, luz, visão, sentidos, percepção e áreas já exploradas).</span>'
+      : '<span class="se-sim-status" role="status">Calculando a prévia real…</span>';
+    const changed = sandboxChanged(rehearsal.start, rehearsal.sandbox);
+    banner.innerHTML = `<p><strong>Ensaio — nada aqui vai para a mesa nem para os jogadores.</strong>${helpButton("campanhas.cenas.ensaio", "Ensaiar cena")}</p>
+      <div class="se-sim-row"><label class="se-sim-viewer"><span>Visão de</span><select id="se-viewer" name="se-viewer">${options.map((o) => `<option value="${esc(o.value)}" ${o.value === rehearsal.observer ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select></label>
+      <div class="se-sim-actions">${button(`${icon("plus")}<span>Token de ensaio</span>`, "se-rh-add", "", "subtle small")}${button("Aplicar alterações à preparação…", "se-rh-apply", "", "subtle small", changed ? "" : 'aria-disabled="true" data-tip="Nada mudou no ensaio ainda."')}${button("Sair do ensaio", "se-rh-exit", "", "subtle small")}</div></div><p class="small">${status}</p>`;
+  }
+  /** Painel do ensaio: token selecionado (perfil de teste, observador, imagem, converter) ou o resumo das mudanças. */
+  function rehearsalPanel() {
+    const k = sandboxSelected(), t = rehearsal.sandbox[k];
+    if (!t) {
+      const diff = rehearsalDiff(draft.prepared, rehearsal.sandbox), lines = diffLines(diff);
+      return `<div class="se-panel"><h3>Ensaiar cena${helpButton("campanhas.cenas.ensaio", "Ensaiar cena")}</h3><p class="form-help">Arraste, redimensione ou retire tokens, acrescente tokens de ensaio e escolha de quem é a visão. Clique num token para trocar o perfil de teste (visão, luz e percepção).</p><p class="form-help">Sem perfil, um token sem ficha usa a visão e a luz padrão da mesa (muitas vezes nenhuma): use “Carregando uma fonte de luz” ou “Visão no escuro” para testar.</p><h4>Mudanças em relação à preparação</h4>${lines.length ? `<ul class="se-moves">${lines.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>` : '<p class="small">Nenhuma mudança ainda.</p>'}<p class="form-help">Ctrl+Z desfaz no ensaio. Esc sai (pergunta antes se algo mudou).</p></div>`;
+    }
+    const choice = rehearsal.profiles.get(t.key) || { id: "default", custom: {} };
+    const observing = rehearsal.observer === (t.characterId ? `c:${t.characterId}` : `t:${t.key}`);
+    const custom = choice.id === "custom" ? `<div class="se-rh-custom">${[["visionMeters", "Visão (m)", 300], ["lightMeters", "Luz que carrega (m)", 300], ["perception", "Percepção", 1000]].map(([f, l, max]) => `<div class="field"><label for="se-rh-${f}">${l}</label><input id="se-rh-${f}" type="number" min="0" max="${max}" step="1" data-rh-custom="${f}" value="${esc(choice.custom?.[f] ?? "")}" placeholder="Padrão"></div>`).join("")}</div>` : "";
+    const kind = t.rehearsal ? "Token de ensaio (não é salvo)" : t.characterId ? "Personagem dos jogadores" : t.slotId ? "Personagem reservado" : t.masterCharacterId ? "Personagem do mestre" : "Marcador";
+    return `<div class="se-panel"><h3>${esc(t.label || "Token")}</h3><p class="form-help">${esc(kind)} · coluna ${t.x + 1}, linha ${t.y + 1}.</p>
+      <div class="field"><label for="se-rh-profile">Perfil de teste</label><select id="se-rh-profile" data-rh-profile="${esc(t.key)}">${PROFILE_PRESETS.map((p) => `<option value="${p.id}" ${p.id === choice.id ? "selected" : ""}>${esc(p.label)} — ${esc(p.hint)}</option>`).join("")}</select></div>${custom}
+      <p class="form-help">${esc(profileLabel(choice) || "Visão padrão: o que a ficha e a mesa definem.")} Vale só para o ensaio.</p>
+      <div class="form-actions">${button(observing ? "Vendo por este token" : "Ver por este token", "se-rh-observe", t.key, "subtle small", observing ? 'aria-pressed="true"' : 'aria-pressed="false"')}${t.characterId && !t.slotId ? "" : button("Trocar imagem…", "se-rh-image", t.key, "subtle small")}${t.rehearsal ? button("Converter em personagem reservado", "se-rh-convert", t.key, "subtle small") : ""}${button("Retirar do ensaio", "se-rh-remove", t.key, "text-button small")}</div></div>`;
   }
 
   function sidePanel() {
     if (error) return `<div class="se-panel"><p class="form-error" role="alert">${esc(error)}</p>${button("Entendi", "se-dismiss", "", "subtle")}</div>`;
     if (conflict) return `<div class="se-panel se-conflict" role="alert"><h3>Outra tela salvou antes</h3><p>${esc(conflict)}</p><p class="form-help">Suas alterações continuam aqui. Recarregar guarda este rascunho no navegador (Arquivo › Rascunho local…); "Salvar como nova cena" grava a cena numa cópia, sem tocar na outra.</p><div class="form-actions">${button("Continuar editando", "se-dismiss", "", "subtle")}${!mapOnly && saved.id ? button("Salvar como nova cena", "se-save-copy", "", "subtle") : ""}${button("Recarregar a versão salva", "se-reload", "", "danger")}</div></div>`;
     if (startChoice && !startChoice.pick && draft.mapKey) return startPanel();
+    if (imagePick) return imagePickPanel();
+    if (binding) return bindPanel();
+    if (simulate && rehearsal) return rehearsalPanel();
     if (applying === "reposition") return repositionPanel();
     if (applying) return applyPanel();
     if (shell.context === "compose" && !mapOnly && draft.kind !== "text") return composePanel();
@@ -1913,7 +2627,12 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function tokenPanel(t) {
     const isCharacter = !!t.characterId;
     const layerSelect = `${lookField(t)}<div class="field"><label for="se-t-layer">Camada</label><select id="se-t-layer" data-token="layer">${opt(tokenLayers().map((l) => [l.id, l.name]), tokenLayerOf(t.layer, draft.layers))}</select></div>`;
-    return `<form class="se-panel" data-token-form><h3>${esc(t.label || "Marcador")}</h3><p class="form-help">Coluna ${t.x + 1}, linha ${t.y + 1}. Para mover, clique numa casa livre, arraste ou use as setas com o mapa em foco.</p>${isCharacter ? '<p class="small">Personagem dos jogadores: entra nesta casa quando a cena for apresentada, se a pessoa estiver na mesa.</p>' : `<div class="field"><label for="se-t-label">Nome</label><input id="se-t-label" data-token="label" maxlength="40" required value="${esc(t.label)}"></div><div class="field"><label for="se-t-side">Lado</label><select id="se-t-side" data-token="side">${opt(SIDES, t.side || "enemy")}</select></div><label class="check"><input type="checkbox" data-token="hidden" ${t.hidden ? "checked" : ""}> Oculto: só você vê até revelar</label>${mode === "complete" ? `<div class="field"><label for="se-t-light">Luz que carrega (casas)</label><input id="se-t-light" data-token="light" type="number" min="0" max="30" value="${t.light ?? ""}" placeholder="Padrão da mesa"></div>` : ""}`}${layerSelect}<div class="form-actions se-danger-zone">${button("Mais propriedades…", "se-token-props", "", "subtle")}${button("Remover da cena", "se-token-remove", "", "text-button")}</div></form>`;
+    // Reservado (ADR-110): nome e lado vêm do reservado; aqui ficam o vínculo, a imagem e a posição desta cena.
+    const slot = t.slotId ? slotStore.byId(t.slotId) : null;
+    const bindReason = sceneDirty ? "Salve a cena antes de vincular." : !saved.id ? "Salve a cena antes de vincular." : "";
+    const slotBox = slot ? `<div class="se-slot-note">${slotPreviewHtml(campaign.id, slot)}<p class="small">${slot.characterId ? `Personagem reservado vinculado a ${esc(slot.characterName || "um personagem")}.` : "Personagem reservado: renomeie no painel Personagens. Vincule a uma ficha quando o jogador chegar."}</p></div><div class="form-actions">${slot.characterId ? button("Desvincular", "se-slot-unbind", slot.id, "subtle small", bindReason ? `aria-disabled="true" data-tip="${esc(bindReason)}"` : "") : button("Vincular a personagem…", "se-slot-bind", slot.id, "subtle small", bindReason ? `aria-disabled="true" data-tip="${esc(bindReason)}"` : "")}${button("Trocar imagem…", "se-token-image", "", "subtle small")}</div>` : "";
+    if (slot && !isCharacter) return `<form class="se-panel" data-token-form><h3>${esc(t.label || "Reservado")}${helpButton("campanhas.cenas.reservados", "Personagens reservados")}</h3><p class="form-help">Coluna ${t.x + 1}, linha ${t.y + 1}. Arraste, use as setas ou o menu (botão direito) para mover e ajustar o tamanho.</p>${slotBox}<label class="check"><input type="checkbox" data-token="hidden" ${t.hidden ? "checked" : ""}> Oculto: só você vê até revelar</label>${layerSelect}<div class="form-actions se-danger-zone">${button("Mais propriedades…", "se-token-props", "", "subtle")}${button("Remover da cena", "se-token-remove", "", "text-button")}</div></form>`;
+    return `<form class="se-panel" data-token-form><h3>${esc(t.label || "Marcador")}</h3><p class="form-help">Coluna ${t.x + 1}, linha ${t.y + 1}. Para mover, clique numa casa livre, arraste ou use as setas com o mapa em foco.</p>${isCharacter ? `<p class="small">Personagem dos jogadores: entra nesta casa quando a cena for apresentada, se a pessoa estiver na mesa.</p>${slotBox}` : `<div class="field"><label for="se-t-label">Nome</label><input id="se-t-label" data-token="label" maxlength="40" required value="${esc(t.label)}"></div><div class="field"><label for="se-t-side">Lado</label><select id="se-t-side" data-token="side">${opt(SIDES, t.side || "enemy")}</select></div><label class="check"><input type="checkbox" data-token="hidden" ${t.hidden ? "checked" : ""}> Oculto: só você vê até revelar</label>${mode === "complete" ? `<div class="field"><label for="se-t-light">Luz que carrega (casas)</label><input id="se-t-light" data-token="light" type="number" min="0" max="30" value="${t.light ?? ""}" placeholder="Padrão da mesa"></div>` : ""}`}${layerSelect}<div class="form-actions se-danger-zone">${button("Mais propriedades…", "se-token-props", "", "subtle")}${button("Remover da cena", "se-token-remove", "", "text-button")}</div></form>`;
   }
   function multiPanel() {
     const ids = editableSelection();
@@ -2087,7 +2806,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   // ---------- Ferramentas e interface ----------
   function onTool(id) {
     board.interact();
-    tool = id; pick = null; simulate = false;
+    // Mão, zoom e seleção continuam no ensaio; as demais ferramentas editam a preparação e encerram o ensaio.
+    if (simulate && !["select", "hand", "zoom"].includes(id) && !leaveRehearsal()) { tool = "select"; shell.setTool("select"); board.camera.setPan(false); return renderAll(); }
+    tool = id; pick = null;
     if (!VECTOR_TOOLS.has(id)) { wallPts = []; vdrag = null; vpoint = null; if (id !== "select") wallSel = []; }
     root.dataset.tool = id;
     board.camera.setPan(id === "hand");
@@ -2105,15 +2826,31 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (next === "complete" && panel === "hidden") panel = "overview";
     renderAll();
   }
+  /**
+   * Ensaiar cena (ADR-111): liga a caixa de areia, sempre refeita a partir da preparação atual (nunca altera o rascunho).
+   * Desligar descarta o ensaio (pergunta antes se algo mudou).
+   */
   function toggleSimulate(on = !simulate) {
-    if (on && (!mapKind() || !meta)) return say("A simulação vale para mapas táticos.");
-    simulate = on; selection = []; serverView = null; serverViewError = "";
-    if (simulate && !viewer) viewer = draft.prepared.find((t) => t.characterId)?.characterId || "";
-    renderAll();
+    if (on === simulate) return;
+    if (!on) { if (leaveRehearsal()) { renderAll(); say("Ensaio encerrado. A preparação continua como estava."); } return; }
+    if (!mapKind() || !meta) return say("O ensaio vale para cenas com mapa tático ou movimentação livre.");
+    commitTyping();
+    const sandbox = sandboxFrom(draft.prepared);
+    rehearsal = { start: clone(sandbox), sandbox, observer: defaultObserver(sandbox), profiles: new Map(), past: [], counter: 0, selected: null };
+    simulate = true; selection = []; pick = null; serverView = null; serverViewError = ""; binding = null; imagePick = null;
+    if (["token", "add", "light", "mark"].includes(panel)) panel = "overview";
+    renderAll(); showProps();
+    say(sandbox.length ? "Ensaio aberto: mova, teste a luz e a visão à vontade. Nada vai para a mesa." : "Ensaio aberto: acrescente um token de ensaio para testar a visão.");
   }
   function onEscape(e) {
     if (dismissHelp()) return;
+    // Renomear reservado: Esc desiste sem gravar.
+    if (e.target?.matches?.("[data-slot-rename]")) { renaming = null; renderCharacterList(); return; }
     if (isTypingTarget(e.target)) { commitTyping(); e.target.blur(); return; }
+    // Primeiro desiste do arraste ou da alça em andamento (o marcador volta); só depois fecha painéis e o ensaio.
+    if (board.cancelInteraction()) return say("Movimento cancelado.");
+    if (imagePick) { imagePick = null; return renderSide(); }
+    if (binding) { binding = null; return renderSide(); }
     if (simulate) return toggleSimulate(false);
     if (startChoice) { startChoice = null; renderSide(); return renderStage(); }
     if (composing() && composer) {
@@ -2136,8 +2873,17 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     revision: saved.revision, layerMode: draft.layerMode, layers: sceneLayers(draft.layers),
     // Área de entrada (ADR-090): JSON da cena; "" limpa (vale a entrada do mapa).
     entry: mapKind() && draft.entry ? JSON.stringify(draft.entry.ref ? { ref: draft.entry.ref } : { x: draft.entry.x, y: draft.entry.y, w: draft.entry.w, h: draft.entry.h }) : "",
-    prepared: mapKind() ? draft.prepared.map((t) => ({ characterId: t.characterId || null, masterCharacterId: t.masterCharacterId || null, label: t.label, side: t.side, x: t.x, y: t.y, fx: freeOn() ? t.fx ?? null : null, fy: freeOn() ? t.fy ?? null : null, hidden: !!t.hidden, light: t.light ?? null, appearance: t.appearance ?? null, size: t.size ?? null, imageUrl: t.imageUrl ?? null, width: t.width ?? null, height: t.height ?? null, layer: tokenLayerOf(t.layer, draft.layers) })) : [],
+    // Tokens de ensaio nunca são salvos (o servidor recusa `rehearsal: true`).
+    prepared: mapKind() ? draft.prepared.filter((t) => !t.rehearsal).map(tokenInput) : [],
   });
+  /**
+   * Marcador no formato do contrato (SceneTokenInput). `slotId` só segue quando o reservado ainda existe na lista
+   * carregada: versões restauradas podem trazer reservados excluídos, e o servidor recusaria a cena inteira.
+   */
+  function tokenInput(t) {
+    const slotId = t.slotId && (!slotStore.listed || slotStore.byId(t.slotId)) ? t.slotId : null;
+    return { characterId: t.characterId || null, masterCharacterId: t.masterCharacterId || null, slotId, label: t.label, side: t.side, x: t.x, y: t.y, fx: freeOn() ? t.fx ?? null : null, fy: freeOn() ? t.fy ?? null : null, hidden: !!t.hidden, light: t.light ?? null, appearance: t.appearance ?? null, size: t.size ?? null, imageUrl: t.imageUrl ?? null, width: t.width ?? null, height: t.height ?? null, layer: tokenLayerOf(t.layer, draft.layers) };
+  }
   async function saveLayer() {
     // Pontos de entrada do mapa (preparação do mapa): recurso compartilhado, com a revisão do próprio mapa.
     if (entriesDirty()) {
@@ -2167,6 +2913,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (!mapOnly && draft.kind !== "text" && !draft.mapKey) { openPanel("scenery"); return say("Escolha o cenário da cena."); }
     busy = true; renderStatus();
     try {
+      // Reservados citados no arranjo: confere a lista antes (reservados excluídos saem do vínculo, não da posição).
+      if (!mapOnly && draft.prepared.some((t) => t.slotId) && !slotStore.listed) await slotStore.load(true);
       if (mapOnly) { if (layerDirty) await saveLayer(); }
       else if (!saved.id) {
         const sent = clone(draft);
@@ -2270,6 +3018,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const v = disposeGrid?.values();
     const scale = Number(q("#se-g-scale")?.value);
     if (!v || !m) return;
+    // Prévia do impacto (P1.2): se a nova grade tira algo das preparações, o mestre confirma antes de aplicar.
+    const loss = disposeGrid?.lossWarning?.();
+    if (loss && !confirm(loss)) return say("Grade não aplicada. Nada mudou.");
     try {
       const updated = await api(`${base}/assets/maps/${m.id}`, "PUT", { name: m.name, folderId: m.folderId || null, gridPixels: v.gridPixels, scaleMeters: scale, revision: m.revision, hasGrid: true, gridOffsetX: v.gridOffsetX, gridOffsetY: v.gridOffsetY, freeMovement: !!m.freeMovement });
       Object.assign(m, updated, { kind: "tileset" });
@@ -2324,6 +3075,29 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       case "se-entry-remove": change("Excluir ponto de entrada", () => { mapEntries = mapEntries.filter((x) => x.id !== id); }); return refresh();
       case "se-reposition-go": return applyReposition();
       case "se-mark-remove": change("Remover marca oculta", () => { layer = { ...layer, marks: layer.marks.filter((m) => m.x !== pick.x || m.y !== pick.y) }; }); pick = null; panel = "overview"; return refresh();
+      // Personagens reservados (ADR-110)
+      case "se-slot-new": return createSlot(id);
+      case "se-slot-menu": return slotMenu(id, b);
+      case "se-slot-retry": await slotStore.load(true); renderCharacterList(); return renderAssets(true);
+      case "se-slot-bind": { const s = slotStore.byId(id); return s && openBind(s); }
+      case "se-slot-unbind": { const s = slotStore.byId(id); return s && unbindSlot(s); }
+      case "se-bind-go": return confirmBind();
+      case "se-bind-cancel": binding = null; return renderSide();
+      case "se-token-image": return selection.length === 1 && openImagePick(draft.prepared[selection[0]]?.slotId && !draft.prepared[selection[0]]?.imageUrl ? { kind: "slot", id: draft.prepared[selection[0]].slotId } : { kind: "token", i: selection[0] });
+      case "se-ip-use": return useImage(id || "");
+      case "se-ip-upload": return q("#se-ip-file")?.click();
+      case "se-ip-cancel": imagePick = null; return renderSide();
+      // Acervo rápido
+      case "se-quick-cat": quickCat = id; return renderAssets(true);
+      // Ensaio (ADR-111)
+      case "se-rh-add": return addRehearsalToken();
+      case "se-rh-apply": return applyRehearsalChanges();
+      case "se-rh-exit": return toggleSimulate(false);
+      case "se-rh-observe": { const t = rehearsal?.sandbox.find((x) => x.key === id); return t && setObserver(t.characterId ? `c:${t.characterId}` : `t:${t.key}`); }
+      case "se-rh-image": return openImagePick({ kind: "sandbox", key: id });
+      case "se-rh-convert": return convertToSlot(id);
+      case "se-rh-remove": return sandboxRemove(rehearsal?.sandbox.findIndex((x) => x.key === id) ?? -1);
+      case "se-rh-show": if (rehearsal) { rehearsal.selected = id; board.setView(boardView()); renderSide(); } return;
     }
   }
   function loadNpcs() {
@@ -2346,6 +3120,12 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       return;
     }
     if (t.matches("[data-asset-q]")) return renderAssets();
+    if (t.matches("[data-ip-q]") && imagePick) {
+      imagePick.query = t.value;
+      const host = shell.panel("props")?.querySelector("[data-ip-list]");
+      if (host) host.innerHTML = imagePickRows();
+      return;
+    }
     if (t.matches("[data-comp-name]")) {
       const el = composer?.selected()[0];
       if (!el || !composer.editable(el)) return;
@@ -2436,7 +3216,16 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       resetHistory("Tipo de cena trocado. O histórico de desfazer recomeça a partir daqui.");
       recomputeDirty(); return renderAll();
     }
-    if (t.name === "se-viewer") { viewer = t.value; serverView = null; serverViewError = ""; renderSimBanner(); return redraw(); }
+    if (t.name === "se-viewer") return setObserver(t.value);
+    if (t.dataset.rhProfile) return setProfile(t.dataset.rhProfile, t.value);
+    if (t.dataset.rhCustom && rehearsal?.selected) {
+      const key = rehearsal.selected, prev = rehearsal.profiles.get(key) || { id: "custom", custom: {} };
+      return setProfile(key, "custom", { ...(prev.custom || {}), [t.dataset.rhCustom]: t.value });
+    }
+    if (t.matches("[data-bind-char]") && binding) { binding.characterId = t.value; return loadBindPreview(); }
+    if (t.matches("[data-bind-keep]") && binding) { binding.keepImage = t.checked; return; }
+    if (t.name === "se-bind-resolve" && binding) { binding.resolve = t.value; return renderSide(); }
+    if (t.id === "se-ip-file") { const f = t.files?.[0]; t.value = ""; return uploadPickImage(f); }
     if (t.name === "se-vision") { change("Visibilidade", () => { draft.visionMode = t.value; }); renderAll(false); return renderSide(); }
     if (t.name === "se-layer") {
       if (layerDirty && !confirm("As mudanças do mapa ainda não salvas serão descartadas ao trocar o alcance. Continuar?")) return renderSide();
@@ -2492,7 +3281,15 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (f.matches("[data-apply-form]")) return apply(f);
     if (f.matches("[data-grid-form]")) return saveGrid();
   }
-  const onFocusOut = (e) => { if (e.target.matches?.("input, textarea, select")) commitTyping(); };
+  const onFocusOut = (e) => {
+    if (e.target.matches?.("[data-slot-rename]")) return commitRename(e.target);
+    if (e.target.matches?.("input, textarea, select")) commitTyping();
+  };
+  // Renomear reservado: Enter grava (antes dos atalhos do editor). F2 no item da lista começa a renomear.
+  const onRenameKey = (e) => {
+    if (e.key === "Enter" && e.target.matches?.("[data-slot-rename]")) { e.preventDefault(); e.stopPropagation(); e.target.blur(); return; }
+    if (e.key === "F2" && !isTypingTarget(e.target)) { const li = e.target.closest?.("[data-se-char^='slot:']"); if (li) { e.preventDefault(); startRename(li.dataset.seChar.slice(5)); } }
+  };
   // Ctrl/Shift + clique soma à seleção: o tabuleiro não repassa o evento, então guardamos as teclas no início do toque.
   const onStagePointer = (e) => { mods.add = e.ctrlKey || e.metaKey || e.shiftKey; };
   // Ferramenta Zoom: o clique no mapa aproxima (Alt/Shift afasta) em vez de agir sobre a casa.
@@ -2532,7 +3329,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     e.dataTransfer.setData("text/plain", li.querySelector("span")?.firstChild?.textContent || "");
     e.dataTransfer.effectAllowed = "copy";
   };
-  const accepts = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes(DND) && !!meta && mapKind() && !simulate && !composing();
+  // No ensaio, soltar personagens também vale (entram só na caixa de areia).
+  const accepts = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes(DND) && !!meta && mapKind() && (simulate || !composing());
   const onDragOver = (e) => {
     if (!accepts(e)) return;
     e.preventDefault();
@@ -2554,6 +3352,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   // Enter termina o traço de parede (o tabuleiro não consome Enter no modo vetorial).
   const onWallKey = (e) => { if (e.key === "Enter" && tool === "vwall" && wallPts.length && !isTypingTarget(e.target)) { e.preventDefault(); finishWall(); } };
   root.addEventListener("keydown", onWallKey);
+  root.addEventListener("keydown", onRenameKey, true);
   root.addEventListener("click", onClick);
   root.addEventListener("input", onInput);
   root.addEventListener("change", onChange);
@@ -2596,7 +3395,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     imageCache.clear();
     shell.stage.removeEventListener("contextmenu", onStageMenu);
     closed = true;
-    root.removeEventListener("click", onClick); root.removeEventListener("keydown", onWallKey); clearTimeout(previewTimer); root.removeEventListener("input", onInput); root.removeEventListener("change", onChange);
+    root.removeEventListener("click", onClick); root.removeEventListener("keydown", onWallKey); root.removeEventListener("keydown", onRenameKey, true); clearTimeout(previewTimer); root.removeEventListener("input", onInput); root.removeEventListener("change", onChange);
     root.removeEventListener("submit", onSubmit); root.removeEventListener("focusout", onFocusOut); root.removeEventListener("dragstart", onDragStart);
     shell.stage.removeEventListener("pointerdown", onStagePointer, true); shell.stage.removeEventListener("click", onStageClick, true);
     shell.stage.removeEventListener("keydown", onStageKey, true); shell.stage.removeEventListener("dragover", onDragOver);

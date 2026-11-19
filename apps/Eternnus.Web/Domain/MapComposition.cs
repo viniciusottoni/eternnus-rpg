@@ -129,14 +129,16 @@ public static class TileLayers
 }
 
 public sealed record CompositionArtboard(int Width, int Height, string? Background = null);
-/// <summary>Elemento livre de um mapa de imagem. Coordenadas em pixels do documento; fora do artboard é área externa.</summary>
+/// <summary>Elemento livre de um mapa de imagem. Coordenadas em pixels do documento; fora do artboard é área externa.
+/// <c>MapKey</c> (ADR-113, só na composição de cenas): a imagem é uma instância de um mapa com grade da campanha (<c>asset:{guid}</c>,
+/// igual a <c>Src</c>); o mapa original nunca é copiado nem alterado. Opcional: documentos antigos não têm o campo.</summary>
 public sealed record CompositionElement(
     string? Id, string? Layer, string? Type, string? Name = null, string? Src = null,
     double X = 0, double Y = 0, double Width = 0, double Height = 0, double Rotation = 0, double Opacity = 100,
     bool Visible = true, bool Locked = false, bool FlipX = false, bool FlipY = false,
     string? Text = null, double? FontSize = null, string? FontFamily = null, string? Color = null,
     string? Fill = null, string? Stroke = null, double? StrokeWidth = null, string? Align = null, bool? Bold = null, bool? Italic = null,
-    string? Group = null, bool? Secret = null);
+    string? Group = null, bool? Secret = null, string? MapKey = null);
 public sealed record CompositionDocument(int V, CompositionArtboard? Artboard, List<EditorLayer?>? Layers, List<CompositionElement?>? Elements);
 
 /// <summary>
@@ -211,9 +213,18 @@ public static partial class MapComposition
                 else throw Invalid("imagem sem origem válida.");
             }
             else if (e.Src != null) throw Invalid("só elementos de imagem têm origem.");
+            // Instância de mapa (ADR-113): mostra a própria imagem do mapa referenciado, então a chave tem de ser a mesma origem.
+            string? mapKey = null;
+            if (e.MapKey != null)
+            {
+                if (e.Type != "image" || src == null || src == Self || !e.MapKey.StartsWith(NpcImages.AssetPrefix, StringComparison.Ordinal)
+                    || !Guid.TryParse(e.MapKey[NpcImages.AssetPrefix.Length..], out var mapId) || NpcImages.AssetPrefix + mapId.ToString("D") != src)
+                    throw Invalid("mapa inserido sem referência válida (asset:{id} igual à imagem).");
+                mapKey = src;
+            }
             elements.Add(e with
             {
-                Name = name, Src = src, Text = e.Type == "text" ? e.Text ?? "" : e.Text, Secret = e.Secret == true ? true : null,
+                Name = name, Src = src, MapKey = mapKey, Text = e.Type == "text" ? e.Text ?? "" : e.Text, Secret = e.Secret == true ? true : null,
                 Color = Color(e.Color, "cor"), Fill = Color(e.Fill, "preenchimento"), Stroke = Color(e.Stroke, "contorno"),
             });
         }
@@ -229,6 +240,17 @@ public static partial class MapComposition
     {
         Layers = doc.Layers?.Select(l => l == null ? null : l with { Secret = null }).ToList(),
         Elements = doc.Elements?.Select(e => e == null ? null : e with { Secret = null }).ToList(),
+    };
+
+    /// <summary>Mapas referenciados como instâncias (ADR-113) na composição de uma cena.</summary>
+    public static HashSet<Guid> MapInstances(CompositionDocument doc) =>
+        (doc.Elements ?? []).Select(e => e?.MapKey).Where(k => k != null && k.StartsWith(NpcImages.AssetPrefix, StringComparison.Ordinal))
+            .Select(k => Guid.TryParse(k![NpcImages.AssetPrefix.Length..], out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToHashSet();
+
+    /// <summary>Instâncias de mapa são recurso da composição de cenas: num mapa, a marca sai e a imagem continua como imagem-fonte.</summary>
+    public static CompositionDocument WithoutMapKeys(CompositionDocument doc) => doc with
+    {
+        Elements = doc.Elements?.Select(e => e?.MapKey == null ? e : e with { MapKey = null }).ToList(),
     };
 
     /// <summary>Troca as origens das imagens (ex.: <c>self</c> pela imagem-fonte criada, ou fontes de uma cópia).</summary>

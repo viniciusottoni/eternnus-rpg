@@ -225,6 +225,12 @@ public sealed partial class CampaignAssetsService(GameDb db, SessionSignals? sig
             var scenes = await db.Scenes.CountAsync(s => s.CampaignId == campaign && s.MapKey == assetKey && s.Kind == SceneKinds.Map, ct);
             if (scenes > 0) throw new RuleException(409, $"{scenes} cena(s) usam este mapa com grade. Troque o cenário delas antes de deixar só a imagem.");
         }
+        // Mesma regra do editor de mapas: marcadores preparados fora da nova grade saem das cenas que usam o mapa (prévia em GridImpactAsync).
+        if (id != null && x.HasGrid)
+        {
+            var newRows = CampaignMapView.Grid(map.Width, map.Height, x.GridPixels, x.GridOffsetX, x.GridOffsetY);
+            await PruneSceneTokensAsync(campaign, map.Id, newRows[0].Length, newRows.Length, ct);
+        }
         if (id != null && map.HasGrid && x.HasGrid) await RegridWallsAsync(campaign, map.Id, map.GridPixels, map.GridOffsetX, map.GridOffsetY, x.GridPixels, x.GridOffsetX, x.GridOffsetY, ct);
         map.Name = name; map.FolderId = x.FolderId; map.GridPixels = x.GridPixels; map.ScaleMeters = x.ScaleMeters;
         map.HasGrid = x.HasGrid; map.GridOffsetX = x.HasGrid ? x.GridOffsetX : 0; map.GridOffsetY = x.HasGrid ? x.GridOffsetY : 0; map.Purpose = purpose;

@@ -1306,3 +1306,87 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 **Alternativas descartadas:** embaralhar com semente temporal (repete e não garante cobertura); contar exibição no `GET` (viola “GET não grava” e contaria telas canceladas e cartões escondidos); estado do ciclo no navegador ou em memória do servidor (não vale entre abas, reinícios e instâncias); machine learning externo (dependência, custo e explicabilidade); bandit com sorteio (não reproduzível nos testes).
 
 **Consequências:** cerca de uma dúzia de consultas pequenas por navegação elegível (carga não medida); escrita de até três linhas por exibição confirmada; sem JavaScript/`IntersectionObserver` a vitrine aparece, mas o ciclo não avança. Service worker `v87`. Detalhes em [LOJA_AFILIADOS.md §4.5–4.7](LOJA_AFILIADOS.md).
+
+## ADR-109 — Seções recolhíveis com indicador visível (19/11/2026)
+
+**Contexto:** na mesa, “Personagens do mestre” parecia um título comum: o `<summary>` usava `display: flex`, que remove o marcador nativo, e só ao clicar ficava claro que a seção abria. O mesmo acontecia em “Mapa” e “Mais opções” do início de sessão, “Personalizar” da luz, “Preencher em formulário acessível”, “Filtros” da loja, “Já liberados” e “Ver” do Admin; outras seções usavam o triângulo nativo ou “+/−”, sem padrão.
+
+**Decisão:** todo `<summary>` recebe, em `styles.css`, a mesma seta desenhada em CSS antes do texto — apontando para a direita fechada e para baixo aberta —, cursor de mão e destaque ao passar o mouse; o marcador nativo e o “+/−” do Atlas oficial saem. Na mesa, o título do painel ganha fundo de destaque no hover. A rotação respeita `prefers-reduced-motion`.
+
+**Simplicidade (ADR-100):** nenhuma ferramenta nova (sem mudança em `TOOL_INVENTORY`, `BASIC_BUDGET` ou Busca de ações); nenhum clique a mais em jornada alguma; nenhum campo novo.
+
+**Consequências:** regra única cobre também seções futuras; não é preciso estilizar o indicador por tela. Service worker `v88`.
+
+
+## ADR-110 — Personagens reservados: token independente de jogador, ficha e conta (19/11/2026)
+
+**Contexto:** o mestre precisava preparar mapas e testar tokens de futuros jogadores antes de alguém entrar na campanha. `SceneToken` só aceitava personagens vinculados à campanha (`CampaignCharacter`) ou marcadores do mestre; não havia identidade reutilizável de "futuro personagem" nem forma de, depois, entregar o token a um personagem real sem perder posição e aparência.
+
+**Decisão:** nova entidade `PartySlot` (tabela `PartySlots`, por campanha, até 12) com nome, arquétipo visual genérico (`warrior`, `mage`, `archer`, `cleric`, `rogue`, só aparência), imagem (`asset:` da campanha ou https), forma/porte padrão e `CharacterId` opcional. `SceneToken.SlotId` liga o token da cena ao reservado, que pode aparecer em várias cenas (uma vez por cena). Separação: **token visual** (posição, porte, camada, imagem — na cena), **personagem** (ficha — `Character`), **jogador** (conta — `AppUser`). Vincular é ação explícita (`POST …/party-slots/{id}/bind`), com prévia de conflitos (`bind-preview`) e escolha de resolução (`resolve: slot|character`); a transação reescreve os tokens do reservado em todas as cenas preservando X/Y, posição fina, forma, porte, largura/altura, camada e (por padrão) a imagem; a ficha real passa a dar atributos e permissões. Índice único filtrado `IX_PartySlots_OneCharacter` impede o mesmo personagem em dois reservados, inclusive em vínculos concorrentes. Desvincular devolve o nome do reservado aos tokens. Tokens de **ensaio** existem só no editor/ensaio e são recusados ao salvar (`Tokens de ensaio não são salvos`). Reservados sem personagem nunca entram na mesa ao vivo (`ScenePlacement.Plan` os ignora); "Guardar posições atuais" mantém os reservados preparados que ainda cabem (`ScenePlacement.KeepSlots`).
+
+**Simplicidade (ADR-100):** `partySlots` entra em `TOOL_INVENTORY` como seção contextual do painel Personagens (`basic: false`), sem botão novo na barra; `BASIC_BUDGET` inalterado. Nenhum campo obrigatório: o reservado nasce com nome padrão "Aventureiro N". Jornada "preparar cena" ganha um caminho que antes não existia (sem jogadores); nenhuma jornada existente ganha clique.
+
+**Alternativas descartadas:** contas ou fichas fictícias (poluem quotas, histórico e progressão); `ProvisionalCharacterToken` por cena (não reaproveita identidade entre cenas); resolver o vínculo na leitura (espalharia a regra pela mesa e pelo editor).
+
+**Consequências:** migração aditiva `VttTokensGuestsCamera`. A mesa ao vivo não muda ao vincular (preparação × estado ao vivo); o cliente informa `activeSession`. O arranjo `Saved` não carrega `SlotId` (tokens da sessão não têm reservado). Restaurar uma versão antiga pode trazer `SlotId` de reservado excluído: o editor descarta ids desconhecidos antes de salvar.
+
+## ADR-111 — Ensaio de cena com observadores sintéticos (19/11/2026)
+
+**Contexto:** "Ver como jogador" (ADR-088) só aceitava personagens reais como observador; campanhas sem jogadores não testavam visão, luz, paredes e névoa.
+
+**Decisão:** `POST …/prep/preview-view` aceita tokens de reservado (`slotId`) e de ensaio (`rehearsal: true`), perfis de teste por token (`profiles: [{ token, visionMeters, lightMeters, perception, senses }]`) e `viewerToken` (índice). Cada token de reservado sem personagem, de ensaio ou com perfil recebe um observador sintético `rehearsal:{índice}` **só em memória**, avaliado pelas mesmas regras autoritativas (`FogRules`). Precedência: `party` › `viewerToken` › `viewerCharacterId` › `viewerUserId`. Sem perfil, o observador sintético usa a visão/luz padrão da campanha. Perfis não presumem regras de sistema (visão ampliada, no escuro, sem luz, carregando luz, personalizado). No editor, "Ver como jogador" vira **Ensaiar cena**: uma cópia (sandbox) do arranjo recebe arrastes, redimensionamentos e tokens de ensaio; sair descarta; "Aplicar alterações à preparação" mostra a diferença e grava como uma única entrada desfazível.
+
+**Segurança:** só o mestre; nada é gravado; nenhum sinal é enviado à mesa; não cria usuários nem sessões; não altera turnos, fichas, exploração ou visibilidade real.
+
+**Simplicidade (ADR-100):** mesma ferramenta `viewAs` (Básica), renomeada; nenhum item novo na barra.
+
+## ADR-114 — Convidados com acesso limitado (19/11/2026)
+
+**Contexto:** jogadores eventuais e espectadores precisavam entrar sem criar conta, sem substituir o modelo de contas, fichas e histórico.
+
+**Decisão:** convite de capacidade (`GuestInvite`) por campanha, observador ou participante, com validade (1–72 h, padrão 4 h), limite de usos (1–20) e revogação. O segredo (32 bytes aleatórios, base64url) aparece só na resposta de criação; o banco guarda SHA-256. Resgatar (`POST /api/guest/redeem`, limitado por IP) cria um `GuestSeat` na sessão ativa e grava o cookie `eternnus_guest` (`{seat}.{segredo}`, HttpOnly, SameSite=Strict, Path `/api/guest`, Secure em HTTPS, expira com o convite); o segredo do lugar nunca vai em JSON ou URL e é comparado em tempo constante. Toda chamada de convidado reconfere no banco: lugar e convite ativos e no prazo, `Campaign.GuestsEnabled`, campanha não arquivada/expirada e sessão aberta — senão 401. Convites inválidos de qualquer tipo dão o mesmo 404. Usos consumidos por atualização condicional depois do bloqueio da sessão ativa. Endpoints `/api/guest/*` têm autenticação própria e explícita; nenhum bypass da política `Verified`. O participante só recebe controle de um token do mestre visível e sem ficha (`SessionToken.GuestSeatId`, um por lugar), concedido e retirado pelo mestre na mesa; move, rola e conversa pelo `SessionService` (bloqueio, evento, `Revision`, `Pulse`). A visão de espectador (`SpectatorStateAsync`) só leva eventos públicos, luz comum/áreas reveladas, nenhum oculto, nenhum objetivo, nota, ficha privada, e-mail, id de conta ou avatar; o participante enxerga pela luz/visão do token que controla (dono trocado só em memória).
+
+**Preservação:** convidados não são membros nem participantes, não contam em quotas, não possuem fichas; o mestre desabilita tudo com um interruptor (revoga convites e lugares).
+
+**Consequências:** eventos de convidado usam a conta do mestre em `TableEvent.UserId` (FK de usuário) com `Author` "{nome} (convidado)" e `data.guest`. Imagens temporárias e músicas exigem conta e não aparecem ao convidado. Concorrência de resgate testada só em SQLite.
+
+## ADR-115 — "Mostrar esta região", seguir o mestre e exibição externa (19/11/2026)
+
+**Contexto:** mesas presenciais, projetores e transmissões precisavam de uma visão limpa e de enquadramento comum sem mover a câmera de quem não quer.
+
+**Decisão:** `GameSession.Camera` guarda só o último enquadramento pedido pelo mestre (`{x,y,w,h,seq}` em casas, `CameraFrames`), gravado por `POST /api/sessions/{id}/camera` com bloqueio, `Revision++` e `Pulse`, **sem** `TableEvent`. O estado ao vivo leva `camera` a todos; cada cliente decide: câmera livre (padrão do jogador), seguir o mestre (aplica só quando `seq` aumenta; mexer na vista pausa e oferece "Voltar a seguir") ou restaurar enquadramento. Zoom e movimentos são locais; com `prefers-reduced-motion` o enquadramento é instantâneo. Exibição externa (`#/mesa/{id}/exibicao`, `GET /api/sessions/{id}/display[/live]`) é exclusiva do mestre e usa a visão de espectador, nunca o payload privilegiado.
+
+**Alternativas descartadas:** transmitir movimentos contínuos de câmera (eventos e escrita demais); estado em memória (viola ADR-015); reaproveitar o estado do mestre na tela externa (vazaria notas, ocultos e ferramentas).
+
+## ADR-113 — Vários mapas na mesma cena como instâncias na grade global (19/11/2026)
+
+**Contexto:** cenas com duas salas, regiões de cidade, pavimentos ou mapas auxiliares exigiam montar uma imagem fora do Eternnus. A cena tem um mapa (`Scene.MapKey`), uma grade e uma camada de névoa; a composição (ADR-090) já aceitava imagens sobre o mapa.
+
+**Decisão:** a cena mantém **uma grade global** (o mapa base ou uma área em branco escolhida em casas: 30×20, 40×30, 60×40 ou personalizada na Completa). Um mapa da campanha entra como **instância**: elemento de imagem da composição com `mapKey: "asset:{guid}"` (igual a `src`), que referencia o recurso original sem copiá-lo. Ao inserir, a escala iguala a casa do mapa original à casa da cena e a posição encaixa na grade (inclusive deslocamento); com "Encaixar mapas inseridos na grade" (padrão) a rotação fica em múltiplos de 90° e as setas movem casas inteiras. Remover a instância não apaga o mapa; o mapa original não pode ser excluído enquanto estiver inserido. Tokens continuam em casas globais da cena (inteiros + posição fina), sem transformações acumuladas ao salvar.
+
+**Regras:** nada é combinado automaticamente. "Trazer paredes, portas e luzes deste mapa" converte paredes vetoriais, portas, casas bloqueadas e luzes do original para casas da cena (translação, rotações de 90°, espelhamentos e corte na borda; funções puras em `map-instance-policy.js`) numa única entrada desfazível, e só quando a cena usa preparação própria (`layerMode: "scene"`), para não alterar o mapa compartilhado. Onde instâncias se sobrepõem, a ordem só decide a imagem. A névoa e a visibilidade continuam sendo da camada única da cena: regiões não vistas ficam cobertas para os jogadores como em qualquer mapa.
+
+**Servidor:** `mapKey` é opcional; quando presente precisa ser igual a `src` e apontar para mapa de imagem com grade da mesma campanha (400 caso contrário). Composições do editor de mapas descartam o campo. Documentos antigos carregam sem conversão. A mesa ao vivo recebe a camada achatada da composição (`?overlay=`), como antes.
+
+**Mudança de grade (P1.2):** `POST …/assets/maps/{id}/grid-impact` mostra, sem gravar, o que a nova grade afeta (tokens, paredes, casas, luzes, marcas, entradas, instâncias, sessão em uso). `PUT …/maps/{id}` passou a remover tokens preparados que ficam fora da grade nova — a mesma regra que o editor de mapas já aplicava e §4 de PREPARACAO_EDITOR descreve; antes, outras cenas guardavam esses tokens e falhavam no próximo salvamento. O editor de cenas e o modal de grade da mesa pedem confirmação quando algo seria perdido.
+
+**Simplicidade (ADR-100):** `mapInstance` em `TOOL_INVENTORY` (`basic: false`); inserção também pelo Acervo e pelo menu de contexto da composição. Nenhum campo obrigatório novo.
+
+**Alternativas descartadas:** várias grades com regras próprias por região (exigiria névoa, movimento e medição por instância e transições entre grades — fora do escopo e arriscado para a segurança da névoa); copiar o mapa para dentro da cena (duplica bytes e quebra a reutilização); converter cenas antigas (desnecessário).
+
+**Consequências:** sem migração (composição já é JSON). Service worker `v90`.
+
+## ADR-112 — Manipulação de tokens, Acervo rápido, assistente de grade e envio de imagens (19/11/2026)
+
+**Contexto:** a auditoria (EVOLUCAO_VTT_TOKENS_MAPAS_UX.md §1) mostrou que alças, arrastar, seleção múltipla, copiar/colar e desfazer já existiam; faltavam ações frequentes no menu, feedback durante a transformação, acesso aos recursos sem sair da cena, prévia do impacto da grade e um envio de imagens coerente entre os editores.
+
+**Decisão:**
+- **Manipulação (P0.3):** o menu do token ganha "Trocar imagem…" (mantém a geometria), "Ajustar tamanho" com predefinições (Pequeno 75%, Médio, Grande 2×2, Enorme 3×3, Imenso 4×4, validadas pela mesma regra de ocupação do servidor), "Vincular a personagem…"/"Desvincular" para reservados e "Mais propriedades…". Durante o redimensionamento aparecem casas e porcentagem ("2 × 2 casas · 200%"); soltar numa posição inválida é recusado com o motivo e o token volta; Esc cancela arraste ou redimensionamento em andamento e devolve a geometria. Nada abre modal para ajustes pequenos.
+- **Acervo rápido (P1.1):** o painel "Acervo" vira "Acervo rápido", também no contexto Personagens, com categorias (Recentes, Favoritos, Grupo, Reservados, NPCs e criaturas, Mapas, Imagens da campanha), busca e miniaturas; arrastar ou "Colocar no cursor" insere. Usa os mesmos recursos e preferências da Preparação, sem cópia de arquivos nem segunda biblioteca.
+- **Grade (P1.2):** zoom sob o cursor, lupa ao marcar/arrastar pontos, ajuste fino por teclado, tamanhos comuns, "Voltar ao alinhamento anterior" e "Usar o alinhamento detectado"; prévia do impacto (ADR-113) antes de aplicar; campos numéricos continuam na Completa.
+- **Criação (P1.3):** a tela "Como deseja começar?" explica mapa/cena/sessão numa ⓘ e a área em branco é escolhida em casas.
+- **Envio (P1.4):** `image-drop.js` é o fluxo único dos dois editores: destaque da área de soltura com o limite do plano, miniatura e andamento por arquivo, falha de um arquivo não interrompe os outros nem mexe no rascunho, imagem encaixada perto do ponto de soltura mantendo a proporção (Ajustar, Preencher e Tamanho original continuam), elemento novo selecionado e mensagem de conclusão. O editor de cenas importa imagem por link pelo download protegido existente.
+
+**Simplicidade (ADR-100):** nenhuma ferramenta nova na barra da Básica; ações novas vivem no menu de contexto, no painel e na Busca de ações. A jornada "preparar cena" perde passos (Acervo no contexto Personagens; predefinições de tamanho em vez de números).
+
+**Consequências:** o progresso do envio é por arquivo ("k de n"), não por bytes (`fetch` não informa envio). A importação por link no editor de cenas usa `prompt()` simples.

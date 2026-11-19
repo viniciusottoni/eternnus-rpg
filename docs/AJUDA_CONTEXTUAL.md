@@ -726,3 +726,19 @@ Catálogo campanhas e índice help-policy incluem a nova chave.
 | Preço, conferência, prioridade, validade, sinônimos | Auxiliar visível ligado por `aria-describedby` | — |
 
 A área `loja` entra em `HELP_AREAS`, no índice `HELP_KEYS` e na lista pública do PWA.
+
+## Classificação — tokens reservados, ensaio, mapas inseridos, convidados e câmera (ADR-110 a ADR-115)
+
+| Elemento | Ajuda |
+| --- | --- |
+| Personagens reservados no painel Personagens (criar, arquétipos, renomear, imagem, vincular/desvincular) — ADR-110 | ⓘ `campanhas.cenas.reservados` no título da seção; estado visível em texto ("Reservado" / "Vinculado a X", onde está na cena); botões desabilitados explicam o motivo |
+| Ensaiar cena (observador, perfis de teste, token de ensaio, aplicar à preparação) — ADR-111 | ⓘ `campanhas.cenas.ensaio` no cartão do ensaio e no painel; aviso visível "Ensaio — nada aqui vai para a mesa nem para os jogadores." |
+| Acervo rápido (categorias, busca, arrastar ou colocar no cursor) — P1.1 | ⓘ `campanhas.cenas.acervo-rapido` no título do painel; estados vazio/erro em texto |
+| Mapa, cena e sessão no início da cena — P1.3 | ⓘ `campanhas.cenas.conceitos` na tela "Como deseja começar?" |
+| Área em branco em casas — P1.3 | ⓘ `campanhas.cenas.area-branco` no formulário da área |
+| Mapa inserido (encaixe, trazer paredes/portas/luzes) — ADR-113 | ⓘ `campanhas.cenas.mapa-inserido` no bloco "Mapa inserido" de Propriedades |
+| Impacto da mudança de grade — ADR-113 | ⓘ `campanhas.mapas.impacto-grade` junto da lista do que seria removido; confirmação quando algo se perde |
+| Seguir o mestre / restaurar enquadramento — ADR-115 | ⓘ `mesa.camera.seguir` (todos); chip visível "Voltar a seguir" quando o jogador mexe na vista |
+| Mostrar esta região e exibição externa — ADR-115 | ⓘ `mesa.exibicao.externa` (mestre); confirmação em aviso curto ao enviar |
+| Convidados da mesa (ligar, convites, lugares, controle de token) — ADR-114 | ⓘ `mesa.convidados.gerenciar` (mestre); aviso visível "Quem tiver o link entra; revogue quando terminar" |
+| Entrada e mesa do convidado — ADR-114 | ⓘ `mesa.convidado.entrar` e `mesa.convidado.mesa` (todos); fim de acesso explicado em tela própria |

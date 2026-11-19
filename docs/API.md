@@ -618,3 +618,69 @@ Contrato completo, formatos (`Card`, `Preferences`, `ProductInput`, `Settings`) 
 | `GET /admin/store/metrics?days=` | Agregados (7–365 dias): cliques, exibições, CTR atribuído e suavizado por fila e por produto, cobertura do catálogo ativo, menos exibidos, exibições por loja/sistema/categoria; `impressionsTracked: true`. Nunca dados individuais. |
 
 Excluir um sistema de RPG associado a produtos devolve 409 (`DELETE /admin/rpg-systems/{id}`).
+
+## Evolução VTT — reservados, ensaio, convidados e câmera (ADR-110, 111, 114, 115)
+
+Todas as escritas passam pela proteção antiforgery comum (`X-Eternnus: 1` + token de `/api/auth/csrf`). Rotas de conta exigem `Verified` e o serviço confere o mestre da campanha.
+
+### Personagens reservados (`/api/campaigns/{id}/party-slots`, só o mestre)
+
+Item: `{ id, name, archetype, imageUrl, appearance, size, width, height, characterId, characterName, order, revision, scenes }` (`scenes` = cenas com token do reservado). `archetype`: `warrior|mage|archer|cleric|rogue|null` (só aparência). Até 12 por campanha.
+
+| Método e rota | Corpo | Resposta |
+| --- | --- | --- |
+| `GET` | — | `{ items, characters: [{ id, name, slotId }] }` |
+| `POST` | `{ name?, archetype?, imageUrl?, appearance?, size?, width?, height? }` | item (nome vazio = "Aventureiro N"; 409 acima de 12) |
+| `PUT /{slotId}` | idem + `revision` | item; renomear atualiza o rótulo dos tokens sem personagem em todas as cenas; 409 com revisão antiga |
+| `POST /{slotId}/duplicate` | — | item novo, sem vínculo e sem posição |
+| `DELETE /{slotId}` | — | 204; remove os tokens sem personagem do reservado; tokens vinculados perdem só o `slotId` |
+| `POST /{slotId}/bind-preview` | `{ characterId }` | `{ characterName, scenes, conflicts: [{ sceneId, sceneName }], boundElsewhere, activeSession }` (somente leitura) |
+| `POST /{slotId}/bind` | `{ characterId, revision, keepImage = true, resolve: null\|"slot"\|"character" }` | item + `activeSession`; 400 personagem fora da campanha ou `resolve` inválido; 409 conflitos sem `resolve`, personagem já em outro reservado, reservado já vinculado a outro personagem |
+| `POST /{slotId}/unbind` | `{ revision }` | item |
+
+Cenas: `GET /scenes` e `GET /scenes/{id}` incluem `slots`; tokens de `prepared` trazem `slotId`. No salvamento, `slotId` desconhecido → 400 "Personagem reservado não encontrado. Recarregue o editor."; reservado aparece uma vez por cena; token com `rehearsal: true` → 400. Reservados sem personagem não entram na mesa ao apresentar a cena.
+
+### Ensaio (`POST /api/campaigns/{id}/prep/preview-view`)
+
+Campos novos: `profiles: [{ token, visionMeters?, lightMeters?, perception?, senses? }]` (índice em `tokens`; metros 0–300, percepção −50–100, até 60 perfis) e `viewerToken` (índice). `tokens` aceita `slotId` e `rehearsal: true`. Precedência do observador: `party` › `viewerToken` › `viewerCharacterId` › `viewerUserId`. Resposta inalterada. Somente leitura.
+
+### Câmera e exibição externa (sessão)
+
+- `POST /api/sessions/{id}/camera` `{ x, y, w, h }` (casas; lado 1–400; precisa tocar o mapa) → 204. Só o mestre; sem evento de histórico.
+- Estado ao vivo: `camera: { x, y, w, h, seq } | null` para todos; `guests: [{ seatId, name, mode, online, tokenId }]` só para o mestre (`null` para os demais).
+- `GET /api/sessions/{id}/display` e `GET …/display/live?after={rev}`: só o mestre; estado de espectador. Imagens por `…/display/map-image` e `…/display/tokens/{tokenId}/portrait`.
+
+Estado de espectador: mesmo formato do estado ao vivo, com `session.objective = null`, `guests = null`, só eventos públicos, participantes sem `userId`/`avatarUrl` e sem dados de ficha privada, tabuleiro com luz comum e áreas reveladas, nenhum oculto. `me` da exibição: `{ userId: null, isMaster: false, display: true, guest: false, joined: false, characterId: null, character: null }`.
+
+### Convidados
+
+Mestre (`Verified`):
+
+| Método e rota | Corpo | Resposta |
+| --- | --- | --- |
+| `PUT /api/campaigns/{id}/guests` | `{ enabled }` | `{ enabled }`; desligar revoga convites e lugares |
+| `GET /api/campaigns/{id}/guest-invites` | — | `{ enabled, invites: [{ id, mode, label, createdAt, expiresAt, revokedAt, maxUses, uses, active }], seats: [{ id, name, mode, sessionId, createdAt, lastSeenAt, online, revokedAt, tokenId, tokenLabel }] }` (50 mais recentes) |
+| `POST /api/campaigns/{id}/guest-invites` | `{ mode: "observer"\|"participant", label?, hours? (1–72, 4), maxUses? (1–20, 1) }` | 201 `{ id, mode, label, expiresAt, maxUses, uses, secret, path }` — `secret` só nesta resposta; `path` = `/#/convidado/{secret}`; 409 com convidados desligados |
+| `DELETE /api/campaigns/{id}/guest-invites/{inviteId}` | — | 204 (revoga convite e lugares) |
+| `DELETE /api/campaigns/{id}/guest-seats/{seatId}` | — | 204 |
+| `POST /api/sessions/{id}/guest-control` | `{ tokenId, seatId \| null }` | 204; só lugar participante ativo da sessão e token do mestre visível sem ficha; um token por lugar |
+
+Convidado (sem conta; cookie `eternnus_guest`, HttpOnly, SameSite=Strict, Path `/api/guest`):
+
+| Método e rota | Corpo | Resposta |
+| --- | --- | --- |
+| `POST /api/guest/redeem` | `{ secret, name }` | `{ sessionId, mode, name }`; 404 genérico "Convite inválido ou expirado."; 409 sem sessão aberta; 429 limite por IP |
+| `GET /api/guest/live?after={rev}` (alias `/state`) | — | estado de espectador; `me` acrescenta `guest: true, mode, name, seatId, tokenId`; 401 "Acesso de convidado encerrado." |
+| `GET /api/guest/map-image`, `GET /api/guest/tokens/{tokenId}/portrait` | — | imagens permitidas ao convidado |
+| `POST /api/guest/heartbeat` | — | 204 |
+| `POST /api/guest/move` | `{ x, y, fx?, fy? }` | 204; só participante com token; respeita turno, pausa, grade, bloqueios e paredes da mesa |
+| `POST /api/guest/roll` | `{ formula, label? }` | `{ hidden, visibility, roll, total }`; só participante |
+| `POST /api/guest/message` | `{ content }` | 204; só participante |
+| `POST /api/guest/leave` | — | 204; revoga o próprio lugar e apaga o cookie |
+
+### Grade e composição (ADR-113)
+
+- `POST /api/campaigns/{id}/assets/maps/{mapId}/grid-impact` `{ gridPixels, gridOffsetX, gridOffsetY }` → `{ width, height, oldWidth, oldHeight, scenes, affected[], tokensOutside, wallsOutside, cellsOutside, lightsOutside, marksOutside, entriesOutside, instances, inSession }`. Só o mestre; não grava.
+- `PUT /api/campaigns/{id}/assets/maps/{mapId}` com grade nova remove tokens preparados que ficam fora dela (consulte `grid-impact` antes).
+- `POST /api/campaigns/{id}/scenes/{sceneId}/sources/import` `{ url, name }`: importa imagem por link para a composição da cena, pelo mesmo download protegido do acervo.
+- Elementos de imagem da composição da cena aceitam `mapKey: "asset:{guid}"` (igual a `src`, mapa com grade da mesma campanha).

@@ -7,6 +7,8 @@ public record MapCompositionInput(string? Composition, int Revision, string Name
     bool HasGrid = true, int GridOffsetX = 0, int GridOffsetY = 0, bool FreeMovement = false);
 public record MapSourceImportInput(string Url, string? Name);
 public record MapSourceCopyInput(string From);
+/// <summary>Grade proposta no assistente de alinhamento (somente leitura: nada é gravado).</summary>
+public record MapGridImpactInput(int GridPixels, int GridOffsetX = 0, int GridOffsetY = 0);
 
 /// <summary>
 /// Mapas de imagem editáveis (ADR-081 §4): composição (artboard, camadas, elementos) + imagem achatada pelo navegador,
@@ -50,7 +52,7 @@ public sealed partial class CampaignAssetsService
         if (x.GridOffsetX < 0 || x.GridOffsetY < 0 || x.GridOffsetX >= x.GridPixels || x.GridOffsetY >= x.GridPixels) throw new RuleException(400, "O deslocamento da grade vai de 0 até o tamanho do quadrado menos 1 pixel.");
         var (doc, sources, usesSelf) = MapComposition.Parse(x.Composition);
         // Camada secreta é recurso da composição de cenas: no mapa, a marca não tem efeito e sai.
-        doc = MapComposition.WithoutSecrets(doc);
+        doc = MapComposition.WithoutMapKeys(MapComposition.WithoutSecrets(doc));
         var flat = await Normalize(image, ct);
         if (flat.Width != doc.Artboard!.Width || flat.Height != doc.Artboard.Height) throw new RuleException(400, "A imagem achatada não tem o tamanho da área visível. Salve novamente.");
         var hasGrid = x.HasGrid; var free = hasGrid && x.FreeMovement;
@@ -134,6 +136,64 @@ public sealed partial class CampaignAssetsService
             scene.Saved = scene.Saved.Where(t => Inside(t, width, height)).ToList();
             scene.Revision++; scene.UpdatedAt = DateTime.UtcNow;
         }
+    }
+
+    /// <summary>
+    /// Prévia do impacto de uma nova grade (P1.2), sem gravar nada: cenas que usam o mapa, marcadores preparados que ficariam fora,
+    /// paredes (convertidas como em <see cref="RegridWallsAsync"/>), casas bloqueadas, luzes, marcas e pontos de entrada que sairiam,
+    /// cenas com o mapa inserido na composição (ADR-113) e se o mapa está na mesa agora. Mesmas contas das escritas reais.
+    /// </summary>
+    public async Task<object> GridImpactAsync(Guid campaign, Guid id, string user, MapGridImpactInput x, CancellationToken ct)
+    {
+        await Access(campaign, user, true, ct);
+        var map = await Maps.AsNoTracking().Where(m => m.CampaignId == campaign && m.Id == id && m.Purpose == CampaignAssetPurposes.Map && m.TileData == null)
+            .Select(m => new { m.Width, m.Height, m.HasGrid, m.GridPixels, m.GridOffsetX, m.GridOffsetY, m.Entries }).SingleOrDefaultAsync(ct) ?? throw Missing();
+        if (x.GridPixels is < 8 or > 1024) throw new RuleException(400, "Grade: 8–1.024 pixels.");
+        if (x.GridOffsetX < 0 || x.GridOffsetY < 0 || x.GridOffsetX >= x.GridPixels || x.GridOffsetY >= x.GridPixels) throw new RuleException(400, "O deslocamento da grade vai de 0 até o tamanho do quadrado menos 1 pixel.");
+        if (x.GridPixels > Math.Min(map.Width, map.Height)) throw new RuleException(400, "O quadrado deve caber na imagem.");
+        var rows = CampaignMapView.Grid(map.Width, map.Height, x.GridPixels, x.GridOffsetX, x.GridOffsetY);
+        int w = rows[0].Length, h = rows.Length;
+        int oldW = 0, oldH = 0;
+        if (map.HasGrid && map.GridPixels > 0) { oldW = (map.Width - map.GridOffsetX) / map.GridPixels; oldH = (map.Height - map.GridOffsetY) / map.GridPixels; }
+        var key = "asset:" + id;
+        bool In(int cx, int cy) => cx >= 0 && cy >= 0 && cx < w && cy < h;
+        var scenes = await db.Scenes.AsNoTracking().Where(s => s.CampaignId == campaign && s.MapKey == key).OrderBy(s => s.Name).ThenBy(s => s.Id)
+            .Take(PreparationService.MaxScenes).ToListAsync(ct);
+        var affected = new List<object>();
+        var tokens = 0;
+        foreach (var s in scenes)
+        {
+            // Mesma regra de PruneSceneTokensAsync: posição preparada (e a salva) fora da grade sai.
+            var outside = s.Prepared.Count(t => !In(t.X, t.Y)) + s.Saved.Count(t => !In(t.X, t.Y));
+            tokens += outside;
+            if (outside > 0 && affected.Count < 20) affected.Add(new { s.Id, s.Name, tokensOutside = outside });
+        }
+        int walls = 0, cells = 0, lights = 0, marks = 0;
+        var changed = map.HasGrid && (map.GridPixels != x.GridPixels || map.GridOffsetX != x.GridOffsetX || map.GridOffsetY != x.GridOffsetY);
+        var layers = await db.Set<CampaignMapLayer>().AsNoTracking().Where(l => l.CampaignId == campaign && (l.MapKey == key || l.MapKey.StartsWith(key + "@")))
+            .Select(l => l.Prepared ?? l.State).ToListAsync(ct);
+        int ww = w * TableFog.WallUnit, wh = h * TableFog.WallUnit;
+        foreach (var json in layers)
+        {
+            if (MapFogState.Parse(json) is not { } state) continue;
+            var list = state.Walls ?? [];
+            if (changed && map.GridPixels > 0) list = TableFog.Regrid(list, map.GridPixels, map.GridOffsetX, map.GridOffsetY, x.GridPixels, x.GridOffsetX, x.GridOffsetY);
+            walls += list.Count(s => s.X1 < 0 || s.Y1 < 0 || s.X2 < 0 || s.Y2 < 0 || s.X1 > ww || s.X2 > ww || s.Y1 > wh || s.Y2 > wh);
+            for (var cy = 0; cy < state.Cells.Length; cy++)
+                for (var cx = 0; cx < state.Cells[cy].Length; cx++)
+                    if (state.Cells[cy][cx] != TableFog.Free && !In(cx, cy)) cells++;
+            lights += state.Lights.Count(l => !In(l.X, l.Y));
+            marks += state.Marks.Count(m => !In(m.X, m.Y));
+        }
+        var entriesOutside = MapEntries.Parse(map.Entries).Count - MapEntries.Parse(MapEntries.Fit(map.Entries, w, h)).Count;
+        var pattern = "\"mapKey\":\"" + key + "\"";
+        var instances = await db.Scenes.CountAsync(s => s.CampaignId == campaign && s.Composition != null && s.Composition.Contains(pattern), ct);
+        var inSession = await db.Sessions.AnyAsync(s => s.CampaignId == campaign && s.EndedAt == null && s.MapKey == key, ct);
+        return new
+        {
+            width = w, height = h, oldWidth = oldW, oldHeight = oldH, scenes = scenes.Count, affected, tokensOutside = tokens,
+            wallsOutside = walls, cellsOutside = cells, lightsOutside = lights, marksOutside = marks, entriesOutside, instances, inSession,
+        };
     }
 
     /// <summary>Imagem-fonte enviada (PNG com transparência preservada).</summary>

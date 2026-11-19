@@ -374,6 +374,106 @@ public sealed class SceneCompositionTests : IAsyncLifetime
         Assert.DoesNotContain("secret", MapComposition.Serialize(clean));
     }
 
+    // ---------- Mapas inseridos na cena (ADR-113) ----------
+    static string InstanceDoc(int size, string src, string? mapKey) => JsonSerializer.Serialize(new
+    {
+        v = 1, artboard = new { width = size, height = size, background = "#000000" },
+        layers = new object[]
+        {
+            new { id = "base", name = "Base", kind = "base", visible = true, locked = false, opacity = 100 },
+            new { id = "elements", name = "Elementos", kind = "elements", visible = true, locked = false, opacity = 100 },
+        },
+        elements = new object[] { new { id = "m1", layer = "base", type = "image", src, mapKey, x = 32, y = 0, width = 128, height = 128 } },
+    }, Web);
+
+    [Fact]
+    public async Task Scene_composition_accepts_map_instances_only_of_campaign_maps_with_grid()
+    {
+        var map = await MapAsync();
+        var hall = await MapAsync("Corredor");
+        var picture = await MapAsync("Retrato", grid: false);
+        var scene = await SceneAsync("Masmorra", map.Key);
+        var saved = await SaveComposition(scene, InstanceDoc(256, hall.Key, hall.Key), null);
+        Assert.Equal(hall.Key, saved.GetProperty("composition").GetProperty("elements")[0].GetProperty("mapKey").GetString());
+        Assert.Equal(hall.Key, (await Scene(scene)).GetProperty("composition").GetProperty("elements")[0].GetProperty("mapKey").GetString());
+        // Chave diferente da imagem, mapa sem grade, id desconhecido e formato inválido: 400.
+        Assert.Equal(400, await Status(() => SaveComposition(scene, InstanceDoc(256, hall.Key, map.Key), null)));
+        Assert.Equal(400, await Status(() => SaveComposition(scene, InstanceDoc(256, picture.Key, picture.Key), null)));
+        var ghost = "asset:" + Guid.NewGuid();
+        Assert.Equal(400, await Status(() => SaveComposition(scene, InstanceDoc(256, ghost, ghost), null)));
+        Assert.Equal(400, await Status(() => SaveComposition(scene, InstanceDoc(256, hall.Key, "crypt"), null)));
+        // Mapa com grade de outra campanha: recusado.
+        db.ChangeTracker.Clear();
+        var other = new Campaign { OwnerId = Master, Name = "Outra" };
+        db.Add(other); await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        var foreign = await assets.SaveMapAsync(other.Id, null, Master, new("Alheio", null, 32, 1.5m), Upload(TestPng.Solid(256, 256, 1, 2, 3)), default);
+        db.ChangeTracker.Clear();
+        Assert.Equal(400, await Status(() => SaveComposition(scene, InstanceDoc(256, foreign.Key, foreign.Key), null)));
+        // Documento antigo, sem o campo, continua válido; o original nunca é apagado enquanto inserido.
+        await SaveComposition(scene, InstanceDoc(256, hall.Key, null), null);
+        Assert.False((await Scene(scene)).GetProperty("composition").GetProperty("elements")[0].TryGetProperty("mapKey", out _));
+        await SaveComposition(scene, InstanceDoc(256, hall.Key, hall.Key), null);
+        db.ChangeTracker.Clear();
+        Assert.Equal(409, await Status(() => assets.DeleteMapAsync(campaign.Id, hall.Id, Master, default)));
+        Assert.True(await db.Set<CampaignMap>().AnyAsync(m => m.Id == hall.Id));
+    }
+
+    [Fact]
+    public void Map_compositions_drop_map_instance_keys()
+    {
+        var key = "asset:" + Guid.NewGuid();
+        var (doc, sources, _) = MapComposition.Parse(InstanceDoc(256, key, key));
+        Assert.Single(sources);
+        Assert.Equal([Guid.Parse(key[6..])], MapComposition.MapInstances(doc));
+        var clean = MapComposition.WithoutMapKeys(doc);
+        Assert.Empty(MapComposition.MapInstances(clean));
+        Assert.DoesNotContain("mapKey", MapComposition.Serialize(clean));
+    }
+
+    [Fact]
+    public async Task Grid_impact_previews_what_a_new_grid_drops_without_writing()
+    {
+        var map = await MapAsync();
+        var tokens = new List<SceneTokenInput> { new(hero.Id, null, null, null, 1, 1), new(null, null, "Lobo", "enemy", 7, 7) };
+        var scene = await SceneAsync("Covil", map.Key, tokens: tokens);
+        var layer = J(await assets.LayerAsync(campaign.Id, map.Key, Master, default));
+        var cells = Enumerable.Range(0, 8).Select(y => y == 6 ? "......#." : "........").ToArray();
+        db.ChangeTracker.Clear();
+        await assets.SaveLayerAsync(campaign.Id, map.Key, Master, new(true, cells, [new FogLight { Id = "a", X = 7, Y = 7, Radius = 3 }, new FogLight { Id = "b", X = 1, Y = 1, Radius = 3 }], null, null,
+            layer.GetProperty("revision").GetInt32(), Walls: [new FogWall { Id = "w1", X1 = 0, Y1 = 0, X2 = 800, Y2 = 0, Kind = FogWallKinds.Wall }, new FogWall { Id = "w2", X1 = 0, Y1 = 100, X2 = 100, Y2 = 100, Kind = FogWallKinds.Wall }]), default);
+        var revision = (await db.Set<CampaignMap>().AsNoTracking().SingleAsync(m => m.Id == map.Id)).Revision;
+        db.ChangeTracker.Clear();
+        await assets.SaveEntriesAsync(campaign.Id, map.Key, Master, new([new MapEntry("porta", "Porta", MapEntryKinds.Party, 6, 6, 2, 1)], revision), default);
+        var before = await Revision(scene);
+        db.ChangeTracker.Clear();
+        // 64 px: 4 × 4 casas. Sai o lobo (7,7), a luz (7,7), a casa bloqueada (6,6), o ponto de entrada; a parede de 8 casas passa da borda.
+        var impact = J(await assets.GridImpactAsync(campaign.Id, map.Id, Master, new(64), default));
+        Assert.Equal(4, impact.GetProperty("width").GetInt32());
+        Assert.Equal(8, impact.GetProperty("oldWidth").GetInt32());
+        Assert.Equal(1, impact.GetProperty("scenes").GetInt32());
+        Assert.True(impact.GetProperty("tokensOutside").GetInt32() >= 1);
+        Assert.Equal(1, impact.GetProperty("lightsOutside").GetInt32());
+        Assert.Equal(1, impact.GetProperty("cellsOutside").GetInt32());
+        Assert.Equal(1, impact.GetProperty("entriesOutside").GetInt32());
+        Assert.Equal(0, impact.GetProperty("wallsOutside").GetInt32()); // convertidas para o mesmo ponto da imagem: 800 × 32 / 64 = 400 cabe
+        Assert.False(impact.GetProperty("inSession").GetBoolean());
+        Assert.Equal("Covil", impact.GetProperty("affected")[0].GetProperty("name").GetString());
+        // Nada foi gravado.
+        Assert.Equal(before, await Revision(scene));
+        db.ChangeTracker.Clear();
+        Assert.Equal(revision + 1, (await db.Set<CampaignMap>().AsNoTracking().SingleAsync(m => m.Id == map.Id)).Revision);
+        // Mesma grade: nada sai. Grade inválida e jogador: recusados.
+        Assert.Equal(0, J(await assets.GridImpactAsync(campaign.Id, map.Id, Master, new(32), default)).GetProperty("tokensOutside").GetInt32());
+        Assert.Equal(400, await Status(() => assets.GridImpactAsync(campaign.Id, map.Id, Master, new(64, 64), default)));
+        Assert.Equal(400, await Status(() => assets.GridImpactAsync(campaign.Id, map.Id, Master, new(4), default)));
+        Assert.Equal(403, await Status(() => assets.GridImpactAsync(campaign.Id, map.Id, Player, new(64), default)));
+        // Aplicar a grade pelo acervo segue a prévia: o marcador fora sai da preparação.
+        db.ChangeTracker.Clear();
+        await assets.SaveMapAsync(campaign.Id, map.Id, Master, new("Salão", null, 64, 1.5m, revision + 1), null, default);
+        var prepared = (await Scene(scene)).GetProperty("prepared");
+        Assert.Equal(1, prepared.GetArrayLength());
+    }
+
     sealed class Clock(DateTimeOffset start) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => start;

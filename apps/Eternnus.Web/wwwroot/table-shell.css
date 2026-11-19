@@ -66,6 +66,7 @@
   min-height: 36px; padding: 8px 10px; background: #171a13; color: var(--gold, #c6a463); cursor: pointer;
   font: 600 .78rem/1.2 system-ui, "Segoe UI", sans-serif; letter-spacing: .06em; text-transform: uppercase;
 }
+.table-shell .npc-dock > summary:hover { background: var(--ed-hover); color: var(--bright); }
 
 /* Abas do painel como contextos do editor: ícone em todas, nome visível só na ativa (o nome segue no leitor e na dica). */
 .table-shell .panel-tabs {
@@ -202,3 +203,15 @@
     position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
   }
 }
+
+/* ---------- Câmera compartilhada e convidados na mesa (ADR-114/115) ---------- */
+/* "Seguindo o mestre" e "Voltar a seguir": canto superior direito do palco, sem cobrir o trilho nem a dica. */
+.table-shell .follow-chip { position: absolute; z-index: 3; top: 8px; right: 8px; display: flex; align-items: center; gap: 6px; }
+.table-shell .follow-chip[hidden] { display: none; }
+.table-shell .follow-chip .follow-on { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid #a07b3a99; border-radius: 999px; background: #0d0c0ad9; color: #ead6a8; font-size: 12px; }
+.table-shell .follow-chip .follow-on .ed-icon { width: 16px; height: 16px; }
+.table-shell .follow-chip button { min-height: 44px; }
+.table-shell .party-guests { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px; border-top: 1px dashed #ffffff1a; color: var(--muted); font-size: 12px; }
+.table-shell .party-guests-title { width: 100%; color: var(--gold, #c6a463); }
+.table-shell .guest-chip { padding: 2px 8px; border: 1px solid #ffffff1f; border-radius: 999px; }
+.table-shell .guest-chip.online { border-color: #7cc35b88; color: #d8e8cf; }

@@ -39,6 +39,8 @@ public sealed class SceneToken
     public int? Height { get; set; }
     /// <summary>Camada visual do editor de cena (<see cref="Scene.Layers"/>); ausente = <c>elements</c>. Só organização: não muda a mesa.</summary>
     [MaxLength(24)] public string? Layer { get; set; }
+    /// <summary>Personagem reservado representado (<see cref="PartySlot"/>, ADR-110). Sem <see cref="CharacterId"/> = ainda sem personagem real.</summary>
+    public Guid? SlotId { get; set; }
 }
 
 /// <summary>

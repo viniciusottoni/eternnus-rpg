@@ -700,9 +700,12 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         return fields == null || fields.Any(f => f.Role == SheetFieldRoles.Movement);
     }
 
-    /// <summary>Com névoa ativa, eventos de criaturas que os jogadores podem não ver ficam só com o mestre (posição e nome não vazam).</summary>
+    /// <summary>
+    /// Eventos de criaturas que os jogadores podem não ver ficam só com o mestre (posição e nome não vazam): criatura oculta
+    /// sempre (com ou sem névoa); com névoa ativa, também inimigas/neutras e aliadas quando aliados não ficam sempre visíveis.
+    /// </summary>
     static bool Secret(FogScene? scene, SessionToken t) =>
-        scene is { Active: true } && t.CharacterId == null && (t.Hidden || t.Side != "ally" || !scene.Settings.AlliesAlwaysVisible);
+        t.CharacterId == null && (t.Hidden || (scene is { Active: true } && (t.Side != "ally" || !scene.Settings.AlliesAlwaysVisible)));
 
     public async Task<object> AddTokenAsync(Guid sessionId, MapTokenInput x, string user, CancellationToken ct)
     {
@@ -898,18 +901,8 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
     public async Task<object> LiveAsync(Guid sessionId, int after, string user, CancellationToken ct)
     {
         await SessionAccessAsync(sessionId, user, ct);
-        var deadline = Now + TimeSpan.FromSeconds(25); var waited = false;
-        while (after > 0)
-        {
-            var revision = await db.Sessions.Where(s => s.Id == sessionId).Select(s => (int?)s.Revision).SingleOrDefaultAsync(ct) ?? throw NotFound();
-            var remaining = deadline - Now;
-            if (revision > after || remaining <= TimeSpan.Zero) break;
-            // Reconfere o banco a cada 5 s para mudanças publicadas por outro processo.
-            await signals.WaitAsync(sessionId, remaining < TimeSpan.FromSeconds(5) ? remaining : TimeSpan.FromSeconds(5), ct);
-            ct.ThrowIfCancellationRequested(); waited = true;
-        }
-        // Agrupa escritas em rajada (ação + movimento, por exemplo) em uma única resposta.
-        if (waited) await Task.Delay(120, ct);
+        // Espera comum com a exibição externa e os convidados (SessionSpectator.cs).
+        await WaitRevisionAsync(sessionId, after, ct);
         return await StateAsync(sessionId, user, ct);
     }
 
@@ -985,6 +978,8 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
         var play = await PlayStateAsync(a, user, me?.CharacterId, ct);
         var masterName = participants.FirstOrDefault(p => p.isMaster)?.name ?? await NameAsync(a.Campaign.OwnerId, ct);
         var music = await MusicStateAsync(s, ct);
+        // Convidados (ADR-114): só o mestre recebe a lista, para ver presença e entregar marcadores.
+        var guests = a.IsMaster ? await GuestsViewAsync(sessionId, now, ct) : null;
         return new
         {
             s.Revision,
@@ -995,6 +990,8 @@ public partial class SessionService(GameDb db, SessionSignals signals, TimeProvi
             campaign = new { a.Campaign.Id, a.Campaign.Name, a.Campaign.IsOneShot, a.Campaign.ExpiresAt, master = masterName },
             me = new { userId = user, isMaster = a.IsMaster, joined = me?.LastSeenAt != null, characterId = me?.CharacterId, character = liveCharacter, formulaFields = a.IsMaster ? masterFormulaFields : null },
             participants, map, tokens = boardTokens, fog, events, music,
+            // Enquadramento "Mostrar esta região" (ADR-115): só enquadra; a névoa continua por quem recebe.
+            camera = CameraOf(s), guests,
         };
     }
 

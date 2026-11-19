@@ -85,6 +85,8 @@ export function normalizeElement(raw, layerIds = null) {
   // Elemento "só o mestre vê" (ADR-090, composição de cena): diferente de `visible`, que é só do editor.
   if (raw?.secret) el.secret = true;
   if (type === "image") el.src = String(raw?.src ?? "");
+  // Instância de mapa da campanha (ADR-113, composição de cena): a chave é a própria origem da imagem.
+  if (type === "image" && typeof raw?.mapKey === "string" && ASSET.test(raw.mapKey) && raw.mapKey.toLowerCase() === el.src.toLowerCase()) el.mapKey = raw.mapKey;
   if (type === "text") {
     el.text = String(raw?.text ?? "").slice(0, LIMITS.text);
     el.fontSize = clamp(num(raw?.fontSize, 48), LIMITS.fontMin, LIMITS.fontMax);
@@ -129,6 +131,7 @@ export function serializeComposition(doc) {
       if (e.group && ID.test(e.group)) base.group = e.group;
       if (e.secret) base.secret = true;
       if (e.type === "image") base.src = e.src;
+      if (e.type === "image" && e.mapKey) base.mapKey = e.mapKey;
       if (e.type === "text") Object.assign(base, { text: e.text, fontSize: round2(e.fontSize), fontFamily: e.fontFamily, color: e.color, align: e.align, bold: !!e.bold, italic: !!e.italic });
       if (e.type === "rect" || e.type === "ellipse") Object.assign(base, { fill: e.fill || null, stroke: e.stroke || null, strokeWidth: round2(e.strokeWidth || 0) });
       return base;
@@ -190,6 +193,7 @@ export function validateComposition(doc) {
     if (e.type === "image") {
       if (!isSource(e.src)) return `A imagem ${label} não tem origem válida.`;
       if (e.src !== "self") sources.add(e.src.toLowerCase());
+      if (e.mapKey != null && (!ASSET.test(String(e.mapKey)) || String(e.mapKey).toLowerCase() !== String(e.src).toLowerCase())) return `O mapa ${label} não tem referência válida.`;
     } else if (e.src != null) return "Só elementos de imagem têm origem.";
     if (e.type === "text") {
       if (String(e.text ?? "").length > LIMITS.text) return "O texto aceita até 500 caracteres.";

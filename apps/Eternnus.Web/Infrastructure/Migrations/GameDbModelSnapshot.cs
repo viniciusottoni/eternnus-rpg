@@ -274,6 +274,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<int>("FirstSessionNumber")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("GuestsEnabled")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("InviteCode")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -922,6 +925,10 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
 
+                    b.Property<string>("Camera")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<Guid>("CampaignId")
                         .HasColumnType("uuid");
 
@@ -1054,6 +1061,111 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("Sessions");
+                });
+
+            modelBuilder.Entity("Eternnus.Web.GuestInvite", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int>("MaxUses")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("Uses")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("CampaignId", "CreatedAt");
+
+                    b.ToTable("GuestInvites");
+                });
+
+            modelBuilder.Entity("Eternnus.Web.GuestSeat", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("InviteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SecretHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InviteId");
+
+                    b.HasIndex("SecretHash")
+                        .IsUnique();
+
+                    b.HasIndex("SessionId");
+
+                    b.ToTable("GuestSeats");
                 });
 
             modelBuilder.Entity("Eternnus.Web.GuildCategory", b =>
@@ -1692,6 +1804,71 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.ToTable("OneShotParticipations");
                 });
 
+            modelBuilder.Entity("Eternnus.Web.PartySlot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Appearance")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("Archetype")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CharacterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Size")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CharacterId");
+
+                    b.HasIndex("CampaignId", "CharacterId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_PartySlots_OneCharacter")
+                        .HasFilter("\"CharacterId\" IS NOT NULL");
+
+                    b.HasIndex("CampaignId", "Order");
+
+                    b.ToTable("PartySlots");
+                });
+
             modelBuilder.Entity("Eternnus.Web.PastSession", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2027,6 +2204,9 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.Property<int?>("Fy")
                         .HasColumnType("integer");
 
+                    b.Property<Guid?>("GuestSeatId")
+                        .HasColumnType("uuid");
+
                     b.Property<int?>("Height")
                         .HasColumnType("integer");
 
@@ -2088,6 +2268,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CharacterId");
+
+                    b.HasIndex("GuestSeatId");
 
                     b.HasIndex("MasterCharacterId");
 
@@ -3662,6 +3844,30 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
                 });
 
+            modelBuilder.Entity("Eternnus.Web.GuestInvite", b =>
+                {
+                    b.HasOne("Eternnus.Web.Campaign", null)
+                        .WithMany()
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Eternnus.Web.GuestSeat", b =>
+                {
+                    b.HasOne("Eternnus.Web.GuestInvite", null)
+                        .WithMany()
+                        .HasForeignKey("InviteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Eternnus.Web.GameSession", null)
+                        .WithMany()
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Eternnus.Web.GuildPost", b =>
                 {
                     b.HasOne("Eternnus.Web.AppUser", null)
@@ -3832,6 +4038,20 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Eternnus.Web.PartySlot", b =>
+                {
+                    b.HasOne("Eternnus.Web.Campaign", null)
+                        .WithMany()
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Eternnus.Web.Character", null)
+                        .WithMany()
+                        .HasForeignKey("CharacterId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("Eternnus.Web.PastSession", b =>
                 {
                     b.HasOne("Eternnus.Web.Campaign", null)
@@ -3987,6 +4207,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                             b1.Property<int?>("Size");
 
+                            b1.Property<Guid?>("SlotId");
+
                             b1.Property<int?>("Width");
 
                             b1.Property<int>("X");
@@ -4045,6 +4267,8 @@ namespace Eternnus.Web.Infrastructure.Migrations
 
                             b1.Property<int?>("Size");
 
+                            b1.Property<Guid?>("SlotId");
+
                             b1.Property<int?>("Width");
 
                             b1.Property<int>("X");
@@ -4094,6 +4318,11 @@ namespace Eternnus.Web.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("CharacterId")
                         .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Eternnus.Web.GuestSeat", null)
+                        .WithMany()
+                        .HasForeignKey("GuestSeatId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Eternnus.Web.MasterCharacter", null)
                         .WithMany()

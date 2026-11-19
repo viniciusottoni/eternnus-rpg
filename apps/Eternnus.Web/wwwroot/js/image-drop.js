@@ -94,7 +94,8 @@ export function mountImageDrop(host, { enabled = () => true, onFiles, onAsset, h
     overlay.hidden = false;
     ghost.style.transform = `translate(${Math.round(e.clientX - r.left)}px, ${Math.round(e.clientY - r.top)}px)`;
     const n = draggedCount(e.dataTransfer);
-    const text = carriesAsset(e.dataTransfer) ? "Solte para usar a imagem do acervo aqui" : n > 1 ? `Solte para adicionar ${n} imagens aqui` : "Solte para adicionar a imagem aqui";
+    const limit = ` (PNG ou JPEG, até ${formatBytes(maxImageBytes())} cada)`;
+    const text = carriesAsset(e.dataTransfer) ? "Solte para usar a imagem do acervo aqui" : n > 1 ? `Solte para adicionar ${n} imagens aqui${limit}` : `Solte para adicionar a imagem aqui${limit}`;
     if (label.textContent !== text + hint) label.textContent = text + hint;
   }
   const hide = () => { overlay.hidden = true; };
@@ -186,4 +187,90 @@ export function bindAssetList(host, { onAdd }) {
   host.addEventListener("dragstart", start);
   host.addEventListener("click", click);
   return () => { host.removeEventListener("dragstart", start); host.removeEventListener("click", click); };
+}
+
+/** Endereço https de imagem para importar por link (o servidor baixa uma cópia; os jogadores nunca acessam a origem). → URL ou lança Error. */
+export function httpsImageUrl(text) {
+  const url = String(text || "").trim();
+  let parsed = null;
+  try { parsed = new URL(url); } catch { /* inválido */ }
+  if (!parsed || parsed.protocol !== "https:" || url.length > 2000) throw new Error("Informe um endereço https:// válido (até 2.000 caracteres) que abra a própria imagem PNG ou JPEG.");
+  return url;
+}
+
+/**
+ * Bandeja de envio no palco (P1.4): uma linha por arquivo com miniatura local (PNG mantém a transparência), andamento e
+ * resultado. O envio usa fetch, que não mede bytes: o andamento é indeterminado e o texto conta "k de n". Erros ficam até
+ * serem dispensados; os concluídos saem quando um novo envio começa. Devolve { start(files) → linhas, dispose() }.
+ */
+export function mountUploadTray(host) {
+  const list = document.createElement("ul");
+  list.className = "ed-uploads";
+  list.hidden = true;
+  list.setAttribute("aria-label", "Envio de imagens");
+  list.setAttribute("aria-live", "polite");
+  host.append(list);
+  const urls = new Set();
+  function remove(li) { const u = li.dataset.url; if (u) { URL.revokeObjectURL(u); urls.delete(u); } li.remove(); list.hidden = !list.children.length; }
+  list.addEventListener("click", (e) => { const b = e.target.closest("[data-upload-dismiss]"); if (b) remove(b.closest(".ed-upload")); });
+  function row(file) {
+    const li = document.createElement("li");
+    li.className = "ed-upload";
+    const img = document.createElement("img");
+    img.alt = ""; img.decoding = "async";
+    try { const u = URL.createObjectURL(file); urls.add(u); li.dataset.url = u; img.src = u; } catch { /* sem miniatura */ }
+    const text = document.createElement("span"); text.className = "ed-upload-text";
+    const name = document.createElement("span"); name.className = "ed-upload-name"; name.textContent = baseName(file.name);
+    const status = document.createElement("span"); status.className = "ed-upload-status"; status.textContent = "Na fila";
+    const bar = document.createElement("progress"); bar.setAttribute("aria-label", `Andamento de ${baseName(file.name)}`); bar.hidden = true;
+    text.append(name, status, bar);
+    const close = document.createElement("button");
+    close.type = "button"; close.className = "subtle small"; close.dataset.uploadDismiss = ""; close.hidden = true;
+    close.setAttribute("aria-label", `Dispensar aviso de ${baseName(file.name)}`); close.textContent = "×";
+    li.append(img, text, close);
+    list.append(li);
+    const finish = (cls, message) => { li.classList.add(cls); status.textContent = message; bar.hidden = true; close.hidden = false; };
+    return {
+      progress(message) { status.textContent = message; bar.hidden = false; bar.removeAttribute("value"); },
+      done(message = "Adicionada") { finish("done", message); },
+      fail(message) { finish("error", message); },
+    };
+  }
+  return {
+    start(files) {
+      for (const li of [...list.querySelectorAll(".ed-upload.done")]) remove(li);
+      list.hidden = false;
+      return files.map(row);
+    },
+    dispose() { for (const u of urls) URL.revokeObjectURL(u); urls.clear(); list.remove(); },
+  };
+}
+
+/**
+ * Envia os arquivos um a um e coloca cada imagem assim que o servidor responde (mesmo fluxo nos editores de mapa e de cena).
+ * `upload(file)` → Promise da imagem-fonte; `place(fonte, i)` → id do elemento criado ou null. Uma falha não interrompe os
+ * demais arquivos nem mexe no que já está no editor (o rascunho continua sem salvar). → { added: ids, failed: número }.
+ */
+export async function uploadEach(files, { tray = null, upload, place, alive = () => true, say = () => {} }) {
+  const rows = tray ? tray.start(files) : [];
+  const added = [], errors = [];
+  for (const [i, file] of files.entries()) {
+    const label = files.length > 1 ? `Enviando ${i + 1} de ${files.length}…` : "Enviando…";
+    rows[i]?.progress(label);
+    say(files.length > 1 ? `Enviando imagem ${i + 1} de ${files.length}…` : `Enviando “${baseName(file.name)}”…`);
+    try {
+      const source = await upload(file);
+      if (!alive()) return { added, failed: errors.length };
+      const id = place(source, i);
+      if (id) { added.push(id); rows[i]?.done(); }
+      else rows[i]?.fail("Enviada, mas não coube no editor (limite de elementos ou camada bloqueada).");
+    } catch (e) {
+      const why = e?.message || "O envio falhou.";
+      errors.push(`“${baseName(file.name)}”: ${why}`);
+      rows[i]?.fail(why);
+    }
+  }
+  const ok = added.length ? (added.length > 1 ? `${added.length} imagens adicionadas e selecionadas.` : "Imagem adicionada e selecionada: arraste para mover; as alças redimensionam e giram.") : "";
+  say(`${ok}${errors.length ? ` ${errors.length} não ${errors.length > 1 ? "foram enviadas" : "foi enviada"}: ${errors.join(" ")} Nada do que já estava no editor foi perdido.` : ""}`.trim());
+  return { added, failed: errors.length };
 }

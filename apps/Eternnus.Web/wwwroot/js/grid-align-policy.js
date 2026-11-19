@@ -140,3 +140,54 @@ export function describeAlignment(r) {
   if (!r || r.error) return r?.error || "";
   return `Quadrado de ${r.gridPixels} px, deslocamento ${r.gridOffsetX} × ${r.gridOffsetY} px.`;
 }
+
+// ---------- Ajuste fino, predefinições e prévia do impacto (P1.2) ----------
+
+/** Tamanhos de casa comuns em mapas prontos (pixels por casa). */
+export const GRID_PRESETS = Object.freeze([
+  [50, "50 px"], [64, "64 px"], [70, "70 px (Roll20)"], [100, "100 px (Foundry)"], [128, "128 px"], [140, "140 px"], [200, "200 px"], [256, "256 px (Dungeondraft)"],
+]);
+
+/**
+ * Passo de ajuste fino (setas: 1 px; Shift: 10 px). Deslocamentos dão a volta no lado (mover uma casa inteira não muda a grade);
+ * o lado fica entre os limites e os deslocamentos se ajustam a ele. → novos valores.
+ */
+export function nudgeGrid(v, key, delta, max = MAX_SIDE) {
+  const side = Math.round(Number(v.gridPixels) || MIN_SIDE);
+  if (key === "gridPixels") {
+    const next = Math.max(MIN_SIDE, Math.min(max, side + Math.round(delta)));
+    return { ...v, gridPixels: next, gridOffsetX: Math.min(Number(v.gridOffsetX) || 0, next - 1), gridOffsetY: Math.min(Number(v.gridOffsetY) || 0, next - 1) };
+  }
+  if (key === "gridOffsetX" || key === "gridOffsetY") return { ...v, [key]: mod((Number(v[key]) || 0) + delta, side) };
+  return { ...v };
+}
+
+/** Mesmos três números? */
+export const sameGrid = (a, b) => !!a && !!b && ["gridPixels", "gridOffsetX", "gridOffsetY"].every((k) => Number(a[k]) === Number(b[k]));
+
+/** Índice do ponto marcado mais próximo de (x, y) dentro de `radius` (mesma unidade), ou −1. */
+export function pickPoint(points, x, y, radius) {
+  let best = -1, dist = radius;
+  (points || []).forEach((p, i) => { const d = Math.hypot(p.x - x, p.y - y); if (d <= dist) { dist = d; best = i; } });
+  return best;
+}
+
+/**
+ * Frases da prévia do impacto (resposta de POST …/grid-impact). Nada é gravado até aplicar.
+ * → { lines: string[], loss: boolean } — `loss` indica algo que sai das preparações (pede confirmação ao aplicar).
+ */
+export function impactLines(r) {
+  if (!r) return { lines: [], loss: false };
+  const n = (v) => Number(v) || 0;
+  const lines = [];
+  if (r.oldWidth && (r.oldWidth !== r.width || r.oldHeight !== r.height)) lines.push(`A grade passa de ${r.oldWidth} × ${r.oldHeight} para ${r.width} × ${r.height} casas.`);
+  else lines.push(`Grade de ${r.width} × ${r.height} casas.`);
+  if (n(r.scenes)) lines.push(`${r.scenes} cena(s) usam este mapa.`);
+  const out = [[r.tokensOutside, "marcador(es) preparado(s)"], [r.wallsOutside, "parede(s) (cortadas na borda)"], [r.cellsOutside, "casa(s) bloqueada(s)"],
+    [r.lightsOutside, "luz(es)"], [r.marksOutside, "marca(s)"], [r.entriesOutside, "ponto(s) de entrada"]].filter(([v]) => n(v) > 0);
+  if (out.length) lines.push(`Ficariam fora da nova grade e sairiam: ${out.map(([v, l]) => `${v} ${l}`).join(", ")}.`);
+  else lines.push("Nada preparado fica fora da nova grade.");
+  if (n(r.instances)) lines.push(`${r.instances} cena(s) inserem este mapa na composição: use Encaixar na grade da cena nelas depois.`);
+  if (r.inSession) lines.push("O mapa está na mesa agora: na sessão, marcadores fora vão para a casa livre mais próxima.");
+  return { lines, loss: out.length > 0 };
+}

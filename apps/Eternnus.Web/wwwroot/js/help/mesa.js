@@ -349,6 +349,66 @@ const entries = {
       "Ao voltar de outra aba ou do bloqueio do aparelho, o som é realinhado sozinho. Se o navegador bloquear de novo, o botão volta a aparecer."
     ],
     "audience": "all"
+  },
+  "mesa.camera.seguir": {
+    "title": "Seguir o mestre",
+    "summary": "Sua câmera acompanha a região que o Mestre mostrar; desligado, você controla a própria visão.",
+    "body": [
+      "O Mestre usa Mostrar esta região aos participantes para enviar o que está na tela dele. Quem segue o Mestre recebe esse enquadramento; o zoom é ajustado ao seu aparelho.",
+      "Na mesa dos jogadores, seguir começa desligado e a escolha fica lembrada nesta aba. Convidados e a exibição externa começam seguindo.",
+      "Arrastar ou ampliar o mapa pausa o seguimento: use Voltar a seguir para receber o próximo enquadramento. Restaurar enquadramento mostra o mapa inteiro.",
+      "Enquadrar não revela nada: a névoa continua valendo para cada pessoa. Com movimento reduzido no aparelho, a troca é instantânea."
+    ],
+    "audience": "all"
+  },
+  "mesa.exibicao.externa": {
+    "title": "Exibição externa",
+    "summary": "Mapa limpo para TV, projetor ou segunda tela, com a visão de jogador.",
+    "body": [
+      "Abra pela mesa em Abrir exibição externa. A janela mostra só o tabuleiro: sem ferramentas do Mestre, notas, objetivo, conversa ou fichas.",
+      "A névoa e os marcadores seguem a visão de jogador. Por padrão a exibição segue a câmera do Mestre; o botão Seguir o mestre desliga e liga.",
+      "Use Tela cheia na tela de destino. Se a conexão cair, a exibição mostra Reconectando e volta sozinha."
+    ],
+    "audience": "master",
+    "related": [
+      "mesa.camera.seguir"
+    ]
+  },
+  "mesa.convidados.gerenciar": {
+    "title": "Convidados da mesa",
+    "summary": "Pessoas sem conta entram na sessão aberta por um link temporário que você cria e revoga.",
+    "body": [
+      "Observador acompanha o mapa e os acontecimentos públicos. Participante também rola dados, conversa e move um marcador que você entregar pelo menu do marcador.",
+      "Cada convite vale por um tempo (2 a 24 horas) e para um número de pessoas. O link aparece uma única vez: copie e envie só para quem você quer na mesa.",
+      "Quem tiver o link entra enquanto ele valer. Revogue o convite quando terminar; revogar um convidado o tira da mesa na hora. Desligar convidados revoga tudo.",
+      "Convidados não veem notas privadas, objetivo, fichas privadas nem e-mails, e só controlam marcadores sem ficha de jogador."
+    ],
+    "audience": "master",
+    "related": [
+      "mesa.camera.seguir"
+    ]
+  },
+  "mesa.convidado.entrar": {
+    "title": "Entrar como convidado",
+    "summary": "Você entra sem conta, só nesta mesa e enquanto o convite valer.",
+    "body": [
+      "Escolha o nome que a mesa vai ver. O link do convite sai da barra de endereço assim que você entra.",
+      "O acesso termina quando o convite expira, quando o Mestre o revoga ou quando a sessão acaba. Para voltar depois, peça um novo link."
+    ],
+    "audience": "all"
+  },
+  "mesa.convidado.mesa": {
+    "title": "Mesa do convidado",
+    "summary": "Acompanhe o mapa e os acontecimentos públicos; como participante, role dados e converse.",
+    "body": [
+      "Observador só acompanha. Participante também rola dados e envia mensagens para a mesa.",
+      "Se o Mestre entregar um marcador a você, arraste-o ou toque nele e depois na casa de destino. O servidor confere cada movimento.",
+      "Sair da mesa encerra seu acesso neste aparelho."
+    ],
+    "audience": "all",
+    "related": [
+      "mesa.camera.seguir"
+    ]
   }
 };
 for (const entry of Object.values(entries)) {

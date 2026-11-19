@@ -115,6 +115,8 @@ public static class ServiceRegistration
         builder.Services.AddScoped<OneShotLifecycleService>();
         OneShotLifecycleService.Configure(builder.Configuration.GetValue<int?>("OneShots:RecoveryMinutes"));
         builder.Services.AddScoped<PreparationService>(); builder.Services.AddScoped<PlayPreferences>();
+        // ADR-110/114: personagens reservados da campanha e convidados temporários da mesa.
+        builder.Services.AddScoped<PartySlotService>(); builder.Services.AddScoped<GuestService>();
         builder.Services.AddHostedService<OneShotWorker>();
         builder.Services.AddHostedService<EmptyTableWorker>();
         // Loja do Aventureiro (ADR-104): leitura de páginas públicas com defesas contra SSRF e manutenção de interesses/cliques.
@@ -135,6 +137,8 @@ public static class ServiceRegistration
             o.AddPolicy("store", c => RateLimitPartition.GetFixedWindowLimiter(c.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? c.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new() { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) }));
             o.AddPolicy("store-impressions", c => RateLimitPartition.GetFixedWindowLimiter(c.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? c.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new() { PermitLimit = 60, Window = TimeSpan.FromMinutes(1) }));
             o.AddPolicy("store-preview", c => RateLimitPartition.GetFixedWindowLimiter(c.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? c.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new() { PermitLimit = 20, Window = TimeSpan.FromMinutes(5) }));
+            // Convidados (ADR-114): resgatar convite e ações sem conta, por IP; limita tentativas de adivinhar convites.
+            o.AddPolicy("guest", c => RateLimitPartition.GetFixedWindowLimiter(c.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new() { PermitLimit = 20, Window = TimeSpan.FromMinutes(1) }));
             o.AddPolicy("mail", c => RateLimitPartition.GetFixedWindowLimiter(c.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new() { PermitLimit = 6, Window = TimeSpan.FromMinutes(1) }));
             // A consulta ao vivo é uma espera longa somente leitura: balde próprio no limitador global e concorrência por usuário na rota.
             o.AddPolicy("live", c => RateLimitPartition.GetConcurrencyLimiter(c.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? c.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new() { PermitLimit = 4, QueueLimit = 0 }));

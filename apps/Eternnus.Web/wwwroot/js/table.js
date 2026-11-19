@@ -54,6 +54,10 @@ import { doorNear } from "./wall-policy.js";
 import { interfaceMode, interfaceToggle, mountInterfaceToggle, onInterfaceChange, setInterfaceMode } from "./interface-mode.js";
 import { HELP, hiddenCustomizations, pendingParts } from "./scene-policy.js";
 import { isFreeMap, tokenCenter, freeReachCells, withinReach, placement } from "./free-move-policy.js";
+import { createFollow } from "./spectator-view.js";
+import { FOLLOW, followLabels } from "./camera-policy.js";
+import { controllableToken, participantSeats, seatControlling, GUEST_MODES } from "./guest-policy.js";
+const guestsAdmin = () => import("./table-guests.js");
 const tools = () => import("./table-tools.js");
 const npcSheets = () => import("./npc-sheet.js");
 const tableSheet = () => import("./table-sheet.js");
@@ -177,7 +181,7 @@ function mountTable(campaignId, sessionId, isMaster) {
   $("#app").innerHTML = `<div class="table-shell">
     <header class="table-top"><a class="table-brand" href="#campaign/${esc(campaignId)}" aria-label="Voltar à campanha"><img src="/assets/eternnus-logo.webp" alt="Eternnus RPG"></a><div class="table-title"><h1><span id="t-campaign">Mesa</span> <span class="online-badge" data-tip="A sessão está ativa; presenças aparecem no grupo." id="t-online"><i aria-hidden="true"></i>ONLINE</span></h1><p id="t-sub">Conectando à sessão…</p></div><div class="table-top-scroll" role="group" aria-label="Comandos da sessão — deslize para ver mais"><button type="button" id="t-fullscreen" class="subtle tool-icon" hidden></button><div class="table-top-actions" id="t-top"></div><div class="session-audio-host" id="t-audio" hidden></div><div class="music-dock"></div></div></header>
     <aside class="party" aria-labelledby="party-title" tabindex="-1"><h2 id="party-title"><span aria-hidden="true">⚔</span> Aventureiros <span class="count-chip" id="t-count">0 online</span></h2>${isMaster ? button("Visão do grupo", "t-party-view", "", "subtle small party-view-button") : ""}<ul id="t-party" class="party-list"></ul>${isMaster ? `<details class="npc-dock" id="t-npc-dock"><summary>Personagens do mestre</summary><p class="form-help">Arraste para o mapa ou use “Colocar” e escolha a casa.</p><ul class="npc-dock-list" id="t-npc-dock-list"></ul></details>` : ""}<p class="party-caption">Avatares conectados e estado atual${helpButton("mesa.mapa.legenda", "Marcadores, vida e presença")}</p></aside>
-    <main class="stage" id="main" tabindex="-1" aria-label="Mapa da sessão"><div class="stage-chip" id="t-chip"></div><div class="stage-tools" id="t-tools" role="toolbar" aria-label="Ferramentas do mapa" aria-orientation="vertical"></div><div class="fog-palette" id="t-fog" role="toolbar" aria-label="Névoa e luz" hidden></div><div class="play-banner" id="t-banner" role="status" hidden></div><div class="pending-banner" id="t-pending" role="status" hidden></div><div class="board" id="t-board"></div><div class="turn-herald" id="t-herald" aria-hidden="true"><span></span></div><div class="roll-spotlight" id="t-spot" role="status" aria-live="polite" hidden></div><div class="dice-tray" id="t-dice" role="toolbar" aria-label="Dados rápidos"></div><div class="drop-veil" id="t-drop" hidden><p><strong>Solte para usar como mapa</strong><span>Imagem PNG, JPEG ou WebP, ou arquivo UVTT (.dd2vtt, .uvtt, .df2vtt)</span></p></div><input type="file" id="t-map-file" accept="image/png,image/jpeg,image/webp,.dd2vtt,.uvtt,.df2vtt" hidden><p class="stage-hint" id="t-hint" role="status"></p></main>
+    <main class="stage" id="main" tabindex="-1" aria-label="Mapa da sessão"><div class="stage-chip" id="t-chip"></div><div class="stage-tools" id="t-tools" role="toolbar" aria-label="Ferramentas do mapa" aria-orientation="vertical"></div><div class="fog-palette" id="t-fog" role="toolbar" aria-label="Névoa e luz" hidden></div><div class="play-banner" id="t-banner" role="status" hidden></div><div class="pending-banner" id="t-pending" role="status" hidden></div><div class="board" id="t-board"></div><div class="follow-chip" id="t-follow-chip" hidden></div><div class="turn-herald" id="t-herald" aria-hidden="true"><span></span></div><div class="roll-spotlight" id="t-spot" role="status" aria-live="polite" hidden></div><div class="dice-tray" id="t-dice" role="toolbar" aria-label="Dados rápidos"></div><div class="drop-veil" id="t-drop" hidden><p><strong>Solte para usar como mapa</strong><span>Imagem PNG, JPEG ou WebP, ou arquivo UVTT (.dd2vtt, .uvtt, .df2vtt)</span></p></div><input type="file" id="t-map-file" accept="image/png,image/jpeg,image/webp,.dd2vtt,.uvtt,.df2vtt" hidden><p class="stage-hint" id="t-hint" role="status"></p></main>
     <section class="side-panel" aria-label="Registros da mesa"><div class="panel-tabs" role="tablist" id="t-tabs"></div><div class="panel-body" id="t-panel" role="tabpanel" tabindex="0"></div><form id="t-chat" class="chat-form" autocomplete="off"><div class="field-label"><label class="sr-only" for="t-message">Mensagem para a mesa</label>${helpButton("mesa.chat.comandos", "Conversa e dados")}</div><input id="t-message" name="content" maxlength="2000" placeholder="Escrever mensagem… (/r 1d20+3 para rolar)" required><button type="submit" class="primary icon-send" aria-label="Enviar">➤</button></form></section>
     <div class="table-bottom"><footer class="turn-bar" id="t-turn" aria-live="polite"></footer><nav class="table-view-switch" id="t-views" aria-label="Alternar entre mapa, ficha e conversa"></nav></div>
     <div class="ended-veil" id="t-ended" hidden></div>
@@ -193,7 +197,24 @@ function mountTable(campaignId, sessionId, isMaster) {
     onBubble: (token) => bubbleModal(token),
     onCancel: () => setMode("none"),
     onContext: (at) => openTableMenu(at),
+    onUserCamera: () => follow?.userMoved(),
   });
+  // Câmera compartilhada (ADR-115): jogador escolhe seguir o mestre (desligado por padrão, lembrado nesta aba).
+  // O mestre nunca segue; a câmera de quem não segue nunca é movida.
+  const follow = isMaster ? null : createFollow({
+    getBoard: () => board, sessionId, defaultOn: false,
+    onChange: () => { if (live) { renderTools(); renderFollowChip(); } },
+  });
+  function renderFollowChip() {
+    const chip = $("#t-follow-chip");
+    if (!chip) return;
+    const mode = follow && live && !live.me.isMaster ? follow.mode : FOLLOW.FREE;
+    chip.hidden = mode === FOLLOW.FREE;
+    const html = mode === FOLLOW.PAUSED
+      ? `<span class="sr-only" role="status">${followLabels(mode).status}</span>${button("Voltar a seguir", "t-follow-resume", "", "primary small")}`
+      : mode === FOLLOW.FOLLOWING ? `<span class="follow-on" role="status">${icon("compass")} Seguindo o mestre</span>` : "";
+    if (chip.dataset.mode !== mode) { chip.dataset.mode = mode; chip.innerHTML = html; }
+  }
   const temporaryImages = mountTemporaryImages(sessionId, $(".party"));
   // Trilha sonora compartilhada: o selo do topo existe para todos; o painel "Trilha" monta sob demanda.
   const soundtrack = mountSoundtrack({ sessionId, campaignId, chipHost: $("#t-audio"), onOpen: () => openSoundtrackTab() });
@@ -315,6 +336,7 @@ function mountTable(campaignId, sessionId, isMaster) {
       selected = null;
     if (viewAs && !live.participants.some((p) => p.userId === viewAs && p.characterId)) { viewAs = null; viewAsState = null; }
     board.update(boardState(), boardView());
+    if (!live.me.isMaster) { follow?.sync(live.camera); renderFollowChip(); }
     if (viewAs) refreshViewAs();
     herald(first);
     if (!first) spotlight();
@@ -372,6 +394,13 @@ function mountTable(campaignId, sessionId, isMaster) {
         "beforeend",
         `<li class="party-away">Ausentes: ${away.map((p) => esc(p.characterName)).join(", ")}</li>`,
       );
+    // Convidados (ADR-114), só para o mestre: nome, modo, presença e o marcador que controlam.
+    const guests = live.me.isMaster && Array.isArray(live.guests) ? live.guests : [];
+    if (guests.length)
+      $("#t-party").insertAdjacentHTML(
+        "beforeend",
+        `<li class="party-guests"><span class="party-guests-title">Convidados</span>${guests.map((g) => `<span class="guest-chip${g.online ? " online" : ""}">${esc(g.name)} · ${esc(GUEST_MODES[g.mode]?.label || "Convidado")}${g.tokenId ? ` · controla ${esc(live.tokens.find((t) => t.id === g.tokenId)?.label || "um marcador")}` : ""}${g.online ? "" : " (ausente)"}</span>`).join("")}</li>`,
+      );
     paintBars($("#t-party"));
     guardAvatars($("#t-party"));
     for (const p of players) {
@@ -413,6 +442,8 @@ function mountTable(campaignId, sessionId, isMaster) {
       ? group("Elementos", railTool("light", "t-token-settings", "Luz, visão e ocultação do marcador", false, sel ? "" : "Selecione um marcador no mapa."))
         + group("Paredes, luz e exploração", `${railTool("wall", "t-fog-group", "Paredes e portas", mode === "fog" && fogGroup === "walls", needsGrid, "walls")}${railTool("sun", "t-fog-group", "Luz e visão", mode === "fog" && fogGroup === "light", needsGrid, "light")}${railTool("compass", "t-fog-group", "Exploração e marcas", mode === "fog" && fogGroup === "explore", needsGrid, "explore")}`)
         + group("Grade e configuração", `${railTool("grid", "t-tool-grid", "Mostrar grade", gridShown(), needsGrid)}${railTool("heart", "t-tool-bubbles", "Vida e armadura nos marcadores", bubbles, needsGrid)}${railTool("settings", "t-table-settings", "Configuração da mesa")}`)
+        // Participantes (ADR-114/115): câmera compartilhada, exibição externa e convidados.
+        + group("Participantes", `${railTool("target", "t-show-region", "Mostrar esta região aos participantes", false, needsGrid)}${railTool("panels", "t-external-display", "Abrir exibição externa")}${railTool("group", "t-guests", "Convidados da mesa")}`)
       : "";
     const selectedTools = sel
       ? group(`Selecionado: ${sel.label}`, `${sel.masterCharacterId ? railTool("sheet", "t-token-sheet", "Ficha do elemento") : ""}${!sel.characterId ? railTool("edit", "t-token-edit", "Editar marcador") : ""}${railTool("character", "t-token-look", "Forma e tamanho")}${selBubble?.target ? railTool("heart", "t-token-bubble", `${selBubble.resource.label} do selecionado`) : ""}${!sel.characterId ? railTool("trash", "t-tool-remove", "Remover marcador") : ""}`)
@@ -423,7 +454,7 @@ function mountTable(campaignId, sessionId, isMaster) {
       : "";
     $("#t-tools").innerHTML = live.me.isMaster
       ? `${basicTools}${completeTools}${selectedTools}${hiddenTool ? group("Ajustes avançados", hiddenTool) : ""}`
-      : group("Mapa", `${railTool("move", "t-move", "Mover meu personagem", mode === "move", canMoveNow() ? "" : blocked)}${railTool("grid", "t-tool-grid", "Mostrar ou ocultar a grade", gridShown(), needsGrid)}${railTool("heart", "t-tool-bubbles", "Mostrar ou ocultar vida e armadura nos marcadores", bubbles, needsGrid)}${railTool("target", "t-focus-board", "Usar o mapa pelo teclado", false, needsGrid)}`);
+      : group("Mapa", `${railTool("move", "t-move", "Mover meu personagem", mode === "move", canMoveNow() ? "" : blocked)}${railTool("grid", "t-tool-grid", "Mostrar ou ocultar a grade", gridShown(), needsGrid)}${railTool("heart", "t-tool-bubbles", "Mostrar ou ocultar vida e armadura nos marcadores", bubbles, needsGrid)}${railTool("target", "t-focus-board", "Usar o mapa pelo teclado", false, needsGrid)}${railTool("compass", "t-follow", "Seguir o mestre", !!follow?.following)}${railTool("maximize", "t-camera-fit", "Restaurar enquadramento")}`);
     $("#t-tools").classList.remove("labeled-tools");
     $("#t-tools").classList.add("ed-tools", "table-rail");
     renderPending();
@@ -742,9 +773,9 @@ function mountTable(campaignId, sessionId, isMaster) {
       return `<li class="${`feed-item scene ${fresh ? "fresh" : ""}`}"><span class="feed-die" aria-hidden="true">▤</span><div><p class="feed-head"><strong>${esc(data.name || "Cena")}</strong> <time>${time(e.createdAt)}</time></p>${data.sharedText ? `<p class="note-text">${esc(data.sharedText)}</p>` : `<p>${esc(e.content)}</p>`}</div></li>`;
     if (e.kind === "request" || e.kind === "pause")
       return `<li class="feed-item ${e.kind} system"><span aria-hidden="true">${e.kind === "pause" ? "⏸" : "✦"}</span> ${esc(e.content)} <time>${time(e.createdAt)}</time></li>`;
-    const cls = `feed-item ${e.kind} ${fresh ? "fresh" : ""} ${e.mine ? "mine" : ""}`;
+    const cls = `feed-item ${e.kind} ${fresh ? "fresh" : ""} ${e.mine && !data.guest ? "mine" : ""}${data.guest ? " guest" : ""}`;
     if (e.kind === "message")
-      return `<li class="${cls}"><span class="feed-avatar" aria-hidden="true">${esc(initials(e.author))}</span><div><p class="feed-head"><strong>${esc(data.master ? "Mestre" : e.author)}</strong> <time>${time(e.createdAt)}</time></p><p>${esc(e.content)}</p></div></li>`;
+      return `<li class="${cls}"><span class="feed-avatar" aria-hidden="true">${esc(initials(e.author))}</span><div><p class="feed-head"><strong>${esc(data.master && !data.guest ? "Mestre" : e.author)}</strong> <time>${time(e.createdAt)}</time></p><p>${esc(e.content)}</p></div></li>`;
     if (e.kind === "roll" || e.kind === "action") {
       const roll = data.roll;
       const title =
@@ -772,7 +803,7 @@ function mountTable(campaignId, sessionId, isMaster) {
   /** Último ajuste próprio que ainda pode ser desfeito (o servidor revalida estado e permissão). */
   function lastUndoable() {
     const undone = new Set(live.events.map((e) => eventData(e).undoOf).filter(Boolean));
-    return [...live.events].reverse().find((e) => e.mine && canUndo(e, eventData(e), live.me.isMaster) && !undone.has(e.id));
+    return [...live.events].reverse().find((e) => e.mine && !eventData(e).guest && canUndo(e, eventData(e), live.me.isMaster) && !undone.has(e.id));
   }
 
   function requestCardsHtml() {
@@ -1573,6 +1604,21 @@ function mountTable(campaignId, sessionId, isMaster) {
       else viewAsModal();
     }
     if (action === "t-table-settings") await tableSettingsModal();
+    // Câmera compartilhada e exibição externa (ADR-115); convidados (ADR-114).
+    if (action === "t-show-region" && live.me.isMaster) {
+      const region = board.camera.visibleCells();
+      if (!region) return toast("Mostrar a região exige um mapa com grade.");
+      await quick(`${base}/camera`, "POST", region);
+      toast("Região enviada: quem segue o mestre e a exibição externa passam a vê-la.");
+    }
+    if (action === "t-external-display" && live.me.isMaster) {
+      window.open(`/#/mesa/${encodeURIComponent(sessionId)}/exibicao`, "_blank", "noopener");
+      toast("Exibição externa aberta em outra aba. Leve-a para a TV ou o projetor.");
+    }
+    if (action === "t-guests" && live.me.isMaster) (await guestsAdmin()).openGuestsModal({ campaignId });
+    if (action === "t-follow" && follow) { follow.toggle(); toast(follow.following ? "Seguindo o mestre: sua câmera acompanha a região que ele mostrar." : "Câmera livre: você controla a sua visão."); }
+    if (action === "t-follow-resume" && follow) follow.resume();
+    if (action === "t-camera-fit") { if (follow) follow.fit(); else board.camera.fit(); }
     if (action === "t-settings-campaign") {
       await api(`${base}/table-settings`, "PUT", { settings: null, scope: "session" });
       $("#modal").close();
@@ -1679,10 +1725,27 @@ function mountTable(campaignId, sessionId, isMaster) {
       { label: "Forma e tamanho…", disabled: !!ended, disabledReason: ended, run: run("t-token-look") },
       bubble?.target ? { label: `${bubble.resource.label}…`, disabled: !!ended, disabledReason: ended, run: run("t-token-bubble") } : null,
       ui === "complete" ? { label: "Luz, visão e ocultação…", disabled: !!ended, disabledReason: ended, run: run("t-token-settings") } : null,
+      ...guestControlItems(token, ended),
       { separator: true },
       { label: "Remover marcador", shortcut: "delete", danger: true, disabled: !!(ended || token.characterId), disabledReason: ended || PC, run: run("t-tool-remove") },
       { separator: true },
       { label: "Desmarcar", shortcut: "escape", run: () => { selected = null; renderTools(); board.setView(boardView()); } },
+    ];
+  }
+  /** Convidados participantes (ADR-114): o mestre entrega ou retira o controle de um marcador sem ficha de jogador. */
+  function guestControlItems(token, ended) {
+    if (!controllableToken(token) || !Array.isArray(live.guests)) return [];
+    const seats = participantSeats(live.guests), holder = seatControlling(live.guests, token.id);
+    if (!seats.length && !holder) return [];
+    const give = async (seatId) => {
+      try {
+        await quick(`${base}/guest-control`, "POST", { tokenId: token.id, seatId });
+        toast(seatId ? "Controle entregue ao convidado." : "Controle do convidado retirado.");
+      } catch (error) { toast(error.message); }
+    };
+    return [
+      seats.length ? { label: "Dar controle a convidado", disabled: !!ended, disabledReason: ended, items: seats.map((s) => ({ label: `${s.name}${s.online ? "" : " (ausente)"}`, checked: s.tokenId === token.id, run: () => give(s.seatId) })) } : null,
+      holder ? { label: `Retirar controle de ${holder.name}`, disabled: !!ended, disabledReason: ended, run: () => give(null) } : null,
     ];
   }
   function cellMenuItems(cell) {
@@ -1698,6 +1761,7 @@ function mountTable(campaignId, sessionId, isMaster) {
       if (cell && tiles) items.push({ label: "Adicionar personagem aqui…", disabled: !!ended, disabledReason: ended, run: () => addTokenModal(cell) });
       items.push({ label: "Colocar o grupo na entrada", disabled: !!(ended || !tiles), disabledReason: ended || "Exige um mapa com grade.", run: run("t-gather") });
       if (live.fog?.active) items.push({ label: "Revelar área", disabled: !!ended, disabledReason: ended, run: run("t-fog-group", "reveal") });
+      items.push({ label: "Mostrar esta região aos participantes", disabled: !!(ended || !tiles), disabledReason: ended || "Exige um mapa com grade.", run: run("t-show-region") });
       items.push({ separator: true }, { label: "Montar rolagem…", run: run("t-roll-builder") });
     }
     const undo = lastUndoable();
@@ -1760,7 +1824,7 @@ function mountTable(campaignId, sessionId, isMaster) {
     getCommands: () => !live ? [] : tableCommands({
       isMaster: live.me.isMaster, tiles: live.map.kind === "tileset", fogOn: !!live.fog?.active, complete: ui === "complete",
       selected: live.tokens.find((t) => t.id === selected) || null, undoId: lastUndoable()?.id ?? null,
-      ended: !!live.session.endedAt, paused: !!live.play?.paused,
+      ended: !!live.session.endedAt, paused: !!live.play?.paused, following: !!follow?.following,
     }),
     onRun: async (c) => {
       if (c.needsComplete) setInterfaceMode("complete");

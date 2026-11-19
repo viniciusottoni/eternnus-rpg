@@ -114,6 +114,11 @@ public sealed partial class CampaignAssetsService
         if (reused.Count > 0 && await Maps.CountAsync(m => m.CampaignId == campaign && reused.Contains(m.Id) && m.TileData == null
                 && (m.Purpose == CampaignAssetPurposes.Map || m.Purpose == CampaignAssetPurposes.Portrait), ct) != reused.Count)
             throw new RuleException(400, "Composição inválida: há imagem que não pertence a esta cena nem ao acervo da campanha.");
+        // Mapas inseridos (ADR-113): só mapas de imagem com grade desta campanha; o original não é copiado.
+        HashSet<Guid> instances = doc == null ? [] : MapComposition.MapInstances(doc);
+        if (instances.Count > 0 && await Maps.CountAsync(m => m.CampaignId == campaign && instances.Contains(m.Id) && m.Purpose == CampaignAssetPurposes.Map
+                && m.TileData == null && m.HasGrid, ct) != instances.Count)
+            throw new RuleException(400, "Composição inválida: um mapa inserido na cena precisa ser um mapa com grade desta campanha.");
         // Saem as fontes sem uso e a camada anterior, exceto a camada que uma sessão ativa ainda mostra (sai quando a mesa trocar).
         var removed = owned.Where(o => !sources.Contains(o.Id) && !live.Contains(o.Id)).ToList();
         await AccountLimits.EnsureCampaignStorageAsync(db, campaign, (flat?.Bytes.Length ?? 0) - removed.Sum(o => (long)o.Size), ct);

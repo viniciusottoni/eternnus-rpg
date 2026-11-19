@@ -12,6 +12,7 @@ import { installNotices, enterRoute } from "./notices.js";
 import { renderCampaigns, installCampaigns } from "./campaigns.js";
 import { canAccess, openingDeadline, PLATFORM_ROUTES, isSafeSegment, canOpenPlatform, safeReturnRoute, isInviteCode } from "./policy.js";
 import { parseRoute, isGuid } from "./session-policy.js";
+import { guestRoute, displayRoute } from "./guest-policy.js";
 const started = performance.now();
 let opening = true,
   bootError = null,
@@ -29,7 +30,8 @@ installCampaigns();
 installPwa();
 installNavMore();
 installNotices();
-const requestedRoute = () => location.hash.slice(1) || "overview";
+// Links compartilhados usam "#/rota" (convidado, exibição externa); a barra inicial é opcional.
+const requestedRoute = () => location.hash.slice(1).replace(/^\/+/, "") || "overview";
 function route() {
   if (opening) return Promise.resolve();
   return withLoading(renderRoute, { kind: "route" });
@@ -44,6 +46,16 @@ async function renderRoute() {
   const flow = new URLSearchParams(location.search).get("flow");
   if (flow === "reset") {
     renderAuth("reset");
+    return;
+  }
+  // Convidado da mesa (ADR-114): funciona sem conta; o segredo nunca vira rota de retorno nem fica guardado.
+  const guest = guestRoute(requestedRoute());
+  if (guest || requestedRoute().split("/")[0] === "convidado") {
+    const module = await import("./guest-table.js");
+    if (current !== routeVersion) return;
+    const cleanup = await module.renderGuest(guest?.secret || "");
+    if (current !== routeVersion) cleanup?.();
+    else if (typeof cleanup === "function") dispose = cleanup;
     return;
   }
   if (!state.user) {
@@ -71,6 +83,16 @@ async function renderRoute() {
     ["overview", "login", "register"].includes(view)
   ) {
     renderHome();
+    return;
+  }
+  // Exibição externa da mesa (ADR-115): só o tabuleiro, sem o menu da conta; o servidor confere que é o mestre.
+  const displaySession = displayRoute(view);
+  if (displaySession) {
+    const module = await import("./table-display.js");
+    if (current !== routeVersion) return;
+    const cleanup = await module.renderTableDisplay(displaySession);
+    if (current !== routeVersion) cleanup?.();
+    else if (typeof cleanup === "function") dispose = cleanup;
     return;
   }
   if (view === "notebook") { await (await import("./campaign-workspace.js")).renderNotebook(); return; }

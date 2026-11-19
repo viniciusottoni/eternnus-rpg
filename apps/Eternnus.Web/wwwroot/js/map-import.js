@@ -176,6 +176,8 @@ export async function openGridModal({ base, live }) {
     submitForm(e.currentTarget, async () => {
       if (!valid) throw new Error("Ajuste a grade: " + ($("#mg-form [data-grid-summary]")?.textContent || "valores inválidos."));
       const v = adjust.values();
+      const loss = adjust.lossWarning();
+      if (loss && !confirm(loss)) return;
       const scale = Number($("#mg-form [name=scaleMeters]").value || 1.5);
       const result = await api(`${base}/map/grid`, "POST", { gridPixels: v.gridPixels, gridOffsetX: v.gridOffsetX, gridOffsetY: v.gridOffsetY, scaleMeters: scale, revision: map.revision });
       $("#modal").close();

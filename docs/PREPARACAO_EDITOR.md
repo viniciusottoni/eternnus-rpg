@@ -243,3 +243,7 @@ Grava pelos campos existentes (`gridPixels`, `gridOffsetX`, `gridOffsetY`, `scal
 - Preparação do mapa (`kind: "layer"`): ferramenta **Área de entrada** cria pontos de entrada; painel com nome, tipo e exclusão; salvos com "Salvar preparação" (`PUT /assets/entries`, revisão do mapa).
 - Módulos novos: `js/image-drop.js` (validação PNG/JPEG ≤ 10 MB, até 12 por vez, soltar, colar, acervo) e `js/scene-composition.js` (controlador da composição sobre `composition-canvas.js`). O núcleo (`editor-core.js`) não bloqueia mais a colagem nativa em Ctrl+V; `createCompositionSurface` aceita um cache de imagens externo; `flattenComposition` aceita fundo transparente. Contexto novo `compose` ("Composição") em `EDITOR_CONTEXTS`.
 - Contratos em [API.md](API.md); fluxo do mestre em [CENAS_EDITOR.md](CENAS_EDITOR.md); decisão em ADR-090.
+
+## Grade, envio e mapas inseridos (19/11/2026, ADR-112/113)
+
+O assistente de alinhamento (§7.3) ganhou zoom sob o cursor, lupa, ajuste fino, tamanhos comuns, voltar ao alinhamento anterior/detectado e a prévia `grid-impact` antes de aplicar. O envio de imagens (§10) usa um fluxo único em `image-drop.js` nos dois editores. A composição da cena aceita instâncias de mapa (`mapKey`) encaixadas na grade global; regras do original só entram por "Trazer paredes, portas e luzes deste mapa". Ver [EVOLUCAO_VTT_TOKENS_MAPAS_UX.md](EVOLUCAO_VTT_TOKENS_MAPAS_UX.md).
