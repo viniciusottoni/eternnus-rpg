@@ -48,7 +48,8 @@ async function request(path, method, body, signal, responseType) {
       try { await request("/auth/me", "GET", undefined, signal, "json"); }
       catch (error) { if (error.status === 401) throw error; }
     }
-    if (response.status === 401 && path !== "/auth/login" && !path.startsWith("/auth/two-factor/"))
+    // Acesso de convidado (ADR-114) tem cookie próprio: 401 ali encerra só a mesa do convidado, nunca a conta aberta.
+    if (response.status === 401 && path !== "/auth/login" && !path.startsWith("/auth/two-factor/") && !path.startsWith("/guest/"))
       window.dispatchEvent(new Event("session-expired"));
     throw new ApiError(
       data.message ||

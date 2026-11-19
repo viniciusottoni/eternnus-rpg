@@ -73,6 +73,8 @@ public class Campaign
     public int FirstSessionNumber { get; set; } = 1;
     public DateOnly? OriginalStartDate { get; set; }
     public bool IsOneShot { get; set; }
+    /// <summary>Convidados sem conta (ADR-114) habilitados pelo mestre; falso = nenhum convite funciona.</summary>
+    public bool GuestsEnabled { get; set; }
     public DateTime? ExpiresAt { get; set; }
     public DateTime? MasterLastSeenAt { get; set; }
     /// <summary>Arquivada: conteúdo e histórico preservados, sem novas operações de jogo. Continua contando na quota.</summary>
@@ -147,6 +149,8 @@ public class GameSession
     /// <summary>Entrada da ordem que está agindo (personagem, marcador do mestre ou grupo).</summary>
     [MaxLength(80)] public string? ActiveTurnKey { get; set; }
     public Guid? SceneId { get; set; }
+    /// <summary>Enquadramento "Mostrar esta região" do mestre (<see cref="CameraFrames"/>, JSON); nulo = nenhum. Não altera coordenadas do mapa (ADR-115).</summary>
+    [MaxLength(200)] public string? Camera { get; set; }
     /// <summary>Camada de névoa em uso: nula = a do mapa (compartilhada); {chave}@{cena} = preparação própria da cena apresentada.</summary>
     [MaxLength(80)] public string? LayerKey { get; set; }
     /// <summary>Nome e texto da cena como foram apresentados ou aplicados. Editar a preparação não muda isto; nulos = sessões anteriores.</summary>

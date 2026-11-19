@@ -51,6 +51,9 @@ public class GameDb(DbContextOptions<GameDb> options) : IdentityDbContext<AppUse
     public DbSet<StoreExposure> StoreExposures => Set<StoreExposure>();
     public DbSet<StoreUserProductStat> StoreUserProductStats => Set<StoreUserProductStat>();
     public DbSet<StoreRotationState> StoreRotationStates => Set<StoreRotationState>();
+    public DbSet<PartySlot> PartySlots => Set<PartySlot>();
+    public DbSet<GuestInvite> GuestInvites => Set<GuestInvite>();
+    public DbSet<GuestSeat> GuestSeats => Set<GuestSeat>();
     protected override void OnModelCreating(ModelBuilder b)
     {
         base.OnModelCreating(b);
@@ -104,6 +107,7 @@ public class GameDb(DbContextOptions<GameDb> options) : IdentityDbContext<AppUse
         WorkspaceModel.Configure(b);
         ChapterModel.Configure(b);
         PreparationModel.Configure(b);
+        VttModel.Configure(b);
         MusicModel.Configure(b);
         NoticeModel.Configure(b);
         DocumentVersionModel.Configure(b);

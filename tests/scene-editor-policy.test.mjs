@@ -115,3 +115,89 @@ test("scene editor builds on the shared core and keeps the API contract", async 
   const css = await read("wwwroot/editor-scene.css");
   assert.doesNotMatch(css, /@import/);
 });
+
+// ---------- Personagens reservados, tamanhos predefinidos e Acervo rápido (ADR-110) ----------
+const SP = await import("../apps/Eternnus.Web/wwwroot/js/scene-policy.js");
+const TL = await import("../apps/Eternnus.Web/wwwroot/js/token-look.js");
+
+test("reservado vira marcador aliado com o vínculo, aparece uma vez por cena e recebe nomes livres", () => {
+  const slot = { id: "s1", name: "Guerreiro de nome muito comprido que passa do limite", archetype: "warrior", appearance: null, size: 150, width: null, height: null };
+  const t = SP.slotToken(slot, "extra");
+  assert.equal(t.slotId, "s1");
+  assert.equal(t.side, "ally");
+  assert.equal(t.label.length, 40);
+  assert.equal(t.size, 150);
+  assert.equal(t.imageUrl, null, "a imagem vem do reservado, sem copiar");
+  assert.equal(t.layer, "extra");
+  const tokens = [{ x: 0, y: 0, label: "A" }, { ...t, x: 2, y: 0 }];
+  assert.equal(SP.slotIndex(tokens, "s1"), 1);
+  assert.equal(SP.slotIndex(tokens, "outro"), -1);
+  // Colar/duplicar não cria um segundo token do mesmo reservado.
+  const { placed, skipped } = pastePlacement({ cells, width: 4, height: 3, tokens, items: clipboardFrom(tokens, [1]), anchor: { x: 0, y: 2 } });
+  assert.equal(placed.length, 0);
+  assert.equal(skipped, 1);
+  assert.equal(SP.nextSlotName([], "Personagem", true), "Personagem 1");
+  assert.equal(SP.nextSlotName(["Personagem 1"], "Personagem", true), "Personagem 2");
+  assert.equal(SP.nextSlotName([], "Guerreiro"), "Guerreiro");
+  assert.equal(SP.nextSlotName(["guerreiro", "Guerreiro 2"], "Guerreiro"), "Guerreiro 3");
+  assert.equal(SP.MAX_SLOTS, 12);
+});
+
+test("arquétipos são desenhos próprios (caminho SVG simples) com identificadores do servidor", () => {
+  assert.deepEqual(TL.ARCHETYPES.map((a) => a.id), ["warrior", "mage", "archer", "cleric", "rogue"]);
+  for (const a of TL.ARCHETYPES) assert.match(a.path, /^[MmLlHhVvCcSsQqTtAaZz0-9 .,-]+$/, a.id);
+  assert.equal(TL.archetypeOf("mage").label, "Mago");
+  assert.equal(TL.archetypeOf("<script>"), null);
+});
+
+test("tamanhos predefinidos seguem TokenSpan: área inteira só com imagem; redondo maior ocupa uma casa", () => {
+  assert.deepEqual(SP.SIZE_PRESETS.map((p) => p.label), ["Pequeno", "Médio", "Grande", "Enorme", "Imenso"]);
+  assert.deepEqual(SP.sizePresetPatch("small"), { appearance: null, size: 75, width: null, height: null });
+  assert.deepEqual(SP.sizePresetPatch("medium", { image: true, appearance: "image" }), { appearance: "image", size: null, width: null, height: null });
+  assert.deepEqual(SP.sizePresetPatch("large", { image: true }), { appearance: "image", size: null, width: 200, height: 200 });
+  assert.deepEqual(SP.sizePresetPatch("gargantuan", { image: false }), { appearance: null, size: 400, width: null, height: null });
+  assert.equal(SP.sizePresetPatch("nada"), null);
+  const big = { x: 0, y: 0, ...SP.sizePresetPatch("huge", { image: true }) };
+  assert.deepEqual(TL.tokenSpan(big), { w: 3, h: 3 });
+  assert.equal(SP.sizePresetOf(big), "huge");
+  assert.equal(SP.sizePresetOf({ size: null }), "medium");
+  assert.equal(SP.sizePresetOf({ size: 75 }), "small");
+  assert.equal(SP.sizePresetOf({ size: 130 }), "");
+  // Validação igual a soltar: 3 × 3 não cabe em 4 × 3 com a casa (1,0) bloqueada.
+  assert.ok(SP.placementProblem(cells, 4, 3, [], 0, 0, -1, false, TL.tokenSpan(big)));
+  assert.equal(TL.sizeReadout({ appearance: "image", width: 200, height: 200 }, false), "2 × 2 casas · 200%");
+  assert.equal(TL.sizeReadout({ appearance: "image", width: 300, height: 200 }, false), "3 × 2 casas · 300% × 200%");
+  assert.equal(TL.sizeReadout({ appearance: "image", width: 150, height: 200 }, true), "150% × 200%");
+  assert.equal(TL.sizeReadout({ size: 75 }, false), "75% da casa");
+});
+
+test("Acervo rápido filtra por categoria e busca, só com referências seguras e sem cópias de encontro", () => {
+  const G = "0b5e6f2a-1111-4c2d-9e8f-123456789abc", H = "1c6f7a3b-2222-4d3e-8f90-23456789abcd";
+  const data = {
+    characters: [{ id: "c1", name: "Aria" }],
+    slots: [{ id: "s1", name: "Guerreiro", archetype: "warrior" }, { id: "s2", name: "Maga", characterId: "c1", characterName: "Aria" }],
+    npcs: [{ id: "n1", name: "Lobo cinzento" }, { id: "n2", name: "Lobo (cópia)", copy: true }],
+    maps: [
+      { id: "m1", key: `asset:${G}`, name: "Ponte", kind: "tileset", hasGrid: true, imageUrl: "/x.png", pixelWidth: 640, pixelHeight: 480 },
+      { id: "m2", key: `asset:${H}`, name: "Retrato da rainha", kind: "cartographic", imageUrl: "/y.png" },
+      { id: "m3", key: "official:castelo", name: "Castelo", kind: "tileset", imageUrl: "/z.png" },
+    ],
+    prefs: { favorites: ["map:m2", "character:n1", "character:n2"], recents: [{ key: "map:m1", at: 2 }, { key: "scene:x", at: 1 }] },
+  };
+  const names = (cat, q = "") => SP.quickAssetItems(data, cat, q).map((x) => x.name);
+  assert.deepEqual(SP.QUICK_CATEGORIES.map(([id]) => id), ["recent", "favorites", "party", "reserved", "npcs", "maps", "images"]);
+  assert.deepEqual(names("party"), ["Aria", "Guerreiro", "Maga"]);
+  assert.deepEqual(names("reserved"), ["Guerreiro", "Maga"]);
+  assert.equal(SP.quickAssetItems(data, "reserved")[1].sub, "Vinculado a Aria");
+  assert.deepEqual(names("npcs"), ["Lobo cinzento"]);
+  assert.deepEqual(names("maps"), ["Ponte"]);
+  assert.deepEqual(names("images"), ["Retrato da rainha"]);
+  assert.deepEqual(names("favorites"), ["Retrato da rainha", "Lobo cinzento"]);
+  assert.deepEqual(names("recent"), ["Ponte"]);
+  assert.deepEqual(names("party", "guerr"), ["Guerreiro"]);
+  assert.deepEqual(names("npcs", "LÔBO"), ["Lobo cinzento"]);
+  const map = SP.quickAssetItems(data, "maps")[0];
+  assert.deepEqual(map.asset, { src: `asset:${G}`, name: "Ponte", width: 640, height: 480 });
+  assert.equal(SP.quickAssetItems(data, "party")[1].ref, "slot:s1");
+  assert.deepEqual(SP.quickAssetItems({}, "recent"), []);
+});

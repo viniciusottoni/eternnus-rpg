@@ -19,9 +19,11 @@ public static class InterfaceModes
 
 public record PreferencesInput(string? InterfaceMode);
 
-/// <summary>Marcador enviado pelo editor de preparação (posições privadas, sem apresentar a cena).</summary>
+/// <summary>Marcador enviado pelo editor de preparação (posições privadas, sem apresentar a cena).
+/// <c>SlotId</c>: personagem reservado representado (ADR-110); o estado do reservado decide nome, lado e personagem.
+/// <c>Rehearsal</c>: token de ensaio (ADR-111), aceito só na prévia; nunca é salvo.</summary>
 public record SceneTokenInput(Guid? CharacterId, Guid? MasterCharacterId, string? Label, string? Side, int X, int Y, bool Hidden = false, int? Light = null, int? Fx = null, int? Fy = null,
-    string? Appearance = null, int? Size = null, string? ImageUrl = null, string? Layer = null, int? Width = null, int? Height = null);
+    string? Appearance = null, int? Size = null, string? ImageUrl = null, string? Layer = null, int? Width = null, int? Height = null, Guid? SlotId = null, bool Rehearsal = false);
 
 /// <summary>
 /// Regras puras da preparação de cenas: chave da camada, separação entre preparação e estado ao vivo, aplicação explícita e reinício.
@@ -60,6 +62,7 @@ public static class ScenePrep
     {
         CharacterId = t.CharacterId, MasterCharacterId = t.MasterCharacterId, Label = t.Label, Side = t.Side, X = t.X, Y = t.Y, Fx = t.Fx, Fy = t.Fy,
         Hidden = t.Hidden, Light = t.Light, Appearance = t.Appearance, Size = t.Size, ImageUrl = t.ImageUrl, Layer = t.Layer, Width = t.Width, Height = t.Height,
+        SlotId = t.SlotId,
     };
 
     static FogMark CloneMark(FogMark m) => new() { Id = m.Id, X = m.X, Y = m.Y, Kind = m.Kind, Label = m.Label, Dc = m.Dc, Sense = m.Sense, MaxDistance = m.MaxDistance };
@@ -153,16 +156,23 @@ public static class ScenePrep
     /// No mapa tático, a imagem livre com largura e altura ocupa todas as casas da sua área (<see cref="TokenSpan"/>).
     /// Personagens precisam estar vinculados à campanha; personagens do mestre, pertencer a ela.
     /// </summary>
-    /// <remarks><paramref name="layers"/>: camadas da cena; o marcador fica numa delas (nunca na Base), senão em Elementos.</remarks>
-    public static List<SceneToken> ValidateTokens(IReadOnlyList<SceneTokenInput>? input, FogGrid grid, IReadOnlySet<Guid> characters, IReadOnlyDictionary<Guid, string> characterNames, IReadOnlySet<Guid> npcs, bool free = false, IReadOnlySet<string>? layers = null)
+    /// <remarks><paramref name="layers"/>: camadas da cena; o marcador fica numa delas (nunca na Base), senão em Elementos.
+    /// <paramref name="slots"/>: personagens reservados da campanha (ADR-110). O estado do reservado vence o que o cliente enviou:
+    /// vinculado = marcador do personagem (com o <c>SlotId</c>); sem vínculo = aliado com o nome do reservado. Cada reservado aparece uma vez.
+    /// <paramref name="allowRehearsal"/>: tokens de ensaio (ADR-111) só valem na prévia; o resultado mantém a ordem da entrada.</remarks>
+    public static List<SceneToken> ValidateTokens(IReadOnlyList<SceneTokenInput>? input, FogGrid grid, IReadOnlySet<Guid> characters, IReadOnlyDictionary<Guid, string> characterNames, IReadOnlySet<Guid> npcs, bool free = false, IReadOnlySet<string>? layers = null,
+        IReadOnlyDictionary<Guid, (string Name, Guid? CharacterId)>? slots = null, bool allowRehearsal = false)
     {
         var list = input ?? [];
         if (list.Count > MaxTokens) throw new RuleException(400, $"Use até {MaxTokens} marcadores por cena.");
         var taken = new HashSet<(int, int)>();
         var people = new HashSet<Guid>();
+        var reserved = new HashSet<Guid>();
         var result = new List<SceneToken>();
+        static string Cut(string s) => s.Length > 40 ? s[..40] : s;
         foreach (var t in list)
         {
+            if (t.Rehearsal && !allowRehearsal) throw new RuleException(400, "Tokens de ensaio não são salvos. Converta-os em personagem reservado.");
             if (!grid.Inside(t.X, t.Y)) throw new RuleException(400, "Há um marcador fora do mapa. Mova-o para dentro da grade.");
             if (grid.BlocksMove(t.X, t.Y)) throw new RuleException(400, $"A casa {t.X + 1}, {t.Y + 1} bloqueia movimento. Escolha outra casa.");
             // Aparência: ausente = redondo, 100%. O asset da imagem é conferido pelo serviço (pertence à campanha).
@@ -181,20 +191,35 @@ public static class ScenePrep
             if (t.Light is < 0 or > TableFog.MaxRadius) throw new RuleException(400, $"A luz vai de 0 a {TableFog.MaxRadius} casas.");
             var image = NpcImages.Normalize(t.ImageUrl, out _);
             var layer = TokenLayer(t.Layer, layers);
-            if (t.CharacterId is { } cid)
+            if (!t.Rehearsal && t.SlotId is { } slotId)
+            {
+                if (slots == null || !slots.TryGetValue(slotId, out var slot)) throw new RuleException(400, "Personagem reservado não encontrado. Recarregue o editor.");
+                if (!reserved.Add(slotId)) throw new RuleException(400, "Cada personagem reservado aparece uma vez na cena.");
+                // Vinculado (a um personagem ainda na campanha): vira o marcador do personagem. Senão, aliado com o nome do reservado.
+                if (slot.CharacterId is { } bound && characters.Contains(bound))
+                {
+                    if (!people.Add(bound)) throw new RuleException(400, "Cada personagem aparece uma vez na cena.");
+                    result.Add(new SceneToken { CharacterId = bound, SlotId = slotId, Label = Cut(characterNames.GetValueOrDefault(bound) ?? slot.Name), Side = "ally", X = t.X, Y = t.Y, Fx = fx, Fy = fy, Appearance = appearance, Size = size, ImageUrl = image, Layer = layer, Width = width, Height = height });
+                }
+                else result.Add(new SceneToken { SlotId = slotId, Label = Cut(slot.Name), Side = "ally", X = t.X, Y = t.Y, Fx = fx, Fy = fy, Appearance = appearance, Size = size, ImageUrl = image, Layer = layer, Width = width, Height = height });
+                continue;
+            }
+            if (!t.Rehearsal && t.CharacterId is { } cid)
             {
                 if (!characters.Contains(cid)) throw new RuleException(400, "Escolha personagens vinculados à campanha.");
                 if (!people.Add(cid)) throw new RuleException(400, "Cada personagem aparece uma vez na cena.");
                 var name = characterNames.GetValueOrDefault(cid) ?? "Personagem";
-                result.Add(new SceneToken { CharacterId = cid, Label = name.Length > 40 ? name[..40] : name, Side = "ally", X = t.X, Y = t.Y, Fx = fx, Fy = fy, Appearance = appearance, Size = size, ImageUrl = image, Layer = layer, Width = width, Height = height });
+                result.Add(new SceneToken { CharacterId = cid, Label = Cut(name), Side = "ally", X = t.X, Y = t.Y, Fx = fx, Fy = fy, Appearance = appearance, Size = size, ImageUrl = image, Layer = layer, Width = width, Height = height });
                 continue;
             }
             var label = LibraryService.Clean(t.Label ?? "", false).Trim();
             if (label.Length is 0 or > TableFog.MaxLabel) throw new RuleException(400, $"Dê um nome de até {TableFog.MaxLabel} caracteres a cada marcador.");
-            var side = t.Side ?? "enemy";
+            // Ensaio: aliado visível, sem personagem do mestre (só existe na prévia).
+            var side = t.Rehearsal ? "ally" : t.Side ?? "enemy";
             if (!Sides.Contains(side)) throw new RuleException(400, "Escolha aliado, inimigo ou neutro.");
-            if (t.MasterCharacterId is { } npc && !npcs.Contains(npc)) throw new RuleException(400, "Personagem do mestre não encontrado.");
-            result.Add(new SceneToken { MasterCharacterId = t.MasterCharacterId, Label = label, Side = side, X = t.X, Y = t.Y, Fx = fx, Fy = fy, Hidden = t.Hidden, Light = t.Light, Appearance = appearance, Size = size, ImageUrl = image, Layer = layer, Width = width, Height = height });
+            var master = t.Rehearsal ? null : t.MasterCharacterId;
+            if (master is { } npc && !npcs.Contains(npc)) throw new RuleException(400, "Personagem do mestre não encontrado.");
+            result.Add(new SceneToken { MasterCharacterId = master, Label = label, Side = side, X = t.X, Y = t.Y, Fx = fx, Fy = fy, Hidden = !t.Rehearsal && t.Hidden, Light = t.Light, Appearance = appearance, Size = size, ImageUrl = image, Layer = layer, Width = width, Height = height });
         }
         return result;
     }

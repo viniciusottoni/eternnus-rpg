@@ -28,7 +28,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
     public const int MaxScenes = 100, MaxNpcs = 200, MaxNpcResources = 8, MaxPrivateTemplates = 10, MaxSimpleFields = 60;
     DateTime Now => clock.GetUtcNow().UtcDateTime;
 
-    async Task<(Campaign Campaign, bool Master)> AccessAsync(Guid campaignId, string user, bool master, bool write, CancellationToken ct)
+    internal async Task<(Campaign Campaign, bool Master)> AccessAsync(Guid campaignId, string user, bool master, bool write, CancellationToken ct)
     {
         var c = await db.Campaigns.AsNoTracking().SingleOrDefaultAsync(x => x.Id == campaignId, ct) ?? throw new RuleException(404, "Campanha não encontrada.");
         OneShotLifecycleService.EnsureOpen(c, Now);
@@ -83,6 +83,8 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
             }),
             activeSessionId = active?.Id,
             characters = await CampaignCharactersAsync(campaignId, ct),
+            // Personagens reservados (ADR-110), com a contagem de cenas já carregadas acima.
+            slots = await PartySlotService.ItemsAsync(db, campaignId, items.Select(s => s.Prepared), ct),
         };
     }
 
@@ -110,6 +112,7 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
                 compositionPending = current && s.Kind != SceneKinds.Text && active.OverlayId != s.OverlayId,
             },
             characters = await CampaignCharactersAsync(campaignId, ct),
+            slots = await PartySlotService.ItemsAsync(db, campaignId, null, ct),
         };
     }
 
@@ -198,7 +201,8 @@ public sealed partial class PreparationService(GameDb db, TimeProvider clock)
         var prep = TableFogService.PreparedOf(row, state, map, settings);
         var characters = await CampaignCharactersAsync(campaignId, ct);
         var npcs = (await db.MasterCharacters.AsNoTracking().Where(m => m.CampaignId == campaignId).Select(m => m.Id).ToListAsync(ct)).ToHashSet();
-        var tokens = ScenePrep.ValidateTokens(input, FogGrid.Of(map, prep), characters.Select(c => c.Id).ToHashSet(), characters.ToDictionary(c => c.Id, c => c.Name), npcs, map.Free, layers);
+        var slots = await PartySlotService.LookupAsync(db, campaignId, ct);
+        var tokens = ScenePrep.ValidateTokens(input, FogGrid.Of(map, prep), characters.Select(c => c.Id).ToHashSet(), characters.ToDictionary(c => c.Id, c => c.Name), npcs, map.Free, layers, slots);
         foreach (var image in tokens.Select(t => t.ImageUrl).Where(i => i != null).Distinct()) await ValidImageAsync(campaignId, image, db, ct);
         return tokens;
     }

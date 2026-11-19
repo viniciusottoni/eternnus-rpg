@@ -220,3 +220,19 @@ test("artboard classification: inside, partially outside and fully outside", () 
   assert.equal(P.artboardStatus(el({ x: -95, y: -95, width: 100, height: 100, rotation: 45 }), ab), "outside");
   assert.equal(P.artboardStatus(el({ x: 960, y: 10, width: 100, height: 20, rotation: 0 }), ab), "partial");
 });
+
+test("mapa inserido (ADR-113): mapKey igual à origem sobrevive a normalizar e serializar; diferente é recusado", async () => {
+  const P = await import("../apps/Eternnus.Web/wwwroot/js/composition-policy.js");
+  const key = "asset:11111111-2222-3333-4444-555555555555", other = "asset:aaaaaaaa-2222-3333-4444-555555555555";
+  const doc = P.normalizeComposition({ v: 1, artboard: { width: 256, height: 256 }, elements: [
+    { id: "a", layer: "elements", type: "image", src: key, mapKey: key, width: 10, height: 10 },
+    { id: "b", layer: "elements", type: "image", src: key, mapKey: other, width: 10, height: 10 },
+    { id: "c", layer: "elements", type: "rect", mapKey: key } ] });
+  assert.equal(doc.elements[0].mapKey, key);
+  assert.equal(doc.elements[1].mapKey, undefined);
+  assert.equal(doc.elements[2].mapKey, undefined);
+  assert.equal(JSON.parse(P.serializeComposition(doc)).elements[0].mapKey, key);
+  assert.equal(JSON.parse(P.serializeComposition(doc)).elements[1].mapKey, undefined);
+  assert.equal(P.validateComposition(doc), null);
+  assert.match(P.validateComposition({ ...doc, elements: [{ ...doc.elements[0], mapKey: other }] }), /mapa/);
+});

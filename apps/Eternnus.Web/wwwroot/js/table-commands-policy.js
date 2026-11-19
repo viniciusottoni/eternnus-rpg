@@ -3,7 +3,7 @@
 // O servidor continua decidindo permissão e estado; `disabled` só explica por que a ação não serve agora.
 
 /**
- * ctx = { isMaster, tiles, fogOn, complete, selected: { id, characterId, masterCharacterId } | null, undoId, ended, paused }
+ * ctx = { isMaster, tiles, fogOn, complete, selected: { id, characterId, masterCharacterId } | null, undoId, ended, paused, following }
  * Devolve [{ id, label, group, keywords, masterOnly, basic, disabled, action, arg }].
  */
 export function tableCommands(ctx = {}) {
@@ -28,6 +28,10 @@ export function tableCommands(ctx = {}) {
     { id: "tokenEdit", label: "Editar marcador selecionado", group: "Elementos", keywords: ["nome", "lado", "ficha"], masterOnly: true, action: "t-token-edit", disabled: creature ? null : "Selecione uma criatura no mapa." },
     { id: "tokenRemove", label: "Remover marcador selecionado", group: "Elementos", keywords: ["apagar", "excluir", "delete", "token"], masterOnly: true, action: "t-tool-remove", disabled: creature ? null : "Selecione uma criatura no mapa." },
     { id: "tableSettings", label: "Configuração da mesa", group: "Sessão", keywords: ["nevoa", "tochas", "regras"], masterOnly: true, basic: false, action: "t-table-settings" },
+    // Participantes (ADR-114/115): câmera compartilhada, exibição externa e convidados — interface Completa.
+    { id: "showRegion", label: "Mostrar esta região aos participantes", group: "Mapa", keywords: ["camera", "enquadrar", "seguir", "foco"], masterOnly: true, basic: false, action: "t-show-region", disabled: grid },
+    { id: "externalDisplay", label: "Abrir exibição externa", group: "Sessão", keywords: ["tv", "projetor", "segunda tela", "telao"], masterOnly: true, basic: false, action: "t-external-display" },
+    { id: "guests", label: "Convidados da mesa", group: "Sessão", keywords: ["convite", "link", "sem conta", "visitante"], masterOnly: true, basic: false, action: "t-guests" },
     // Mestre — condução.
     { id: "order", label: "Ordem de turnos", group: "Turnos", keywords: ["iniciativa", "combate"], masterOnly: true, action: "t-order" },
     { id: "setTurn", label: "Dar a vez", group: "Turnos", keywords: ["turno", "jogador"], masterOnly: true, action: "t-set-turn" },
@@ -42,6 +46,9 @@ export function tableCommands(ctx = {}) {
   if (!ctx.isMaster) {
     list.push({ id: "mySheet", label: "Minha ficha", group: "Ficha", keywords: ["personagem", "vida"], action: "t-my-sheet" });
     list.push({ id: "move", label: "Mover meu personagem", group: "Mapa", keywords: ["andar", "deslocar"], action: "t-move", disabled: grid });
+    // Câmera compartilhada (ADR-115): seguir o mestre é escolha de cada jogador; nunca move a câmera de quem não segue.
+    list.push({ id: "follow", label: ctx.following ? "Parar de seguir o mestre" : "Seguir o mestre", group: "Mapa", keywords: ["camera", "acompanhar", "enquadramento"], action: "t-follow" });
+    list.push({ id: "fitView", label: "Restaurar enquadramento", group: "Mapa", keywords: ["camera", "mapa inteiro", "zoom"], action: "t-camera-fit" });
   }
   return list.map((c) => ({ basic: true, masterOnly: false, arg: "", ...c, disabled: ended && c.id !== "focusBoard" ? ended : c.disabled ?? null }));
 }

@@ -9,7 +9,7 @@ import { addLayer, createHistory, isTypingTarget, moveLayer, patchLayer, removeL
 import * as P from "./composition-policy.js";
 import { createCompositionSurface, encodeFlat, flattenComposition, textHeight, textWidth } from "./composition-canvas.js";
 import { attachDrafts } from "./editor-drafts.js";
-import { mountImageDrop, listenPaste, splitImageFiles, baseName, assetListHtml, bindAssetList, maxImageBytes } from "./image-drop.js";
+import { mountImageDrop, listenPaste, splitImageFiles, baseName, assetListHtml, bindAssetList, maxImageBytes, mountUploadTray, uploadEach, httpsImageUrl } from "./image-drop.js";
 import { formatBytes } from "./account-usage-policy.js";
 
 /** Alvo da imagem achatada gerada no navegador: abaixo do limite de arquivo de todos os planos (ADR-102). */
@@ -117,7 +117,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     initialTool: "select",
     onTool: () => { surface.refreshCursor(); surface.invalidate(); },
     onModeChange: () => { quickKey = ""; scheduleUi(); },
-    onClose: () => { flushNudge(); closeFloating(); disposeDrop(); pasting.dispose(); disposeAssets(); surface.destroy(); },
+    onClose: () => { flushNudge(); closeFloating(); disposeDrop(); uploads.dispose(); pasting.dispose(); disposeAssets(); surface.destroy(); },
   });
   shell.root.classList.add("im-editor");
   shell.stage.innerHTML = `<div class="im-stage" data-im-stage></div><p class="sr-only" id="im-canvas-help">Setas movem a seleção 1 pixel (Shift: 10). Delete exclui. Enter abre as propriedades. Shift+F10 abre o menu do elemento. Tab leva aos painéis.</p>`;
@@ -495,25 +495,17 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     if (!files.length || !canAdd(files.length)) return;
     uploading = true;
     const origin = at || surface.viewCenter();
-    const added = [];
     try {
-      for (const [i, file] of files.entries()) {
-        shell.message(files.length > 1 ? `Enviando imagem ${i + 1} de ${files.length}…` : `Enviando “${baseName(file.name)}”…`);
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("name", baseName(file.name));
-        const source = await api(`${base}/sources`, "POST", fd, { background: true });
-        if (!shell.root.isConnected) return;
-        const el = addImageElement(source, { x: origin.x + i * 24, y: origin.y + i * 24 });
-        if (el) added.push(el.id);
-      }
-      shell.message(added.length > 1 ? `${added.length} imagens adicionadas e selecionadas.` : "Imagem adicionada: arraste para mover; as alças redimensionam e giram.");
-    } catch (e) {
-      shell.message(`${added.length ? `${added.length} imagem(ns) adicionada(s). ` : ""}${e?.message || "O envio falhou."} As restantes não foram enviadas; tente de novo.`);
-    } finally {
-      uploading = false;
-      if (added.length) select(added, false);
-    }
+      // Fluxo comum (image-drop.js): miniatura e andamento por arquivo; uma falha não desfaz as demais nem o rascunho.
+      const { added } = await uploadEach(files, {
+        tray: uploads,
+        upload: (file) => { const fd = new FormData(); fd.append("file", file); fd.append("name", baseName(file.name)); return api(`${base}/sources`, "POST", fd, { background: true }); },
+        place: (source, i) => addImageElement(source, { x: origin.x + i * 24, y: origin.y + i * 24 })?.id || null,
+        alive: () => shell.root.isConnected,
+        say: (text) => { if (problems.length && text) shell.message(`${problems.join(" ")} ${text}`); else if (text) shell.message(text); },
+      });
+      if (added.length) { select(added, false); surface.canvas.focus({ preventScroll: true }); }
+    } finally { uploading = false; }
   }
   async function addAsset(item, at = null) {
     if (saving || uploading) return shell.message("Aguarde a operação em andamento terminar.");
@@ -525,6 +517,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     } catch (e) { shell.message(e?.message || "Não foi possível usar a imagem do acervo."); }
     finally { uploading = false; }
   }
+  const uploads = mountUploadTray(stageHost);
   const disposeDrop = mountImageDrop(stageHost, {
     enabled: () => !saving,
     onFiles: (files, p) => addFiles(files, docPoint(p)),
@@ -1216,10 +1209,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
       return api(`${base}/sources`, "POST", fd);
     }));
     box.querySelector('[data-add="url"]').addEventListener("click", (e) => run(e.currentTarget, async () => {
-      const url = form.elements.namedItem("url").value.trim();
-      let parsed = null;
-      try { parsed = new URL(url); } catch { /* inválido */ }
-      if (!parsed || parsed.protocol !== "https:") throw new Error("Informe um endereço https:// válido.");
+      const url = httpsImageUrl(form.elements.namedItem("url").value);
       return api(`${base}/sources/import`, "POST", { url, name: form.elements.namedItem("urlName").value.trim().slice(0, 120) || null });
     }));
     const pick = box.querySelector("[data-pick]");

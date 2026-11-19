@@ -5,6 +5,7 @@
 import * as P from "./composition-policy.js";
 import { createCompositionSurface, createImageCache, flattenComposition } from "./composition-canvas.js";
 import { publicComposition, hasPublicElements } from "./scene-policy.js";
+import * as MI from "./map-instance-policy.js";
 
 export const MAP_ELEMENT = "scene-map";
 const G = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
@@ -69,6 +70,15 @@ export { createImageCache };
  */
 export function createSceneComposer(opts) {
   let selection = new Set(), activeLayer = "elements", clipboard = null, pasteCount = 0, mapEl = null;
+  /** Mapas inseridos (ADR-113): { mapOf(key), grid() → grade da cena|null, snap() → encaixe ligado }. Configurado pelo editor. */
+  let instances = null;
+  const instanceSnap = (el) => {
+    if (!instances?.snap?.() || !MI.isMapInstance(el)) return null;
+    const m = instances.mapOf(el.mapKey), g = instances.grid();
+    return m && g && MI.canInstance(m) ? MI.snapInstance(el, m, g) : null;
+  };
+  /** Ao soltar um arraste, giro ou redimensionamento, os mapas inseridos voltam a encaixar na grade da cena. */
+  function resnapSelected() { for (const el of editableSelection()) { const patch = instanceSnap(el); if (patch) Object.assign(el, patch); } }
   const doc = () => opts.doc();
   const EMPTY = { v: 1, artboard: { width: 64, height: 64, background: "#000000" }, layers: P.normalizeLayers([]), elements: [] };
   // Os elementos são os mesmos objetos do rascunho: o arraste da superfície altera o rascunho diretamente (histórico em begin/commit).
@@ -112,7 +122,7 @@ export function createSceneComposer(opts) {
     select: (ids, additive) => select(P.expandGroups(doc() || { elements: [] }, ids), additive),
     begin: (label) => opts.begin(label),
     changed: () => opts.onLive?.(),
-    commit: () => opts.commit(),
+    commit: () => { resnapSelected(); opts.commit(); },
     cancel: () => opts.cancel(),
     create: () => {},
     crop: () => {},
@@ -133,11 +143,17 @@ export function createSceneComposer(opts) {
     return true;
   }
   /** Imagem ({ key|src, name, width, height }) no tamanho natural, centrada em `point` (documento). → elemento ou null. */
-  function addImage(source, point, { fill = false, label = "Adicionar imagem" } = {}) {
+  function addImage(source, point, { fill = false, label = "Adicionar imagem", fitLarge = true } = {}) {
     if (!canAdd()) return null;
     const d = doc();
     const src = source.key || source.src || `asset:${source.id}`;
-    const w = Math.max(1, Math.min(P.LIMITS.sizeMax, Number(source.width) || 256)), h = Math.max(1, Math.min(P.LIMITS.sizeMax, Number(source.height) || 256));
+    let w = Math.max(1, Math.min(P.LIMITS.sizeMax, Number(source.width) || 256)), h = Math.max(1, Math.min(P.LIMITS.sizeMax, Number(source.height) || 256));
+    // Imagem maior que a área visível entra inteira, com a proporção mantida (Tamanho original desfaz; Preencher cobre a área).
+    if (fitLarge && !fill && (w > d.artboard.width || h > d.artboard.height)) {
+      const k = Math.min(d.artboard.width / w, d.artboard.height / h);
+      w = Math.max(1, Math.round(w * k * 100) / 100); h = Math.max(1, Math.round(h * k * 100) / 100);
+      opts.say?.("Imagem maior que a área visível: reduzida para caber inteira, mantendo a proporção. Tamanho original desfaz.");
+    }
     const p = point || surface.viewCenter();
     const el = P.normalizeElement({ id: P.newElementId(d.elements, "image"), layer: activeLayer, type: "image", name: String(source.name || "Imagem").slice(0, 80), src, x: Math.round(p.x - w / 2), y: Math.round(p.y - h / 2), width: w, height: h });
     if (fill) Object.assign(el, P.fitToArtboard(el, d.artboard, "fill"));
@@ -146,6 +162,39 @@ export function createSceneComposer(opts) {
     selection = new Set([el.id]);
     surface.invalidate(); opts.onSelection?.();
     return el;
+  }
+
+  /** Mapa da campanha inserido como instância (ADR-113), já encaixado na grade da cena e centrado em `point`. */
+  function addMapInstance(map, grid, point) {
+    if (!canAdd()) return null;
+    const d = doc();
+    const placed = MI.placeInstance(map, grid, point || surface.viewCenter());
+    const el = P.normalizeElement({ ...placed, id: P.newElementId(d.elements, "image"), layer: activeLayer, name: String(map.name || "Mapa").slice(0, 80) });
+    P.clampGeometry(el);
+    if (!opts.change(`Inserir mapa “${el.name}”`, () => { doc().elements.push(el); })) return null;
+    selection = new Set([el.id]);
+    surface.invalidate(); opts.onSelection?.();
+    return el;
+  }
+  /** Encaixa os mapas inseridos selecionados na grade da cena (escala da casa, giro de 90° e linhas). */
+  function snapInstances() {
+    const els = editableSelection().filter(MI.isMapInstance);
+    if (!els.length) { opts.say("Selecione um mapa inserido e desbloqueado."); return false; }
+    const g = instances?.grid();
+    if (!g) { opts.say("A cena precisa de grade (mapa tático ou área em branco jogável) para encaixar mapas."); return false; }
+    const ok = els.filter((el) => MI.canInstance(instances.mapOf(el.mapKey)));
+    if (!ok.length) { opts.say("O mapa original não está mais disponível ou não tem grade."); return false; }
+    opts.change("Encaixar na grade da cena", () => { for (const el of ok) { Object.assign(el, MI.snapInstance(el, instances.mapOf(el.mapKey), g)); P.clampGeometry(el); } });
+    surface.invalidate();
+    opts.say(ok.length === 1 ? "Mapa encaixado na grade da cena." : `${ok.length} mapas encaixados na grade da cena.`);
+    return true;
+  }
+  /** Seleciona o mapa inserido seguinte (dir 1) ou anterior (−1). */
+  function selectInstance(dir) {
+    const id = MI.nextInstance(doc()?.elements, selected().find(MI.isMapInstance)?.id || null, dir);
+    if (!id) { opts.say("Nenhum mapa inserido nesta cena."); return null; }
+    select([id], false);
+    return id;
   }
 
   // ---------- Editar ----------
@@ -218,7 +267,7 @@ export function createSceneComposer(opts) {
     transform(mode === "fill" ? "Preencher a área visível" : "Ajustar à área visível", (el) => Object.assign(el, P.fitToArtboard(el, ab, mode)));
   }
   const flip = (axis) => transform(axis === "x" ? "Espelhar na horizontal" : "Espelhar na vertical", (el) => { if (axis === "x") el.flipX = !el.flipX; else el.flipY = !el.flipY; });
-  const rotate = (deg) => transform(deg > 0 ? "Girar 90° à direita" : "Girar 90° à esquerda", (el) => { el.rotation = P.normalizeRotation(el.rotation + deg); });
+  const rotate = (deg) => transform(deg > 0 ? "Girar 90° à direita" : "Girar 90° à esquerda", (el) => { el.rotation = P.normalizeRotation(el.rotation + deg); const patch = instanceSnap(el); if (patch) Object.assign(el, patch); });
   function zorder(op) {
     const els = editableSelection();
     if (!els.length) return opts.say("Selecione um elemento desbloqueado.");
@@ -296,7 +345,9 @@ export function createSceneComposer(opts) {
     const els = editableSelection();
     if (!els.length) return false;
     if (!nudging) { opts.begin("Mover com o teclado"); nudging = true; }
-    for (const el of els) { el.x += dx; el.y += dy; P.clampGeometry(el); }
+    // Mapa inserido com encaixe ligado anda de casa em casa (1 px quebraria o alinhamento com a grade da cena).
+    const cell = els.every((el) => instanceSnap(el)) ? instances.grid().size : 1;
+    for (const el of els) { el.x += dx * cell; el.y += dy * cell; P.clampGeometry(el); }
     surface.invalidate(); opts.onLive?.();
     clearTimeout(nudgeTimer); nudgeTimer = setTimeout(flushNudge, 700);
     return true;
@@ -310,7 +361,8 @@ export function createSceneComposer(opts) {
     set activeLayer(id) { activeLayer = id; },
     get hasClipboard() { return !!clipboard?.length; },
     selected, editableSelection, editable, select, prune,
-    addImage, copy, cut, paste, duplicate, remove, transform, fit, flip, rotate, zorder, align, toggle, group, moveToLayer, setField, nudge, flushNudge,
+    addImage, addMapInstance, snapInstances, selectInstance, setInstances: (cfg) => { instances = cfg; },
+    copy, cut, paste, duplicate, remove, transform, fit, flip, rotate, zorder, align, toggle, group, moveToLayer, setField, nudge, flushNudge,
     docPoint, viewCenter: () => surface.viewCenter(), lastPointer: () => surface.lastPointer(),
     invalidate: () => surface.invalidate(),
     destroy() { flushNudge(); surface.destroy(); },

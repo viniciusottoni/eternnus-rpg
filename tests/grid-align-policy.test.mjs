@@ -103,3 +103,23 @@ test('descrição curta do resultado', () => {
   assert.equal(P.describeAlignment({ gridPixels: 64, gridOffsetX: 3, gridOffsetY: 0 }), 'Quadrado de 64 px, deslocamento 3 × 0 px.');
   assert.equal(P.describeAlignment({ error: 'x' }), 'x');
 });
+
+test("ajuste fino, predefinições, pontos e prévia do impacto", async () => {
+  const { nudgeGrid, sameGrid, pickPoint, impactLines, GRID_PRESETS } = await import("../apps/Eternnus.Web/wwwroot/js/grid-align-policy.js");
+  const v = { gridPixels: 70, gridOffsetX: 0, gridOffsetY: 69 };
+  assert.deepEqual(nudgeGrid(v, "gridOffsetX", -1), { ...v, gridOffsetX: 69 });
+  assert.deepEqual(nudgeGrid(v, "gridOffsetY", 1), { ...v, gridOffsetY: 0 });
+  assert.deepEqual(nudgeGrid(v, "gridPixels", -10), { gridPixels: 60, gridOffsetX: 0, gridOffsetY: 59 });
+  assert.equal(nudgeGrid({ gridPixels: 9 }, "gridPixels", -10).gridPixels, 8);
+  assert.equal(nudgeGrid(v, "gridPixels", 500, 256).gridPixels, 256);
+  assert.ok(sameGrid(v, { ...v })); assert.ok(!sameGrid(v, { ...v, gridPixels: 71 }));
+  assert.ok(GRID_PRESETS.some(([px]) => px === 70) && GRID_PRESETS.some(([px]) => px === 100));
+  assert.equal(pickPoint([{ x: 0, y: 0 }, { x: 10, y: 10 }], 9, 9, 5), 1);
+  assert.equal(pickPoint([{ x: 0, y: 0 }], 50, 50, 5), -1);
+  const none = impactLines({ width: 8, height: 8, oldWidth: 8, oldHeight: 8, scenes: 0 });
+  assert.equal(none.loss, false); assert.match(none.lines.join(" "), /Nada preparado/);
+  const loss = impactLines({ width: 4, height: 4, oldWidth: 8, oldHeight: 8, scenes: 2, tokensOutside: 3, lightsOutside: 1, entriesOutside: 1, instances: 1, inSession: true });
+  assert.equal(loss.loss, true);
+  const text = loss.lines.join(" ");
+  for (const part of [/8 × 8 para 4 × 4/, /2 cena/, /3 marcador/, /1 luz/, /1 ponto/, /Encaixar na grade/, /na mesa agora/]) assert.match(text, part);
+});

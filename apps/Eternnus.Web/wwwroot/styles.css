@@ -129,6 +129,32 @@ summary:focus-visible {
   outline: 2px solid var(--bright);
   outline-offset: 4px;
 }
+
+/* Seções recolhíveis: todo <summary> mostra a mesma seta (fechada aponta para a direita, aberta para baixo).
+   Títulos com display:flex perdiam o marcador nativo e não pareciam clicáveis; a seta própria vale para todos. */
+summary {
+  cursor: pointer;
+  list-style: none;
+}
+summary::-webkit-details-marker { display: none; }
+summary::before {
+  content: "";
+  display: inline-block;
+  flex: none;
+  width: .42em;
+  height: .42em;
+  margin: 0 .65em 0 .1em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  vertical-align: .12em;
+  transition: transform .15s ease;
+}
+details[open] > summary::before { transform: rotate(45deg); }
+summary:hover { color: var(--bright); }
+@media (prefers-reduced-motion: reduce) {
+  summary::before { transition: none; }
+}
 button:disabled,
 button[aria-disabled="true"] {
   cursor: not-allowed;

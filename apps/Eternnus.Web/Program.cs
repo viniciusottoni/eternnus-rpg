@@ -18,6 +18,8 @@ try
     app.MapTemporaryImageEndpoints();
     app.MapCampaignAssetsEndpoints();
     app.MapPrepEndpoints();
+    app.MapPartySlotEndpoints();
+    app.MapGuestEndpoints();
     app.MapVersionEndpoints();
     app.MapWorkspaceEndpoints();
     app.MapMusicEndpoints();

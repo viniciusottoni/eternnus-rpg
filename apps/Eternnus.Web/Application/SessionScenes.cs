@@ -289,7 +289,15 @@ public partial class SessionService
         var a = await LockAsync(sessionId, user, ct); RequireMaster(a);
         var scene = await db.Scenes.SingleOrDefaultAsync(s => s.Id == x.SceneId && s.CampaignId == a.Campaign.Id, ct) ?? throw new RuleException(404, "Cena não encontrada.");
         var tokens = await db.SessionTokens.AsNoTracking().Where(t => t.SessionId == sessionId).ToListAsync(ct);
-        scene.Prepared = tokens.Select(ToSceneToken).ToList();
+        // Reservados (ADR-110) não vão à mesa: o arranjo capturado os mantém (no mesmo mapa, se ainda couberem) e conserva o vínculo dos personagens.
+        var previous = scene.Prepared.Select(ScenePrep.Clone).ToList();
+        BattleMap? slotMap = null; FogGrid? slotGrid = null;
+        if (scene.Kind == SceneKinds.Map && a.Session.MapKind == MapKinds.Tileset && scene.MapKey == a.Session.MapKey && previous.Any(t => t.SlotId != null && t.CharacterId == null))
+        {
+            slotMap = BattleMaps.Find(a.Session.MapKey) ?? (await new CampaignAssetsService(db).ResolveMapAsync(a.Campaign.Id, a.Session.MapKey, ct))?.Battle();
+            if (slotMap != null) slotGrid = FogGrid.Of(slotMap, (await Fog.LayerAsync(a.Campaign.Id, slotMap, TableSettings.Default, false, ct, ScenePrep.SessionLayer(a.Session))).Item2);
+        }
+        scene.Prepared = ScenePlacement.KeepSlots(slotMap, slotGrid, tokens.Select(ToSceneToken).ToList(), previous);
         // Outro cenário: composição visual e entrada da cena eram do mapa anterior.
         if (a.Session.MapKey.Length > 0 && scene.Kind != SceneKinds.Text && scene.MapKey != a.Session.MapKey)
         {

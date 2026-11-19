@@ -1,5 +1,26 @@
 # Validação
 
+## Evolução VTT: reservados, ensaio, mapas inseridos, convidados e câmera (ADR-110 a ADR-115) — 19 de novembro de 2026
+
+| Verificação | Resultado |
+| --- | --- |
+| `dotnet build apps/Eternnus.Web` | 0 erros, 0 avisos |
+| `dotnet ef migrations has-pending-model-changes` | Nenhuma alteração pendente depois de `VttTokensGuestsCamera` |
+| `dotnet test tests/Eternnus.Tests --filter` PartySlot, PrepPreview, SceneEditor, SessionService, SceneComposition, Guest, Camera, TableFog, TablePlay, CampaignAssets, MapComposition, UploadLimits, TableSimplification, VectorWall, PrepWorkspace, StarterAdventure, CampaignTileMaps, LoginSession, AccountLimits | 232 passaram, 0 falharam |
+| `node --test` scene-policy, scene-editor-policy, rehearsal-policy (novo), camera-policy (novo), guest-policy (novo), map-instance-policy (novo), grid-align-policy, composition-policy, scene-composition-policy, table-commands-policy, help-catalog, help-policy, help-fields, frontend, pwa, service-worker, editor-contexts, editor-policy, command-palette-policy, free-move-policy, fog-policy | 162 passaram, 0 falharam |
+| `node tests/party-slots.mjs` (PostgreSQL, novo) | 50 verificações: mestre sem jogadores cria reservados, salva/reabre tokens, ensaio com `viewerToken`, vínculo preserva posições |
+| `node tests/party-slots-ui.mjs` (Chrome + PostgreSQL, novo) | 26 verificações: 3 reservados criados no painel e colocados no mapa, desfazer/refazer, salvar e reabrir, ensaio vendo por um reservado sem alterar a revisão da cena; 390×844 sem rolagem horizontal e botões ≥ 44 px |
+| `node tests/map-instances-ui.mjs` (Chrome + PostgreSQL, novo) | Dois mapas inseridos encaixados (2×), soltura de PNG com bandeja de andamento, regras importadas só na camada da cena, reabrir mantém as transformações, mesa com `?overlay=`, impacto da grade e "voltar ao anterior" |
+| `node tests/guests.mjs` (Chrome + PostgreSQL, novo) | 46 verificações (1920×1080 mestre, 390×844 observador, 1366×768 participante): resgate, segredo some do endereço, observador sem ações, controle de token, movimento, revogação |
+| `node tests/table-display.mjs` (Chrome + PostgreSQL, novo) | 46 verificações: exibição externa sem ferramentas/notas, seguir o mestre recebe `seq` novo sem recarregar, 390×844 |
+| `node tests/scene-editor.mjs`, `campaign-assets.mjs`, `table-context-menu.mjs`, `table-fog.mjs` | 92, 102, 39 e 74 verificações |
+| `node tests/table-vtt-ui.mjs`, `node tests/free-movement.mjs` | Falham ("porta do UVTT na casa certa"; espera de `input[name=useGrid][value=free]`) **também na base `b3f9c78`** num worktree limpo: falhas anteriores a esta evolução, não corrigidas aqui |
+
+Correções feitas durante a validação: `PartySlotService.BindAsync` impedia o início da aplicação (ASP.NET trata `BindAsync` de instância como associação personalizada) e virou `BindCharacterAsync`; a lista de reservados perdia o item criado enquanto um GET antigo terminava (mescla de escritas durante o carregamento em `party-slots.js`); o estado de espectador deixou de levar `userId` e `avatarUrl` dos participantes; eventos de criatura oculta passaram a ser só do mestre mesmo com névoa desligada (`SessionService.Secret`).
+
+Não executado: suíte completa; testes de carga; concorrência real de resgate de convite no PostgreSQL (coberta só em SQLite); medição humana das metas de tempo (criar cena em 60 s, três tokens em 60 s, ajustar token em 30 s) — pendente de validação humana.
+
+
 ## Loja do Aventureiro: Round Robin inteligente da vitrine (ADR-108) — 18 de novembro de 2026
 
 | Verificação | Resultado |

@@ -93,6 +93,8 @@ public static class CampaignAssetsEndpoints
             return Results.Ok(await s.AddSourceAsync(campaignId, id, Id(u), x.Name, document, ct));
         }).RequireRateLimiting("upload");
         api.MapPost("/maps/{id:guid}/sources/copy", (Guid campaignId, Guid id, MapSourceCopyInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.CopySourceAsync(campaignId, id, Id(u), x, ct));
+        // Prévia do impacto de uma nova grade (assistente de alinhamento): somente leitura, nada é gravado.
+        api.MapPost("/maps/{id:guid}/grid-impact", (Guid campaignId, Guid id, MapGridImpactInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.GridImpactAsync(campaignId, id, Id(u), x, ct));
         api.MapPut("/maps/{id:guid}", (Guid campaignId, Guid id, CampaignMapInput x, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => s.SaveMapAsync(campaignId, id, Id(u), x, null, ct));
         api.MapDelete("/maps/{id:guid}", async (Guid campaignId, Guid id, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) => { await s.DeleteMapAsync(campaignId, id, Id(u), ct); return Results.NoContent(); });
         // Preparação de névoa/luz: key = chave oficial (ex.: crypt) ou asset:{guid}.
@@ -119,6 +121,14 @@ public static class CampaignAssetsEndpoints
             if (form.Files.Count != 1 || form.Files[0].Name != "file" || form.Keys.Any(k => k != "name")) throw new RuleException(400, "Envie uma imagem e, se quiser, o nome.");
             var document = await files.ReadAsync(form.Files[0], new[] { DocumentKinds.Png, DocumentKinds.Jpeg }, ct);
             return Results.Ok(await s.AddSceneSourceAsync(campaignId, sceneId, Id(u), form["name"].ToString(), document, ct));
+        }).RequireRateLimiting("upload");
+        // Imagem da composição importada por link https (mesmo download protegido do acervo; tratada como envio).
+        scenes.MapPost("/sources/import", async (Guid campaignId, Guid sceneId, MapSourceImportInput x, RemoteImageFetcher remote, DocumentFiles files, GameDb db, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
+        {
+            await s.EnsureMasterAsync(campaignId, Id(u), ct); // autoriza antes de qualquer acesso à rede
+            var (bytes, fileName) = await remote.FetchAsync(x.Url, (int)await AccountLimits.MaxFileBytesAsync(db, Id(u), ct), ct);
+            var document = await files.CheckAsync(bytes, fileName, new[] { DocumentKinds.Png, DocumentKinds.Jpeg }, ct);
+            return Results.Ok(await s.AddSceneSourceAsync(campaignId, sceneId, Id(u), x.Name, document, ct));
         }).RequireRateLimiting("upload");
         scenes.MapPut("/composition", async (Guid campaignId, Guid sceneId, HttpRequest request, DocumentFiles files, GameDb db, CampaignAssetsService s, ClaimsPrincipal u, CancellationToken ct) =>
         {

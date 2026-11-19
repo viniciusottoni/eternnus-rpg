@@ -87,6 +87,8 @@ public class SessionToken
     /// </summary>
     public int? Width { get; set; }
     public int? Height { get; set; }
+    /// <summary>Lugar de convidado com controle temporário deste marcador (ADR-114); nulo = sem convidado.</summary>
+    public Guid? GuestSeatId { get; set; }
 }
 
 /// <summary>Aparência dos marcadores no mapa. O servidor só guarda; o desenho é do cliente (<c>table-map.js</c>).</summary>

@@ -38,3 +38,20 @@ test('jogador não vê ações do mestre; Básica marca ferramentas da Completa'
   assert.equal(walls[0].needsComplete, true);
   assert.equal(rankCommands(tableCommands(base), 'reunir', { role: 'master', mode: 'basic' })[0].id, 'gather');
 });
+
+test('câmera compartilhada, exibição externa e convidados (ADR-114/115)', async () => {
+  const { TOOL_INVENTORY } = await import('../apps/Eternnus.Web/wwwroot/js/scene-policy.js');
+  const master = tableCommands(base);
+  for (const id of ['showRegion', 'externalDisplay', 'guests']) {
+    const c = master.find((x) => x.id === id);
+    assert.ok(c && c.masterOnly && c.basic === false, id);
+    assert.equal(TOOL_INVENTORY.find((t) => t.id === id)?.basic, false, `${id} no inventário como Completa`);
+  }
+  assert.match(tableCommands({ ...base, tiles: false }).find((c) => c.id === 'showRegion').disabled, /grade/);
+  assert.equal(rankCommands(master, 'projetor', { role: 'master', mode: 'basic' })[0].id, 'externalDisplay');
+  const player = tableCommands({ ...base, isMaster: false });
+  assert.equal(player.find((c) => c.id === 'follow').label, 'Seguir o mestre');
+  assert.equal(tableCommands({ ...base, isMaster: false, following: true }).find((c) => c.id === 'follow').label, 'Parar de seguir o mestre');
+  assert.ok(player.some((c) => c.id === 'fitView'));
+  assert.ok(!rankCommands(player, '', { role: 'player', mode: 'basic' }).some((c) => ['guests', 'showRegion', 'externalDisplay'].includes(c.id)));
+});

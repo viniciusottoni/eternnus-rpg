@@ -166,7 +166,8 @@ public static class ScenePlacement
             Take(saved); placed.Add(c);
             result.Add(new(c, saved, saved.X, saved.Y));
         }
-        foreach (var t in source.Where(t => t.CharacterId == null).Take(ScenePrep.MaxTokens))
+        // Reservado sem personagem (ADR-110) é só preparação: nunca entra na mesa ao vivo. Vinculado entra como o personagem.
+        foreach (var t in source.Where(t => t.CharacterId == null && t.SlotId == null).Take(ScenePrep.MaxTokens))
         {
             if (!Fits(t)) continue;
             Take(t);
@@ -179,6 +180,35 @@ public static class ScenePlacement
             result.Add(new(c, null, p.X, p.Y));
         }
         return result;
+    }
+
+    /// <summary>
+    /// "Guardar arranjo da mesa" (ADR-110): o arranjo capturado mantém os reservados da preparação anterior. Marcadores de personagem
+    /// que vinham de um reservado (mesmo <see cref="SceneToken.CharacterId"/>) recuperam o <see cref="SceneToken.SlotId"/>; reservados sem
+    /// personagem voltam se ainda cabem (dentro da grade, fora de casas bloqueadas, sem colidir) e não excedem o limite da cena.
+    /// <paramref name="map"/>/<paramref name="grid"/> nulos = posições de outro mapa: só o vínculo dos personagens é recuperado.
+    /// </summary>
+    public static List<SceneToken> KeepSlots(BattleMap? map, FogGrid? grid, List<SceneToken> captured, IReadOnlyList<SceneToken> previous)
+    {
+        var slotOf = previous.Where(t => t.SlotId != null && t.CharacterId != null).GroupBy(t => t.CharacterId!.Value).ToDictionary(g => g.Key, g => g.First().SlotId!.Value);
+        var used = new HashSet<Guid>();
+        foreach (var t in captured)
+            if (t.CharacterId is { } c && slotOf.TryGetValue(c, out var slot) && used.Add(slot)) t.SlotId = slot;
+        if (map == null || grid == null) return captured;
+        // Movimentação livre: casas podem ser divididas; no tático, a área inteira precisa estar livre.
+        HashSet<(int, int)> taken = map.Free ? [] : captured.SelectMany(t => t.SpanOf().Cells(t.X, t.Y)).ToHashSet();
+        bool Fits(SceneToken t, TokenSpan span) => grid.Inside(t.X, t.Y) && !grid.BlocksMove(t.X, t.Y)
+            && (map.Free || (span.Problem(grid, t.X, t.Y) == null && !span.Hits(t.X, t.Y, taken)));
+        foreach (var t in previous.Where(t => t.CharacterId == null && t.SlotId is { } s && !used.Contains(s)))
+        {
+            var span = map.Free ? TokenSpan.One : t.SpanOf();
+            if (captured.Count >= ScenePrep.MaxTokens) break;
+            if (!Fits(t, span)) continue;
+            if (!map.Free) taken.UnionWith(span.Cells(t.X, t.Y));
+            used.Add(t.SlotId!.Value);
+            captured.Add(ScenePrep.Clone(t));
+        }
+        return captured;
     }
 
     /// <summary>Casa de entrada de um personagem sem posição preparada (ver prioridade em <see cref="ScenePlacement"/>).</summary>

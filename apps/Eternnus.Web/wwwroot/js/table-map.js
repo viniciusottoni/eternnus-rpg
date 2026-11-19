@@ -7,9 +7,10 @@ import { decodeBits, MARK_KINDS, WALL_UNIT, lightReach, wallKind } from "./fog-p
 import { helpButton } from "./help.js";
 import { icon } from "./icons.js";
 import { mountMapGestures } from "./map-gestures.js";
+import { visibleRegion, fitRegion, frameDuration, mixView } from "./camera-policy.js";
 import { safeImageUrl } from "./play-policy.js";
 import { finePoint, isFreeMap, tokenCenter } from "./free-move-policy.js";
-import { drawOrder, imageBox, isImageLook, sizeFromHandle, tokenHalf, tokenScale, tokenUnder, hasSpan, tokenSpan, covers, SPAN_HANDLES, boxFromHandle, spanFromBox, spanLabel, LOOK_IMAGE } from "./token-look.js";
+import { drawOrder, imageBox, isImageLook, sizeFromHandle, tokenHalf, tokenScale, tokenUnder, hasSpan, tokenSpan, covers, SPAN_HANDLES, boxFromHandle, spanFromBox, spanLabel, LOOK_IMAGE, archetypeOf, sizeReadout } from "./token-look.js";
 
 const reduceMotion = () =>
   matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -541,11 +542,43 @@ function drawFreeImage(g, token, s, opts, t, cx, cy) {
     g.setLineDash([]);
   };
   if (token.hidden || token.perceived) outline(SIDE[token.side] || SIDE.neutral, Math.max(2, s * 0.05), [s * 0.1, s * 0.07]);
+  if (token.cue === "reserved") outline("#e6cf98", Math.max(2, s * 0.05), [s * 0.14, s * 0.08]);
+  else if (token.cue === "rehearsal") outline("#b9c7e6", Math.max(2, s * 0.05), [s * 0.03, s * 0.07]);
+  if (token.cue) drawCue(g, token.cue, box.x + box.w, box.y, s);
   if (opts.mine) outline("#f1d79caa", Math.max(1, s * 0.025), []);
   if (opts.selected) outline("#ffffff", Math.max(1, s * 0.04), [s * 0.12, s * 0.08]);
   drawLabel(g, token, s, cx, box.y + box.h + s * 0.04);
   g.restore();
   return true;
+}
+
+// Desenhos de arquétipo (ADR-110): caminhos fixos de token-look.js, preparados uma vez por arquétipo.
+const glyphs = new Map();
+function glyphPath(id) {
+  const a = id && typeof Path2D === "function" ? archetypeOf(id) : null;
+  if (!a) return null;
+  if (!glyphs.has(a.id)) glyphs.set(a.id, new Path2D(a.path));
+  return glyphs.get(a.id);
+}
+/** Selo pequeno no canto do marcador: "R" (personagem reservado) ou "E" (token de ensaio), só no editor. */
+function drawCue(g, cue, x, y, s) {
+  if (s < 22) return;
+  const r = Math.max(6, s * 0.14);
+  g.save();
+  g.setLineDash([]);
+  g.fillStyle = cue === "reserved" ? "#2b2416" : "#141b2b";
+  g.strokeStyle = cue === "reserved" ? "#e6cf98" : "#b9c7e6";
+  g.lineWidth = Math.max(1, s * 0.03);
+  g.beginPath();
+  g.arc(x, y, r, 0, Math.PI * 2);
+  g.fill();
+  g.stroke();
+  g.fillStyle = g.strokeStyle;
+  g.font = `700 ${Math.round(r * 1.2)}px "Segoe UI", Arial, sans-serif`;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText(cue === "reserved" ? "R" : "E", x, y + r * 0.05);
+  g.restore();
 }
 
 function drawToken(g, token, s, opts, t) {
@@ -604,14 +637,30 @@ function drawToken(g, token, s, opts, t) {
   g.arc(cx, cy, radius, 0, Math.PI * 2);
   g.fill();
   const pictured = !!opts.portrait && drawPortrait(g, opts.portrait, cx, cy, radius);
+  // Personagem reservado sem imagem: desenho de linha do arquétipo no lugar das iniciais (ADR-110).
+  const glyph = !pictured && glyphPath(token.glyph);
+  if (glyph) {
+    const side = radius * 1.15;
+    g.save();
+    g.translate(cx - side / 2, cy - side / 2);
+    g.scale(side / 24, side / 24);
+    g.strokeStyle = "#f6ead0";
+    g.lineWidth = Math.max(1.4, 2 * (24 / side) * Math.max(1, s * 0.02));
+    g.lineCap = "round"; g.lineJoin = "round";
+    g.stroke(glyph);
+    g.restore();
+  }
   g.strokeStyle = SIDE[token.side] || SIDE.neutral;
   g.beginPath();
   g.arc(cx, cy, radius, 0, Math.PI * 2);
   g.lineWidth = Math.max(2, s * 0.07);
-  // Oculto (mestre) ou percebido por sentido (jogador): contorno tracejado.
-  if (token.hidden || token.perceived) g.setLineDash([s * 0.1, s * 0.07]);
+  // Oculto (mestre) ou percebido por sentido (jogador): contorno tracejado. Reservado: tracejado dourado; ensaio: pontilhado.
+  if (token.cue === "reserved") { g.strokeStyle = "#e6cf98"; g.setLineDash([s * 0.14, s * 0.08]); }
+  else if (token.cue === "rehearsal") { g.strokeStyle = "#b9c7e6"; g.setLineDash([s * 0.03, s * 0.07]); }
+  else if (token.hidden || token.perceived) g.setLineDash([s * 0.1, s * 0.07]);
   g.stroke();
   g.setLineDash([]);
+  if (token.cue) drawCue(g, token.cue, cx + radius * 0.72, cy - radius * 0.72, s);
   if (opts.mine) {
     g.strokeStyle = "#f1d79caa";
     g.lineWidth = Math.max(1, s * 0.025);
@@ -631,7 +680,7 @@ function drawToken(g, token, s, opts, t) {
   g.fillStyle = "#f6ead0";
   g.textAlign = "center";
   g.textBaseline = "middle";
-  if (!pictured) {
+  if (!pictured && !glyph) {
     g.font = `600 ${Math.max(9, s * 0.3 * Math.min(2, tokenScale(token)))}px Georgia, serif`;
     g.fillText(initials(token.label), cx, cy + s * 0.01);
   }
@@ -765,6 +814,12 @@ export function createBoard(host, handlers = {}) {
   let zoomLevel = null, currentZoom = 1, maxZoom = 3, fitW = 0;
   let centerX = .5, centerY = .5, previousWidth = 0, previousHeight = 0, resetCamera = true;
   const camera = handlers.camera || editor ? document.createElement("div") : null;
+  // Câmera compartilhada (ADR-115): gesto manual avisa quem segue o mestre e interrompe uma transição em andamento.
+  let frameAnim = 0;
+  function userCamera() {
+    cancelAnimationFrame(frameAnim); frameAnim = 0;
+    handlers.onUserCamera?.();
+  }
   if (camera) {
     host.classList.add("board-viewport");
     camera.className = "map-camera-controls";
@@ -773,6 +828,7 @@ export function createBoard(host, handlers = {}) {
     if (handlers.camera) handlers.camera.append(camera);
     camera.addEventListener("click", (e) => {
       const action = e.target.closest("[data-camera]")?.dataset.camera;
+      if (action === "size" || action === "in" || action === "out") userCamera();
       if (action === "size") { enlarged = !enlarged; zoomLevel = null; panning = enlarged; resetCamera = true; layout(); draw(); }
       if (action === "in" || action === "out") zoomAt(currentZoom * (action === "in" ? 1.25 : .8));
       if (action === "pan") panning = !panning;
@@ -1082,12 +1138,16 @@ export function createBoard(host, handlers = {}) {
     }
     drawHandle();
     if (drag?.moved) {
-      // Boneco arrastado acompanha o ponteiro; a casa de destino fica marcada.
-      g.strokeStyle = "#f1d79c";
-      g.lineWidth = 2;
+      // Boneco arrastado acompanha o ponteiro; a casa de destino fica marcada (vermelha e com "×" quando não serve).
+      g.strokeStyle = drag.problem ? "#e0604c" : "#f1d79c";
+      g.lineWidth = drag.problem ? 3 : 2;
       // Criatura grande no tático: marca a área inteira de destino.
       const area = tokenSpan(drag.token);
       if (drag.cell && !free()) g.strokeRect(drag.cell.x * cell + 2, drag.cell.y * cell + 2, cell * area.w - 4, cell * area.h - 4);
+      if (drag.cell && drag.problem) {
+        const bx = free() && drag.cell.cx != null ? drag.cell.cx * cell : (drag.cell.x + 0.5) * cell, by = free() && drag.cell.cy != null ? drag.cell.cy * cell : (drag.cell.y + 0.5) * cell, d = cell * 0.18;
+        g.beginPath(); g.moveTo(bx - d, by - d); g.lineTo(bx + d, by + d); g.moveTo(bx + d, by - d); g.lineTo(bx - d, by + d); g.stroke();
+      }
       g.save();
       g.globalAlpha = 0.85;
       drawToken(g, { ...drag.token, x: drag.px / cell - 0.5, y: drag.py / cell - 0.5 }, cell, { mine: true, selected: true, animate: false, portrait: portraitFor(drag.token.image), free: free() }, t);
@@ -1132,7 +1192,7 @@ export function createBoard(host, handlers = {}) {
     g.rect(x - r / 2, y - r / 2, r, r);
     g.fill();
     g.stroke();
-    if (resize) handleReadout(`${token.size ?? 100}%`, x + r, y, r);
+    if (resize) handleReadout(sizeReadout(token, free()), x + r, y, r);
     g.restore();
     // Alvo de toque com folga (dedo): ao menos 22 px de raio em pixels de tela.
     handleHit = { kind: "size", x, y, r: Math.max(r, 22 * dpr), token: raw, center: { x: (v.x + 0.5), y: (v.y + 0.5) } };
@@ -1169,7 +1229,7 @@ export function createBoard(host, handlers = {}) {
     g.strokeStyle = "#0b0a08";
     g.lineWidth = Math.max(1.5, dpr);
     for (const p of points) { g.beginPath(); g.rect(p.x - r / 2, p.y - r / 2, r, r); g.fill(); g.stroke(); }
-    if (resize && hasSpan(token)) { const se = points[4]; handleReadout(spanLabel(token, free()), se.x + r, se.y, r); }
+    if (resize && hasSpan(token)) { const se = points[4]; handleReadout(sizeReadout(token, free()), se.x + r, se.y, r); }
     g.restore();
     handleHit = { kind: "span", box, points, r: Math.max(r, 22 * dpr), token: raw };
   }
@@ -1235,7 +1295,7 @@ export function createBoard(host, handlers = {}) {
     if (!cameraDrag || e.pointerId !== cameraDrag.id) return;
     host.scrollLeft = cameraDrag.left + cameraDrag.x - e.clientX;
     host.scrollTop = cameraDrag.top + cameraDrag.y - e.clientY;
-    if (Math.hypot(e.clientX - cameraDrag.x, e.clientY - cameraDrag.y) > 6) cameraDrag.moved = true;
+    if (!cameraDrag.moved && Math.hypot(e.clientX - cameraDrag.x, e.clientY - cameraDrag.y) > 6) { cameraDrag.moved = true; userCamera(); }
   });
   // Arrastar a câmera não conta como toque na barra de vida nem numa casa.
   const endCameraDrag = () => { if (cameraDrag?.moved) suppressClick = true; cameraDrag = null; };
@@ -1281,7 +1341,12 @@ export function createBoard(host, handlers = {}) {
         const box = boxFromHandle(resize.box, resize.handle, point, free(), rows()[0].length, rows().length);
         patch = { appearance: LOOK_IMAGE, ...spanFromBox(box, free()) };
       } else patch = { size: sizeFromHandle(resize.center, point, sized(resize.token)) };
-      if (JSON.stringify(patch) !== JSON.stringify(resize.patch)) { resize.patch = patch; draw(); }
+      if (JSON.stringify(patch) !== JSON.stringify(resize.patch)) {
+        resize.patch = patch;
+        // Leitura ao vivo para o editor ("2 × 2 casas · 200%"); só exibe, nada é gravado antes de soltar.
+        handlers.onResizing?.(resize.token, sizeReadout({ ...sized(resize.token), ...patch }, free()));
+        draw();
+      }
       return;
     }
     if (!drag || e.pointerId !== drag.pointer) return;
@@ -1289,15 +1354,23 @@ export function createBoard(host, handlers = {}) {
     if (!drag.moved && Math.hypot(p.px - drag.px, p.py - drag.py) < cell * 0.25) return;
     if (!drag.moved) { drag.moved = true; canvas.setPointerCapture?.(e.pointerId); canvas.style.touchAction = "none"; }
     const gx = drag.grab.x * dpr, gy = drag.grab.y * dpr;
-    Object.assign(drag, { px: p.px - gx, py: p.py - gy, cell: pointAt(e.clientX - drag.grab.x, e.clientY - drag.grab.y) });
+    const target = pointAt(e.clientX - drag.grab.x, e.clientY - drag.grab.y);
+    // Destino recusado (casa bloqueada, ocupada ou fora do mapa): só o realce e a dica; nada é gravado.
+    const changed = !drag.cell !== !target || (target && (target.x !== drag.cell.x || target.y !== drag.cell.y));
+    Object.assign(drag, { px: p.px - gx, py: p.py - gy, cell: target });
+    if (changed && handlers.dropProblem) {
+      drag.problem = target ? handlers.dropProblem(drag.token, target) || "" : "Fora do mapa.";
+      handlers.onDragHint?.(drag.problem, drag.token);
+    }
     draw();
   });
   const endDrag = (e, cancel = false) => {
     if (resize && e.pointerId === resize.pointer) return finishResize(cancel);
     if (!drag || e.pointerId !== drag.pointer) return;
-    const { token, start, cell: target, moved } = drag;
+    const { token, start, cell: target, moved, problem } = drag;
     drag = null;
     canvas.style.touchAction = view.mode === "paint" || view.mode === "vector" ? "none" : "";
+    if (problem !== undefined) handlers.onDragHint?.("", token);
     if (!moved) return;
     suppressClick = true;
     draw();
@@ -1324,6 +1397,7 @@ export function createBoard(host, handlers = {}) {
     resize = null;
     canvas.style.touchAction = view.mode === "paint" || view.mode === "vector" ? "none" : "";
     suppressClick = true;
+    handlers.onResizing?.(token, "");
     const current = sized(token);
     if (cancel || !patch || Object.keys(patch).every((k) => patch[k] === (current[k] ?? (k === "size" ? 100 : null)))) { draw(); return; }
     const entry = { patch };
@@ -1334,6 +1408,18 @@ export function createBoard(host, handlers = {}) {
     Promise.resolve(handlers.onResize(token, patch))
       .then((ok) => ok === false ? unsize(token.id, entry) : setTimeout(() => unsize(token.id, entry), 5000))
       .catch(() => unsize(token.id, entry));
+  }
+  /** Esc: desiste do arraste (o marcador fica onde estava) ou da alça (volta ao tamanho anterior), sem chamar onDrop/onResize. */
+  function cancelInteraction() {
+    if (!drag?.moved && !resize) { drag = null; return false; }
+    const token = drag?.token || resize?.token;
+    if (drag) handlers.onDragHint?.("", drag.token);
+    if (resize) handlers.onResizing?.(resize.token, "");
+    drag = null; resize = null; suppressClick = true;
+    canvas.style.touchAction = view.mode === "paint" || view.mode === "vector" ? "none" : "";
+    if (token) status.textContent = `${token.label}: movimento cancelado.`;
+    draw();
+    return true;
   }
   function unsize(id, entry) {
     if (destroyed || sizing.get(id) !== entry) return;
@@ -1370,7 +1456,7 @@ export function createBoard(host, handlers = {}) {
     draw();
   });
   const disposeGestures = camera ? mountMapGestures(host, {
-    scale: () => currentZoom, zoom: zoomAt,
+    scale: () => currentZoom, zoom: (...args) => { userCamera(); zoomAt(...args); },
     cancel: () => { drag = null; resize = null; stroke = null; cameraDrag = null; suppressClick = true; view = { ...view, paint: [] }; draw(); },
   }) : () => {};
   const finishStroke = (e) => {
@@ -1464,12 +1550,55 @@ export function createBoard(host, handlers = {}) {
       e.preventDefault();
       if (view.mode === "paint") handlers.onPaint?.([cursor]);
       else activate(cursor);
+    } else if (e.key === "Escape" && (drag?.moved || resize)) {
+      // Esc durante o arraste ou a alça: desiste e o marcador volta à posição/tamanho de antes (nada é gravado).
+      e.preventDefault(); e.stopPropagation();
+      cancelInteraction();
     } else if (e.key === "Escape" && !e.defaultPrevented && !dismissHelp()) handlers.onCancel?.();
   });
   canvas.addEventListener("blur", () => {
     cursor = null;
     draw();
   });
+  // ---------- Câmera compartilhada (ADR-115) ----------
+  // Na mesa (sem editor) a roda rola a vista nativamente: conta como gesto manual de quem segue o mestre.
+  if (handlers.camera && !editor) host.addEventListener("wheel", userCamera, { passive: true });
+  /** Enquadramento atual: zoom e centro da janela em casas. */
+  function frameView() {
+    if (!tileset() || cell <= 0) return null;
+    const c = cell / dpr;
+    return { zoom: currentZoom, cx: (host.scrollLeft + host.clientWidth / 2 - baseX / dpr) / c, cy: (host.scrollTop + host.clientHeight / 2 - baseY / dpr) / c };
+  }
+  function applyFrameView(v) {
+    zoomLevel = v.zoom; enlarged = v.zoom > 1.001; resetCamera = false;
+    layout();
+    const c = cell / dpr;
+    if (c > 0) {
+      host.scrollLeft = baseX / dpr + v.cx * c - host.clientWidth / 2;
+      host.scrollTop = baseY / dpr + v.cy * c - host.clientHeight / 2;
+    }
+    draw(); updateCamera();
+  }
+  /** Mostra a região (casas) inteira na janela local, preservando a proporção e os limites de zoom do tabuleiro. */
+  function frameRegion(region, { animate = true } = {}) {
+    if (!camera || !tileset() || fitW <= 0 || destroyed) return false;
+    const r = rows();
+    const target = fitRegion({ region, viewW: host.clientWidth, viewH: host.clientHeight, fitCell: fitW / r[0].length, minZoom, maxZoom, cols: r[0].length, rows: r.length });
+    if (!target) return false;
+    cancelAnimationFrame(frameAnim); frameAnim = 0;
+    const from = frameView();
+    const duration = animate ? frameDuration({ reducedMotion: reduceMotion(), hidden: document.hidden }) : 0;
+    if (!from || duration === 0) { applyFrameView(target); return true; }
+    const start = performance.now();
+    const step = (now) => {
+      if (destroyed) return;
+      const t = Math.min(1, (now - start) / duration);
+      applyFrameView(mixView(from, target, t));
+      frameAnim = t < 1 ? requestAnimationFrame(step) : 0;
+    };
+    frameAnim = requestAnimationFrame(step);
+    return true;
+  }
   // ---------- Extras do editor (ADR-081) ----------
   if (editor) {
     host.addEventListener("wheel", (e) => {
@@ -1575,6 +1704,8 @@ export function createBoard(host, handlers = {}) {
       draw();
     },
     interact() { panning = false; updateCamera(); },
+    /** Cancela um arraste de marcador ou de alça em andamento (Esc). True quando havia algo a cancelar. */
+    cancelInteraction: () => cancelInteraction(),
     /** Câmera do editor: zoom ancorado, ajustar, 100% (`natural` = pixels por casa no tamanho real), mão e espaço. */
     camera: {
       zoomIn: () => zoomAt(currentZoom * 1.25),
@@ -1595,6 +1726,15 @@ export function createBoard(host, handlers = {}) {
       pointAt: (x, y) => pointAt(x, y),
       /** Retângulo de uma casa em coordenadas da janela (para posicionar menus/alças). */
       cellRect: (c) => { syncOrigin(); const r = canvas.getBoundingClientRect(); return { x: r.left + (ox + c.x * cell) / dpr, y: r.top + (oy + c.y * cell) / dpr, size: cell / dpr }; },
+      /** Região visível em casas `{ x, y, w, h }` (ADR-115: "Mostrar esta região"); null sem mapa com grade. */
+      visibleCells: () => {
+        if (!tileset() || cell <= 0) return null;
+        syncOrigin();
+        const r = rows();
+        return visibleRegion({ originX: ox, originY: oy, viewW: canvas.width, viewH: canvas.height, cell, cols: r[0].length, rows: r.length });
+      },
+      /** Enquadra a região (casas); `animate` faz uma transição curta, instantânea com movimento reduzido ou aba oculta. */
+      frame: (region, options) => frameRegion(region, options),
     },
     focus() {
       canvas.focus();
@@ -1603,6 +1743,7 @@ export function createBoard(host, handlers = {}) {
       destroyed = true;
       cancelJob();
       cancelAnimationFrame(scrollFrame);
+      cancelAnimationFrame(frameAnim);
       moves.clear();
       landing.clear();
       sizing.clear();

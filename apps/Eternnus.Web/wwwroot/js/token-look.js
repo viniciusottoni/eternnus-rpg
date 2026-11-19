@@ -3,6 +3,7 @@
  * ADR-092: a imagem livre pode ter largura e altura próprias (`width`/`height`, % da casa) e é esticada para preencher a área;
  * no mapa tático ocupa round(largura/100) × round(altura/100) casas a partir de (x, y), canto superior esquerdo.
  * Mesmo intervalo e conta de Domain/Sessions.cs (TokenLooks, TokenSpan). Só o mestre altera; o servidor confere. Regras puras: sem DOM.
+ * Predefinições de tamanho e arquétipos de personagens reservados também moram aqui (mesma aparência no editor e na mesa).
  */
 import { tokenCenter, FINE_SCALE } from "./free-move-policy.js";
 
@@ -144,3 +145,29 @@ export function tokenUnder(tokens, cx, cy, centerOf, free) {
 
 /** Ordem de desenho: maiores primeiro, para que os menores fiquem por cima. Estável para o mesmo tamanho. */
 export const drawOrder = (tokens) => (tokens || []).map((t, i) => [t, i]).sort((a, b) => tokenHalf(b[0]) - tokenHalf(a[0]) || a[1] - b[1]).map(([t]) => t);
+
+/**
+ * Leitura do tamanho durante o arraste da alça: "2 × 2 casas · 200%" no tático, "150% × 200%" no livre e
+ * "75% da casa" no marcador sem área própria. Ex.: { appearance: "image", width: 300, height: 200 } → "3 × 2 casas · 300% × 200%".
+ */
+export function sizeReadout(token, free) {
+  if (hasSpan(token)) {
+    const pct = token.width === token.height ? `${token.width}%` : `${token.width}% × ${token.height}%`;
+    return free ? `${token.width}% × ${token.height}%` : `${spanCells(token.width)} × ${spanCells(token.height)} casas · ${pct}`;
+  }
+  return `${clampSize(token?.size ?? DEFAULT_SIZE)}% da casa`;
+}
+
+/**
+ * Arquétipos dos personagens reservados (ADR-110): só um desenho de linha próprio dentro do marcador redondo, sem regras
+ * de sistema. `path` usa a mesma grade 24 × 24 dos ícones e é desenhado com traço (canvas Path2D ou SVG estático).
+ */
+export const ARCHETYPES = Object.freeze([
+  Object.freeze({ id: "warrior", label: "Guerreiro", path: "M14.5 4H20v5.5L10 19.5 6.5 16zM5 14.5l4.5 4.5M7.8 17.2L4 21" }),
+  Object.freeze({ id: "mage", label: "Mago", path: "M12 2.5l-6 14h12zM3.5 20h17M9.5 12.5h5M16 4.5l1 1.5 1.7.3-1.2 1.3.3 1.8-1.8-.9" }),
+  Object.freeze({ id: "archer", label: "Arqueiro", path: "M6 3.5c8.5 1 13.5 6 14.5 14.5M6 3.5l14.5 14.5M3 21l9.5-9.5M12.5 11.5H9.5M12.5 11.5v3" }),
+  Object.freeze({ id: "cleric", label: "Clérigo", path: "M12 3v18M7 8.5h10M8.5 21h7M9 3.5h6" }),
+  Object.freeze({ id: "rogue", label: "Ladino", path: "M12 2.5l2.5 9h-5zM7.5 11.5h9M12 11.5v5.5M10.5 17h3v4h-3z" }),
+]);
+/** Arquétipo válido ou null (o servidor aceita os mesmos identificadores). */
+export const archetypeOf = (id) => ARCHETYPES.find((a) => a.id === id) || null;
