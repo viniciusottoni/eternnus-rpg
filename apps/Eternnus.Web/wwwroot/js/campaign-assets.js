@@ -1,6 +1,6 @@
 import { helpButton } from "./help.js";
 import { api } from "./api.js";
-import { $, esc, button, modal, formError, submitForm, toast } from "./ui.js";
+import { $, esc, button, rowAction, modal, formError, submitForm, toast } from "./ui.js";
 import { folderTree, flattenFolders } from "./policy.js";
 import { safeImageUrl } from "./play-policy.js";
 import { state } from "./state.js";
@@ -14,7 +14,7 @@ export async function renderCampaignLibrary(d, target, page = 1) {
   const result = await api(`${base(d)}/library?page=${page}`);
   if (!target.isConnected) return;
   const legacy = result.total
-    ? `<section class="legacy-texts" aria-labelledby="ca-legacy-title"><h3 id="ca-legacy-title">Textos antigos da campanha${helpButton("campanhas.acervo.publicacao", "Textos antigos")}</h3><p class="muted small">${d.isMaster ? "Criados antes das Páginas. Converta cada um para ganhar tipo, segredos, relações, versões e anexos; publicados viram “Toda a mesa” e rascunhos, “Só eu”." : "Textos publicados pelo mestre antes das Páginas."}</p><div class="resource-grid">${result.items.map(x => `<article class="resource-card metal">${d.isMaster ? `<span class="badge">${x.published ? "Publicado" : "Rascunho"}</span>` : ""}<h3>${esc(x.title)}</h3><p class="resource-body">${esc(x.text)}</p>${d.isMaster ? button("Converter em página", "ca-convert", x.id, "primary small", d.archived ? "disabled" : "") + button("Excluir", "ca-delete", x.id, "subtle small", d.archived ? "disabled" : "") : ""}</article>`).join("")}</div>${pager(result)}</section>`
+    ? `<section class="legacy-texts" aria-labelledby="ca-legacy-title"><h3 id="ca-legacy-title">Textos antigos da campanha${helpButton("campanhas.acervo.publicacao", "Textos antigos")}</h3><p class="muted small">${d.isMaster ? "Criados antes das Páginas. Converta cada um para ganhar tipo, segredos, relações, versões e anexos; publicados viram “Toda a mesa” e rascunhos, “Só eu”." : "Textos publicados pelo mestre antes das Páginas."}</p><div class="resource-grid">${result.items.map(x => `<article class="resource-card metal">${d.isMaster ? `<span class="badge">${x.published ? "Publicado" : "Rascunho"}</span>` : ""}<h3>${esc(x.title)}</h3><p class="resource-body">${esc(x.text)}</p>${d.isMaster ? button("Converter em página", "ca-convert", x.id, "primary small", d.archived ? "disabled" : "") + rowAction("trash", "Excluir", x.title, "ca-delete", x.id, "subtle small danger-text", d.archived ? "disabled" : "") : ""}</article>`).join("")}</div>${pager(result)}</section>`
     : "";
   target.innerHTML = `<div class="section-title"><h2>Bibliotecas</h2></div><div class="resource-grid"><a class="resource-card metal" href="#library/general"><h3>Biblioteca geral</h3><p>Materiais para qualquer mesa, disponíveis a qualquer momento.</p></a><a class="resource-card metal" href="#library/system/${esc(d.rpgSystemId)}"><h3>${esc(d.system)}</h3><p>Biblioteca padrão do sistema e modelos de ficha.</p></a></div><p class="muted small">Lore, lugares, livros, objetivos e pistas desta campanha ficam em <a href="#campaign/${esc(d.id)}/world">Mundo e acervo › Páginas</a>.</p>${legacy}`;
   target.onclick = async event => {

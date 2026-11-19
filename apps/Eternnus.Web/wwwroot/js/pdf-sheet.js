@@ -336,7 +336,10 @@ export function renderSheet(container, options = {}) {
       el.querySelector(".ps-value")?.classList.add("ps-ellipsis");
     }
     const count = opts.notes ? Number(opts.notes.count(f, value)) || 0 : 0;
-    const show = isList(f) && !!opts.notes && items.length > 0 && (mode === "fill" || count > 0);
+    // Lista de várias linhas que cabe no campo: descrição por linha (botão em cada item). Senão, o botão do canto.
+    const perLine = isList(f) && !!opts.notes && f.type === "textarea" && items.length > 0 && fitsRows(f, value);
+    syncLineNotes(el, f, perLine ? value : null);
+    const show = !perLine && isList(f) && !!opts.notes && items.length > 0 && (mode === "fill" || count > 0);
     let button = el.querySelector(":scope > .ps-note");
     if (!show) {
       button?.remove();
@@ -354,6 +357,38 @@ export function renderSheet(container, options = {}) {
     const name = fieldLabel(f);
     button.setAttribute("aria-label", count > 0 ? `Descrições de ${name}: ${count} ${count === 1 ? "item descrito" : "itens descritos"}` : `Adicionar descrições em ${name}`);
     measureSoon();
+  }
+  /** Descrição por linha (lista de texto longo): uma faixa com a mesma grade das linhas e um botão por item.
+   *  No preenchimento, toda linha com texto tem botão ("+" no hover/foco do campo); na leitura, só as descritas.
+   *  `value` nulo remove a faixa. A faixa não recebe o ponteiro; só os botões. */
+  function syncLineNotes(el, f, value) {
+    let layer = el.querySelector(":scope > .ps-line-notes");
+    if (value == null) { layer?.remove(); el.classList.remove("ps-has-line-notes"); return; }
+    if (!layer) {
+      layer = document.createElement("div");
+      layer.className = "ps-line-notes";
+      el.append(layer);
+    }
+    el.classList.add("ps-has-line-notes");
+    const name = fieldLabel(f);
+    layer.replaceChildren(...value.split("\n").map((raw, index) => {
+      const slot = document.createElement("div");
+      slot.className = "ps-line-slot";
+      const label = raw.trim();
+      const described = !!label && !!noteText(noteKey(label));
+      if (label && (mode === "fill" || described)) {
+        const note = document.createElement("button");
+        note.type = "button";
+        note.className = `ps-line-note${described ? " has-note" : ""}`;
+        note.dataset.line = String(index);
+        note.textContent = described ? "i" : "+";
+        const text = described ? `Descrição de ${label}` : `Adicionar descrição a ${label}`;
+        note.setAttribute("aria-label", `${text} (${name})`);
+        note.dataset.tip = text.length > 80 ? `${text.slice(0, 79)}…` : text;
+        slot.append(note);
+      }
+      return slot;
+    }));
   }
   /** Linhas que cabem no campo: altura ÷ (1,2 × fonte), como no PDF exportado. */
   function rowCount(f) {
@@ -711,6 +746,13 @@ export function renderSheet(container, options = {}) {
       const f = fields[Number(roll.closest("[data-index]")?.dataset.index)];
       const formula = f && opts.roll?.formula(f);
       if (formula) opts.roll.run(f, formula);
+      return;
+    }
+    const lineNote = event.target.closest(".ps-line-note");
+    if (lineNote) {
+      const f = fields[Number(lineNote.closest("[data-index]")?.dataset.index)];
+      const raw = String(computed[f?.name] ?? "").split("\n")[Number(lineNote.dataset.line)] ?? "";
+      if (f && raw.trim()) opts.notes?.open(f, raw);
       return;
     }
     const note = event.target.closest(".ps-note");

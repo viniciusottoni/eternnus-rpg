@@ -81,7 +81,10 @@ try {
   check(await area(page), "organize", "área inicial: Organizar");
   // Fixas sem a palavra "obrigatória"; alfinete discreto.
   ok(!/obrigatória/i.test(await text(page, '[data-panel-body="structure"]')), "camadas fixas sem rótulo repetido");
-  check(await page.locator('[data-panel-body="structure"] .o-flag').count(), 2, "Base e Elementos marcadas como fixas");
+  check(await page.locator('[data-panel-body="structure"] [data-o-row="layer"][data-fixed]').count(), 2, "Base e Elementos marcadas como fixas");
+  ok(/Camada fixa/.test(await page.locator('[data-panel-body="structure"] [data-o-row="layer"][data-fixed] .o-text').first().getAttribute("data-tip-detail")), "fixa explicada na dica do nome, sem alfinete clicável");
+  const layerNames = await page.locator('[data-panel-body="structure"] [data-o-row="layer"]').evaluateAll((rows) => rows.map((r) => ({ tip: r.querySelector(".o-text").dataset.tip, w: Math.round(r.querySelector(".o-text").getBoundingClientRect().width), full: r.querySelector(".o-text").scrollWidth <= r.querySelector(".o-text").clientWidth + 1 })));
+  ok(layerNames.every((l) => l.tip && (l.full || l.w >= 60)), `nome da camada legível e completo na dica: ${JSON.stringify(layerNames)}`);
 
   // Adicionar: busca e inserção; a busca sobrevive à troca de área.
   await tab(page, "add");
@@ -187,7 +190,7 @@ try {
   await page.evaluate(() => import("/js/interface-mode.js").then((m) => m.setInterfaceMode("complete")));
   await page.waitForFunction(() => document.querySelector(".ed-shell").dataset.interface === "complete");
   check(await page.locator('[data-panel-body="structure"] .o-item.selected').count(), selBefore, "Completa mantém a seleção");
-  ok(await page.locator('[data-panel-body="structure"] .o-opacity input').count() >= 3, "Completa mostra opacidade numérica");
+  check(await page.locator('[data-panel-body="structure"] .o-opacity').count(), 0, "opacidade fica no menu ⋯, não ocupa a linha");
   await page.evaluate(() => import("/js/interface-mode.js").then((m) => m.setInterfaceMode("basic")));
   await page.waitForFunction(() => document.querySelector(".ed-shell").dataset.interface === "basic");
   check(await area(page), "organize", "trocar de modo não muda a área");
@@ -252,7 +255,7 @@ try {
   const token = page.locator('[data-panel-body="structure"] [data-o-section="tokens"].o-item').first();
   await token.click();
   ok(/Oculto para os jogadores/.test(await text(page, '[data-panel-body="props"]')), "inspetor do marcador separa visibilidade para jogadores");
-  ok(/Localizar no mapa/.test(await text(page, '[data-panel-body="props"]')), "inspetor oferece Localizar no mapa");
+  check(await page.locator('[data-panel-body="props"] [data-action="se-locate"]').getAttribute("aria-label"), "Localizar no mapa", "inspetor oferece Localizar no mapa (ícone com nome)");
   ok(await visible(page, '[data-panel-body="structure"] [data-o-section="origin"] .o-ro-action'), "mapa de origem somente leitura com Abrir original");
   // Composição: imagem por cima, camada só do mestre (visibilidade para jogadores ≠ editor).
   await page.evaluate(() => document.querySelector('.scene-editor [data-ed-context="compose"]')?.click());
@@ -270,6 +273,33 @@ try {
   check(await compElements.locator('[data-o-layer="players"]').getAttribute("aria-pressed"), "true", "camada da composição só para o mestre");
   ok(/Mestre/.test(await text(page, '[data-panel-body="structure"] .o-item[data-o-section="comp"]')), "item herda o selo de só o mestre");
   check(await compElements.locator('[data-o-layer="visible"]').getAttribute("aria-pressed"), "false", "visível no editor continua independente");
+  // Fora do contexto Composição a árvore também redesenha (antes o selo não mudava).
+  await page.evaluate(() => document.querySelector('.scene-editor [data-ed-context="elements"]')?.click());
+  await page.waitForFunction(() => document.querySelector(".scene-editor")?.dataset.context === "elements");
+  await compElements.locator('[data-o-layer="players"]').click();
+  check(await compElements.locator('[data-o-layer="players"]').getAttribute("aria-pressed"), "false", "Todos/Mestre alterna também fora da Composição");
+  await compElements.locator('[data-o-layer="lock"]').click();
+  check(await compElements.locator('[data-o-layer="lock"]').getAttribute("aria-pressed"), "true", "cadeado da composição atualiza fora da Composição");
+  await compElements.locator('[data-o-layer="lock"]').click();
+  await page.evaluate(() => document.querySelector('.scene-editor [data-ed-context="compose"]')?.click());
+  await page.waitForFunction(() => document.querySelector(".scene-editor")?.dataset.context === "compose");
+  // Ctrl+C/Ctrl+V de uma imagem da composição com um print na área de transferência do sistema: cola o elemento,
+  // não o print (antes a imagem do sistema vencia o colar interno).
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: env.origin });
+  await page.evaluate(async () => {
+    const c = Object.assign(document.createElement("canvas"), { width: 4, height: 4 });
+    const blob = await new Promise((r) => c.toBlob(r, "image/png"));
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+  });
+  const compItems = page.locator('[data-panel-body="structure"] .o-item[data-o-section="comp"]');
+  await compItems.first().locator(".o-text").click();
+  await page.keyboard.press("Control+c");
+  check(await page.evaluate(() => navigator.clipboard.readText()), "[Eternnus] elementos copiados no editor", "Ctrl+C troca o print do sistema pelo marcador");
+  await page.keyboard.press("Control+v");
+  await page.waitForFunction(() => document.querySelectorAll('[data-panel-body="structure"] .o-item[data-o-section="comp"]').length === 2, null, { timeout: 5000 });
+  check(await compItems.count(), 2, "Ctrl+V cola a cópia do elemento");
+  await page.keyboard.press("Control+z");
+  await page.waitForFunction(() => document.querySelectorAll('[data-panel-body="structure"] .o-item[data-o-section="comp"]').length === 1, null, { timeout: 5000 });
   await page.screenshot({ path: join(shots, "02-cena-1440.png") });
   // Configurar: mapa original, composição e preparação separados.
   await tab(page, "configure");

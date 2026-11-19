@@ -236,8 +236,8 @@ button[aria-disabled="true"] {
   font-size: 25px;
   color: var(--muted);
 }
-/* Ferramenta só com ícone (ui.iconButton, ADR-101): quadrada, 44 px, nome no tooltip e no leitor de tela. */
-button.tool-icon {
+/* Ferramenta só com ícone (ui.iconButton/iconLink, ADR-101/119): quadrada, 44 px, nome no tooltip e no leitor de tela. */
+button.tool-icon, a.tool-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -246,22 +246,22 @@ button.tool-icon {
   min-height: 44px;
   padding: 0;
 }
-button.tool-icon.small {
+button.tool-icon.small, a.tool-icon.small {
   width: 36px;
   min-width: 36px;
   min-height: 36px;
 }
-button.tool-icon.danger-text {
+button.tool-icon.danger-text, a.tool-icon.danger-text {
   color: var(--danger);
 }
-button.tool-icon .ed-icon {
+button.tool-icon .ed-icon, a.tool-icon .ed-icon {
   width: 20px;
   height: 20px;
   flex: none;
   pointer-events: none;
 }
 @media (max-width: 760px), (pointer: coarse) {
-  button.tool-icon.small {
+  button.tool-icon.small, a.tool-icon.small {
     width: 44px;
     min-width: 44px;
     min-height: 44px;
@@ -2986,6 +2986,10 @@ legend { padding: 0 6px; color: var(--gold); font-size: 12px; font-weight: 600; 
 .check > input { flex: none; }
 .form-grid, .form-grid.two, .form-grid.three { align-items: start; }
 .form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 10px; }
+/* Painéis laterais e inspetores (ADR-119): nada empilhado à direita. A ação principal com texto ocupa o espaço
+   da fila; as secundárias ficam em ícone ao lado, na mesma linha. */
+:is(.ed-panel-body, .ed-props, .px-details, .ed-cfg-card) :is(.form-actions, .px-detail-actions) { justify-content: flex-start; gap: 6px; }
+:is(.ed-panel-body, .ed-props, .px-details, .ed-cfg-card) :is(.form-actions, .px-detail-actions) > :is(button, .button):not(.tool-icon):not(.ed-icon-button):not(.help-button) { flex: 1 1 auto; }
 .modal-lead { margin-top: 0; }
 
 /* ---------- Barra de ações agrupada (actionBar em ui.js) ----------

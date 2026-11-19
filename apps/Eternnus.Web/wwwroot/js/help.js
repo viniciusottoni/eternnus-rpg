@@ -324,7 +324,9 @@ export function installHelp() {
   document.addEventListener('focusin', (event) => {
     const target = event.target.closest('[data-tip]');
     focusedTarget = target;
-    if (target && !touchInput && target !== clickedTip) { dismissed = false; showTip(target); }
+    // Só foco de teclado abre a dica: foco programático (modal que abre depois de um clique, árvore redesenhada) não
+    // abre, senão o primeiro Escape só fecharia a dica e não o modal (ADR-119).
+    if (target && !touchInput && target !== clickedTip && event.target.matches?.(':focus-visible')) { dismissed = false; showTip(target); }
   });
   document.addEventListener('focusout', (event) => {
     if (!event.target.closest('[data-tip]')) return;

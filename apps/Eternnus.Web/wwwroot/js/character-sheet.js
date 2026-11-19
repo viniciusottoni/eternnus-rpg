@@ -24,7 +24,7 @@ const savedView = () => { try { return localStorage.getItem(VIEW_KEY) === "compa
 
 const KINDS = [["ataque", "Ataque"], ["habilidade", "Habilidade"], ["magia", "Magia"], ["item", "Item"]];
 function actionRow(a = {}) {
-  return `<fieldset class="cs-action" data-id="${esc(a.id || "")}"><legend>Ação pessoal</legend><label>Nome<input data-k="name" maxlength="60" required value="${esc(a.name || "")}"></label><label>Tipo<select data-k="kind">${KINDS.map(([key, label]) => `<option value="${key}" ${a.kind === key ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>Fórmula<input data-k="formula" maxlength="300" value="${esc(a.formula || "")}" placeholder="1d20 + @forca"></label><label>Efeito<input data-k="description" maxlength="300" value="${esc(a.description || "")}"></label>${button("Remover ação", "cs-remove", "", "subtle small")}</fieldset>`;
+  return `<fieldset class="cs-action" data-id="${esc(a.id || "")}"><legend>Ação pessoal</legend><label>Nome<input data-k="name" maxlength="60" required value="${esc(a.name || "")}"></label><label>Tipo<select data-k="kind">${KINDS.map(([key, label]) => `<option value="${key}" ${a.kind === key ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>Fórmula<input data-k="formula" maxlength="300" value="${esc(a.formula || "")}" placeholder="1d20 + @forca"></label><label>Efeito<input data-k="description" maxlength="300" value="${esc(a.description || "")}"></label>${iconButton("trash", "Remover ação", "cs-remove", "", "subtle small danger-text")}</fieldset>`;
 }
 function actionsFrom(form) {
   return [...form.querySelectorAll(".cs-action")].map(row => {
@@ -59,12 +59,13 @@ export async function renderCharacterPage(id, context) {
   const returnCampaignId = !fresh && context && /^[0-9a-f-]{36}$/i.test(context) ? context : null;
   const call = (path, method = "GET", body) => api(path, method, body, opts);
   // Descrições por item (ADR-098): popup padrão; aplicar marca a ficha como alterada e grava com "Salvar ficha".
-  function openNotes(name) {
+  // `line`: texto de uma linha da lista (botão da linha, ADR-122); sem ela, todos os itens do campo.
+  function openNotes(name, line = null) {
     const f = sheet?.version?.fields.find((x) => x.name === name);
     if (!f || !controller) return;
     openItemNotes({
       label: f.label || f.name,
-      value: String(controller.values()[f.name] ?? ""),
+      value: line ?? String(controller.values()[f.name] ?? ""),
       notes,
       editable: fresh || !!sheet.canEdit,
       onApply: (edits) => { notes = applyNotes(notes, edits); controller.refreshNotes(); syncNoteButtons(); refreshCompact(); mark(); },
@@ -155,7 +156,7 @@ export async function renderCharacterPage(id, context) {
       // Listas (magias, poderes, itens…): um item por linha com "…" e descrição por item em popup (ADR-098).
       isList: isListField,
       isLines: ((names) => (f) => names.has(f.name))(lineFieldNames(version.fields, version.pages)),
-      notes: fresh ? null : { count: (f, value) => describedCount(value, notes), text: (key) => notes[key] || "", open: (f) => openNotes(f.name) }, pdfUrl: version.pdfUrl, pages: version.pages, fields: version.fields, mode: canEdit ? "fill" : "view", values: { ...sheet.values, ...sheet.computed }, onChange: () => { mark(); syncAccessible(); syncNoteButtons(); refreshCompact(); } });
+      notes: fresh ? null : { count: (f, value) => describedCount(value, notes), text: (key) => notes[key] || "", open: (f, value) => openNotes(f.name, value) }, pdfUrl: version.pdfUrl, pages: version.pages, fields: version.fields, mode: canEdit ? "fill" : "view", values: { ...sheet.values, ...sheet.computed }, onChange: () => { mark(); syncAccessible(); syncNoteButtons(); refreshCompact(); } });
     syncNoteButtons();
     compact?.destroy();
     // Resumo (ADR-099): recursos, testes e listas com descrições; atualizado a cada mudança da ficha.

@@ -1210,6 +1210,21 @@ button.cs-portrait-frame:focus-visible { outline: 2px solid var(--gold); outline
 .ps-note:focus-visible { outline: 2px solid #1d5fa8; outline-offset: 1px; }
 @media (hover: none) { .ps-note { opacity: .7; } }
 @media (prefers-reduced-motion: reduce) { .ps-note { transition: none; } }
+/* Descrição por linha (ADR-122): faixa com a grade das linhas (1,2 em, mesmo recuo); só o botão recebe o ponteiro.
+   "+" aparece no hover/foco do campo; linha descrita fica sempre com o "i" dourado. O texto cede espaço ao botão. */
+.ps-line-notes { position: absolute; inset: 0; z-index: 2; display: grid; grid-auto-rows: 1.2em; align-content: start; overflow: hidden;
+  padding-top: calc(var(--ps-scale, 1) * 1px - 0.04em); line-height: 1.2; pointer-events: none; }
+.ps-line-slot { display: flex; align-items: center; justify-content: flex-end; min-height: 0; padding-right: 2px; }
+.ps-line-note { pointer-events: auto; position: relative; display: grid; place-items: center; width: 0.95em; min-width: 12px; max-width: 16px;
+  height: 0.95em; min-height: 12px; max-height: 16px; padding: 0; border: 1px solid #8a7a5a; border-radius: 50%; background: #fffaf0;
+  color: #6b5c3e; font: 700 10px/1 system-ui, sans-serif; box-shadow: none; opacity: 0; cursor: pointer; transition: opacity var(--motion-fast, 180ms) ease; }
+.ps-line-note::before { content: ""; position: absolute; inset: -4px -6px; }
+.ps-line-note.has-note { opacity: 1; background: #b8892c; border-color: #8a651c; color: #fff; font-style: italic; font-family: Georgia, serif; }
+.ps-has-line-notes:hover .ps-line-note, .ps-has-line-notes:focus-within .ps-line-note, .ps-line-note:focus-visible { opacity: 1; }
+.ps-line-note:focus-visible { outline: 2px solid #1d5fa8; outline-offset: 1px; }
+.ps-list.ps-has-line-notes :is(.ps-row, .ps-line) { padding-right: 1.15em; }
+@media (hover: none) { .ps-line-note { opacity: .7; } }
+@media (prefers-reduced-motion: reduce) { .ps-line-note { transition: none; } }
 .cs-notes-button { margin-top: 6px; min-height: 44px; }
 
 /* Popup de descrições: mesmo visual do modal padrão, em diálogo próprio (abre também sobre a ficha da mesa). */

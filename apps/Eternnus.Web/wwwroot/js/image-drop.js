@@ -2,7 +2,7 @@
 // escolher vários arquivos e arrastar imagens do acervo da campanha. Aqui só há leitura local, validação e realce visual;
 // cada editor envia pelos próprios endpoints (api.js) e decide onde o elemento entra. Carregado sob demanda pelos editores.
 import { esc } from "./ui.js";
-import { isTypingTarget } from "./editor-policy.js";
+import { EDITOR_CLIPBOARD_MARK, isTypingTarget } from "./editor-policy.js";
 import { state } from "./state.js";
 import { uploadLimit, formatBytes } from "./account-usage-policy.js";
 import { normalizeUserPrefs, touchRecent, userPrefsKey } from "./prep-explorer-policy.js";
@@ -150,6 +150,12 @@ export function mountImageDrop(host, { enabled = () => true, onFiles, onAsset, h
     window.removeEventListener("dragover", guard); window.removeEventListener("drop", guard);
     overlay.remove();
   };
+}
+
+/** Copiar/recortar pelo menu (sem o evento nativo do Ctrl+C): troca o conteúdo da área de transferência do sistema
+ *  pelo marcador, para uma imagem copiada antes não vencer o colar interno. Sem permissão, segue sem erro. */
+export function claimSystemClipboard() {
+  try { navigator.clipboard?.writeText?.(EDITOR_CLIPBOARD_MARK)?.catch?.(() => {}); } catch { /* sem API: só o atalho troca */ }
 }
 
 /**

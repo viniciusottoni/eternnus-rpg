@@ -5,7 +5,7 @@ import { api } from "./api.js";
 import { ensureNotices, releaseHeld, newsSlot, highlightNew, markSeen } from "./notices.js";
 import { state } from "./state.js";
 import { shell } from "./layout.js";
-import { $, esc, button, modal, toast, formError, submitForm, formatDate, navigate } from "./ui.js";
+import { $, esc, button, iconButton, rowAction, modal, toast, formError, submitForm, formatDate, navigate } from "./ui.js";
 import { isStaff, isAdmin } from "./policy.js";
 import { controlsHtml, readControls, pagerHtml, mountClientTable, highlightIn } from "./data-table.js";
 import {
@@ -346,11 +346,11 @@ function postCard(p, index, data) {
       ? `<button type="button" class="subtle small guild-useful" data-action="guild-useful" data-id="${esc(p.id)}" aria-pressed="${b.useful.pressed}" ${b.useful.disabled ? `aria-disabled="true" data-tip="${p.author?.id === state.user?.id ? "Não é possível marcar a própria mensagem" : "Indisponível"}"` : ""}><span aria-hidden="true">✦</span> Útil <span class="guild-useful-count">${esc(b.useful.count)}</span></button>`
       : "",
     b.reply ? button("↩ Responder", "guild-reply-to", p.id, "subtle small") : "",
-    b.edit ? button("✎ Editar", "guild-edit", p.id, "subtle small") : "",
-    b.delete ? button("Excluir", "guild-delete", p.id, "subtle small") : "",
-    b.report ? button(p.isFirst ? "⚑ Denunciar tópico" : "⚑ Denunciar", "guild-report", p.id, "text-button") : b.reported ? '<span class="muted small">Denúncia enviada</span>' : "",
-    b.moderateRemove ? button("Remover (moderação)", "guild-mod-remove", p.id, "danger small") : "",
-    b.moderateRestore ? button("Restaurar", "guild-mod-restore", p.id, "subtle small") : "",
+    b.edit ? iconButton("edit", "Editar", "guild-edit", p.id, "subtle small") : "",
+    b.delete ? iconButton("trash", "Excluir", "guild-delete", p.id, "subtle small danger-text") : "",
+    b.report ? iconButton("flag", p.isFirst ? "Denunciar tópico" : "Denunciar", "guild-report", p.id, "subtle small") : b.reported ? '<span class="muted small">Denúncia enviada</span>' : "",
+    b.moderateRemove ? iconButton("trash", "Remover (moderação)", "guild-mod-remove", p.id, "subtle small danger-text") : "",
+    b.moderateRestore ? iconButton("undo", "Restaurar", "guild-mod-restore", p.id, "subtle small") : "",
   ].join("");
   return `<article class="guild-post metal ${p.removed || p.held ? "is-removed" : ""}" id="post-${esc(p.id)}" tabindex="-1" aria-labelledby="post-${esc(p.id)}-author"><aside class="guild-author-card">${isGuid(a.id) ? `<button type="button" class="guild-author-open" data-action="guild-author" data-id="${esc(a.id)}" aria-label="Ver perfil de ${esc(a.name || "Aventureiro")}">` : "<div>"}<img class="avatar" src="${esc(safeAvatar(a.avatarUrl))}" alt="" width="64" height="64" loading="lazy" referrerpolicy="no-referrer"><strong id="post-${esc(p.id)}-author">${esc(a.name || "Aventureiro")}</strong>${isGuid(a.id) ? "</button>" : "</div>"}<span class="guild-level">Nível ${esc(Number(a.level) || 1)}</span>${badge(a.role)}</aside><div class="guild-post-content"><header class="guild-post-meta"><span class="muted small">#${esc(number)}${p.isFirst ? " · abertura" : ""}</span>${timeTag(p.createdAt)}${p.editedAt ? `<span class="muted small" data-tip="${esc(formatDate(String(p.editedAt)))}">· editada</span>` : ""}${data.staff && p.openReports ? `<span class="status-chip bad">${esc(p.openReports)} ${p.openReports === 1 ? "denúncia aberta" : "denúncias abertas"}</span>` : ""}</header>${removed ? `<p class="guild-removed"><span aria-hidden="true">⊘</span> ${removed}${data.staff && p.body != null ? " — texto visível só para a equipe:" : ""}</p>` : ""}${held ? `<p class="guild-removed"><span aria-hidden="true">⚖</span> ${esc(held)}</p>` : ""}${p.body != null ? `<div class="guild-body ${p.removed || p.held ? "is-staff-only" : ""}" data-post-body="${index}"></div>` : ""}${actions ? `<footer class="guild-post-actions">${actions}</footer>` : ""}</div></article>`;
 }
@@ -580,7 +580,7 @@ async function reportsPanel(status) {
     .map(
       (r) => `<tr><td class="guild-report-post" data-label="Mensagem"><a href="${topicHref(r.post.topic.id)}">${esc(r.post.topic.title)}</a>${r.post.topic.deleted ? ' <span class="status-chip bad">tópico removido</span>' : ""}${r.post.topic.held ? ' <span class="status-chip bad">tópico oculto</span>' : ""}<blockquote>${esc(r.post.excerpt)}</blockquote><span class="muted small">por ${esc(r.post.author?.name || "—")}${r.post.deleted ? " · mensagem já removida" : r.post.held ? " · oculta até a decisão" : ""}</span></td><td data-label="Denunciante">${esc(r.reporter?.name || "—")}<br><span class="muted small">${timeTag(r.createdAt)}</span></td><td class="guild-report-reason" data-label="Motivo">${esc(r.reason)}</td><td class="num" data-label="Denúncias do post">${esc(r.postReports)}</td><td data-label="${status === "open" ? "Decisão" : "Resultado"}">${
         status === "open"
-          ? `<div class="guild-report-actions">${button("Arquivar", "guild-resolve", r.id + ":dismissed", "subtle small")}${button("Remover mensagem", "guild-resolve", r.id + ":removed", "danger small")}</div>`
+          ? `<div class="guild-report-actions">${iconButton("archive", "Arquivar denúncia", "guild-resolve", r.id + ":dismissed", "subtle small")}${iconButton("trash", "Remover mensagem", "guild-resolve", r.id + ":removed", "subtle small danger-text")}</div>`
           : `<span class="status-chip ${r.resolution === "removed" ? "bad" : "quiet"}">${r.resolution === "removed" ? "Mensagem removida" : "Arquivada"}</span><br><span class="muted small">${esc(r.resolvedBy || "")} · ${timeTag(r.resolvedAt)}</span>`
       }</td></tr>`,
     )
@@ -653,7 +653,7 @@ function mountCategories() {
 function categoriesTable(items) {
   const rows = items
     .map(
-      (c) => `<tr><td class="num">${esc(c.order)}</td><td><strong>${esc(c.name)}</strong><br><span class="muted small">${esc(c.slug)}</span></td><td>${esc(c.description)}</td><td class="num">${esc(c.minLevelToPost)}</td><td>${c.staffOnly ? '<span class="status-chip warn">Sim</span>' : '<span class="status-chip quiet">Não</span>'}</td><td class="num">${esc(c.topicCount)}</td><td>${c.archived ? '<span class="status-chip quiet">Arquivada</span>' : '<span class="status-chip good">Ativa</span>'}</td><td><div class="guild-report-actions">${button("Editar", "guild-cat-edit", c.id, "subtle small")}${button(c.archived ? "Reativar" : "Arquivar", "guild-cat-archive", c.id, "subtle small")}${button("Excluir", "guild-cat-delete", c.id, "danger small", c.topicCount ? 'aria-disabled="true" data-tip="Tem tópicos: arquive em vez de excluir"' : "")}</div></td></tr>`,
+      (c) => `<tr><td class="num">${esc(c.order)}</td><td><strong>${esc(c.name)}</strong><br><span class="muted small">${esc(c.slug)}</span></td><td>${esc(c.description)}</td><td class="num">${esc(c.minLevelToPost)}</td><td>${c.staffOnly ? '<span class="status-chip warn">Sim</span>' : '<span class="status-chip quiet">Não</span>'}</td><td class="num">${esc(c.topicCount)}</td><td>${c.archived ? '<span class="status-chip quiet">Arquivada</span>' : '<span class="status-chip good">Ativa</span>'}</td><td><div class="guild-report-actions">${rowAction("edit", "Editar", c.name, "guild-cat-edit", c.id)}${rowAction(c.archived ? "undo" : "archive", c.archived ? "Reativar" : "Arquivar", c.name, "guild-cat-archive", c.id)}${rowAction("trash", "Excluir", c.name, "guild-cat-delete", c.id, "subtle small danger-text", c.topicCount ? 'aria-disabled="true" data-tip="Tem tópicos: arquive em vez de excluir"' : "")}</div></td></tr>`,
     )
     .join("");
   return `<div class="data-table-wrap" tabindex="0" role="region" aria-label="Categorias da Guilda"><table class="data-table"><caption class="sr-only">Categorias da Guilda</caption><thead><tr><th scope="col">Ordem</th><th scope="col">Nome</th><th scope="col">Descrição</th><th scope="col">Nível mín.</th><th scope="col">Só equipe</th><th scope="col">Tópicos</th><th scope="col">Estado</th><th scope="col">Ações</th></tr></thead><tbody>${rows}</tbody></table></div>`;

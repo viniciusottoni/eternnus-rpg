@@ -117,7 +117,7 @@ try {
   // Exclusão de registro anterior pela leitura da sessão; sessões do Eternnus não oferecem a ação.
   await go(m, `campaign/${c.id}/journal`, 'Buscar nas sessões');
   await m.getByRole('button', { name: 'O portão', exact: true }).click();
-  await m.getByRole('button', { name: '❖ Capítulo', exact: true }).waitFor();
+  await m.getByRole('button', { name: 'Capítulo', exact: true }).waitFor();
   check(await m.getByRole('button', { name: 'Excluir registro', exact: true }).count(), 0);
   await m.keyboard.press('Escape'); await m.locator('#modal').waitFor({ state: 'hidden' });
   await m.getByRole('button', { name: 'Rosered II', exact: true }).click();

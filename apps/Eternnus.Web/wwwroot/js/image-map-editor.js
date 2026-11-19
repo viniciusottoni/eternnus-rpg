@@ -10,12 +10,11 @@ import { addLayer, createHistory, isTypingTarget, moveLayer, patchLayer, removeL
 import * as P from "./composition-policy.js";
 import { createCompositionSurface, encodeFlat, flattenComposition, textHeight, textWidth } from "./composition-canvas.js";
 import { attachDrafts } from "./editor-drafts.js";
-import { mountImageDrop, listenPaste, splitImageFiles, baseName, assetListHtml, bindAssetList, maxImageBytes, mountUploadTray, uploadEach, httpsImageUrl, quickPrefsOf, touchQuickPref } from "./image-drop.js";
+import { mountImageDrop, listenPaste, claimSystemClipboard, splitImageFiles, baseName, assetListHtml, bindAssetList, maxImageBytes, mountUploadTray, uploadEach, httpsImageUrl, quickPrefsOf, touchQuickPref } from "./image-drop.js";
 import { state as appState } from "./state.js";
 import { formatBytes } from "./account-usage-policy.js";
 
 /** Alvo da imagem achatada gerada no navegador: abaixo do limite de arquivo de todos os planos (ADR-102). */
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const TYPE_LABEL = { image: "Imagem", text: "Texto", rect: "Retângulo", ellipse: "Elipse" };
 const TYPE_ICON = { image: "image", text: "text", rect: "rect", ellipse: "ellipse" };
 const ANCHOR_LABEL = { tl: "Superior esquerda", t: "Superior centro", tr: "Superior direita", l: "Meio esquerda", c: "Centro", r: "Meio direita", bl: "Inferior esquerda", b: "Inferior centro", br: "Inferior direita" };
@@ -440,7 +439,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     const ab = doc.artboard, g = gridInfo(), active = doc.layers.find((l) => l.id === activeLayer);
     return `<div class="ed-insp-head">${icon("image")}<strong>${esc(meta.name || "Mapa")}</strong><small>Nada selecionado</small></div>
       <dl class="ed-insp-summary"><dt>Área visível</dt><dd>${int(ab.width)} × ${int(ab.height)} px</dd><dt>Grade</dt><dd>${g ? (g.valid ? `${g.columns} × ${g.rows} casas` : "inválida") : "sem grade"}</dd><dt>Elementos</dt><dd>${doc.elements.length}</dd><dt>Camada ativa</dt><dd>${esc(active?.name || "")}</dd></dl>
-      <div class="form-actions"><button type="button" class="primary small" data-insp="add-image">${icon("image")}<span>Adicionar imagem…</span></button><button type="button" class="subtle small" data-insp="doc-size">Tamanho…</button></div>
+      <div class="form-actions"><button type="button" class="primary small" data-insp="add-image">${icon("image")}<span>Adicionar imagem…</span></button>${inspBtn("doc-size", "maximize", "Tamanho do mapa")}</div>
       <p class="ed-insp-note">Clique num elemento no mapa ou em Organizar para editar aqui. Duplo clique abre todas as propriedades.</p>`;
   }
   function layerInspector(l) {
@@ -813,13 +812,13 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
   function copy() {
     const els = selected();
     if (!els.length) return shell.message("Selecione algo para copiar.");
-    clipboard = P.clone(els); pasteCount = 0;
+    clipboard = P.clone(els); pasteCount = 0; claimSystemClipboard();
     shell.message(els.length === 1 ? "Elemento copiado." : `${els.length} elementos copiados.`);
   }
   function cut() {
     const els = editableSelection();
     if (!els.length) return shell.message("Selecione um elemento desbloqueado para recortar.");
-    clipboard = P.clone(els); pasteCount = 0;
+    clipboard = P.clone(els); pasteCount = 0; claimSystemClipboard();
     const ids = new Set(els.map((e) => e.id));
     change("Recortar", () => { doc.elements = doc.elements.filter((e) => !ids.has(e.id)); selection = new Set(); });
   }
@@ -1522,7 +1521,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
     const json = P.serializeComposition(doc);
     try {
       const flat = await flattenComposition(doc, surface.cache);
-      const { blob, type } = await encodeFlat(flat, MAX_IMAGE_BYTES);
+      const { blob, type } = await encodeFlat(flat, maxImageBytes());
       const fd = new FormData();
       fd.append("file", blob, type === "image/png" ? "mapa.png" : "mapa.jpg");
       fd.append("composition", json);
@@ -1566,7 +1565,7 @@ export async function openImageMapEditor(campaign, { item, onSaved = () => {} })
       const text = "Este mapa está na mesa da sessão ativa. Oculte ou troque o mapa na mesa antes de salvar; seu rascunho continua aberto aqui.";
       shell.message(text); toast(text); return;
     }
-    const text = e?.status === 413 ? "O envio passou do limite do servidor (10 MB de imagem). Reduza a área visível." : e?.status === 415 ? "O servidor recusou o formato da imagem achatada." : msg;
+    const text = e?.status === 413 ? `O envio passou de ${formatBytes(maxImageBytes())}, o limite de arquivo do seu plano. Reduza a área visível.` : e?.status === 415 ? "O servidor recusou o formato da imagem achatada." : msg;
     shell.message(text); toast(text);
   }
   function showConflict() {

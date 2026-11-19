@@ -6,7 +6,7 @@ import { $, esc, modal, toast } from "./ui.js";
 import { helpButton } from "./help.js";
 import { interfaceMode, interfaceToggle, mountInterfaceToggle, onInterfaceChange, setInterfaceMode } from "./interface-mode.js";
 import { mountCommandPalette } from "./command-palette.js";
-import { FIELD_SAFE, clampMenu, isTypingTarget, rulerSteps, shortcutLabel, shortcutOf, zoomLabel,
+import { EDITOR_CLIPBOARD_MARK, FIELD_SAFE, clampMenu, isTypingTarget, rulerSteps, shortcutLabel, shortcutOf, zoomLabel,
   normalizeContexts, toolInContext, panelInContext, availableContexts, toolAfterContext, contextShortcutIndex,
   layoutPrefKey, normalizeLayoutPref, panelOrder, movePanel, PANEL_WIDTH,
   SIDE_AREAS, HISTORY_AREA, INSPECT_AREA, INSPECT_SPLIT, clampSplit, panelArea, sideAreasFor, initialArea } from "./editor-policy.js";
@@ -859,7 +859,13 @@ export function createEditorShell(opts) {
     if (cam) { e.preventDefault(); cam(); updateZoom(); return; }
     const fn = opts.keys?.[id];
     // Ctrl+V não bloqueia a colagem nativa: o evento "paste" traz imagens do sistema (ADR-090); o editor decide no paste.
-    if (fn) { if (id !== "mod+v") e.preventDefault(); e.stopPropagation(); fn(e); return; }
+    // Ctrl+C/Ctrl+X também deixam o evento nativo acontecer: `onClipboardClaim` troca o conteúdo do sistema por um
+    // marcador de texto, senão uma imagem copiada antes (um print) venceria o colar interno no Ctrl+V seguinte.
+    if (fn) {
+      if (id === "mod+c" || id === "mod+x") { claimClipboard = true; clearTimeout(claimTimer); claimTimer = setTimeout(() => (claimClipboard = false), 200); }
+      else if (id !== "mod+v") e.preventDefault();
+      e.stopPropagation(); fn(e); return;
+    }
     if (id === "escape") { e.preventDefault(); return; }
     if (!e.ctrlKey && !e.metaKey && !e.altKey && id.length === 1) {
       const t = opts.tools.find((x) => x.key && x.key.toLowerCase() === id);
@@ -867,8 +873,17 @@ export function createEditorShell(opts) {
     }
   }
   function onKeyUp(e) { if ((e.key === " " || e.key === "Spacebar") && spaceHeld) { spaceHeld = false; camera?.setPanHold?.(false); root.classList.remove("ed-space"); } }
+  let claimClipboard = false, claimTimer = 0;
+  function onClipboardClaim(e) {
+    if (!claimClipboard) return;
+    claimClipboard = false; clearTimeout(claimTimer);
+    e.preventDefault();
+    e.clipboardData?.setData("text/plain", EDITOR_CLIPBOARD_MARK);
+  }
   window.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("keyup", onKeyUp, true);
+  document.addEventListener("copy", onClipboardClaim, true);
+  document.addEventListener("cut", onClipboardClaim, true);
 
   // ---------- Fechar com proteção ----------
   const beforeUnload = (e) => { if (opts.isDirty?.()) { e.preventDefault(); e.returnValue = ""; } };
@@ -920,6 +935,9 @@ export function createEditorShell(opts) {
     if (document.fullscreenElement === dialog) document.exitFullscreen().catch(() => {});
     window.removeEventListener("keydown", onKeyDown, true);
     window.removeEventListener("keyup", onKeyUp, true);
+    document.removeEventListener("copy", onClipboardClaim, true);
+    document.removeEventListener("cut", onClipboardClaim, true);
+    clearTimeout(claimTimer);
     window.removeEventListener("beforeunload", beforeUnload);
     document.removeEventListener("fullscreenchange", onFullscreen);
     dialog.removeEventListener("cancel", onCancel);

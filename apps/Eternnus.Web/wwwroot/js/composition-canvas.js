@@ -156,7 +156,8 @@ export async function flattenComposition(doc, cache, { transparent = false } = {
   return canvas;
 }
 
-/** PNG; acima de `maxBytes`, JPEG 0,92 e depois 0,85. Erro se ainda passar do limite. → { blob, type }. */
+/** PNG; acima de `maxBytes` (limite de arquivo do plano), JPEG 0,92 e depois 0,85. Erro se ainda passar. → { blob, type }. */
+const sizeLabel = (bytes) => `${Math.round(bytes / (1024 * 1024))} MB`;
 export async function encodeFlat(canvas, maxBytes) {
   const toBlob = (type, quality) => new Promise((resolve) => canvas.toBlob(resolve, type, quality));
   for (const [type, quality] of [["image/png"], ["image/jpeg", 0.92], ["image/jpeg", 0.85]]) {
@@ -164,7 +165,7 @@ export async function encodeFlat(canvas, maxBytes) {
     if (!blob) throw new Error("O navegador não conseguiu gerar a imagem do mapa.");
     if (blob.size <= maxBytes) return { blob, type };
   }
-  throw new Error("A imagem achatada passa de 10 MB mesmo em JPEG. Reduza a área visível (Imagem › Tamanho do documento).");
+  throw new Error(`A imagem achatada passa de ${sizeLabel(maxBytes)}, o limite de arquivo do seu plano, mesmo em JPEG. Reduza a área visível (Imagem › Tamanho do documento).`);
 }
 
 // ---------- Superfície interativa ----------
