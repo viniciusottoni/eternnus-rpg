@@ -58,6 +58,7 @@ export const HELP_KEYS = Object.freeze({
   "campanhas.editor.rascunhos": "master",
   "campanhas.editor.contextos": "master",
   "campanhas.editor.inspetor": "master",
+  "campanhas.editor.dicas": "master",
   "campanhas.cenas.configurar": "master",
 
   "campanhas.mapas.tiles": "master",

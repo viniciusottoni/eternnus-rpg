@@ -154,6 +154,9 @@ try {
     check(await m.locator('[data-action=se-close]').count() === 0, suffix+' editor sem botão Fechar duplicado');
     check(await m.locator('#close-modal').evaluate((el) => !el.dataset.tip), suffix+' X do diálogo sem tooltip');
     if (!mobile) check(await m.locator('#modal').evaluate((el) => el.scrollHeight <= el.clientHeight + 1), 'editor sem rolagem externa');
+    // Cenário fica no contexto Cena (ADR-118) e abre em janela ao lado do botão (ADR-125).
+    await m.locator('.scene-editor [data-ed-context=scene]').click();
+    await m.waitForFunction(() => document.querySelector('.scene-editor')?.dataset.context === 'scene');
     await m.locator('[data-ed-tool=scenery]').first().click();
     await m.locator('.se-scenery .map-choice').first().waitFor();
     check(await m.locator('.se-kind .se-option').first().evaluate((l) => l.querySelector('small').getBoundingClientRect().top > l.querySelector('strong').getBoundingClientRect().bottom - 1), suffix+' tipo de cena com título e descrição em linhas separadas');
@@ -165,6 +168,8 @@ try {
     await help(m,'campanhas.cenas.alcance',`editor-completo-${suffix}`);
     await m.locator('[data-ed=close]').click();
     await m.waitForFunction(() => !document.querySelector('#modal').open);
+    // A mesa no celular é usada deitada (ADR-056); em pé ela pede para virar o aparelho.
+    if (mobile) { await m.setViewportSize({ width: 844, height: 390 }); await m.waitForFunction(() => innerWidth > innerHeight); }
     await go(m,`table/${campaign.id}`,'#t-turn .turn-actions');
     await help(m,'mesa.interface.apresentacao',`mesa-interface-${suffix}`,true);
     await m.locator('[data-interface-toggle] input[name=t-interface][value=complete]').check();
@@ -174,6 +179,7 @@ try {
     await m.locator('[data-action=t-roll-builder]').first().click();
     await help(m,'mesa.rolagem.visibilidade',`mesa-dados-${suffix}`);
     await m.locator('#close-modal').click();
+    if (mobile) await m.setViewportSize({ width: 390, height: 844 });
     await go(p,`character/${hero.id}`,'#cs-form');
     await help(p,'fichas.visibilidade.privacidade',`fichas-${suffix}`,true);
     await go(a,`templates/${freeTemplate}`,'[data-help="modelos.versao.publicacao"]');

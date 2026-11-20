@@ -87,6 +87,11 @@ test("zoom keeps the point under the cursor fixed and menus stay inside the wind
   assert.ok(P.fitScale(2000, 1000, 1000, 800) < 0.5);
   assert.equal(P.stepZoom(16, 1), 16);
   assert.deepEqual(P.clampMenu(990, 790, 200, 100, 1000, 800), { x: 794, y: 694 });
+  // Janela de ação (ADR-125): à direita do ponto; sem espaço, à esquerda, sem cobrir a casa; sempre dentro da tela.
+  assert.deepEqual(P.popoverPosition(100, 200, 300, 400, 1000, 800), { x: 114, y: 188 });
+  assert.deepEqual(P.popoverPosition(900, 200, 300, 400, 1000, 800), { x: 586, y: 188 });
+  assert.deepEqual(P.popoverPosition(900, 700, 300, 400, 1000, 800), { x: 586, y: 392 });
+  assert.deepEqual(P.popoverPosition(200, 10, 300, 400, 400, 800), { x: 92, y: 8 });
   assert.equal(P.zoomLabel(1.5), "150%");
 });
 

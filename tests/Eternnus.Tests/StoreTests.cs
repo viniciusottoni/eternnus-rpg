@@ -505,7 +505,9 @@ public sealed partial class StoreTests : IAsyncLifetime
         await analytics.RecordAsync(Ana, new(product.Id, "showcase"), default);       // duplicado na janela
         await analytics.RecordAsync(Ana, new(product.Id, "store"), default);
         await analytics.RecordAsync(Bia, new(product.Id, "detail"), default);
+        await analytics.RecordAsync(Admin, new(product.Id, "store"), default);         // administrador não conta
         Assert.Equal(400, (await Assert.ThrowsAsync<RuleException>(() => analytics.RecordAsync(Ana, new(product.Id, "email"), default))).Status);
+        Assert.False(await db.StoreInteractions.AnyAsync(i => i.UserId == Admin));
         Assert.Equal(3, (await catalog.AdminProductAsync(product.Id, default)).Clicks);
         var metrics = Json(await analytics.MetricsAsync(30, default));
         Assert.Equal(3, metrics.GetProperty("clicks").GetProperty("total").GetInt32());

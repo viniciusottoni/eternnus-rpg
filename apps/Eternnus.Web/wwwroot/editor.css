@@ -45,7 +45,8 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 .ed-top[data-compact] .ed-context { padding: 3px 8px; }
 /* 2: sem subtítulo nem legenda da interface; ações só com ícone quando têm um. */
 .ed-top[data-compact="2"] .ed-sub, .ed-top[data-compact="3"] .ed-sub,
-.ed-top[data-compact="2"] .interface-toggle legend, .ed-top[data-compact="3"] .interface-toggle legend { display: none; }
+/* Compacta: some só a palavra "Interface" (o grupo mantém o nome por aria-label); o ⓘ da ajuda continua visível. */
+.ed-top[data-compact="2"] .interface-toggle .interface-label, .ed-top[data-compact="3"] .interface-toggle .interface-label { display: none; }
 .ed-top[data-compact="2"] .ed-top-actions button:has(> .ed-icon) > span, .ed-top[data-compact="3"] .ed-top-actions button:has(> .ed-icon) > span {
   position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
 }
@@ -179,6 +180,9 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 .ed-props-form input[type=range] { width: calc(100% - 52px); vertical-align: middle; }
 .ed-props-form output { display: inline-block; width: 44px; text-align: right; }
 .ed-props-heading { margin: 10px 0 6px; font: var(--subgroup-title-font); letter-spacing: var(--group-title-tracking); text-transform: uppercase; color: var(--gold, #c6a463); }
+/* Janela de ação no ponto (ADR-125): criar ou editar algo numa casa abre aqui, ao lado do clique; a barra lateral fica para configurações. */
+.ed-pop { width: min(340px, calc(100vw - 16px)); }
+.ed-pop-body { padding: 10px 12px 12px; overflow-y: auto; overscroll-behavior: contain; }
 .ed-props-static { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; font-size: .85rem; }
 .ed-props-check { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
 .ed-props .form-actions { margin-top: 10px; }
@@ -202,7 +206,7 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
   .ed-top { flex-wrap: wrap; gap: 6px; }
   .ed-brand { max-width: 50vw; }
   .ed-menubar { order: 3; width: 100%; }
-  .ed-top-actions .interface-toggle legend { display: none; }
+  .ed-top-actions .interface-toggle .interface-label { display: none; }
   .ed-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); position: relative; }
   .ed-shell[data-panels] .ed-body { grid-template-columns: minmax(0, 1fr); }
   .ed-tools { flex-direction: row; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--ed-line); padding: 4px 6px; }
@@ -211,7 +215,6 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
   .ed-panels { position: absolute; z-index: 5; top: 0; right: 0; bottom: 0; width: min(360px, 92vw); box-shadow: -10px 0 30px #000b; border-left: 1px solid var(--ed-line); }
   .ed-props { top: auto; bottom: calc(44px + env(safe-area-inset-bottom)); right: 8px; left: 8px; width: auto; max-height: 60dvh; }
 }
-
 /* Barras compactas de ícones: o motivo de indisponibilidade continua para leitores de tela e no tooltip, sem ocupar espaço. */
 .ed-tools .help-disabled-reason, .o-toolbar .help-disabled-reason, .ed-top .help-disabled-reason, .ed-status .help-disabled-reason,
 .ed-menu .help-disabled-reason, [data-px-toolbar] .help-disabled-reason {
@@ -239,6 +242,18 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 }
 .ed-contextbar[data-empty="true"] { color: var(--muted, #9da492); }
 .ed-cb-hint { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .8rem; }
+/* Dicas da faixa vazia (ADR-124): rótulo, texto em até duas linhas (a faixa não muda de altura), Experimentar e navegação. */
+.ed-tip { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
+.ed-tip-label { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--bright, #e6cf98); font-size: .74rem; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+.ed-tip-label .ed-icon { width: 15px; height: 15px; }
+.ed-tip-text { flex: 1 1 auto; min-width: 0; white-space: normal; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.ed-tip-try { flex: none; white-space: nowrap; }
+.ed-tip-nav { display: inline-flex; flex: none; gap: 2px; }
+.ed-tip-nav .ed-icon-button { min-width: 30px; min-height: 30px; padding: 4px; }
+.ed-tip-nav .ed-icon-button:disabled { opacity: .4; cursor: default; }
+.ed-tip-prev .ed-icon { transform: rotate(180deg); }
+@media (prefers-reduced-motion: no-preference) { .ed-tip-text { animation: ed-tip-in var(--motion-fast, 180ms) ease-out; } }
+@keyframes ed-tip-in { from { opacity: 0; } to { opacity: 1; } }
 .ed-cb-title { display: inline-flex; align-items: center; gap: 6px; max-width: 22ch; color: var(--bright, #e6cf98); white-space: nowrap; flex: none; }
 .ed-cb-title > span { overflow: hidden; text-overflow: ellipsis; }
 .ed-cb-title .ed-icon { width: 16px; height: 16px; }
@@ -269,10 +284,15 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 
 @media (max-width: 900px), (max-width: 1200px) and (pointer: coarse) {
   .ed-contexts { order: 4; width: 100%; border-radius: 6px; }
+  /* Com a ajuda colada (help-glue), a ordem vale para o grupo: os contextos vêm antes do ⓘ, não depois. */
+  .help-glue-flex:has(> .ed-contexts) { order: 4; width: 100%; }
+  .help-glue-flex > .ed-contexts { order: 0; flex: 0 1 auto; width: auto; }
   .ed-context, .ed-cb-actions .ed-icon-button, .ed-panel-title > .ed-panel-menu { min-height: 44px; min-width: 44px; }
   .ed-panel-title > [data-ed-panel-toggle], .ed-panel-body summary { min-height: 44px; }
   .ed-cb-field input:not([type=checkbox]), .ed-cb-field select { height: 44px; min-height: 44px; }
   .ed-contextbar { min-height: 48px; }
+  .ed-contextbar .ed-tip-nav .ed-icon-button, .ed-contextbar .ed-tip .ed-tip-try { min-width: 44px; min-height: 44px; }
+  .ed-tip-text { -webkit-line-clamp: 3; line-clamp: 3; font-size: .74rem; }
   .ed-shell[data-maximized="on"] .ed-tools { display: none; }
 }
 
@@ -467,3 +487,25 @@ dialog.editor-modal:fullscreen { width: 100%; height: 100%; }
 .ed-shell[data-interface="basic"] [data-complete-only] { display: none !important; }
 /* Lateral estreita: abas só com ícone (nome acessível e dica continuam). */
 @container ed-side (max-width: 330px) { .ed-side-tab .ed-icon { display: none; } .ed-side-tab { padding: 4px; font-size: .78rem; } }
+
+/* Celular deitado (altura baixa): o mapa precisa da altura. Topo em duas linhas (ações; menus e contextos), ferramentas
+   de volta à coluna esquerda e sem a faixa de dicas/propriedades. Antes, quatro linhas de topo deixavam ~45 px de mapa. */
+@media (max-height: 500px) and (orientation: landscape) and (max-width: 1200px) and (pointer: coarse), (max-height: 500px) and (orientation: landscape) and (max-width: 900px) {
+  .ed-top { row-gap: 2px; padding-bottom: 2px; }
+  .ed-brand { display: none; }
+  /* Alinha à direita sem perder o início: com rolagem, o nome da cena continua alcançável à esquerda. */
+  .ed-top > .ed-top-actions { order: 1; flex: 1 1 100%; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
+  .ed-top > .ed-top-actions > :first-child { margin-left: auto; }
+  /* Ações só com ícone (nome acessível e dica continuam), como no topo compacto; o nome da cena encolhe. */
+  .ed-top-actions button:has(> .ed-icon) > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .scene-editor .ed-top .se-name-field input { width: 132px; }
+  .ed-menubar { order: 3; width: auto; flex: 0 1 auto; }
+  .ed-menubar button { min-height: 40px; }
+  .help-glue-flex:has(> .ed-contexts) { order: 4; width: auto; }
+  .ed-contexts { order: 4; width: auto; }
+  .ed-body { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .ed-shell[data-panels] .ed-body { grid-template-columns: auto minmax(0, 1fr); }
+  .ed-tools { flex-direction: column; overflow-x: hidden; overflow-y: auto; border-bottom: 0; border-right: 1px solid var(--ed-line); padding: 4px; }
+  .ed-tool-group { flex-direction: column; padding: 0 0 4px; border-right: 0; border-bottom: 1px solid #2b2f24; }
+  .ed-canvas-area > .ed-contextbar { display: none; }
+}

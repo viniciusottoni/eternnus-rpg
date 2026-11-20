@@ -747,3 +747,27 @@ A área `loja` entra em `HELP_AREAS`, no índice `HELP_KEYS` e na lista pública
 | Convidados da mesa (ligar, convites, lugares, controle de token) — ADR-114 | ⓘ `mesa.convidados.gerenciar` (mestre); aviso visível "Quem tiver o link entra; revogue quando terminar" |
 | Entrada e mesa do convidado — ADR-114 | ⓘ `mesa.convidado.entrar` e `mesa.convidado.mesa` (todos); fim de acesso explicado em tela própria |
 | Réguas da mesa — ADR-117 | Réguas decorativas (`aria-hidden`). O canto mostra a unidade com tooltip (`data-tip`) e texto para leitor de tela: "Régua em metros: cada casa da grade representa N m." Liga e desliga em "Mostrar réguas" (menu do mapa) e na Busca de ações. Sem chave ⓘ: o texto do canto já diz a escala. |
+
+## Classificação — dicas do editor (ADR-124, 20/11/2026)
+
+| Elemento | Nível |
+| --- | --- |
+| Texto da dica na barra de propriedades vazia | Auxiliar visível (texto puro do catálogo `js/editor-tips/`, até 200 caracteres, sem HTML). Não usa `aria-live`, para não interromper o leitor de tela a cada troca. |
+| Rótulo "Dica" | ⓘ `campanhas.editor.dicas` (mestre): troca a cada 30 s com pausa, nível de intimidade, sinais só neste navegador, como ocultar a barra. |
+| Dica anterior / Próxima dica | Ícones com nome acessível e tooltip. Anterior fica `disabled` na primeira dica. Alvos de 44 px em toque. |
+| Experimentar | Botão com texto; nome acessível "Experimentar: {ferramenta}". Só aparece quando a ferramenta está disponível. |
+| Próxima dica do editor (Busca de ações) | Comando com motivo quando indisponível. |
+
+## Classificação — janela de ação no ponto (ADR-125, 20/11/2026)
+
+| Elemento | Nível |
+| --- | --- |
+| Janela "Adicionar aqui · coluna X, linha Y" | Título visível com a casa. ⓘ `campanhas.cenas.reservados` na seção Personagem reservado. Estados vazio e carregando em texto. `role="dialog"` não modal. |
+| + Novo personagem aqui | Botão com texto. No limite de reservados fica `aria-disabled`, com o motivo em `data-tip`, e o servidor revalida o limite (409). |
+| Foco de luz / Marca oculta na casa | O ⓘ e os textos de ajuda dos formulários continuam iguais. Remover só aparece quando já existe algo na casa. |
+| Cenário, Visibilidade, Texto, Notas e fluxos em janela | O título do painel, com o ⓘ que já existia, vira o título da janela. Nenhuma chave nova. |
+| Fechar janela | Ícone com nome acessível "Fechar {título}". Esc fecha antes de dispensar dicas. No celular, folha inferior. |
+| Ajuda "Contextos, barra lateral e layout" | `campanhas.editor.contextos` ganhou o item "Janela de ação". |
+| ⓘ da Interface na barra compacta | `mesa.interface.apresentacao` continua visível; só a palavra "Interface" some, e o grupo mantém o nome por `aria-label`. |
+| ⓘ dos contextos no celular | Fica depois da barra de contextos, colado a ela. |
+

@@ -27,6 +27,8 @@ try {
   page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
   await page.goto(env.origin + "/");
   await page.waitForFunction(() => !!document.querySelector("#app, main"));
+  // Espera a abertura do app terminar: a rota inicial fecharia o modal do editor aberto antes disso.
+  await page.waitForFunction(() => !document.querySelector("#app").inert && !document.querySelector("#app").hasAttribute("aria-busy") && !!document.querySelector("#app h1, #app h2"), null, { timeout: 20000 });
 
   // Mapas enviados pelo próprio navegador (PNG gerado no canvas): fundo 640 × 640 (10 × 10 casas de 64 px) e dois
   // mapas menores com casa de 32 px (escala 2× ao inserir).

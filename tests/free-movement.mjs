@@ -55,8 +55,13 @@ try {
 
   // Formulário do acervo: três formas de usar a imagem, com ajuda.
   const m = await ui(master);
-  await m.goto(env.origin + `/#campaign/${c.id}/maps`);
-  await m.locator('[data-action=ca-upload]').first().click();
+  // Preparação unificada (ADR-081): Novo mapa › Criar do zero › Enviar imagem do dispositivo.
+  await m.goto(env.origin + `/#campaign/${c.id}/prep/maps`);
+  await m.locator('[data-px=new]').waitFor();
+  await m.waitForFunction(() => !document.querySelector('#app').inert);
+  await m.locator('[data-px=new]').click();
+  await m.locator('[data-pc=scratch]').click();
+  await m.locator('[data-pc=file]').click();
   await m.locator('input[name=useGrid][value=free]').waitFor();
   check(await m.locator('input[name=useGrid]').count(), 3, 'três opções de uso');
   await m.locator('input[name=useGrid][value=free]').check();

@@ -22,6 +22,8 @@ public class StoreAnalyticsService(GameDb db, TimeProvider clock, StoreViewToken
     {
         var surface = StoreSurfaces.All.Contains(x.Surface) ? x.Surface! : throw new RuleException(400, "Origem do clique inválida.");
         if (!await StoreQueries.Public(db).AnyAsync(p => p.Id == x.ProductId, ct)) throw new RuleException(404, "Produto não encontrado.");
+        // Administradores testam a loja: o clique abre o link, mas não entra em contador, CTR, ranking nem interesses.
+        if (await Admins().AnyAsync(id => id == userId, ct)) return;
         var now = clock.GetUtcNow().UtcDateTime;
         var since = now - Dedupe;
         if (await db.StoreInteractions.AnyAsync(i => i.UserId == userId && i.ProductId == x.ProductId && i.Surface == surface && i.CreatedAt >= since, ct)) return;
@@ -99,6 +101,9 @@ public class StoreAnalyticsService(GameDb db, TimeProvider clock, StoreViewToken
         catch (DbUpdateException e) when (SupportService.IsUniqueViolation(e)) { db.Entry(state).State = EntityState.Detached; }
     }
 
+    /// <summary>Usuários com papel de administrador (lido do banco). Excluídos dos cliques e das exibições do painel.</summary>
+    IQueryable<string> Admins() => db.Users.Where(u => u.Role == PlatformRoles.Admin).Select(u => u.Id);
+
     static double? Ctr(int clicks, int impressions) => impressions == 0 ? null : Math.Round(100.0 * clicks / impressions, 2);
     static double? Smoothed(int clicks, int impressions, double rate) => impressions == 0 ? null : Math.Round(100.0 * (clicks + CtrPrior * rate) / (impressions + CtrPrior), 2);
 
@@ -108,7 +113,10 @@ public class StoreAnalyticsService(GameDb db, TimeProvider clock, StoreViewToken
         var since = clock.GetUtcNow().UtcDateTime.AddDays(-window);
         var products = db.StoreProducts.AsNoTracking().Where(p => p.DeletedAt == null);
         var status = await products.GroupBy(p => p.Status).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct);
-        var clicks = db.StoreInteractions.AsNoTracking().Where(i => i.CreatedAt >= since);
+        // Administradores não contam: nem cliques antigos nem exibições (a rotação deles continua, mas fora do CTR).
+        var admins = Admins();
+        var clicks = db.StoreInteractions.AsNoTracking().Where(i => i.CreatedAt >= since && !admins.Contains(i.UserId));
+        var counted = db.StoreExposures.AsNoTracking().Where(e => !admins.Contains(e.UserId));
         var bySurface = await clicks.GroupBy(i => i.Surface).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct);
         var byProduct = await clicks.GroupBy(i => i.ProductId).Select(g => new { g.Key, Count = g.Count() }).OrderByDescending(g => g.Count).Take(10)
             .Join(db.StoreProducts, g => g.Key, p => p.Id, (g, p) => new { p.Id, p.Title, g.Count }).ToListAsync(ct);
@@ -122,7 +130,7 @@ public class StoreAnalyticsService(GameDb db, TimeProvider clock, StoreViewToken
             .Join(db.RpgSystems, g => g.Key, s => s.Id, (g, s) => new { s.Id, s.Name, g.Count }).ToListAsync(ct);
 
         // ---------- Exibições (ADR-108) ----------
-        var exposures = db.StoreExposures.AsNoTracking().Where(e => e.CreatedAt >= since);
+        var exposures = counted.Where(e => e.CreatedAt >= since);
         var byStrategy = await exposures.GroupBy(e => e.Strategy)
             .Select(g => new { g.Key, Impressions = g.Count(), Clicks = g.Count(e => e.ClickedAt != null) }).ToListAsync(ct);
         var impressions = byStrategy.Sum(s => s.Impressions);
@@ -132,11 +140,11 @@ public class StoreAnalyticsService(GameDb db, TimeProvider clock, StoreViewToken
             .Select(g => new { g.Key, Impressions = g.Count(), Clicks = g.Count(e => e.ClickedAt != null) }).OrderByDescending(g => g.Impressions).ThenBy(g => g.Key).Take(10)
             .Join(db.StoreProducts, g => g.Key, p => p.Id, (g, p) => new { p.Id, p.Title, g.Impressions, g.Clicks }).ToListAsync(ct);
         var active = StoreQueries.Public(db);
-        var leastShown = await active.Select(p => new { p.Id, p.Title, Impressions = db.StoreExposures.Count(e => e.ProductId == p.Id && e.CreatedAt >= since) })
+        var leastShown = await active.Select(p => new { p.Id, p.Title, Impressions = exposures.Count(e => e.ProductId == p.Id) })
             .OrderBy(p => p.Impressions).ThenBy(p => p.Title).ThenBy(p => p.Id).Take(10).ToListAsync(ct);
         var activeCount = await active.CountAsync(ct);
-        var shownActive = await active.CountAsync(p => db.StoreExposures.Any(e => e.ProductId == p.Id && e.CreatedAt >= since), ct);
-        var neverShown = await active.CountAsync(p => !db.StoreExposures.Any(e => e.ProductId == p.Id), ct);
+        var shownActive = await active.CountAsync(p => exposures.Any(e => e.ProductId == p.Id), ct);
+        var neverShown = await active.CountAsync(p => !counted.Any(e => e.ProductId == p.Id), ct);
         var marketShown = await exposures.Join(db.StoreProducts, e => e.ProductId, p => p.Id, (e, p) => p.Marketplace)
             .GroupBy(m => m).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Key, g => g.Count, ct);
         var categoryShown = await exposures.Join(db.StoreProducts, e => e.ProductId, p => p.Id, (e, p) => p.CategoryId).Where(c => c != null)
