@@ -91,7 +91,7 @@
 .table-shell .panel-tabs .ed-side-tab:not([aria-selected="true"]) > span {
   position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
 }
-.table-shell .chat-form { border-top: 1px solid var(--ed-line); }
+.table-shell .chat-form { border-top: 1px solid var(--ed-line); margin-top: 0; /* a borda separa; a margem de game.css só empurrava o campo para o rodapé */ }
 
 /* ---------- Palco ---------- */
 .table-shell #main.stage { background: #090a08 repeating-conic-gradient(#11130f 0 25%, #0b0c0a 0 50%) 0 0 / 24px 24px; }
@@ -232,6 +232,11 @@
 .table-shell .guest-chip.online { border-color: #7cc35b88; color: #d8e8cf; }
 /* Altura muito baixa (celular deitado com teclado): abas mais compactas para a conversa caber acima do rodapé (ADR-118). */
 @media (max-height: 300px) and (pointer: fine) {
-  .table-shell .side-panel > .ed-side-nav { padding-top: 2px; }
   .table-shell .panel-tabs .ed-side-tab { min-height: 32px; padding: 2px 8px; }
+}
+/* Também no toque (abas continuam com 44 px): menos respiro em volta da conversa. */
+@media (max-height: 300px) {
+  .table-shell .side-panel > .ed-side-nav { padding-top: 2px; }
+  .table-shell .side-panel > .panel-body { padding-block: 4px; }
+  .table-shell .chat-form { padding-block: 6px; }
 }

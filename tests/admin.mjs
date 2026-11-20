@@ -62,7 +62,7 @@ try {
   check(detail.audit.length, 1, "auditoria do alvo");
   check(detail.audit[0].actorName, "Rainha Admin", "nome do ator");
   ok(JSON.parse(detail.audit[0].data).before.role === "common", "auditoria guarda antes/depois");
-  check(detail.stats, { campaignsAsMaster: 0, campaignsAsMember: 0, characters: 0 }, "contagens do usuário");
+  check(detail.stats, { campaignsAsMaster: 0, campaignsAsMember: 0, characters: 0, storageBytes: 0 }, "contagens do usuário (com o espaço usado, Planos de conta)");
   // Embaixador agora acessa Staff mas não Admin.
   await common("/api/admin/overview", "GET", undefined, 403);
   await admin("/api/admin/users/" + idOf("comum") + "/role", "PUT", { role: "common", reason: "Fim do mandato" }, 204);

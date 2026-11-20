@@ -24,7 +24,8 @@ export function totp(secret, now = Date.now()) {
   return ((digest.readUInt32BE(digest[19] & 15) & 0x7fffffff) % 1000000).toString().padStart(6, "0");
 }
 
-export async function startEnvironment({ port = 5191, initialAdminPassword = "", startupTimeoutMs = 30000 } = {}) {
+// Migrações num banco novo passam de 30 s no PostgreSQL local; 120 s evita falso "Server failed".
+export async function startEnvironment({ port = 5191, initialAdminPassword = "", startupTimeoutMs = 120000 } = {}) {
   const temp = await mkdtemp(join(tmpdir(), "eternnus-integration-"));
   const database = "eternnus_test_" + randomUUID().replaceAll("-", ""),
     container = process.env.ETERNNUS_TEST_CONTAINER || "eternnus-postgres-dev",

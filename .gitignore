@@ -91,6 +91,7 @@ venv/
 # Material local de QA e transferência; não é o código ativo da aplicação.
 /Claude outputs/
 /continuacao-plataforma/
+/output/
 
 # Metadados do sistema operacional.
 .DS_Store

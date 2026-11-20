@@ -13,7 +13,7 @@ export const interfaceMode = () => normalizeInterface(state.user?.interfaceMode)
 /** Controle "Interface: [ Básica | Completa ]" (grupo de opções com rótulos visíveis). */
 export function interfaceToggle(id) {
   const current = interfaceMode();
-  return `<fieldset class="interface-toggle" data-interface-toggle><legend>Interface${helpButton("mesa.interface.apresentacao", "Interface Básica e Completa")}</legend>${INTERFACE_MODES.map(([value, label, help]) => `<label class="interface-option"><input type="radio" name="${esc(id)}" value="${value}" ${value === current ? "checked" : ""} aria-describedby="${esc(id)}-${value}"><span>${label}</span><small class="form-help" id="${esc(id)}-${value}">${esc(help)}</small></label>`).join("")}</fieldset>`;
+  return `<fieldset class="interface-toggle" data-interface-toggle aria-label="Interface"><legend><span class="interface-label">Interface</span>${helpButton("mesa.interface.apresentacao", "Interface Básica e Completa")}</legend>${INTERFACE_MODES.map(([value, label, help]) => `<label class="interface-option"><input type="radio" name="${esc(id)}" value="${value}" ${value === current ? "checked" : ""} aria-describedby="${esc(id)}-${value}"><span>${label}</span><small class="form-help" id="${esc(id)}-${value}">${esc(help)}</small></label>`).join("")}</fieldset>`;
 }
 
 /** Liga os controles dentro de `root`. Devolve a função de descarte. */

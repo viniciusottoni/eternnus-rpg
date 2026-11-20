@@ -1,5 +1,38 @@
 # Validação
 
+## Janela de ação no ponto e correções de testes (ADR-125) — 20 de novembro de 2026
+
+| Verificação | Resultado |
+| --- | --- |
+| `dotnet build apps/Eternnus.Web` | 0 erros, 0 avisos |
+| `node --test tests/*.test.mjs` | 451 testes, 0 falhas (inclui `popoverPosition` em editor-policy) |
+| `node tests/scene-cell-popup-ui.mjs` (novo; Chrome + PostgreSQL) | 42 verificações. Cobre + na casa (janela ao lado, dentro da tela, foco), + Novo personagem aqui, marcador avulso, Esc, clicar fora, uma janela por vez, menu de contexto, Texto e Cenário ao lado do botão, luz (criar, reabrir, remover), folha inferior no celular em pé e editor no celular deitado |
+| Regressões de interface | table-viewport 122, help-ui 501 (0 erros), editor-sidebar-ui 119, scene-editor 92, scene-slots-ui 29, party-slots-ui 26, editor-tips-ui 42, table-vtt-ui 65, soundtrack-ui 48, admin 162, free-movement ok, map-instances-ui ok (3 seguidas), tile-map-editor 22 + 45 HTTP, help-interactions 18 |
+
+Falhas antigas corrigidas nesta entrega:
+- **help-ui:** o teste foi para o contexto Cena antes de usar Cenário. No app, o ⓘ da Interface não some mais no topo compacto, e o ⓘ dos contextos fica depois da barra no celular. No celular, o teste deita o aparelho antes de abrir a mesa (ADR-056).
+- **scene-slots-ui:** o ensaio no celular fecha a lateral, que cobria o banner do ensaio.
+- **table-viewport:** a conversa cabe acima do rodapé com 240 px de altura (margem genérica de `game.css` zerada na mesa). O editor no celular deitado ganhou um layout próprio, com cerca de 240 px de mapa em vez de 45.
+- **admin:** `stats` inclui `storageBytes` (Planos de conta).
+- **free-movement:** o envio de mapa agora passa por Preparação › Novo mapa › Criar do zero › Enviar imagem (ADR-081).
+- **table-vtt-ui:** o UVTT vira paredes e portas vetoriais, e a porta é conferida no traço. A espera fixa da bolha de vida virou consulta com prazo.
+- **soundtrack-ui:** o jogador no celular usa a mesa deitada.
+- **map-instances-ui:** espera a abertura do app antes de abrir o editor; antes, a rota inicial fechava o modal.
+- **Harness:** o prazo padrão de subida do servidor passou de 30 s para 120 s, porque as migrações num banco novo passam de 30 s.
+
+Limites: em `table-vtt-ui`, `#mg-form` estourou o prazo uma vez sob carga, e 4 rodadas seguidas passaram depois. O editor deitado foi verificado em 844×390 emulado, e não em aparelho real.
+
+## Dicas do editor por contexto e intimidade (ADR-124) — 20 de novembro de 2026
+
+| Verificação | Resultado |
+| --- | --- |
+| `dotnet build apps/Eternnus.Web` | 0 erros, 0 avisos |
+| `node --test` editor-tips-policy (novo), pwa, service-worker, help-catalog, help-policy, help-fields, editor-policy, command-palette-policy, frontend, scene-policy, scene-editor-policy, editor-sidebar, editor-contexts | 98 testes, 0 falhas |
+| `node tests/editor-tips-ui.mjs` (novo; Chrome + PostgreSQL) | 43 verificações. Coberto: dica de nível 1 no primeiro contato; Básica sem dicas da Completa em 41 dicas; só o contexto atual ou dicas gerais; anterior/próxima; Paredes com dicas próprias; Experimentar ativa a ferramenta; troca após 30 s (relógio simulado); pausa com o ponteiro na barra; Próxima dica pela Busca de ações; sinais no localStorage; seleção esconde e desmarcar traz de volta no mapa de imagem; celular 390×844 com alvos de 44 px e sem rolagem horizontal; console sem erros. Capturas em `artifacts/qa-tips`. |
+| `node tests/editor-sidebar-ui.mjs` (regressão) | 119 verificações passaram |
+
+Limites: o teste novo precisa de `startupTimeoutMs: 180000`, porque as migrações passam dos 30 s padrão do harness. A precisão das 309 dicas foi conferida contra a documentação e o código, sem revisão humana. O editor de tiles não tem barra de propriedades e ficou sem dicas. Nesta captura do celular, o palco da cena apareceu escuro logo após abrir; não foi investigado se é só o tempo de carregamento da imagem.
+
 ## Ações em ícone, árvore de camadas, copiar/colar, limite do plano e descrição por linha (ADR-119 a 122) — 19 de novembro de 2026
 
 | Verificação | Resultado |

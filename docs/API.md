@@ -610,12 +610,12 @@ Contrato completo, formatos (`Card`, `Preferences`, `ProductInput`, `Settings`) 
 | `POST /store/impressions` | `{ view, productIds }` (1–3 cartões que ficaram ≥ 50% visíveis por ~1 s), 204. Token inválido, expirado, de outra pessoa ou produto fora da exibição: 400. Idempotente por usuário, ciclo e produto; avança o ciclo uma vez. Vitrine desligada/oculta: 204 sem gravar. Limite `store-impressions` (60/min). |
 | `GET`/`PUT /store/preferences` | Mostrar vitrine, usar sistemas das campanhas, consentimento para análise de mensagens (opt-in), sistema de interesse e `learnFromClicks`; inclui os termos inferidos e os sistemas aprendidos (`learnedSystems`) do próprio usuário. |
 | `DELETE /store/interests` | Apaga os interesses inferidos (204). |
-| `POST /store/interactions` | `{ productId, surface }` (`showcase`, `store`, `detail`), 204; limite `store` (30/min). |
+| `POST /store/interactions` | `{ productId, surface }` (`showcase`, `store`, `detail`), 204; limite `store` (30/min). Clique de Admin: 204 sem gravar (ADR-123). |
 | `/admin/store/products` (`GET`, `POST`), `/{id}` (`GET`, `PUT`, `DELETE` lógico), `/{id}/status` (`POST`) | Gestão com revisão (409 em conflito) e auditoria sem a URL afiliada. |
 | `POST /admin/store/preview-link` | `{ url }` → loja, identificador, metadados públicos quando permitidos, `notes`, `duplicateOf`; limite `store-preview` (20/5 min). |
 | `/admin/store/categories` (`GET`, `POST`, `PUT /{id}`, `DELETE /{id}`) | Taxonomia; excluir categoria com produtos: 409. |
 | `GET`/`PUT /admin/store/settings` | Vitrine, recomendação e rotação inteligente (revisão). Proporções das filas somam 100 e exploração ≥ 5: senão 400. |
-| `GET /admin/store/metrics?days=` | Agregados (7–365 dias): cliques, exibições, CTR atribuído e suavizado por fila e por produto, cobertura do catálogo ativo, menos exibidos, exibições por loja/sistema/categoria; `impressionsTracked: true`. Nunca dados individuais. |
+| `GET /admin/store/metrics?days=` | Agregados (7–365 dias): cliques, exibições, CTR atribuído e suavizado por fila e por produto, cobertura do catálogo ativo, menos exibidos, exibições por loja/sistema/categoria; `impressionsTracked: true`. Nunca dados individuais. Exclui cliques e exibições de administradores (ADR-123). |
 
 Excluir um sistema de RPG associado a produtos devolve 409 (`DELETE /admin/rpg-systems/{id}`).
 

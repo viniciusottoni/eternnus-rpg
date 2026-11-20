@@ -129,6 +129,15 @@ Réguas, dicas e tamanho (16/11/2026):
 
 Regras (`toolInContext`, `panelInContext`, `availableContexts`, `toolAfterContext`): ferramenta pertence ao contexto pelo próprio `context` (id, lista ou `"*"`), senão pela lista `tools`/`groups` do contexto; `commonTools` (Selecionar, Mão, Zoom) aparecem em todos; **ferramenta ou painel sem contexto declarado aparece sempre** (nada fica inalcançável). Ao trocar, a ferramenta atual continua se estiver visível; senão vale a `defaultTool` do contexto. O atalho de letra de uma ferramenta de outro contexto leva a esse contexto (os atalhos existentes continuam valendo). O último contexto escolhido fica salvo por tipo de editor.
 
+**Janela de ação no ponto** (ADR-125, `openFloatingPanel` em `editor-core.js`): criar ou editar algo numa casa abre uma janela não modal ao lado do clique, e nunca na lateral direita. O mesmo vale para as ferramentas básicas da esquerda que têm formulário. A posição vem de `popoverPosition` (`editor-policy.js`): à direita do ponto ou, sem espaço, à esquerda, sem cobrir a casa, sempre dentro da tela e reajustada quando o conteúdo cresce. No celular vira folha inferior. Esc, Fechar ou clicar fora fecham sem aplicar e devolvem o foco. Fica uma janela por vez, e abrir uma fecha a janela de propriedades.
+
+| Editor de cenas | Abre em janela | Fica na lateral direita |
+| --- | --- | --- |
+| Casa (ferramenta, menu de contexto, árvore) | Adicionar aqui (+ Novo personagem aqui, reservados, jogadores, NPCs, marcador avulso), Foco de luz, Marca oculta | — |
+| Ferramentas da esquerda | Cenário, Visibilidade, Texto compartilhável, Notas privadas (ao lado do botão) | Névoa, Recomeçar exploração, Ajustar grade, Configuração da cena |
+| Fluxos | Aplicar à cena, Reiniciar, Recolocar personagens, imagens novas, Imagem do marcador, Vincular personagem | Ensaio, conflito ao salvar, erros, paredes, diagnóstico, detalhes avançados |
+| Seleção | Duplo clique, Enter ou menu de contexto: janela de propriedades | Propriedades do selecionado, Organizar, Adicionar, Configurar |
+
 **Barra de propriedades** (`contextBar: true`, hoje no editor de imagem): faixa fixa acima (padrão) ou abaixo da área de edição, ou oculta (Exibir › Barra de propriedades). A altura fica reservada mesmo sem seleção, para o canvas não mudar de tamanho a cada clique. No editor de imagem mostra X, Y, largura, altura, giro, opacidade, camada e bloqueio do selecionado (conjunto: X, Y, opacidade, camada, bloqueio) e ações rápidas (todas as propriedades, alinhar ×6, distribuir ×2, agrupar/desagrupar, duplicar, excluir). Cada mudança é uma entrada do histórico. A janela de propriedades e o painel Propriedades continuam.
 
 API para outros editores: `shell.contextBar.show({ key, title, icon, fields, actions, onChange(name, value), onAction(id) })`, `update(values)` (durante arrastes; não mexe no campo em edição) e `hide()`. Campos: `{ name, label, type: number|text|select|checkbox|color, value, min, max, step, unit, options:[[valor, rótulo]], disabled, wide }`. Mesma `key` com o foco na barra só atualiza valores. Números fora de `min/max` são limitados; vazio ou inválido volta ao valor anterior.
@@ -270,3 +279,7 @@ Grava pelos campos existentes (`gridPixels`, `gridOffsetX`, `gridOffsetY`, `scal
 ## Grade, envio e mapas inseridos (19/11/2026, ADR-112/113)
 
 O assistente de alinhamento (§7.3) ganhou zoom sob o cursor, lupa, ajuste fino, tamanhos comuns, voltar ao alinhamento anterior/detectado e a prévia `grid-impact` antes de aplicar. O envio de imagens (§10) usa um fluxo único em `image-drop.js` nos dois editores. A composição da cena aceita instâncias de mapa (`mapKey`) encaixadas na grade global; regras do original só entram por "Trazer paredes, portas e luzes deste mapa". Ver [EVOLUCAO_VTT_TOKENS_MAPAS_UX.md](EVOLUCAO_VTT_TOKENS_MAPAS_UX.md).
+
+## Dicas na barra de propriedades (ADR-124, 20/11/2026)
+
+Sem seleção, a barra de propriedades dos editores de cena, de preparação do mapa e de mapa de imagem mostra dicas do catálogo `js/editor-tips/`. A escolha considera o contexto de trabalho, a interface Básica/Completa e o nível de intimidade do mestre, calculado só neste navegador. A dica troca a cada 30 s com pausa no ponteiro ou no foco. Há anterior/próxima, **Experimentar** (ativa a ferramenta citada) e "Próxima dica do editor" na Busca de ações. API: `shell.contextBar.tips` (`show`, `hide`, `refresh`, `record`, `next`). O núcleo registra ferramentas usadas, contextos visitados e aberturas. Detalhes e limites na ADR-124.

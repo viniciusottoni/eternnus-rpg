@@ -10,7 +10,7 @@ import { createBoard } from "./table-map.js";
 import { FOG_TOOLS, MARK_KINDS, WALL_KINDS, WALL_UNIT, paintLocal, toggleDoorLocal, sharedPreview } from "./fog-policy.js";
 import { layerDiff, diffSummary, snapPoint, constrainAngle, hitWall, polylineWalls, addWalls, moveVertex, splitWall, removeVertex, joinCollinear, translateWalls, copyWalls, wallsInBox, patchWalls, cellsToWalls, diagnose, diagnosticLayers } from "./wall-policy.js";
 import { interfaceMode, setInterfaceMode } from "./interface-mode.js";
-import { createEditorShell, openContextMenu, openPropertiesDialog, renderHistoryPanel, icon } from "./editor-core.js";
+import { createEditorShell, openContextMenu, openPropertiesDialog, openFloatingPanel, renderHistoryPanel, icon } from "./editor-core.js";
 import { renderOutline } from "./editor-outline.js";
 import { attachDrafts } from "./editor-drafts.js";
 import { addLayer, removeLayer, moveLayer, patchLayer, createHistory, isRequiredLayer, isTypingTarget, MAX_HISTORY } from "./editor-policy.js";
@@ -44,7 +44,9 @@ const LAYER_TOOLS = new Set(["reveal", "conceal", "wall", "blockMove", "blockLig
 /** Ferramentas de paredes vetoriais (ADR-087): o tabuleiro entrega o ponto exato do ponteiro. */
 const VECTOR_TOOLS = new Set(["vwall", "vedit"]);
 /** Painéis que existem também na Básica (os demais voltam ao resumo ao trocar para a Básica). */
-const BASIC_PANELS = new Set(["overview", "token", "add", "light", "mark", "hidden", "scenery", "visibility", "text", "notes"]);
+/** Mesmo corte do CSS em que a lateral abre por cima do mapa (celular e tablet). */
+const SHEET_MEDIA = "(max-width: 900px), (max-width: 1200px) and (pointer: coarse)";
+const BASIC_PANELS = new Set(["overview", "token", "hidden", "scenery", "visibility", "text", "notes"]);
 const LOCAL_TOOLS = {
   hand: ["Mão (mover a vista)", "Mão: arraste para percorrer o mapa. Espaço ou o botão do meio também movem a vista."],
   zoom: ["Zoom", "Zoom: clique para aproximar; com Alt ou Shift, afasta. A roda do mouse aproxima no cursor."],
@@ -115,7 +117,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   // Estado salvo (para recalcular "alterações não salvas" depois de desfazer/refazer).
   let savedScene = clone(draft), savedLayer = null;
   let sceneDirty = false, layerDirty = false, resetExploration = false;
-  let tool = "select", selection = [], pick = null, panel = "overview", simulate = false, grid = true, conflict = null, applying = false, busy = false;
+  let tool = "select", selection = [], pick = null, cellPop = null, flowPop = null, panel = "overview", simulate = false, grid = true, conflict = null, applying = false, busy = false;
   let error = "", closed = false;
   let drafts = null; // rascunho local e versões (ADR-083), ligado depois de carregar a preparação do mapa
   let mode = interfaceMode();
@@ -257,7 +259,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   const root = shell.root;
   root.classList.add("scene-editor");
   root.dataset.tool = tool;
-  const q = (sel) => root.querySelector(sel);
+  const q = (sel) => root.querySelector(sel) || flowPop?.handle.body.querySelector(sel) || cellPop?.handle.body.querySelector(sel) || null;
   shell.stage.innerHTML = `<div class="ed-stage-banner se-sim-banner" id="se-sim" role="note" hidden></div><div class="board se-board" id="se-board"></div><div class="se-compose" id="se-compose" hidden></div><div class="se-start" id="se-start" hidden></div><div class="se-text-preview" id="se-text" hidden></div><p class="se-hint" id="se-hint" role="status" hidden></p><input type="file" id="se-files" accept="image/png,image/jpeg" multiple hidden>`;
   const boardHost = q("#se-board");
   const nameInput = q("#se-name");
@@ -668,7 +670,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     }
     if (mods.add) selection = selection.includes(i) ? selection.filter((x) => x !== i) : [...selection, i];
     else selection = [i];
-    pick = null; panel = selection.length ? "token" : "overview";
+    closeCellPop(); panel = selection.length ? "token" : "overview";
     refreshSelection();
   }
   function onCell(c) {
@@ -681,14 +683,14 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       if (selection.length && !mods.add) { selection = []; panel = "overview"; refreshSelection(); }
       return;
     }
-    if (tool === "add" || tool === "npc") { pick = c; selection = []; panel = "add"; renderSide(); showProps(); return focusFirst(); }
+    if (tool === "add" || tool === "npc") return openCellPop("add", c);
     if (tool === "toggleDoor") {
       const next = toggleDoorLocal(layer, c.x, c.y);
       if (!next) return say("Não há porta nessa casa.");
       change("Abrir ou fechar porta", () => { layer = next; });
       return refresh();
     }
-    if (tool === "light" || tool === "mark") { pick = c; panel = tool; renderSide(); showProps(); }
+    if (tool === "light" || tool === "mark") openCellPop(tool, c);
   }
   function paintCells(id, cells) {
     if (simulate || !layer || layerLocked()) return;
@@ -996,7 +998,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const problem = placementProblem(layer?.cells, width(), height(), draft.prepared, cell.x, cell.y, -1, freeOn(), tokenSpan(token));
     if (problem) { say(problem); return false; }
     change(label, () => { draft.prepared.push({ ...token, ...fineOf(cell), hidden: !!token.hidden, layer: activeTokenLayer() }); });
-    selection = [draft.prepared.length - 1]; panel = "token"; pick = null;
+    selection = [draft.prepared.length - 1]; panel = "token"; closeCellPop(true);
     refresh();
     return true;
   }
@@ -1114,8 +1116,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     refreshSelection();
   }
   function deselect() {
-    selection = []; pick = null;
-    if (["token", "add", "light", "mark"].includes(panel)) panel = "overview";
+    selection = []; closeCellPop();
+    if (panel === "token") panel = "overview";
     refreshSelection();
   }
   function layerAction(action, id, value) {
@@ -2004,7 +2006,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       items.push(
         { label: "Colocar personagem de jogador aqui", items: pcs, disabled: !pcs.length, disabledReason: characters.length ? "Todos os personagens dos jogadores já estão na cena." : "Nenhum personagem de jogador vinculado à campanha ainda." },
         { label: "Colocar personagem do mestre aqui", items: masters, disabled: !masters.length, disabledReason: "Crie personagens do mestre na Preparação (pasta Personagens)." },
-        { label: "Adicionar marcador aqui", hint: "Criatura, aliado ou objeto", run: () => { pick = cell; selection = []; panel = "add"; renderSide(); showProps(); focusFirst(); } },
+        { label: "Adicionar marcador aqui", hint: "Criatura, aliado ou objeto", run: () => openCellPop("add", cell) },
         { label: "Colar aqui", shortcut: "mod+v", disabled: !clipboard.length, disabledReason: "Copie ou recorte um marcador antes.", run: () => paste(cell) },
       );
     } else if (!mapOnly && draft.kind !== "text") {
@@ -2018,8 +2020,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (cell && tactical && mode === "complete") {
       const locked = layerLocked() ? "Salve o alcance da preparação antes de editar o mapa." : null;
       items.push({ separator: true },
-        { label: "Foco de luz aqui", disabled: !!locked, disabledReason: locked, run: () => { pick = cell; panel = "light"; renderSide(); showProps(); focusFirst(); } },
-        { label: "Marca oculta aqui", disabled: !!locked, disabledReason: locked, run: () => { pick = cell; panel = "mark"; renderSide(); showProps(); focusFirst(); } });
+        { label: "Foco de luz aqui", disabled: !!locked, disabledReason: locked, run: () => openCellPop("light", cell) },
+        { label: "Marca oculta aqui", disabled: !!locked, disabledReason: locked, run: () => openCellPop("mark", cell) });
     }
     if (cell && tactical && manual() && !layerLocked()) {
       items.push({ separator: true },
@@ -2120,12 +2122,96 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     ].filter(Boolean);
   }
 
+  // ---------- Janela de ação no ponto (ADR-125) ----------
+  // Adicionar marcador/personagem, foco de luz e marca oculta abrem ao lado da casa; a barra lateral fica para configurações.
+  const POP_TITLE = { add: "Adicionar aqui", light: "Foco de luz", mark: "Marca oculta" };
+  const inEditor = (el) => root.contains(el) || !!cellPop?.handle.element.contains(el) || !!flowPop?.handle.element.contains(el);
+  function openCellPop(kind, cell) {
+    if (!cell || (kind !== "add" && !layer)) return;
+    closeCellPop();
+    pick = { x: cell.x, y: cell.y };
+    if (kind === "add") { loadNpcs(); if (selection.length) { selection = []; if (panel === "token") panel = "overview"; refreshSelection(); } }
+    const r = board.camera.cellRect(pick);
+    const handle = openFloatingPanel({
+      title: `${POP_TITLE[kind]} · coluna ${pick.x + 1}, linha ${pick.y + 1}`, label: POP_TITLE[kind],
+      html: kind === "add" ? addPanel() : kind === "light" ? lightPanel() : markPanel(),
+      at: r ? { x: r.x + r.size / 2, y: r.y, gap: r.size / 2 + 10 } : null,
+      onClose: () => { if (cellPop?.handle === handle) { cellPop = null; pick = null; } },
+    });
+    wirePop(handle.element);
+    cellPop = { kind, handle };
+  }
+  /** Fecha a janela de ação; `restore` devolve o foco a quem a abriu (após concluir a ação). */
+  function closeCellPop(restore = false) { const h = cellPop?.handle; cellPop = null; pick = null; h?.close(restore); }
+  // Fluxos temporários e ferramentas básicas da esquerda também abrem em janela; a lateral fica com propriedades e ajustes avançados.
+  const POP_PANELS = new Set(["scenery", "visibility", "text", "notes"]);
+  const FLOW_TITLE = { start: "Imagens novas", imagePick: "Imagem", binding: "Vincular personagem", reposition: "Recolocar personagens", apply: "Aplicar à cena", scenery: "Escolher cenário", visibility: "Visibilidade", text: "Texto compartilhável", notes: "Notas privadas" };
+  function flowKey() {
+    if (error || conflict) return null;
+    if (startChoice && !startChoice.pick && draft.mapKey) return "start";
+    if (imagePick) return "imagePick";
+    if (binding) return "binding";
+    if (applying === "reposition") return "reposition";
+    if (applying) return "apply";
+    return POP_PANELS.has(panel) ? panel : null;
+  }
+  function flowHtml(key) {
+    return ({ start: startPanel, imagePick: imagePickPanel, binding: bindPanel, reposition: repositionPanel, apply: applyPanel, scenery: sceneryPanel, visibility: visibilityPanel, text: textPanel, notes: notesPanel })[key]();
+  }
+  function wirePop(el) {
+    for (const [type, fn] of [["click", onClick], ["input", onInput], ["change", onChange], ["submit", onSubmit], ["focusout", onFocusOut]]) el.addEventListener(type, fn);
+  }
+  /** O título do painel (com a ajuda ⓘ) vira o título da janela. */
+  function adoptHeading(handle) {
+    const h = handle.body.querySelector(".se-panel > h3:first-child"), title = handle.element.querySelector(".ed-props-head h3");
+    if (!h || !title) return;
+    title.replaceChildren(...h.childNodes);
+    if (h.id) handle.body.querySelector(`[aria-labelledby="${CSS.escape(h.id)}"]`)?.setAttribute("aria-labelledby", title.id);
+    h.remove();
+  }
+  function closeFlowPop() { const h = flowPop?.handle; flowPop = null; h?.close(false); }
+  function syncFlowPop() {
+    const key = flowKey();
+    if (!key) return closeFlowPop();
+    if (flowPop?.key === key) {
+      // Texto e notas: a digitação continua (o rascunho já guarda cada tecla).
+      if (key === "text" || key === "notes") return;
+      const focusId = flowPop.handle.element.contains(document.activeElement) ? document.activeElement.id : "";
+      flowPop.handle.body.innerHTML = flowHtml(key);
+      adoptHeading(flowPop.handle);
+      if (focusId) flowPop.handle.body.querySelector(`#${CSS.escape(focusId)}`)?.focus({ preventScroll: true });
+      return;
+    }
+    closeFlowPop(); closeCellPop();
+    const anchor = root.querySelector(`.ed-tools [data-ed-tool="${key}"]`);
+    const handle = openFloatingPanel({
+      title: FLOW_TITLE[key], label: FLOW_TITLE[key], html: flowHtml(key),
+      at: anchor?.checkVisibility() ? anchor : null,
+      onClose: () => { if (flowPop?.handle === handle) { flowPop = null; cancelFlow(key); } },
+    });
+    wirePop(handle.element);
+    flowPop = { key, handle };
+    adoptHeading(handle);
+    shell.refreshTools();
+  }
+  /** Fechar a janela (Esc, Fechar, clicar fora) cancela o fluxo; nada é salvo ou aplicado. */
+  function cancelFlow(key) {
+    if (key === "start") startChoice = null;
+    else if (key === "imagePick") imagePick = null;
+    else if (key === "binding") binding = null;
+    else if (key === "apply" || key === "reposition") { if (busy) return; applying = false; reposition = null; }
+    else if (panel === key) panel = "overview";
+    if (closed) return;
+    renderSide(); shell.refreshTools();
+  }
+  function refreshPopNpcs() { const s = cellPop?.kind === "add" && cellPop.handle.element.querySelector("[data-pop-npcs]"); if (s) s.outerHTML = npcPickSection(); }
+
   // ---------- Painéis à direita ----------
-  function showProps() { shell.setPanels(true); shell.togglePanel("props", true); }
-  function focusFirst() { setTimeout(() => shell.panel("props")?.querySelector("input:not([type=hidden]):not(:disabled), select, textarea")?.focus(), 0); }
+  /** Abre a lateral nas propriedades. Fluxos da janela de ação (ADR-125) não abrem a lateral. */
+  function showProps() { if (flowKey()) return; shell.setPanels(true); shell.togglePanel("props", true); }
   function openPanel(id) {
     if (simulate && !leaveRehearsal()) return;
-    panel = id; pick = null; selection = []; applying = false; binding = null; imagePick = null;
+    panel = id; closeCellPop(); selection = []; applying = false; binding = null; imagePick = null;
     renderAll(); showProps();
   }
   // ---------- Organizar: árvore unificada (ADR-118) ----------
@@ -2347,7 +2433,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const [kindOf, x, y] = id.split(":");
     const cell = { x: Number(x), y: Number(y) };
     lastCell = cell;
-    if (kindOf === "light" || kindOf === "mark") { pick = cell; panel = kindOf; selection = []; renderSide(); showProps(); return say(`Coluna ${cell.x + 1}, linha ${cell.y + 1}.`); }
+    if (kindOf === "light" || kindOf === "mark") { if (selection.length) { selection = []; if (panel === "token") panel = "overview"; refreshSelection(); } return openCellPop(kindOf, cell); }
     if (kindOf === "door") say(`Porta na coluna ${cell.x + 1}, linha ${cell.y + 1}. Use “Abrir ou fechar porta” (O) para alternar.`);
   }
 
@@ -2797,23 +2883,20 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function sidePanel() {
     if (error) return `<div class="se-panel"><p class="form-error" role="alert">${esc(error)}</p>${button("Entendi", "se-dismiss", "", "subtle")}</div>`;
     if (conflict) return `<div class="se-panel se-conflict" role="alert"><h3>Outra tela salvou antes</h3><p>${esc(conflict)}</p><p class="form-help">Suas alterações continuam aqui. Recarregar guarda este rascunho no navegador (Arquivo › Rascunho local…); "Salvar como nova cena" grava a cena numa cópia, sem tocar na outra.</p><div class="form-actions">${button("Continuar editando", "se-dismiss", "", "subtle")}${!mapOnly && saved.id ? button("Salvar como nova cena", "se-save-copy", "", "subtle") : ""}${button("Recarregar a versão salva", "se-reload", "", "danger")}</div></div>`;
-    if (startChoice && !startChoice.pick && draft.mapKey) return startPanel();
-    if (imagePick) return imagePickPanel();
-    if (binding) return bindPanel();
     if (simulate && rehearsal) return rehearsalPanel();
-    if (applying === "reposition") return repositionPanel();
-    if (applying) return applyPanel();
     if (shell.context === "compose" && !mapOnly && draft.kind !== "text") return composePanel();
     if (panel === "entries" || (tool === "entry" && panel === "overview" && meta)) return entriesPanel();
     if (panel === "token" && selection.length > 1) return multiPanel();
     if (panel === "token" && selection.length === 1 && draft.prepared[selection[0]]) return tokenPanel(draft.prepared[selection[0]]);
-    if (panel === "add" && pick) return addPanel();
-    if (panel === "light" && pick && layer) return lightPanel();
-    if (panel === "mark" && pick && layer) return markPanel();
-    if (panel === "scenery") return sceneryPanel();
-    if (panel === "visibility") return visibilityPanel();
-    if (panel === "text") return `<div class="se-panel"><h3>Texto compartilhável${helpButton("campanhas.cenas.preparacao", "Preparar e apresentar")}</h3><p class="form-help">${esc(HELP.text)}</p><label class="sr-only" for="se-shared">Texto compartilhável</label><textarea id="se-shared" data-draft="sharedText" maxlength="2000" rows="8" placeholder="O que o grupo vê ao chegar">${esc(draft.sharedText)}</textarea></div>`;
-    if (panel === "notes") return `<div class="se-panel"><h3>Notas privadas</h3><p class="form-help">${esc(HELP.notes)}</p><label class="sr-only" for="se-notes">Notas privadas</label><textarea id="se-notes" data-draft="privateNotes" maxlength="4000" rows="8">${esc(draft.privateNotes)}</textarea></div>`;
+    return advancedPanel();
+  }
+  function textPanel() {
+    return `<div class="se-panel"><h3>Texto compartilhável${helpButton("campanhas.cenas.preparacao", "Preparar e apresentar")}</h3><p class="form-help">${esc(HELP.text)}</p><label class="sr-only" for="se-shared">Texto compartilhável</label><textarea id="se-shared" data-draft="sharedText" maxlength="2000" rows="8" placeholder="O que o grupo vê ao chegar">${esc(draft.sharedText)}</textarea></div>`;
+  }
+  function notesPanel() {
+    return `<div class="se-panel"><h3>Notas privadas</h3><p class="form-help">${esc(HELP.notes)}</p><label class="sr-only" for="se-notes">Notas privadas</label><textarea id="se-notes" data-draft="privateNotes" maxlength="4000" rows="8">${esc(draft.privateNotes)}</textarea></div>`;
+  }
+  function advancedPanel() {
     if (panel === "sceneSettings") return settingsPanel();
     if (panel === "fogState") return fogPanel();
     if (panel === "walls" || ((tool === "vwall" || tool === "vedit") && panel === "overview" && meta)) return wallPanel();
@@ -2949,10 +3032,31 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function addPanel() {
     const placed = new Set(draft.prepared.map((t) => t.characterId).filter(Boolean));
     const free = characters.filter((c) => !placed.has(c.id));
+    // Personagens primeiro (o caso mais comum), depois o marcador avulso. Tudo nesta janela, sem a barra lateral (ADR-125).
+    const slots = slotStore.items.filter((x) => slotIndex(draft.prepared, x.id) < 0);
+    const full = slotStore.items.length >= MAX_SLOTS;
+    const reserved = `<section class="se-subform"><div class="field-label"><h4>Personagem reservado</h4>${helpButton("campanhas.cenas.reservados", "Personagens reservados")}</div>${button("+ Novo personagem aqui", "se-add-new-slot", "", "primary", `data-pop-focus${full ? ` aria-disabled="true" data-tip="Use até ${MAX_SLOTS} personagens reservados por campanha."` : ""}`)}${slots.length ? `<ul class="se-pick-list">${slots.map((x) => `<li><span>${esc(x.name)}${x.characterName ? `<small>${esc(x.characterName)}</small>` : ""}</span>${button("Colocar aqui", "se-add-slot", x.id, "subtle small")}</li>`).join("")}</ul>` : ""}</section>`;
+    return `<div class="se-panel se-pop-panel">${reserved}
+      <section class="se-subform"><h4>Personagem dos jogadores</h4>${free.length ? `<ul class="se-pick-list">${free.map((c) => `<li><span>${esc(c.name)}</span>${button("Colocar aqui", "se-add-character", c.id, "subtle small")}</li>`).join("")}</ul>` : `<p class="muted small">${characters.length ? "Todos os personagens da campanha já estão na cena." : "Nenhum jogador entrou ainda. Use um personagem reservado e vincule depois."}</p>`}</section>
+      ${npcPickSection()}
+      <form data-add-marker class="se-subform"><h4>Marcador avulso</h4><div class="field"><label for="se-a-label">Nome</label><input id="se-a-label" name="label" maxlength="40" required placeholder="Guarda da ponte"></div><div class="field"><label for="se-a-side">Lado</label><select id="se-a-side" name="side">${opt(SIDES, "enemy")}</select></div><label class="check"><input type="checkbox" name="hidden"> Oculto: só você vê até revelar</label><button type="submit" class="primary">Adicionar marcador</button></form></div>`;
+  }
+  /** "+ Novo personagem aqui": cria o reservado e já o coloca na casa escolhida. */
+  async function createSlotAt(cell) {
+    if (slotBusy || !cell) return;
+    if (slotStore.items.length >= MAX_SLOTS) return say(`Use até ${MAX_SLOTS} personagens reservados por campanha.`);
+    const at = { x: cell.x, y: cell.y };
+    slotBusy = true;
+    try {
+      const s = await slotStore.create({ name: nextSlotName(slotStore.items.map((x) => x.name), "Personagem", true), archetype: null });
+      if (closed) return;
+      if (placeRef(`slot:${s.id}`, at)) say(`“${s.name}” criado nesta casa. Renomeie em Propriedades e vincule um jogador quando ele entrar.`);
+    } catch (e) { say(e.status === 409 ? `Use até ${MAX_SLOTS} personagens reservados por campanha.` : e.message); }
+    finally { slotBusy = false; if (!closed) { renderCharacterList(); renderAssets(); } }
+  }
+  function npcPickSection() {
     const npcList = (npcs || []).filter((n) => !n.copy);
-    return `<div class="se-panel"><h3>Adicionar na casa ${pick.x + 1}, ${pick.y + 1}</h3><form data-add-marker class="se-subform"><h4>Marcador</h4><div class="field"><label for="se-a-label">Nome</label><input id="se-a-label" name="label" maxlength="40" required placeholder="Guarda da ponte"></div><div class="field"><label for="se-a-side">Lado</label><select id="se-a-side" name="side">${opt(SIDES, "enemy")}</select></div><label class="check"><input type="checkbox" name="hidden"> Oculto: só você vê até revelar</label><button type="submit" class="primary">Adicionar marcador</button></form>
-      <section class="se-subform"><h4>Personagem dos jogadores</h4>${free.length ? `<ul class="se-pick-list">${free.map((c) => `<li><span>${esc(c.name)}</span>${button("Colocar aqui", "se-add-character", c.id, "subtle small")}</li>`).join("")}</ul>` : `<p class="muted small">${characters.length ? "Todos os personagens da campanha já estão na cena." : "Nenhum personagem vinculado à campanha ainda."}</p>`}</section>
-      <section class="se-subform"><h4>Personagem do mestre</h4>${npcs == null ? '<p class="loading-line" role="status">Carregando…</p>' : npcList.length ? `${placeLookField("add")}<ul class="se-pick-list">${npcList.map((n) => `<li><span>${esc(n.name)}<small>${esc(n.summary || "")}</small></span>${button("Colocar aqui", "se-add-npc", n.id, "subtle small")}</li>`).join("")}</ul><p class="form-help">Na mesa, “Cópia para o encontro” ajusta recursos sem alterar o original.</p>` : '<p class="muted small">Crie personagens do mestre na Preparação (pasta Personagens).</p>'}</section></div>`;
+    return `<section class="se-subform" data-pop-npcs><h4>Personagem do mestre</h4>${npcs == null ? '<p class="loading-line" role="status">Carregando…</p>' : npcList.length ? `${placeLookField("add")}<ul class="se-pick-list">${npcList.map((n) => `<li><span>${esc(n.name)}<small>${esc(n.summary || "")}</small></span>${button("Colocar aqui", "se-add-npc", n.id, "subtle small")}</li>`).join("")}</ul><p class="form-help">Na mesa, “Cópia para o encontro” ajusta recursos sem alterar o original.</p>` : '<p class="muted small">Crie personagens do mestre na Preparação (pasta Personagens).</p>'}</section>`;
   }
   /** Preenche raio e penumbra pela predefinição; "Personalizado" abre o campo do raio (Básica). */
   function applyLightPreset(select) {
@@ -2984,11 +3088,11 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     const radius = mode === "complete"
       ? radiusField
       : `<details class="light-custom" data-light-custom ${presetId === CUSTOM ? "open" : ""}><summary>Personalizar</summary>${radiusField}</details><input type="hidden" name="dim" data-light-dim value="${initial?.dim ?? ""}" ${initial ? "" : "disabled"}>`;
-    return `<form class="se-panel" data-light-form><h3>Foco de luz · coluna ${pick.x + 1}, linha ${pick.y + 1}</h3><p class="form-help">${esc(HELP.light)}</p>${presets}${radius}${advanced}<div class="form-actions">${light ? iconButton("trash", "Apagar foco", "se-light-remove", "", "subtle danger-text") : ""}<button type="submit" class="primary">${light ? "Atualizar" : "Adicionar"}</button></div></form>`;
+    return `<form class="se-panel se-pop-panel" data-light-form><p class="form-help">${esc(HELP.light)}</p>${presets}${radius}${advanced}<div class="form-actions">${light ? iconButton("trash", "Apagar foco", "se-light-remove", "", "subtle danger-text") : ""}<button type="submit" class="primary">${light ? "Atualizar" : "Adicionar"}</button></div></form>`;
   }
   function markPanel() {
     const mark = layer.marks.find((m) => m.x === pick.x && m.y === pick.y);
-    return `<form class="se-panel" data-mark-form><h3>Marca oculta · coluna ${pick.x + 1}, linha ${pick.y + 1}</h3><p class="form-help">${esc(HELP.mark)}</p><div class="field"><label for="se-kind">Tipo</label><select id="se-kind" name="kind">${MARK_KINDS.map(([v, l]) => `<option value="${v}" ${mark?.kind === v ? "selected" : ""}>${l}</option>`).join("")}</select></div><div class="field"><label for="se-mlabel">Nome</label><input id="se-mlabel" name="label" maxlength="40" required value="${esc(mark?.label || "")}"></div><fieldset><legend>Revelação automática (opcional)</legend><div class="field"><label for="se-dc">Dificuldade de percepção</label><input id="se-dc" name="dc" type="number" min="-100" max="1000" value="${mark?.dc ?? ""}"></div><div class="field"><label for="se-maxd">Distância máxima (casas)</label><input id="se-maxd" name="maxDistance" type="number" min="0" max="30" value="${mark?.maxDistance ?? ""}"></div><div class="field"><label for="se-sense">Sentido que detecta</label><input id="se-sense" name="sense" maxlength="40" value="${esc(mark?.sense || "")}"></div><p class="form-help">Sem dificuldade nem sentido, só você revela, pela mesa.</p></fieldset><div class="form-actions">${mark ? iconButton("trash", "Remover marca", "se-mark-remove", "", "subtle danger-text") : ""}<button type="submit" class="primary">${mark ? "Atualizar" : "Adicionar"}</button></div></form>`;
+    return `<form class="se-panel se-pop-panel" data-mark-form><p class="form-help">${esc(HELP.mark)}</p><div class="field"><label for="se-kind">Tipo</label><select id="se-kind" name="kind">${MARK_KINDS.map(([v, l]) => `<option value="${v}" ${mark?.kind === v ? "selected" : ""}>${l}</option>`).join("")}</select></div><div class="field"><label for="se-mlabel">Nome</label><input id="se-mlabel" name="label" maxlength="40" required value="${esc(mark?.label || "")}"></div><fieldset><legend>Revelação automática (opcional)</legend><div class="field"><label for="se-dc">Dificuldade de percepção</label><input id="se-dc" name="dc" type="number" min="-100" max="1000" value="${mark?.dc ?? ""}"></div><div class="field"><label for="se-maxd">Distância máxima (casas)</label><input id="se-maxd" name="maxDistance" type="number" min="0" max="30" value="${mark?.maxDistance ?? ""}"></div><div class="field"><label for="se-sense">Sentido que detecta</label><input id="se-sense" name="sense" maxlength="40" value="${esc(mark?.sense || "")}"></div><p class="form-help">Sem dificuldade nem sentido, só você revela, pela mesa.</p></fieldset><div class="form-actions">${mark ? iconButton("trash", "Remover marca", "se-mark-remove", "", "subtle danger-text") : ""}<button type="submit" class="primary">${mark ? "Atualizar" : "Adicionar"}</button></div></form>`;
   }
   function sceneryPanel() {
     return `<div class="se-panel se-scenery"><h3>Escolher cenário</h3>${mapOnly ? "" : `<fieldset class="se-kind"><legend>Tipo de cena</legend>${SCENE_KINDS.map(([v, l, help]) => `<label class="check se-option"><input type="radio" name="se-kind" value="${v}" ${draft.kind === v ? "checked" : ""}><span><strong>${esc(l)}</strong><small>${esc(help)}</small></span></label>`).join("")}</fieldset>`}${draft.kind === "text" ? '<p class="form-help">Cenas textuais não trocam o mapa da mesa.</p>' : '<div id="se-picker"></div><p class="form-help">Escolher só muda a prévia. Nada é mostrado aos jogadores até você apresentar a cena.</p>'}</div>`;
@@ -3060,6 +3164,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   function renderSide() {
     disposePicker(); disposePicker = () => {};
     disposeGrid?.dispose(); disposeGrid = null;
+    syncFlowPop();
     const hidden = mode === "basic" ? hiddenCustomizations({ layer: meta ? layer : null, scene: { layerMode: draft.layerMode, description: draft.description }, tokens: draft.prepared }) : [];
     const chip = hidden.length && panel !== "hidden" ? `<button type="button" class="se-hidden-chip" data-action="se-panel" data-id="hidden">Ajustes avançados ativos (${hidden.length}) · ver detalhes</button>` : "";
     shell.panel("props").innerHTML = chip + sidePanel();
@@ -3114,7 +3219,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     board.interact();
     // Mão, zoom e seleção continuam no ensaio; as demais ferramentas editam a preparação e encerram o ensaio.
     if (simulate && !["select", "hand", "zoom"].includes(id) && !leaveRehearsal()) { tool = "select"; shell.setTool("select"); board.camera.setPan(false); return renderAll(); }
-    tool = id; pick = null;
+    tool = id; closeCellPop();
     if (!VECTOR_TOOLS.has(id)) { wallPts = []; vdrag = null; vpoint = null; if (id !== "select") wallSel = []; }
     root.dataset.tool = id;
     board.camera.setPan(id === "hand");
@@ -3130,6 +3235,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (def && next !== "complete" && def.basic === false) { tool = "select"; shell.setTool("select"); board.camera.setPan(false); }
     if (next !== "complete" && !BASIC_PANELS.has(panel)) panel = "overview";
     if (next === "complete" && panel === "hidden") panel = "overview";
+    closeCellPop();
     renderAll();
   }
   /**
@@ -3143,9 +3249,11 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     commitTyping();
     const sandbox = sandboxFrom(draft.prepared);
     rehearsal = { start: clone(sandbox), sandbox, observer: defaultObserver(sandbox), profiles: new Map(), past: [], counter: 0, selected: null };
-    simulate = true; selection = []; pick = null; serverView = null; serverViewError = ""; binding = null; imagePick = null;
-    if (["token", "add", "light", "mark"].includes(panel)) panel = "overview";
-    renderAll(); showProps();
+    simulate = true; selection = []; closeCellPop(); serverView = null; serverViewError = ""; binding = null; imagePick = null;
+    if (panel === "token") panel = "overview";
+    renderAll();
+    // No celular e no tablet a lateral fica por cima do mapa e cobriria o banner do ensaio: fecha; o botão do topo reabre.
+    if (matchMedia(SHEET_MEDIA).matches) shell.setPanels(false); else showProps();
     say(sandbox.length ? "Ensaio aberto: mova, teste a luz e a visão à vontade. Nada vai para a mesa." : "Ensaio aberto: acrescente um token de ensaio para testar a visão.");
   }
   function onEscape(e) {
@@ -3315,7 +3423,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       if (nameInput) nameInput.value = draft.name;
     }
     await loadLayer();
-    selection = []; pick = null; activeLayer = "elements";
+    selection = []; closeCellPop(); activeLayer = "elements";
     resetHistory("Versão salva recarregada.");
     recomputeDirty(); renderAll();
   }
@@ -3343,7 +3451,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   // ---------- Eventos ----------
   async function onClick(e) {
     const b = e.target.closest("[data-action^='se-']");
-    if (!b || b.disabled || !root.contains(b)) return;
+    if (!b || b.disabled || !inEditor(b)) return;
     if (b.getAttribute("aria-disabled") === "true") { if (b.dataset.tip) say(b.dataset.tip); return; }
     const id = b.dataset.id;
     switch (b.dataset.action) {
@@ -3366,7 +3474,9 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       case "se-place-cursor": return placeAtCursor(id);
       case "se-add-character": return pick && placeRef(`pc:${id}`, pick);
       case "se-add-npc": return pick && placeRef(`npc:${id}`, pick);
-      case "se-light-remove": change("Apagar foco de luz", () => { layer = { ...layer, lights: layer.lights.filter((l) => l.x !== pick.x || l.y !== pick.y) }; }); pick = null; panel = "overview"; return refresh();
+      case "se-add-slot": return pick && placeRef(`slot:${id}`, pick);
+      case "se-add-new-slot": return createSlotAt(pick);
+      case "se-light-remove": change("Apagar foco de luz", () => { layer = { ...layer, lights: layer.lights.filter((l) => l.x !== pick.x || l.y !== pick.y) }; }); closeCellPop(true); return refresh();
       case "se-start": return startAction(id);
       case "se-start-cancel": startChoice = null; renderSide(); return renderStage();
       case "se-replace-bg": startChoice = { files: null, replace: true, pick: true }; return pickImages();
@@ -3387,7 +3497,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       case "se-distribute": return distributeParty();
       case "se-entry-remove": change("Excluir ponto de entrada", () => { mapEntries = mapEntries.filter((x) => x.id !== id); }); return refresh();
       case "se-reposition-go": return applyReposition();
-      case "se-mark-remove": change("Remover marca oculta", () => { layer = { ...layer, marks: layer.marks.filter((m) => m.x !== pick.x || m.y !== pick.y) }; }); pick = null; panel = "overview"; return refresh();
+      case "se-mark-remove": change("Remover marca oculta", () => { layer = { ...layer, marks: layer.marks.filter((m) => m.x !== pick.x || m.y !== pick.y) }; }); closeCellPop(true); return refresh();
       // Personagens reservados (ADR-110)
       case "se-slot-new": return createSlot(id);
       case "se-slot-menu": return slotMenu(id, b);
@@ -3418,7 +3528,8 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     npcLoading = api(`${base}/npcs`, "GET", undefined, { background: true }).then((r) => { npcs = r.items || []; }).catch(() => { npcs = []; }).finally(() => {
       npcLoading = null;
       if (closed) return;
-      if (panel === "add" || panel === "token") renderSide();
+      if (panel === "token") renderSide();
+      refreshPopNpcs();
       renderCharacters();
       redraw();
     });
@@ -3429,7 +3540,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
     if (t.matches("[data-se-char-search]")) return renderCharacterList();
     if (t.matches("[data-se-place-look]")) {
       placeLook = t.value === LOOK_IMAGE ? LOOK_IMAGE : LOOK_ROUND;
-      root.querySelectorAll("[data-se-place-look]").forEach((r) => { r.checked = r.value === placeLook; });
+      [root, cellPop?.handle.element, flowPop?.handle.element].forEach((host) => host?.querySelectorAll("[data-se-place-look]").forEach((r) => { r.checked = r.value === placeLook; }));
       return;
     }
     if (t.matches("[data-asset-q]")) return renderAssets();
@@ -3555,7 +3666,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
   }
   function onSubmit(e) {
     const f = e.target;
-    if (!root.contains(f)) return;
+    if (!inEditor(f)) return;
     e.preventDefault();
     const data = Object.fromEntries(new FormData(f));
     if (f.matches("[data-token-form]")) return;
@@ -3580,6 +3691,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
         : data.dim !== undefined ? { dim: dim === radius ? null : dim } : {};
       lights.push({ ...(old || {}), x: pick.x, y: pick.y, radius, ...visual });
       change(old ? "Atualizar foco de luz" : "Foco de luz", () => { layer = { ...layer, lights }; });
+      closeCellPop(true);
       return refresh();
     }
     if (f.matches("[data-mark-form]")) {
@@ -3591,6 +3703,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       if (!old && marks.length >= 100) return say("Limite de 100 marcas ocultas por mapa.");
       marks.push({ ...(old || {}), x: pick.x, y: pick.y, kind: data.kind, label: label.slice(0, 40), dc: num(data.dc), maxDistance: num(data.maxDistance), sense: data.sense || null });
       change(old ? "Atualizar marca oculta" : "Marca oculta", () => { layer = { ...layer, marks }; });
+      closeCellPop(true);
       return refresh();
     }
     if (f.matches("[data-apply-form]")) return apply(f);
@@ -3738,7 +3851,7 @@ export async function openSceneEditor({ campaign, sceneId = null, mapKey = null,
       const applied = !!(nextLayer && layer && nextLayer.cells?.length === layer.cells?.length);
       if (applied) layer = clone(nextLayer);
       resetExploration = !!reset && !!layer;
-      selection = []; pick = null;
+      selection = []; closeCellPop();
       if (!draft.layers.some((l) => l.id === activeLayer)) activeLayer = "elements";
       recomputeDirty(); renderAll();
       return applied;

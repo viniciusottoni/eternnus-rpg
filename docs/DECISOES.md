@@ -1498,3 +1498,57 @@ Cada lista tinha um arranjo próprio: “Filtrar” dourado em umas, “Buscar�
 
 **Verificação:** `tests/sheet-line-notes-ui.mjs` (novo; Chrome + PostgreSQL): um botão por item, sem botão de canto, linha descrita marcada, popup só do item, aplicar marca a linha e salvar grava as duas descrições.
 
+
+## ADR-123 — Administradores não contam nos cliques da loja (20/11/2026)
+
+**Contexto:** quem administra a loja abre produtos para conferir links, preços e a vitrine. Esses cliques entravam no contador `Clicks`, no CTR por fila e produto, no ranking e no aprendizado por cliques, distorcendo os números que o próprio Admin usa para decidir.
+
+**Decisão:**
+- `StoreAnalyticsService.RecordAsync` valida a origem e o produto como antes e, se o usuário tem papel Admin (lido do banco, nunca do cliente), responde 204 sem gravar `StoreInteraction`, sem incrementar `Clicks` e sem marcar `ClickedAt` na exibição. O link abre normalmente.
+- As exibições do Admin continuam gravadas, para a rotação da vitrine dele avançar como a de qualquer usuário.
+- `MetricsAsync` exclui cliques e exibições de quem tem papel Admin hoje, inclusive registros anteriores, para o CTR não cair com exibições sem clique.
+- O contador `Clicks` já acumulado não é recalculado.
+
+**Jornadas:** nenhuma; sem clique, campo ou ferramenta novos. Contrato HTTP igual (204).
+
+**Verificação:** `StoreTests.Clicks_are_deduplicated_aggregated_and_never_carry_text` cobre o clique do Admin sem registro nem contagem.
+
+## ADR-124 — Dicas do editor por contexto e nível de intimidade (20/11/2026)
+
+**Contexto:** a barra de propriedades dos editores de cena, de preparação do mapa e de mapa de imagem mostrava sempre o mesmo texto fixo quando nada estava selecionado. Quem começa não descobre atalhos, contextos e recursos (paredes vetoriais, ensaio, aplicar à cena), e quem já domina não precisa ler o básico de novo.
+
+**Decisão:**
+- A faixa vazia passa a mostrar dicas curtas (`js/editor-tips.js`, regras puras em `js/editor-tips-policy.js`). O catálogo tem 309 dicas revisadas contra a documentação e o código, em `js/editor-tips/comum.js`, `cena.js` e `imagem.js`, carregadas sob demanda na primeira abertura.
+- Cada dica declara um id estável, um nível de 1 a 3, o contexto (ou `*`) e, opcionalmente, a ferramenta citada, a interface (`basic` ou `complete`) e o editor. A escolha filtra pelo editor, pelo contexto atual e pela interface. Também filtra pelo nível, que nunca passa do nível do mestre, e pela ferramenta, que precisa existir, estar visível e disponível. O peso favorece dicas nunca vistas, o nível atual, o contexto atual e ferramentas ainda não usadas. As últimas 24 dicas não se repetem enquanto houver alternativa.
+- **Intimidade** = aberturas do editor + variedade de ferramentas usadas + volume de uso + contextos visitados + interface Completa, cada parcela com teto. Repetir a mesma ação não pula de nível.
+- **Privacidade:** os sinais ficam só no `localStorage` da conta neste navegador (`eternnus.editor.tips.{usuário}`), normalizados e limitados. Nada vai ao servidor, sem telemetria, migração ou contrato novo. Limitação aceita: em outro aparelho, as dicas recomeçam do nível 1.
+- **Ritmo:** a dica troca a cada 30 s. A troca pausa com o ponteiro ou o foco na barra, com a aba oculta e com a barra oculta. Selecionar algo devolve a faixa às propriedades; desmarcar traz a dica de volta. Controles: anterior/próxima (ícones com nome acessível) e **Experimentar**, que ativa a ferramenta citada pelo mesmo `useTool` da barra. Anterior usa `disabled` nativo na primeira dica, sem texto de motivo, porque o motivo é óbvio.
+- **Busca de ações:** "Próxima dica do editor" (grupo Ajuda), com motivo quando a barra está oculta, há seleção ou o catálogo ainda carrega.
+- Ajuda ⓘ `campanhas.editor.dicas` junto ao rótulo "Dica". O editor de tiles não tem barra de propriedades e ficou de fora.
+
+**Jornadas:** preparar cena. Nenhum clique obrigatório, campo ou ferramenta novos. `TOOL_INVENTORY` e `BASIC_BUDGET` não mudam. Service worker `v97`, com os cinco módulos novos na lista pública.
+
+**Verificação:** `tests/editor-tips-policy.test.mjs` cobre catálogo (≥ 300, ids únicos, ferramentas e contextos existentes, cobertura por contexto e nível), nível, sanitização, elegibilidade e sorteio. `tests/editor-tips-ui.mjs` (Chrome + PostgreSQL) faz 43 verificações.
+
+## ADR-125 — Janela de ação no ponto; a lateral direita fica para ajustes (20/11/2026)
+
+**Contexto:** no editor de cenas, clicar numa casa com Adicionar (+), Foco de luz ou Marca oculta trocava o conteúdo da barra lateral direita, longe do clique. O mesmo acontecia com Cenário, Visibilidade, Texto e Notas (ferramentas da esquerda) e com fluxos curtos como Aplicar à cena, imagens soltas, imagem do marcador e vincular reservado. O mestre precisava procurar o formulário do outro lado da tela. Direção do usuário: o básico se faz pela barra superior, pelas ferramentas da esquerda e por janelas; a lateral direita fica para configurações pontuais e avançadas.
+
+**Decisão:**
+- Novo componente compartilhado `openFloatingPanel` (`js/editor-core.js`): janela não modal com conteúdo livre, aberta ao lado do ponto ou do botão que a chamou (`popoverPosition` em `editor-policy.js`, regra pura testada). Ela não cobre a casa clicada e continua inteira na tela quando o conteúdo cresce. No celular e no tablet vira folha inferior, com o mesmo corte de CSS das janelas existentes. Esc, Fechar ou clicar fora fecham sem aplicar e devolvem o foco. Fica uma janela por vez. Ao abrir, a dica do botão some, para o primeiro Esc fechar a janela.
+- Editor de cenas: + na casa abre "Adicionar aqui" com **+ Novo personagem aqui** (cria o reservado já na casa), reservados ainda fora da cena, personagens dos jogadores, personagens do mestre e marcador avulso. Foco de luz e Marca oculta abrem na casa: criar, editar e remover. Isso vale pela ferramenta, pelo menu de contexto e pela árvore Organizar.
+- Cenário, Visibilidade, Texto compartilhável e Notas privadas abrem ao lado do botão da ferramenta. Aplicar à cena, Reiniciar, Recolocar personagens, imagens novas, Imagem do marcador e Vincular personagem também abrem em janela. O título do painel (com a ajuda ⓘ) vira o título da janela.
+- A lateral direita fica com Propriedades da seleção, Organizar/Adicionar/Configurar, ensaio, conflitos e erros, e com os ajustes avançados: Névoa, Ajustar grade, Configuração da cena, Recomeçar exploração, paredes, diagnóstico e detalhes avançados.
+
+**Jornadas:** preparar cena. Os cliques obrigatórios não aumentam: a janela substitui a troca de painel. Criar um personagem novo numa casa cai de três passos (criar na lateral, Colocar no cursor, clicar no mapa) para dois (clicar na casa, + Novo personagem aqui). Sem ferramenta nova: `TOOL_INVENTORY` e `BASIC_BUDGET` não mudam. Não há campo obrigatório novo. Service worker `v98`, com a lista pública inalterada.
+
+**Verificação:** `tests/editor-policy.test.mjs` cobre `popoverPosition`. `tests/scene-cell-popup-ui.mjs` (Chrome + PostgreSQL, novo) cobre janela ao lado da casa e dentro da tela, foco, personagem novo, marcador, Esc, clicar fora, uma janela por vez, menu de contexto, Texto (o rascunho persiste), Cenário com a lista de mapas, luz (criar, reabrir, remover) e a folha inferior no celular.
+
+**Correções na mesma entrega:**
+- Ao entrar no ensaio no celular ou tablet, a lateral sobreposta fecha, para não cobrir o banner do ensaio. No desktop continua abrindo nas propriedades.
+- Na barra superior compacta (desktop estreito e celular), sumia a legenda "Interface" inteira e o ⓘ de `mesa.interface.apresentacao` ia junto. Agora some só a palavra: o grupo mantém o nome por `aria-label` e o ⓘ continua visível.
+- No celular, o ⓘ dos contextos aparecia antes da barra de contextos (ordem do CSS aplicada dentro do `help-glue`). Agora fica depois dela.
+- Celular deitado (altura até 500 px): o editor deixava cerca de 45 px para o mapa, com quatro linhas de topo e mais a faixa de dicas. Agora o topo usa duas linhas (ações; menus e contextos) e as ferramentas voltam à coluna esquerda. As ações com ícone mostram só o ícone, e a faixa de dicas/propriedades sai. O mapa fica com cerca de 240 px em 844×390, e Fechar e o nome da cena ficam à vista.
+- Mesa com altura muito baixa (teclado aberto no celular deitado): o campo da conversa passava 3 px do rodapé por causa de uma margem genérica de `game.css`. A mesa zera essa margem e, até 300 px de altura, reduz o respiro em volta da conversa. As abas de toque continuam com 44 px.
+
+**Limites:** o editor de mapas de imagem já usava janelas próprias para essas ações. O editor de tiles não tem ações por casa com formulário. Nenhum dos dois mudou. Propriedades do marcador selecionado continuam na lateral; duplo clique, Enter ou o menu de contexto abrem a janela de propriedades já existente.

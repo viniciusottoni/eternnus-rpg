@@ -52,7 +52,7 @@ try {
   const playerBrowser = await chromium.launch({ executablePath: chrome, headless: true, args: ["--autoplay-policy=document-user-activation-required"] });
   browsers.push(masterBrowser, playerBrowser);
   async function pageFor(browser, client, mobile = false) {
-    const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 }, serviceWorkers: "block", hasTouch: mobile, isMobile: mobile, reducedMotion: mobile ? "reduce" : "no-preference" });
+    const context = await browser.newContext({ viewport: mobile ? { width: 844, height: 390 } : { width: 1440, height: 900 } /* mesa no celular é deitada (ADR-056) */, serviceWorkers: "block", hasTouch: mobile, isMobile: mobile, reducedMotion: mobile ? "reduce" : "no-preference" });
     await context.addCookies(client.cookieHeader().split("; ").filter(Boolean).map((s) => { const i = s.indexOf("="); return { name: s.slice(0, i), value: s.slice(i + 1), url: env.origin }; }));
     // O Chrome sob automação concede ativação nas avaliações do Playwright, então a política real de autoplay
     // não bloqueia. No navegador do jogador, a recusa é emulada: play() rejeita com NotAllowedError até um

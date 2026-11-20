@@ -3,10 +3,12 @@
 // janela de propriedades e atalhos.
 // Usado pelos editores de mapas de tiles, mapas de imagem e cenas. Não faz chamadas HTTP nem guarda estado de jogo.
 import { $, esc, modal, toast } from "./ui.js";
-import { helpButton } from "./help.js";
+import { helpButton, dismissHelp } from "./help.js";
 import { interfaceMode, interfaceToggle, mountInterfaceToggle, onInterfaceChange, setInterfaceMode } from "./interface-mode.js";
 import { mountCommandPalette } from "./command-palette.js";
-import { EDITOR_CLIPBOARD_MARK, FIELD_SAFE, clampMenu, isTypingTarget, rulerSteps, shortcutLabel, shortcutOf, zoomLabel,
+import { createEditorTips } from "./editor-tips.js";
+import { TIP_EDITORS } from "./editor-tips-policy.js";
+import { EDITOR_CLIPBOARD_MARK, FIELD_SAFE, clampMenu, popoverPosition, isTypingTarget, rulerSteps, shortcutLabel, shortcutOf, zoomLabel,
   normalizeContexts, toolInContext, panelInContext, availableContexts, toolAfterContext, contextShortcutIndex,
   layoutPrefKey, normalizeLayoutPref, panelOrder, movePanel, PANEL_WIDTH,
   SIDE_AREAS, HISTORY_AREA, INSPECT_AREA, INSPECT_SPLIT, clampSplit, panelArea, sideAreasFor, initialArea } from "./editor-policy.js";
@@ -180,6 +182,13 @@ export function openPropertiesDialog({ title, fields, onApply, onClose, live = f
     if (action === "apply") apply(false);
   });
   // Arrastar pela barra do título; posição inicial no canto superior direito do palco.
+  draggableByHead(box);
+  setTimeout(() => form.querySelector("input:not([type=hidden]):not(:disabled), select, textarea")?.focus(), 0);
+  return { close, element: box };
+}
+
+/** Arrastar uma janela flutuante (.ed-props) pela barra do título, sempre dentro da tela. */
+function draggableByHead(box) {
   const head = box.querySelector(".ed-props-head");
   let drag = null;
   head.addEventListener("pointerdown", (e) => {
@@ -191,11 +200,74 @@ export function openPropertiesDialog({ title, fields, onApply, onClose, live = f
   head.addEventListener("pointermove", (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     const p = clampMenu(e.clientX - drag.dx, e.clientY - drag.dy, box.offsetWidth, box.offsetHeight, innerWidth, innerHeight, 4);
-    box.style.left = `${p.x}px`; box.style.top = `${p.y}px`; box.style.right = "auto";
+    box.style.left = `${p.x}px`; box.style.top = `${p.y}px`; box.style.right = "auto"; box.style.bottom = "auto";
   });
   head.addEventListener("pointerup", () => { drag = null; });
-  setTimeout(() => form.querySelector("input:not([type=hidden]):not(:disabled), select, textarea")?.focus(), 0);
-  return { close, element: box };
+}
+
+// ---------- Janela de ação no ponto (ADR-125) ----------
+/** Mesmo corte do CSS em que as janelas flutuantes viram folha inferior (celular e tablet). */
+const SHEET_MEDIA = "(max-width: 900px), (max-width: 1200px) and (pointer: coarse)";
+let popSequence = 0;
+/**
+ * Abre, perto de `at` ({ x, y, gap? } em coordenadas da janela, ou um elemento), uma janela não modal com conteúdo livre para criar ou
+ * editar algo naquele ponto do palco. A barra lateral fica para configurações e propriedades.
+ * No celular vira folha inferior (CSS). Esc, Fechar ou clicar fora fecham e devolvem o foco.
+ * Devolve { element, body, close() }. O conteúdo é HTML já escapado pelo chamador.
+ */
+export function openFloatingPanel({ title, html, at = null, onClose, label = "" }) {
+  document.querySelector(".ed-props")?.dispatchEvent(new Event("ed-close"));
+  // A dica do botão que abriu a janela sairia no primeiro Esc; some ao abrir, e o Esc fecha a janela.
+  dismissHelp();
+  const returnFocus = document.activeElement;
+  const box = document.createElement("section");
+  const titleId = `ed-pop-title-${++popSequence}`;
+  box.className = "ed-props ed-pop";
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-modal", "false");
+  box.setAttribute("aria-labelledby", titleId);
+  box.innerHTML = `<header class="ed-props-head"><h3 id="${titleId}">${esc(title)}</h3><button type="button" class="ed-icon-button" data-pop="close" aria-label="Fechar ${esc(label || title)}">${icon("close")}</button></header><div class="ed-pop-body"></div>`;
+  const body = box.querySelector(".ed-pop-body");
+  body.innerHTML = html;
+  floatingHost().append(box);
+  const rect = at?.getBoundingClientRect ? at.getBoundingClientRect() : null;
+  // `gap`: meia largura do alvo + folga, para a janela abrir ao lado da casa/elemento sem cobri-lo.
+  const point = rect ? { x: rect.left + rect.width / 2, y: rect.top, gap: rect.width / 2 + 8 } : at && Number.isFinite(at.x) && Number.isFinite(at.y) ? at : null;
+  if (point && !matchMedia(SHEET_MEDIA).matches) {
+    const p = popoverPosition(point.x, point.y, box.offsetWidth, box.offsetHeight, innerWidth, innerHeight, Number.isFinite(point.gap) ? point.gap : 14);
+    box.style.left = `${p.x}px`; box.style.top = `${p.y}px`; box.style.right = "auto";
+  }
+  // O conteúdo pode crescer depois (listas que terminam de carregar): a janela continua inteira na tela.
+  const keepInside = () => {
+    if (!box.style.top || matchMedia(SHEET_MEDIA).matches) return;
+    // Posição do estilo e tamanho de layout: o retângulo visual muda durante a animação de entrada.
+    const x = parseFloat(box.style.left), y = parseFloat(box.style.top);
+    const p = clampMenu(x, y, box.offsetWidth, box.offsetHeight, innerWidth, innerHeight, 8);
+    if (p.x !== x || p.y !== y) { box.style.left = `${p.x}px`; box.style.top = `${p.y}px`; }
+  };
+  const resize = typeof ResizeObserver === "function" ? new ResizeObserver(keepInside) : null;
+  resize?.observe(box);
+  function close(restore = true) {
+    if (!box.isConnected) return;
+    resize?.disconnect();
+    box.remove();
+    window.removeEventListener("keydown", onKey, true);
+    document.removeEventListener("pointerdown", outside, true);
+    if (restore && returnFocus?.isConnected && !box.contains(returnFocus)) returnFocus.focus({ preventScroll: true });
+    onClose?.();
+  }
+  // Captura na janela: o Esc fecha esta janela antes de dispensar dicas (help.js) ou atalhos do editor.
+  const onKey = (e) => { if (e.key === "Escape" && box.contains(document.activeElement)) { e.preventDefault(); e.stopPropagation(); dismissHelp(); close(); } };
+  // Clicar fora fecha sem roubar o foco: o clique segue para onde foi (outra casa, menu, painel).
+  const outside = (e) => { if (!box.contains(e.target) && !e.target.closest?.(".ed-menu, #toast, #help-popup")) close(false); };
+  window.addEventListener("keydown", onKey, true);
+  setTimeout(() => { if (box.isConnected) document.addEventListener("pointerdown", outside, true); }, 0);
+  box.addEventListener("ed-close", () => close(false));
+  box.addEventListener("click", (e) => { if (e.target.closest('[data-pop="close"]')) close(); });
+  draggableByHead(box);
+  // Foco: o alvo indicado pelo conteúdo ([data-pop-focus]), senão o primeiro campo, senão o primeiro botão que não seja ajuda.
+  setTimeout(() => (body.querySelector("[data-pop-focus]") || body.querySelector("input:not([type=hidden]):not(:disabled), select, textarea") || body.querySelector("button:not(:disabled):not(.help-button)"))?.focus(), 0);
+  return { element: box, body, close };
 }
 
 // ---------- Painéis reutilizáveis ----------
@@ -226,6 +298,8 @@ export function renderHistoryPanel(host, history) {
 export function createEditorShell(opts) {
   const uid = ++shellSequence;
   let mode = interfaceMode(), tool = opts.initialTool || opts.tools[0]?.id, camera = null, closed = false, resolveClosed;
+  /** Dicas da barra de propriedades vazia (ADR-124); criadas com a barra, usadas por contexto, ferramenta e interface. */
+  let editorTips = null;
   const whenClosed = new Promise((r) => (resolveClosed = r));
   const kind = /^[a-z][a-z0-9-]{0,23}$/.test(String(opts.kind || "")) ? opts.kind : "editor";
   const contexts = normalizeContexts(opts.contexts);
@@ -531,6 +605,8 @@ export function createEditorShell(opts) {
     const wantedArea = (opts.contexts || []).find((x) => x.id === context)?.area;
     if (wantedArea && areaEl(wantedArea) && areaEl(sideArea)?.querySelector(":scope > [data-ed-area-empty]:not([hidden])")) setArea(wantedArea, { persist: false });
     opts.onContext?.(context);
+    editorTips?.record("context", context);
+    editorTips?.refresh();
     if (user) message(`Contexto: ${c.label}. Seleção, zoom e alterações continuam como estavam.`);
   }
   /** Se a ferramenta pedida está fora do contexto atual (atalho de letra, ação do editor), vai ao primeiro contexto que a mostra. */
@@ -608,6 +684,7 @@ export function createEditorShell(opts) {
     const reason = t.disabled?.();
     if (reason) { message(reason); return; }
     revealTool(t);
+    editorTips?.record("tool", id);
     if (t.action) { t.action(); renderTools(); return; }
     tool = id;
     renderTools();
@@ -684,6 +761,17 @@ export function createEditorShell(opts) {
     const host = q("[data-ed-contextbar]");
     let current = null;
     const hint = opts.contextBarHint || "Selecione um elemento para editar aqui as propriedades simples.";
+    // Dicas (ADR-124): enquanto nada está selecionado, a faixa mostra dicas pelo contexto, interface e intimidade.
+    const toolById = (id) => opts.tools.find((x) => x.id === id);
+    const tips = host ? createEditorTips(host, {
+      editor: kind, userId: state.user?.id, hint,
+      getContext: () => context, getMode: () => mode,
+      toolReady: (id) => { const t = toolById(id); return !!t && toolVisible(t) && !t.disabled?.(); },
+      toolLabel: (id) => toolById(id)?.label || id,
+      runTool: (id) => useTool(id),
+    }) : null;
+    const tipsActive = !!tips && TIP_EDITORS.includes(kind);
+    if (tipsActive) editorTips = tips;
     const fieldId = (name) => `ed-${uid}-cb-${String(name).replace(/[^a-zA-Z0-9_-]/g, "")}`;
     function fieldHtml(f) {
       const id = fieldId(f.name), dis = f.disabled ? "disabled" : "";
@@ -710,10 +798,12 @@ export function createEditorShell(opts) {
       if (!host) return;
       current = null;
       host.dataset.empty = "true";
+      if (tipsActive) { tips.show(); return; }
       host.innerHTML = `<p class="ed-cb-hint">${esc(hint)}</p>`;
     }
     function show(spec) {
       if (!host) return;
+      tips?.hide();
       const focused = host.contains(document.activeElement);
       if (current && spec.key && current.key === spec.key && focused) { current.onChange = spec.onChange; current.onAction = spec.onAction; writeValues(Object.fromEntries((spec.fields || []).map((f) => [f.name, f.value]))); return; }
       current = { key: spec.key || "", fields: (spec.fields || []).map((f) => ({ ...f })), onChange: spec.onChange, onAction: spec.onAction };
@@ -755,6 +845,8 @@ export function createEditorShell(opts) {
       /** Sem seleção: mostra a dica (a faixa continua com a mesma altura). */
       hide: empty,
       get available() { return !!host; },
+      /** Dicas da faixa vazia (ADR-124) ou null quando o editor não tem dicas. */
+      tips: tipsActive ? tips : null,
     };
   })();
 
@@ -903,6 +995,13 @@ export function createEditorShell(opts) {
     return true;
   }
   const disposeToggle = mountInterfaceToggle(root);
+  /** Motivo de "Próxima dica" estar indisponível na Busca de ações (ou null). */
+  function tipProblem() {
+    if (!editorTips?.available) return "As dicas ainda estão carregando.";
+    if (root.dataset.maximized === "on" || root.dataset.contextbar === "off") return "A barra de propriedades está oculta. Mostre-a em Exibir › Barra de propriedades.";
+    if (q("[data-ed-contextbar]")?.dataset.empty !== "true") return "Desmarque a seleção para ver as dicas na barra de propriedades.";
+    return null;
+  }
   // Busca de ações (ADR-100): as ferramentas do editor por nome; as da Completa trocam a interface ao escolher.
   const disposePalette = mountCommandPalette(root, {
     getContext: () => ({ role: "master", mode }),
@@ -911,8 +1010,9 @@ export function createEditorShell(opts) {
       basic: t.basic !== false, disabled: t.disabled?.() || null,
     })), ...[...areas, ...(hasHistory ? [{ id: HISTORY_AREA, label: "Histórico", tip: "Etapas desta edição" }] : [])].map((a) => ({
       id: `area:${a.id}`, label: `Barra lateral: ${a.label}`, group: "Barra lateral", keywords: [a.tip, "painel", "lateral"], basic: true, disabled: null,
-    }))],
+    })), ...(editorTips ? [{ id: "tip:next", label: "Próxima dica do editor", group: "Ajuda", keywords: ["dica", "sugestão", "ajuda", "aprender"], basic: true, disabled: tipProblem() }] : [])],
     onRun: (c) => {
+      if (c.id === "tip:next") { editorTips?.next(); return; }
       if (String(c.id).startsWith("area:")) { const id = c.id.slice(5); setPanels(true); setArea(id, { persist: id !== HISTORY_AREA, focus: true }); return; }
       if (c.needsComplete) setInterfaceMode("complete"); useTool(c.id);
     },
@@ -924,9 +1024,11 @@ export function createEditorShell(opts) {
     renderTools();
     updateAreaEmpty();
     opts.onModeChange?.(next);
+    editorTips?.refresh();
   });
   dialog.addEventListener("close", () => {
     disposePalette();
+    editorTips?.dispose();
     closed = true;
     cancelAnimationFrame(rulerFrame);
     topFit.disconnect();

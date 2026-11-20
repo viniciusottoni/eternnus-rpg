@@ -117,8 +117,13 @@ try {
   await p.page.waitForSelector("#bubble-form", { timeout: 5000 });
   await p.page.fill("#f-bubble", "3");
   await p.page.click('#bubble-form button[value="down"]');
-  await wait(1200);
-  const heroSummary = (await player(`${base}/live`)).participants.find((x) => x.characterId === hero.id).summary;
+  // A gravação é assíncrona: consulta até refletir (no máximo 10 s), em vez de uma espera fixa.
+  let heroSummary = null;
+  for (let i = 0; i < 40; i++) {
+    heroSummary = (await player(`${base}/live`)).participants.find((x) => x.characterId === hero.id).summary;
+    if (heroSummary.resources[0].value === 7) break;
+    await wait(250);
+  }
   check(heroSummary.resources[0].value, 7, "jogador ajusta a própria vida pela bolha");
   ok(heroSummary.armor?.value === "10", "armadura no resumo do personagem");
   ok(!(await player(`${base}/live`)).play.npcs.length, "jogador não recebe ficha de NPC");
@@ -192,8 +197,11 @@ try {
   state = await master(`${base}/live`);
   check([state.map.gridPixels, state.map.width, state.map.height], [100, 8, 6], "grade e tamanho vindos do UVTT");
   const layer = await master(`/api/campaigns/${campaign.id}/assets/layers?key=${encodeURIComponent(state.map.key)}`);
-  check(layer.cells[0][3], "d", "porta do UVTT na casa certa");
-  check(layer.cells[2][0], "#", "parede esquerda do lado de fora da sala");
+  // UVTT vira paredes vetoriais (vtt-import-policy `uvttWalls`): portal = porta fechada no traço exato; casas ficam livres.
+  const walls = layer.walls || [];
+  const door = walls.find((w) => w.kind === "door");
+  check(door && [door.x1, door.y1, door.x2, door.y2, door.open], [310, 100, 390, 100, false], "porta do UVTT no traço certo");
+  ok(walls.some((w) => w.kind === "wall" && w.x1 === 100 && w.x2 === 100), "parede esquerda da sala importada");
   check(layer.cells[2][3], ".", "interior da sala livre");
   check(layer.lights.map((l) => [l.x, l.y, l.radius]), [[3, 3, 4]], "luz do UVTT");
   await m.page.screenshot({ path: join(shots, "9-mestre-uvtt.png") });

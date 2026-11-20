@@ -203,6 +203,16 @@ export function clampMenu(x, y, w, h, vw, vh, margin = 6) {
 }
 
 /**
+ * Posição da janela de ação perto do ponto clicado (ADR-125): à direita e um pouco abaixo do ponteiro; sem espaço,
+ * vai para a esquerda do ponto, para não cobrir a casa escolhida. Sempre dentro da tela.
+ */
+export function popoverPosition(px, py, w, h, vw, vh, gap = 14, margin = 8) {
+  const right = px + gap, left = px - gap - w;
+  const x = right + w + margin <= vw ? right : left >= margin ? left : right;
+  return clampMenu(x, py - 12, w, h, vw, vh, margin);
+}
+
+/**
  * Zoom ancorado: devolve o novo deslocamento da vista para que o ponto sob o cursor (sx, sy) continue no mesmo lugar.
  * `view` = { x, y, scale } (documento → tela: tela = doc * scale + view.x).
  */

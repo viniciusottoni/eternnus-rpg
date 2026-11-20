@@ -174,6 +174,8 @@ Celular: `Mobile_first_card_alternates_popular_new_discovery_and_exploration` co
 
 `POST /api/store/interactions` registra cliques (deduplicados por usuário, produto e superfície em 30 min). Um clique da vitrine é atribuído à exibição mais recente do produto para aquele usuário nas últimas 24 h que ainda não tinha clique (no máximo um por exibição). `POST /api/store/impressions` registra exibições reais (§4.6).
 
+Administradores não contam (ADR-123): o clique de um Admin responde 204 e abre o link, mas não grava interação, não incrementa `Clicks`, não atribui clique à exibição e não alimenta o aprendizado por cliques. As exibições do Admin continuam gravadas para a rotação dele funcionar, mas o painel de métricas exclui cliques e exibições de quem tem papel Admin (papel atual, lido do banco), inclusive registros anteriores. O contador `Clicks` acumulado antes desta regra não é recalculado.
+
 Indicadores: produtos por status; cliques por produto, loja, superfície (vitrine × loja × detalhe), categoria e sistema; exibições totais, CTR (`cliques atribuídos ÷ exibições × 100`) total, por fila e por produto, com **CTR suavizado** (soma 50 exibições à taxa geral) e marca de amostra pequena (< 30 exibições); cobertura do catálogo ativo no período, produtos ativos nunca exibidos, menos exibidos e exibições por loja, sistema e categoria. Popularidade é “mais clicados”, nunca “mais vendidos”: receita, comissão e conversão não são conhecidas.
 
 ## 8. Vitrine nas páginas
